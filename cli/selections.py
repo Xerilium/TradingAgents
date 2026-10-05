@@ -308,7 +308,7 @@ def _prompt_selections(prefs, flags):
             "Gemini thinking mode", "Step 8: Thinking Mode",
             "Configure Gemini thinking mode", ask_gemini_thinking_config,
         )
-    elif provider_lower == "openai":
+    elif provider_lower in ("openai", "chatgpt"):
         reasoning_effort = thinking_value_or_prompt(
             "TRADINGAGENTS_OPENAI_REASONING_EFFORT", "openai_reasoning_effort",
             "Reasoning effort", "Step 8: Reasoning Effort",

@@ -1,4 +1,4 @@
-"""Jev post screening, against TypeSafe's documented request and response shapes."""
+"""Post screening against the TypeSafe-compatible request and response shapes."""
 
 import pytest
 import requests
@@ -44,6 +44,7 @@ def post(monkeypatch):
     monkeypatch.setattr(typesafe.requests, "post", fake_post)
     monkeypatch.setattr(typesafe.time, "sleep", calls.sleeps.append)
     monkeypatch.setenv("TYPESAFE_API_KEY", "ts-test")
+    monkeypatch.delenv("TYPESAFE_BASE_URL", raising=False)
     monkeypatch.delenv("TYPESAFE_DEFAULT_MODEL", raising=False)
     return calls
 
@@ -148,11 +149,11 @@ def test_a_response_without_every_answer_is_an_error(post, payload):
 
 
 
-def _post_answers(about: float, stance: str = "bullish", confidence: float = 0.9):
+def _post_answers(about: float, stance: str = "bullish", probability: float = 0.9):
     return _Response(200, {"model": "jev-1.13.0", "answers": {
         "about": {"type": "noul", "noul": about},
-        "stance": {"type": "choice", "choice": stance, "confidence": confidence,
-                   "probabilities": {stance: 1.0}},
+        "stance": {"type": "choice", "choice": stance, "confidence": 0.1,
+                   "probabilities": {stance: probability}},
     }})
 
 
@@ -202,7 +203,7 @@ def test_screen_drops_clear_off_topic_posts_and_counts_confident_stances(jev):
     keep, note = typesafe.jev_screen("NVDA")(list(jev))
 
     assert keep == [True, True, True, True, True, False]
-    assert note == ("Screened by Jev: 5 of the 6 posts fetched are about NVIDIA Corporation (NVDA); "
+    assert note == ("Screened by Laya: 5 of the 6 posts fetched are about NVIDIA Corporation (NVDA); "
                     "their stance on its stock: 1 bullish, 1 bearish, 1 neutral, 2 unclear.")
 
 
@@ -213,7 +214,7 @@ def test_one_failed_request_leaves_every_post_unscreened(jev):
     keep, note = typesafe.jev_screen("NVDA")(["a", "b"])
 
     assert keep == [True, True]
-    assert note == "<Jev screening unavailable (HTTP 401); posts are unscreened>"
+    assert note == "<Laya screening unavailable (HTTP 401); posts are unscreened>"
 
 
 @pytest.mark.unit
@@ -224,7 +225,7 @@ def test_an_answer_missing_its_fields_reads_as_malformed(jev):
     keep, note = typesafe.jev_screen("NVDA")(["a"])
 
     assert keep == [True]
-    assert note == "<Jev screening unavailable (malformed response); posts are unscreened>"
+    assert note == "<Laya screening unavailable (malformed response); posts are unscreened>"
 
 
 @pytest.mark.unit
@@ -269,6 +270,7 @@ def test_a_failure_does_not_wait_for_requests_still_in_flight(jev, monkeypatch):
     import time
 
     release = threading.Event()
+    monkeypatch.setattr(typesafe, "_WORKERS", 2)
 
     class _Slow:
         status_code = 200

@@ -1,12 +1,12 @@
-"""Social-post screening with TypeSafe's Jev, when ``TYPESAFE_API_KEY`` is set.
+"""Social-post screening with Laya through the TypeSafe-compatible Decision API.
 
-Jev answers typed questions with calibrated probabilities. Each StockTwits or
+Laya answers typed questions with probabilities. Each StockTwits or
 Reddit post is asked two: is it about the instrument, and which way does it
 lean on the instrument's stock. Code turns the answers into what the Sentiment
 Analyst reads: posts that are clearly about something else are dropped, and a
 stance count over the rest heads the source's block.
 
-Configured by TypeSafe's own SDK variables, ``TYPESAFE_API_KEY`` and
+Configured by ``TYPESAFE_BASE_URL``, ``TYPESAFE_API_KEY`` and
 ``TYPESAFE_DEFAULT_MODEL``. Without a key nothing here runs; if any request fails, the source's posts are kept unscreened and the
 block says screening was unavailable.
 """
@@ -23,19 +23,19 @@ from tradingagents.agents.context import resolve_instrument_identity
 
 logger = logging.getLogger(__name__)
 
-_URL = "https://api.typesafe.ai/v1/systemone"
+_BASE_URL = "https://api.typesafe.ai"
 _DEFAULT_MODEL = "jev-latest"
 _RETRY_STATUSES = (429, 529)    # rate limited, overloaded: back off and retry
 _TRANSIENT = (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError)
 _ATTEMPTS = 3
 _MAX_WAIT = 30.0
-_TIMEOUT = 15.0
-_WORKERS = 16                   # well inside the documented 1,200 requests per minute
+_TIMEOUT = 60.0                 # allow the local model's first load
+_WORKERS = 1                    # local Laya serializes inference
 
 # A post is dropped only on a clear "not about it"; the uncertain middle stays.
 _OFF_TOPIC_BELOW = 0.3
-# A stance counts only when Jev is not genuinely uncertain about it.
-_STANCE_CONFIDENCE = 0.5
+# Require a majority probability; this is not a calibrated trading threshold.
+_STANCE_PROBABILITY = 0.5
 
 QUESTIONS = {
     "about": {
@@ -77,13 +77,14 @@ def system_one(state, questions: dict) -> dict[str, dict]:
         "questions": questions,
     }
     headers = {"Authorization": f"Bearer {os.environ.get('TYPESAFE_API_KEY', '')}"}
+    url = (os.environ.get("TYPESAFE_BASE_URL") or _BASE_URL).rstrip("/") + "/v1/systemone"
     backoff, retry_after = 1.0, None
     for attempt in range(_ATTEMPTS):
         if attempt:
             time.sleep(retry_after if retry_after is not None else backoff * random.uniform(0.8, 1.2))
             backoff *= 2
         try:
-            response = requests.post(_URL, json=body, headers=headers, timeout=_TIMEOUT)
+            response = requests.post(url, json=body, headers=headers, timeout=_TIMEOUT)
         except requests.RequestException as exc:
             failure, retry_after = type(exc).__name__, None
             if isinstance(exc, _TRANSIENT):
@@ -118,7 +119,7 @@ def _answers(response, questions: dict) -> dict[str, dict]:
 
 def _stance(answer: dict) -> str:
     choice = answer["choice"]
-    if choice not in QUESTIONS["stance"]["criteria"] or answer["confidence"] < _STANCE_CONFIDENCE:
+    if choice not in QUESTIONS["stance"]["criteria"] or answer["probabilities"][choice] < _STANCE_PROBABILITY:
         return "unclear"
     return choice
 
@@ -145,7 +146,7 @@ def jev_screen(ticker: str):
             return _unscreened(instrument, posts, str(exc))
         counts = ", ".join(f"{stances.count(s)} {s}" for s in ("bullish", "bearish", "neutral", "unclear"))
         return keep, (
-            f"Screened by Jev: {len(stances)} of the {len(posts)} posts fetched are about "
+            f"Screened by Laya: {len(stances)} of the {len(posts)} posts fetched are about "
             f"{instrument}; their stance on its stock: {counts}."
         )
 
@@ -153,8 +154,8 @@ def jev_screen(ticker: str):
 
 
 def _unscreened(instrument: str, posts: list[str], failure: str) -> tuple[list[bool], str]:
-    logger.warning("Jev screening failed for %s: %s", instrument, failure)
-    return [True] * len(posts), f"<Jev screening unavailable ({failure}); posts are unscreened>"
+    logger.warning("Laya screening failed for %s: %s", instrument, failure)
+    return [True] * len(posts), f"<Laya screening unavailable ({failure}); posts are unscreened>"
 
 
 def _ask_each(instrument: str, posts: list[str]) -> list[dict]:

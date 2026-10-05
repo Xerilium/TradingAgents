@@ -330,6 +330,17 @@ class OpenAIClient(BaseLLMClient):
                 continue
             llm_kwargs[key] = self.kwargs[key]
 
+        # Unsloth's installed family defaults select instruct sampling. Use the
+        # Qwen3.8 guide's thinking settings for this repository's local model.
+        if self.provider == "openai_compatible" and self.model.lower() == "unsloth/qwen3.8-27b-gguf":
+            llm_kwargs.update(
+                temperature=1.0, top_p=0.95, presence_penalty=0.0,
+                extra_body={
+                    "top_k": 20, "min_p": 0.0, "repetition_penalty": 1.0,
+                    "chat_template_kwargs": {"reasoning_effort": "xhigh"},
+                },
+            )
+
         # The subclass (provider quirks) comes from the registry spec.
         return chat_cls(**llm_kwargs)
 

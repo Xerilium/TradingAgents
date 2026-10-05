@@ -8,6 +8,7 @@ from cli.prompts import filter_analysts_for_asset_type, parse_analysts
 from cli.run import run_analysis
 from tradingagents.backtest import iter_grid, run_backtest, summarize
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.dataflows.date_window import get_current_date
 from tradingagents.portfolio import load_portfolio
 
 # prompt_toolkit's win32 output module is importable only on Windows (it asserts
@@ -50,7 +51,10 @@ def analyze(
         "portfolio agents size against your actual position.",
     ),
     ticker: str = typer.Option(None, "--ticker", help="Ticker to analyze, e.g. NVDA or 0700.HK; skips the prompt"),
-    date: str = typer.Option(None, "--date", help="Analysis date, YYYY-MM-DD; skips the prompt"),
+    date: str = typer.Option(
+        default_factory=get_current_date,
+        help="Analysis date, YYYY-MM-DD; defaults to today",
+    ),
     analysts: str = typer.Option(
         None, "--analysts", help="Comma-separated analysts, e.g. market,news; skips the prompt"
     ),

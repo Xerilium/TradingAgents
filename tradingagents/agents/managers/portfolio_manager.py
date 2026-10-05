@@ -67,7 +67,7 @@ Ground every conclusion in specific evidence from the analysts. The risk debate 
 
 ## Output
 
-Write these sections, in this order, starting with the rating on its own line:
+Write these sections, in this order, starting with `Rating: <rating>` on its own line (for example, `Rating: Hold`):
 
 - **Rating**: exactly one of Buy / Overweight / Hold / Underweight / Sell
 - **Executive Summary**: the call and how to act on it
