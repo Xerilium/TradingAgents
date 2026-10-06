@@ -138,19 +138,26 @@ def jev_screen(ticker: str):
     def screen(posts: list[str]) -> tuple[list[bool], str]:
         try:
             answers = _ask_each(instrument, posts)
-            keep = [a["about"]["noul"] >= _OFF_TOPIC_BELOW for a in answers]
-            stances = [_stance(a["stance"]) for a, kept in zip(answers, keep, strict=True) if kept]
+            return reduce_screen_answers(instrument, posts, answers)
         except (KeyError, TypeError):
             return _unscreened(instrument, posts, "malformed response")
         except TypeSafeError as exc:
             return _unscreened(instrument, posts, str(exc))
-        counts = ", ".join(f"{stances.count(s)} {s}" for s in ("bullish", "bearish", "neutral", "unclear"))
-        return keep, (
-            f"Screened by Laya: {len(stances)} of the {len(posts)} posts fetched are about "
-            f"{instrument}; their stance on its stock: {counts}."
-        )
 
     return screen
+
+
+def reduce_screen_answers(instrument: str, posts: list[str], answers: list[dict]) -> tuple[list[bool], str]:
+    """Reduce already-completed answers with the original probability thresholds."""
+    if len(answers) != len(posts):
+        raise ValueError("screening answer count does not match the source posts")
+    keep = [a["about"]["noul"] >= _OFF_TOPIC_BELOW for a in answers]
+    stances = [_stance(a["stance"]) for a, kept in zip(answers, keep, strict=True) if kept]
+    counts = ", ".join(f"{stances.count(s)} {s}" for s in ("bullish", "bearish", "neutral", "unclear"))
+    return keep, (
+        f"Screened by Laya: {len(stances)} of the {len(posts)} posts fetched are about "
+        f"{instrument}; their stance on its stock: {counts}."
+    )
 
 
 def _unscreened(instrument: str, posts: list[str], failure: str) -> tuple[list[bool], str]:
