@@ -49,7 +49,9 @@ class BrokerFake:
         assert domain in {"alpaca", "maenifold.memory", "laya", "maenifold.system"}
         return {}
 
-    def execute(self, domain, command, parameters):
+    def execute(self, domain, command, parameters, *, on_dispatch=None):
+        if on_dispatch is not None:
+            on_dispatch()
         self.calls.append((domain, command, copy.deepcopy(parameters)))
         if command in self.errors:
             raise self.errors[command]
@@ -127,7 +129,10 @@ class BrokerFake:
             self.submitted.append(copy.deepcopy(parameters))
             if self.submit_error:
                 raise self.submit_error
-            return {"id": "broker-order", "status": "accepted", **copy.deepcopy(parameters)}
+            receipt = {"id": "broker-order", "status": "accepted", "filled_qty": "0",
+                       "filled_avg_price": None, **copy.deepcopy(parameters)}
+            self.receipts[parameters["client_order_id"]] = receipt
+            return copy.deepcopy(receipt)
         if command == "cancel_order_by_id":
             return {}
         raise AssertionError(f"Unexpected command: {domain}.{command}")
@@ -196,6 +201,218 @@ def create_proposal(service):
     proposal = service.propose(run_id)["proposals"][0]
     assert proposal["status"] == "proposed"
     return proposal
+
+
+@pytest.mark.parametrize("status", ["intent", "requested", "unknown"])
+def test_unresolved_cancellation_blocks_new_plan_and_cross_order_submit(desk, status):
+    service, broker = desk
+    first = create_proposal(service)
+    second = create_proposal(service)
+    third_run = complete_run(service)
+    service.submit(first["id"])
+    owned = next(p for p in service.store.data["proposals"] if p["id"] == first["id"])
+    owned["cancellation"] = {"status": status}
+    for action in (lambda: service.submit(second["id"]), lambda: service.propose(third_run)):
+        with pytest.raises(ValueError, match="cancellation"):
+            action()
+    assert len(broker.submitted) == 1
+    assert owned["cancellation"]["status"] == status
+
+
+@pytest.mark.parametrize("error", [TimeoutError("lost cancel receipt"), GatewayError("generic failure")])
+def test_cancel_ambiguity_restart_open_then_terminal_never_resends(desk, error):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    service.pause(True)
+    broker.errors["cancel_order_by_id"] = error
+    with pytest.raises(ValueError, match="unknown"):
+        service.cancel_order("broker-order")
+    service.store = DeskStore(service.store.directory, service.store.data["config"])
+    owned = service.store.data["proposals"][0]
+    assert owned["status"] == "accepted"
+    assert owned["cancellation"]["status"] == "unknown"
+    for status, filled in [("accepted", "0"), ("partially_filled", "1")]:
+        broker.receipts[proposal["client_order_id"]].update(status=status, filled_qty=filled,
+                                                         filled_avg_price="100" if filled == "1" else None)
+        service.refresh()
+        assert owned["status"] == status
+        assert owned["cancellation"]["status"] == "unknown"
+        with pytest.raises(ValueError, match="do not resend"):
+            service.cancel_order("broker-order")
+    broker.receipts[proposal["client_order_id"]]["status"] = "canceled"
+    service.refresh()
+    assert owned["cancellation"]["status"] == "resolved"
+    assert owned["status"] == "canceled"
+    assert sum(command == "cancel_order_by_id" for _, command, _ in broker.calls) == 1
+
+
+@pytest.mark.parametrize("status,expected", [("intent", "unknown"), ("requested", "requested"), ("unknown", "unknown")])
+def test_restart_preserves_cancellation_uncertainty_without_dispatch(desk, status, expected):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    service.store.data["proposals"][0]["cancellation"] = {"status": status}
+    service.store.save()
+    calls = len(broker.calls)
+    service.store = DeskStore(service.store.directory, service.store.data["config"])
+    assert len(broker.calls) == calls
+    assert service.store.data["proposals"][0]["cancellation"]["status"] == expected
+    with pytest.raises(ValueError, match="do not resend"):
+        service.cancel_order("broker-order")
+    assert len(broker.calls) == calls
+
+
+@pytest.mark.parametrize("account", ["different", None, "unverified"])
+def test_wrong_account_stops_reconciliation_before_lookup_or_update(desk, account):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    owned = service.store.data["proposals"][0]
+    owned["cancellation"] = {"status": "unknown"}
+    prior = copy.deepcopy(owned)
+    broker.orders = [{**broker.receipts[proposal["client_order_id"]], "status": "canceled"}]
+    if account == "unverified":
+        broker.paper = "false"
+    else:
+        broker.account["id"] = account
+    calls = len(broker.calls)
+    service.refresh()
+    assert owned == prior
+    assert not any(command == "get_order_by_client_id" for _, command, _ in broker.calls[calls:])
+
+
+@pytest.mark.parametrize("changed", [
+    {"symbol": "META"}, {"side": "sell"}, {"qty": True}, {"qty": "NaN"}, {"limit_price": "Infinity"},
+    {"qty": "1"}, {"limit_price": "1"}, {"type": "market"}, {"time_in_force": "gtc"},
+    {"extended_hours": True}, {"id": "other"}, {"status": None}, {"status": []},
+    {"status": "replaced"}, {"replaced_by": "other"}, {"replaces": "other"}, {"filled_qty": "-1"},
+    {"status": "filled", "filled_qty": "0"}, {"filled_avg_price": "-1"},
+    {"status": "partially_filled", "filled_qty": "1", "filled_avg_price": None},
+])
+def test_conflicting_receipt_retains_prior_evidence_and_cancellation(desk, changed):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    owned = service.store.data["proposals"][0]
+    owned["cancellation"] = {"status": "requested"}
+    previous = copy.deepcopy(owned["broker_receipt"])
+    broker.orders = [{**broker.receipts[proposal["client_order_id"]], **changed}]
+    service.refresh()
+    assert owned["broker_receipt"] == previous
+    assert owned["status"] == "accepted"
+    assert owned["cancellation"]["status"] == "requested"
+    assert owned["reconciliation_error"]
+
+
+@pytest.mark.parametrize("prior,next_status,prior_fill,next_fill", [
+    ("canceled", "accepted", "0", "0"), ("canceled", "expired", "0", "0"),
+    ("filled", "partially_filled", "ALL", "1"), ("partially_filled", "accepted", "1", "0"),
+])
+def test_regressive_receipts_do_not_replace_authoritative_evidence(desk, prior, next_status, prior_fill, next_fill):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    owned = service.store.data["proposals"][0]
+    original = broker.receipts[proposal["client_order_id"]]
+    prior_fill = str(proposal["qty"]) if prior_fill == "ALL" else prior_fill
+    broker.orders = [{**original, "status": prior, "filled_qty": prior_fill,
+                      "filled_avg_price": "100" if prior_fill != "0" else None}]
+    service.refresh()
+    previous = copy.deepcopy(owned["broker_receipt"])
+    broker.orders = [{**original, "status": next_status, "filled_qty": next_fill,
+                      "filled_avg_price": "100" if next_fill != "0" else None}]
+    service.refresh()
+    assert owned["broker_receipt"] == previous
+    assert owned["status"] == prior
+    assert owned["reconciliation_error"]
+    with pytest.raises(ValueError, match="conflicting receipt"):
+        service._require_known_submissions()
+
+
+def test_duplicate_receipts_require_consistency_without_decimal_scale_false_conflicts(desk):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    owned = service.store.data["proposals"][0]
+    original = broker.receipts[proposal["client_order_id"]]
+    broker.orders = [original, {**original, "qty": f'{proposal["qty"]}.0', "filled_qty": "0.00"}]
+    service.refresh()
+    assert "reconciliation_error" not in owned
+    broker.open_orders = [{**original, "status": "pending_cancel"}]
+    service.refresh()
+    assert owned["status"] == "accepted"
+    assert "Conflicting duplicate" in owned["reconciliation_error"]
+    broker.open_orders = []
+    broker.orders = [{**original, "status": "partially_filled", "filled_qty": "1", "filled_avg_price": average}
+                     for average in ("100.12345678901234567890123456781", "100.12345678901234567890123456782")]
+    service.refresh()
+    assert owned["status"] == "accepted"
+    assert "Conflicting duplicate" in owned["reconciliation_error"]
+
+
+def test_cancel_concurrent_duplicate_calls_send_one_mutation(desk):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(service.cancel_order, "broker-order") for _ in range(2)]
+        assert sum(f.exception() is None for f in futures) == 1
+    assert sum(command == "cancel_order_by_id" for _, command, _ in broker.calls) == 1
+
+
+@pytest.mark.parametrize("changed", [{"client_order_id": "other"}, {"id": ""}, {"symbol": "META"}, {"filled_qty": True}])
+def test_invalid_submission_receipt_is_unknown_without_replay(desk, monkeypatch, changed):
+    service, broker = desk
+    proposal = create_proposal(service)
+    execute = broker.execute
+
+    def altered(domain, command, parameters, **kwargs):
+        receipt = execute(domain, command, parameters, **kwargs)
+        return {**receipt, **changed} if command == "place_stock_order" else receipt
+
+    monkeypatch.setattr(broker, "execute", altered)
+    with pytest.raises(ValueError, match="unknown"):
+        service.submit(proposal["id"])
+    owned = service.store.data["proposals"][0]
+    assert owned["status"] == "unknown"
+    assert "broker_receipt" not in owned
+    assert len(broker.submitted) == 1
+
+
+@pytest.mark.parametrize("changed", [{"client_order_id": "other"}, {"id": "other"}, {"status": "replaced"}])
+def test_cancel_rejects_unowned_or_replaced_lookup_before_mutation(desk, changed):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    broker.receipts[proposal["client_order_id"]].update(changed)
+    with pytest.raises(ValueError):
+        service.cancel_order("broker-order")
+    assert not any(command == "cancel_order_by_id" for _, command, _ in broker.calls)
+    assert service.store.data["proposals"][0]["status"] == "accepted"
+
+
+def test_exact_rejected_receipt_is_authoritative_but_generic_failure_is_not(desk, monkeypatch):
+    service, broker = desk
+    proposal = create_proposal(service)
+    execute = broker.execute
+
+    def rejected(domain, command, parameters, **kwargs):
+        receipt = execute(domain, command, parameters, **kwargs)
+        return {**receipt, "status": "rejected"} if command == "place_stock_order" else receipt
+
+    monkeypatch.setattr(broker, "execute", rejected)
+    service.submit(proposal["id"])
+    assert service.store.data["proposals"][0]["status"] == "rejected"
+
+
+def test_legacy_proposal_missing_review_cannot_be_submitted(desk):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.store.data["proposals"][0].pop("reviewed")
+    with pytest.raises(ValueError, match="Reviewed"):
+        service.submit(proposal["id"])
+    assert broker.submitted == []
 
 
 @pytest.mark.parametrize("value", ["", "2026-2-01", "2026-02-30", "2999-01-01", 20260101, True, [], {}])
@@ -1378,10 +1595,12 @@ def test_unknown_receipt_outside_recent_orders_reconciles_by_exact_client_id(des
     with pytest.raises(ValueError):
         service.submit(proposal["id"])
     broker.receipts[proposal["client_order_id"]] = {
+        **broker.submitted[0],
         "id": "late-receipt",
         "client_order_id": proposal["client_order_id"],
         "status": "filled",
-        "filled_qty": "49",
+        "filled_qty": str(proposal["qty"]),
+        "filled_avg_price": "100",
     }
     service.refresh()
     updated = service.state()["proposals"][0]
@@ -1393,19 +1612,22 @@ def test_unknown_receipt_outside_recent_orders_reconciles_by_exact_client_id(des
 def test_recent_orders_reconcile_unknown_without_resubmitting(desk):
     service, broker = desk
     proposal = create_proposal(service)
-    service.store.data["proposals"][0]["status"] = "unknown"
+    broker.submit_error = TimeoutError("lost receipt")
+    with pytest.raises(ValueError, match="unknown"):
+        service.submit(proposal["id"])
     broker.orders = [
         {
+            **broker.submitted[0],
             "id": "known",
             "client_order_id": proposal["client_order_id"],
             "status": "filled",
-            "filled_qty": "49",
+            "filled_qty": str(proposal["qty"]),
             "filled_avg_price": "100",
         }
     ]
     service.refresh()
     assert service.state()["proposals"][0]["status"] == "filled"
-    assert broker.submitted == []
+    assert len(broker.submitted) == 1
 
 
 def test_settings_change_expires_existing_proposals(desk):

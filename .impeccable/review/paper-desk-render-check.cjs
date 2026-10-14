@@ -128,9 +128,31 @@ async function keyboardAction(action,path,dataset={}){
   await keyboardAction('build-proposals','/api/proposals');
   await keyboardAction('submit-order','/api/orders',{proposal:'proposal-1'});
   await keyboardAction('cancel-order','/api/orders/cancel',{order:'order-1'});
+  const cancelCount=()=>requests.filter(r=>r.path==='/api/orders/cancel').length;
+  const firstCount=cancelCount();
+  await render("cancelOrder('order-1')");
+  assert.equal(cancelCount(),firstCount,'Repeated cancellation must not POST again');
   rejectedPath='/api/orders/cancel';
-  await keyboardAction('cancel-order','/api/orders/cancel',{order:'order-1'});
+  await keyboardAction('cancel-order','/api/orders/cancel',{order:'order-2'});
   rejectedPath='';
+  assert(render("cancellationPending('order-2')"),'An ambiguous error must not restore cancellation');
+  const owned={id:'owned',symbol:'META',status:'accepted',broker_order_id:'order-1',
+    broker_receipt:{id:'order-1',symbol:'META',side:'buy',qty:'2',limit_price:'99',filled_qty:'0',status:'accepted'},
+    cancellation:{status:'requested'}};
+  render(`state.orders=[];state.proposals=${JSON.stringify([owned,{id:'next',symbol:'AAPL',status:'proposed'}])};state.errors=[];state.trading_paused=false;`);
+  assert(render('orderBlotter()').includes('Cancellation requested · Refresh to reconcile'));
+  assert(render('orderBlotter()').includes('Last verified receipt'));
+  assert.match(render('orderBlotter()'),/data-order="order-1" disabled/);
+  assert.match(render('renderOrders()'),/data-proposal="next" disabled/);
+  render("state.errors=[{source:'orders',message:'offline'}]");
+  assert(render('orderBlotter()').includes('Cancellation requested'),'Local cancellation remains visible during broker list failure');
+  render("state.proposals[0].cancellation.status='unknown';state.proposals[0].status='partially_filled';");
+  assert(render('orderBlotter()').includes('Cancellation outcome unknown'));
+  assert(render("cancellationPending('order-1')"),'Open or partial receipts cannot clear uncertainty');
+  render("state.proposals[0].cancellation.status='resolved';state.proposals[0].status='canceled';state.proposals[0].broker_receipt.status='canceled';");
+  assert(!render("cancellationPending('order-1')"));
+  assert(render('orderBlotter()').includes('Cancellation resolved'));
+  assert(!render('orderBlotter()').includes('data-action="cancel-order"'));
   fixture.runs[0].status='running';
   await keyboardAction('stop-run','/api/runs/cancel');
   assert(focusCalls>0,'Rendering must restore matching keyboard focus');

@@ -59,6 +59,9 @@ class DeskStore:
                         self._snapshot_call_evidence(run, "recovery_unknown", origin)
                     self.finalize_call_evidence(run, origin)
         for proposal in self.data["proposals"]:
+            cancellation = proposal.get("cancellation", {})
+            if cancellation.get("status") == "intent":
+                cancellation.update(status="unknown", reason="Cancellation interrupted. Refresh to reconcile; do not resend.")
             if proposal["status"] == "submitting":
                 proposal["status"] = "unknown"
                 proposal["reason"] = (

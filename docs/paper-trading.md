@@ -71,9 +71,42 @@ deployments. An API key alone or an image-only deployment is insufficient.
 The workspace preserves its configuration, reports, run history, and order
 journal in `.paper-desk/` (gitignored). Interrupted runs are marked interrupted.
 An interrupted or timed-out submission is marked unknown and reconciled using
-its stable client order ID. Unknown outcomes block new submissions; the desk
+its stable client order ID. Unknown outcomes block new plans and submissions; the desk
 never retries a broker mutation automatically. Do not remove the journal to
 clear an unknown outcome. Use one server process per data directory.
+
+Order recovery uses the saved reviewed order and account-bound submission intent.
+After Gateway schema validation and SDK initialization, a local dispatch callback
+rechecks pause, unresolved submissions/cancellations, proposal eligibility and age,
+New York trade date, pinned account, configuration, frozen order fields, completed
+research/Laya approval, and the complete fresh book and quotes with the unchanged
+execution validator. It performs no provider call or repricing. The exact intent
+is saved before the single mutation; failed persistence or freshness expiring
+during that save prevents dispatch. Legacy proposals without this reviewed binding
+cannot be submitted. Create fresh research and a new plan instead.
+
+Receipts must match the owned client ID, bound broker ID, symbol, side, finite
+quantity and limit, limit type, DAY duration and regular-hours flag. Missing or
+unsupported status, inconsistent fills, replacements, decreasing filled quantity,
+terminal-status changes and contradictory duplicates preserve prior authoritative
+evidence and block new mutations pending reconciliation. A generic error or missing
+lookup never proves rejection. Reconciliation stops before targeted lookups or
+updates if the current paper account is unverified, missing or different.
+
+Cancellation has its own durable state: intent, requested, unknown, or resolved.
+An acknowledgment means requested, not canceled. Timeout or interrupted intent
+remains unknown across restart; repeat clicks cannot send another cancel. An open
+or partially filled receipt does not resolve cancellation uncertainty. Only an
+exact authoritative terminal receipt resolves it. Pause still allows guarded
+cancellation and explicit Refresh. Cancellation verifies the current pinned
+account and owned order independently of research or quote availability.
+
+The blotter retains the last verified owned receipt when a broker list omits it,
+with cancellation state alongside broker status. A browser timeout keeps mutation
+controls blocked; use explicit Refresh to reconcile, never an automatic replay.
+These source and offline safeguards do not attest the running broker process on
+each request. Paper startup proof remains a separate supervised release gate;
+offline verification is not live-order or deployment evidence.
 
 ## Consumed portfolio evidence
 

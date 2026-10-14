@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 import os
@@ -11,6 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -33,6 +35,9 @@ from .config import DeskConfig
 from .store import DeskStore
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
+OWNED_TERMINAL = {"filled", "canceled", "expired", "rejected"}
+OWNED_ACTIVE = {"new", "accepted", "pending_new", "partially_filled", "pending_cancel", "held"}
+CANCEL_UNCERTAIN = {"intent", "requested", "unknown"}
 REPORT_KEYS = (
     "market_report",
     "sentiment_report",
@@ -370,37 +375,120 @@ class DeskService:
                             )
                         elif not pinned and account.get("id"):
                             self.store.data["paper_account_id"] = account["id"]
-                        self._reconcile(market.get("orders", []) + market.get("open_orders", []))
+                        if market["connection"]["paper_verified"] and account.get("id") == self.store.data["paper_account_id"]:
+                            self._reconcile(market.get("orders", []) + market.get("open_orders", []), account["id"])
                         self.store.save()
             with self.lock:
                 self.market = market
         return self.state()
 
-    def _reconcile(self, orders):
-        by_client = {o.get("client_order_id"): o for o in orders if isinstance(o, dict)}
+    @staticmethod
+    def _order_arguments(proposal):
+        return {**{key: str(proposal[key]) for key in ("symbol", "side", "qty", "limit_price", "client_order_id")},
+                "type": "limit", "time_in_force": "day", "extended_hours": False}
+
+    @staticmethod
+    def _order_decimal(value):
+        try:
+            number = Decimal(str(value)) if not isinstance(value, bool) else Decimal("NaN")
+        except (InvalidOperation, ValueError):
+            raise ValueError("Broker order has an invalid numeric field.") from None
+        if not number.is_finite():
+            raise ValueError("Broker order has an invalid numeric field.")
+        return number
+
+    def _owned_receipt(self, proposal, order):
+        intent = proposal.get("submission_intent") or {}
+        if (not isinstance(order, dict) or not intent.get("arguments")
+                or intent.get("account_id") != self.store.data["paper_account_id"]):
+            raise ValueError("Broker receipt has no matching owned account and intent.")
+        expected = intent["arguments"]
+        reviewed = proposal.get("reviewed") or {}
+        if (expected != reviewed.get("arguments") or intent["account_id"] != reviewed.get("account_id")
+                or expected.get("client_order_id") != proposal.get("client_order_id")):
+            raise ValueError("Saved intent differs from the reviewed owned order.")
+        if (not isinstance(order.get("id"), str) or not order["id"]
+                or (proposal.get("broker_order_id") and order["id"] != proposal["broker_order_id"])
+                or (order.get("account_id") is not None and order["account_id"] != intent["account_id"])
+                or order.get("replaces") or order.get("replaced_by")):
+            raise ValueError("Broker order identity or replacement chain does not match.")
+        for field in ("client_order_id", "symbol", "side", "type", "time_in_force"):
+            if order.get(field) != expected[field]:
+                raise ValueError("Broker order fields do not match the saved intent.")
+        if order.get("extended_hours") is not False:
+            raise ValueError("Broker order session does not match the saved intent.")
+        quantity, price = (self._order_decimal(order.get(key)) for key in ("qty", "limit_price"))
+        if (quantity <= 0 or quantity != quantity.to_integral_value() or price <= 0
+                or quantity != self._order_decimal(expected["qty"])
+                or price != self._order_decimal(expected["limit_price"])):
+            raise ValueError("Broker order values do not match the saved intent.")
+        status = order.get("status")
+        status = "canceled" if status == "cancelled" else status
+        if not isinstance(status, str) or status not in OWNED_ACTIVE | OWNED_TERMINAL:
+            raise ValueError("Broker order status is missing or unsupported.")
+        filled = self._order_decimal(order.get("filled_qty"))
+        average = self._order_decimal(order["filled_avg_price"]) if order.get("filled_avg_price") is not None else None
+        if (filled < 0 or filled > quantity or (average is not None and average <= 0)
+                or (filled > 0 and average is None)
+                or (status == "filled" and filled != quantity)
+                or (status == "partially_filled" and not 0 < filled < quantity)
+                or (status in {"new", "accepted", "pending_new", "held", "rejected"} and filled != 0)):
+            raise ValueError("Broker fill details are inconsistent.")
+        def decimal_text(value):
+            # Remove scale differences without Decimal.normalize's context rounding.
+            if value == 0:
+                return "0"
+            text = format(value, "f")
+            return text.rstrip("0").rstrip(".") if "." in text else text
+
+        receipt = {"id": order["id"], **expected, "qty": decimal_text(quantity),
+                   "limit_price": decimal_text(price), "status": status, "filled_qty": decimal_text(filled),
+                   "filled_avg_price": decimal_text(average) if average is not None else None}
+        previous = proposal.get("broker_receipt")
+        if previous:
+            old_filled = self._order_decimal(previous["filled_qty"])
+            if (order["id"] != previous["id"] or filled < old_filled
+                    or (previous["status"] in OWNED_TERMINAL and status != previous["status"])
+                    or (filled == old_filled and average != (self._order_decimal(previous["filled_avg_price"])
+                                                           if previous["filled_avg_price"] is not None else None))):
+                raise ValueError("Broker receipt conflicts with prior authoritative order evidence.")
+        return receipt
+
+    @staticmethod
+    def _accept_receipt(proposal, receipt):
+        proposal.update(status=receipt["status"], broker_order_id=receipt["id"],
+                        filled_qty=receipt["filled_qty"], filled_avg_price=receipt["filled_avg_price"],
+                        broker_receipt=copy.deepcopy(receipt))
+        proposal.pop("reconciliation_error", None)
+        if proposal.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN and receipt["status"] in OWNED_TERMINAL:
+            proposal["cancellation"].update(status="resolved", resolved_at=now(), order_status=receipt["status"])
+
+    def _reconcile(self, orders, account_id):
+        if not account_id or account_id != self.store.data["paper_account_id"]:
+            return
         for proposal in self.store.data["proposals"]:
-            if (
-                proposal.get("status") in {"unknown", "submitting"}
-                and proposal.get("client_order_id") not in by_client
-            ):
+            if not proposal.get("submission_intent"):
+                continue
+            matching = [o for o in orders if isinstance(o, dict) and o.get("client_order_id") == proposal.get("client_order_id")]
+            if not matching and (proposal.get("status") in {"unknown", "submitting"}
+                                 or proposal.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN):
                 try:
-                    receipt = self.gateway.execute(
+                    matching = [_payload(self.gateway.execute(
                         "alpaca",
                         "get_order_by_client_id",
                         {"client_order_id": proposal["client_order_id"]},
-                    )
-                    if isinstance(receipt, dict) and receipt.get("id"):
-                        by_client[proposal["client_order_id"]] = receipt
+                    ))]
                 except Exception:
                     # A missing/failed lookup never proves that submission failed.
-                    pass
-            if order := by_client.get(proposal.get("client_order_id")):
-                proposal.update(
-                    status=order.get("status", "submitted"),
-                    broker_order_id=order.get("id"),
-                    filled_qty=order.get("filled_qty"),
-                    filled_avg_price=order.get("filled_avg_price"),
-                )
+                    continue
+            if matching:
+                try:
+                    receipts = [self._owned_receipt(proposal, order) for order in matching]
+                    if any(receipt != receipts[0] for receipt in receipts[1:]):
+                        raise ValueError("Conflicting duplicate broker receipts; prior evidence retained.")
+                    self._accept_receipt(proposal, receipts[0])
+                except ValueError as exc:
+                    proposal["reconciliation_error"] = str(exc)
 
     def _book(self):
         with self.lock:
@@ -836,38 +924,65 @@ class DeskService:
                 for p in proposals:
                     p["client_order_id"] = "ta-" + p["id"]
                     p["created_at"] = now()
+                    if p["status"] == "proposed":
+                        p["reviewed"] = self._review(p, run)
                 self.store.data["proposals"] = proposals + self.store.data["proposals"]
                 self.store.save()
                 return {"proposals": copy.deepcopy(proposals)}
+
+    def _review(self, proposal, run):
+        results = [r for r in run["results"] if r.get("symbol") == proposal["symbol"]]
+        if len(results) != 1 or results[0].get("status") != "completed" or results[0].get("laya", {}).get("auto_execute") is not True:
+            raise ValueError("Completed research and Laya approval are required.")
+        return {"arguments": self._order_arguments(proposal), "account_id": run["account_id"],
+                "run_id": run["id"], "created_at": proposal["created_at"], "trade_date": run["trade_date"],
+                "proposal_fields": {key: copy.deepcopy(proposal.get(key)) for key in (
+                    "id", "run_id", "symbol", "side", "qty", "limit_price", "notional", "rating", "reason", "client_order_id")},
+                "config": copy.deepcopy(run["config"]),
+                "evidence_sha256": hashlib.sha256(json.dumps(results[0], sort_keys=True, allow_nan=False).encode()).hexdigest()}
+
+    @staticmethod
+    def _fresh(timestamp):
+        try:
+            age = (datetime.now(UTC) - datetime.fromisoformat(timestamp)).total_seconds()
+        except (TypeError, ValueError):
+            raise ValueError("A valid freshness timestamp is required.") from None
+        if not 0 <= age <= 900:
+            raise ValueError("This proposal or account snapshot is older than 15 minutes. Run fresh analysis.")
+
+    def _submission_guard(self, proposal, reviewed, market, args, *, persisted=False):
+        self._require_known_submissions(proposal["id"] if persisted else None)
+        if self.store.data["paused"]:
+            raise ValueError("New paper orders are paused.")
+        if proposal["status"] != ("submitting" if persisted else "proposed"):
+            raise ValueError("Only a proposed order can be submitted. Refresh to reconcile existing orders.")
+        self._fresh(proposal["created_at"])
+        run = self._find_run(proposal["run_id"])
+        if (not reviewed or run["status"] != "completed" or run["trade_date"] != today()
+                or run["config"] != self.store.data["config"]
+                or run["account_id"] != self.store.data["paper_account_id"]
+                or proposal.get("reviewed") != reviewed or self._review(proposal, run) != reviewed
+                or args != reviewed["arguments"]):
+            raise ValueError("Reviewed proposal, research, date, account or configuration changed. Run fresh analysis.")
+        current = self._book()
+        self._fresh(current["updated_at"])
+        if current != market or current["account"]["id"] != reviewed["account_id"]:
+            raise ValueError("The verified account book changed during preparation. Refresh and review again.")
+        if persisted and proposal.get("submission_intent") != {
+                "account_id": reviewed["account_id"], "arguments": args}:
+            raise ValueError("Saved submission intent changed.")
+        validate_proposal({**proposal, "status": "proposed"}, run["config"], current["account"],
+                          current["positions"], current.get("open_orders", []), current["quotes"])
 
     def submit(self, proposal_id):
         with self.execution_lock:
             self.refresh()
             market = self._book()
             with self.store.lock:
-                self._require_known_submissions()
-                if self.store.data["paused"]:
-                    raise ValueError("New paper orders are paused.")
                 proposal = next(p for p in self.store.data["proposals"] if p["id"] == proposal_id)
-                if proposal["status"] != "proposed":
-                    raise ValueError(
-                        "Only a proposed order can be submitted. Refresh to reconcile existing orders."
-                    )
-                run = self._find_run(proposal["run_id"])
-                if run["trade_date"] != today() or run["config"] != self.store.data["config"]:
-                    raise ValueError("This proposal is stale. Run fresh analysis.")
-                if (
-                    datetime.now(UTC) - datetime.fromisoformat(proposal["created_at"])
-                ).total_seconds() > 900:
-                    raise ValueError("This proposal is older than 15 minutes. Run fresh analysis.")
-                validate_proposal(
-                    proposal,
-                    run["config"],
-                    market["account"],
-                    market["positions"],
-                    market.get("open_orders", []),
-                    market["quotes"],
-                )
+                reviewed = copy.deepcopy(proposal.get("reviewed"))
+                args = self._order_arguments(proposal)
+                self._submission_guard(proposal, reviewed, market, args)
                 asset = self.gateway.execute(
                     "alpaca", "get_asset", {"symbol_or_asset_id": proposal["symbol"]}
                 )
@@ -877,50 +992,58 @@ class DeskService:
                 ):
                     raise ValueError("Only tradable US equities can be submitted.")
                 verify_paper_configuration(self.gateway)
-                proposal["status"] = "submitting"
-                self.store.save()
-                args = {
-                    key: str(proposal[key])
-                    for key in ("symbol", "side", "qty", "limit_price", "client_order_id")
-                }
-                args.update(type="limit", time_in_force="day", extended_hours=False)
-            try:
-                order = self.gateway.execute("alpaca", "place_stock_order", args)
-                if not isinstance(order, dict) or not order.get("id"):
-                    raise ValueError("Broker did not return an order receipt.")
+            intent_started = ready = False
+
+            def dispatch():
+                nonlocal intent_started, ready
                 with self.store.lock:
-                    proposal.update(
-                        status=order.get("status", "submitted"),
-                        broker_order_id=order["id"],
-                        submitted_at=now(),
-                    )
+                    self._submission_guard(proposal, reviewed, market, args)
+                    intent_started = True
+                    proposal.update(status="submitting", submission_intent={
+                        "account_id": reviewed["account_id"], "arguments": copy.deepcopy(args)})
+                    self.store.save()
+                    self._submission_guard(proposal, reviewed, market, args, persisted=True)
+                    ready = True
+
+            try:
+                order = self.gateway.execute("alpaca", "place_stock_order", args, on_dispatch=dispatch)
+                if not ready:
+                    raise ValueError("Transport did not verify the dispatch boundary.")
+                with self.store.lock:
+                    self._accept_receipt(proposal, self._owned_receipt(proposal, _payload(order)))
+                    proposal["submitted_at"] = now()
                     self.store.save()
                 return {"order": order}
             except Exception as exc:
+                if not intent_started:
+                    raise
                 with self.store.lock:
                     proposal.update(
-                        status="unknown",
-                        reason="Submission outcome unknown. Refresh to reconcile by client order ID; never retry blindly.",
+                        status="unknown" if ready else "blocked",
+                        reason=("Submission outcome unknown. Refresh to reconcile by client order ID; never retry blindly."
+                                if ready else "Submission was not dispatched: local validation or intent persistence failed."),
                     )
                     self.store.save()
                 raise ValueError(proposal["reason"]) from exc
 
-    def _require_known_submissions(self):
-        if any(p["status"] in {"unknown", "submitting"} for p in self.store.data["proposals"]):
+    def _require_known_submissions(self, own_submission_id=None):
+        if any((p["status"] in {"unknown", "submitting"} and p["id"] != own_submission_id)
+               or p.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN
+               or p.get("reconciliation_error") for p in self.store.data["proposals"]):
             raise ValueError(
-                "An earlier submission has an unknown outcome. Refresh to reconcile it before creating or submitting another order."
+                "An earlier submission or cancellation has an unknown outcome or conflicting receipt. Refresh to reconcile it before creating or submitting another order."
             )
 
     def cancel_order(self, order_id):
         with self.execution_lock:
             with self.store.lock:
-                owned = any(
-                    p.get("broker_order_id") == order_id for p in self.store.data["proposals"]
-                )
+                owned = next((p for p in self.store.data["proposals"] if p.get("broker_order_id") == order_id), None)
             if not owned:
                 raise ValueError(
                     "Only paper orders created by this workspace can be cancelled here."
                 )
+            if owned.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN:
+                raise ValueError("Cancellation outcome is pending or unknown. Refresh to reconcile; do not resend.")
             try:
                 verify_paper_configuration(self.gateway)
                 account = _payload(self.gateway.execute("alpaca", "get_account_info", {}))
@@ -934,7 +1057,67 @@ class DeskService:
                 raise ValueError(
                     "A verified current paper account is required to cancel an order."
                 ) from exc
-            self.gateway.execute("alpaca", "cancel_order_by_id", {"order_id": order_id})
+            verified_at = now()
+            order = _payload(self.gateway.execute("alpaca", "get_order_by_client_id", {
+                "client_order_id": owned["client_order_id"]}))
+            with self.store.lock:
+                try:
+                    receipt = self._owned_receipt(owned, order)
+                except ValueError as exc:
+                    owned["reconciliation_error"] = str(exc)
+                    self.store.save()
+                    raise
+                self._accept_receipt(owned, receipt)
+                self.store.save()
+                if receipt["status"] in OWNED_TERMINAL:
+                    return {"status": receipt["status"]}
+                intent = copy.deepcopy(owned["submission_intent"])
+                prior_cancellation = copy.deepcopy(owned.get("cancellation"))
+            args = {"order_id": order_id}
+            cancellation = {"status": "intent", "account_id": account["id"],
+                            "client_order_id": owned["client_order_id"], "order_id": order_id,
+                            "arguments": copy.deepcopy(args), "created_at": verified_at}
+            intent_started = ready = False
+
+            def guard(persisted=False):
+                self._fresh(verified_at)
+                if (account["id"] != self.store.data["paper_account_id"]
+                        or owned.get("broker_order_id") != order_id
+                        or owned.get("submission_intent") != intent
+                        or owned.get("broker_receipt") != receipt
+                        or owned.get("status") != receipt["status"]
+                        or owned.get("reconciliation_error")
+                        or args != {"order_id": order_id}
+                        or owned.get("cancellation") != (cancellation if persisted else prior_cancellation)):
+                    raise ValueError("Owned order or verified account changed before cancellation.")
+                self._owned_receipt(owned, receipt)
+
+            def dispatch():
+                nonlocal intent_started, ready
+                with self.store.lock:
+                    guard()
+                    intent_started = True
+                    owned["cancellation"] = copy.deepcopy(cancellation)
+                    self.store.save()
+                    guard(persisted=True)
+                    ready = True
+
+            try:
+                self.gateway.execute("alpaca", "cancel_order_by_id", args, on_dispatch=dispatch)
+                if not ready:
+                    raise ValueError("Transport did not verify the cancellation dispatch boundary.")
+                with self.store.lock:
+                    owned["cancellation"].update(status="requested", requested_at=now())
+                    self.store.save()
+            except Exception as exc:
+                if not intent_started:
+                    raise
+                with self.store.lock:
+                    owned["cancellation"].update(
+                        status="unknown", reason=("Cancellation outcome unknown. Refresh to reconcile; do not resend."
+                                                  if ready else "Cancellation was not dispatched; local persistence or validation failed."))
+                    self.store.save()
+                raise ValueError(owned["cancellation"]["reason"]) from exc
         return {"status": "cancel_requested"}
 
     def pause(self, paused):

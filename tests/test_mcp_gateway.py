@@ -6,6 +6,8 @@ import json
 import socket
 import time
 import unittest
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +28,253 @@ _SOCKET_PAIR = socket.socketpair
 _SOCKET_CONNECT = socket.socket.connect
 _SOCKET_CONNECT_EX = socket.socket.connect_ex
 _GETADDRINFO = socket.getaddrinfo
+
+
+@pytest.fixture
+def sdk_desk(tmp_path, monkeypatch):
+    """Exercise DeskService through the real Gateway/SDK boundary, with no I/O."""
+    from tests.test_paper_service import BrokerFake, ManualExecutor, ScriptedGraph, create_proposal
+    from tradingagents.web.service import DeskService
+
+    broker = BrokerFake()
+    service = DeskService(tmp_path / "sdk-desk", gateway=broker, graph_factory=ScriptedGraph)
+    service.executor.shutdown(wait=True)
+    service.executor = ManualExecutor()
+    service.save_config({"universe": ["AAPL"], "name": "SDK boundary"})
+    proposal = create_proposal(service)
+    state = {"initialize": lambda: None, "mutations": [], "initialized": 0, "schema": {"type": "object"}}
+    original_execute = broker.execute
+
+    @asynccontextmanager
+    async def client(*args, **kwargs):
+        yield None
+
+    @asynccontextmanager
+    async def stream(*args, **kwargs):
+        yield None, None, None
+
+    class Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def initialize(self):
+            state["initialized"] += 1
+            state["initialize"]()
+
+        async def call_tool(self, name, arguments):
+            assert "on_dispatch" not in json.dumps(arguments)
+            if name == "GatewayIndex":
+                if not arguments:
+                    return result({"domains": [{"name": "alpaca"}]})
+                return result({"commands": [{"name": command, "schema": state["schema"]}
+                                             for command in ("place_stock_order", "cancel_order_by_id")]})
+            saved = json.loads(service.store.path.read_text())["proposals"][0]
+            command = arguments["command"]
+            if command == "place_stock_order":
+                assert saved["status"] == "submitting"
+                assert saved["submission_intent"] == {"account_id": "paper-account", "arguments": arguments["parameters"]}
+            else:
+                assert saved["cancellation"]["status"] == "intent"
+                assert saved["cancellation"]["arguments"] == arguments["parameters"]
+            state["mutations"].append(copy.deepcopy(arguments))
+            return result(original_execute(arguments["domain"], command, arguments["parameters"]))
+
+    monkeypatch.setattr("mcp.client.streamable_http.streamable_http_client", stream)
+    monkeypatch.setattr("mcp.ClientSession", Session)
+    monkeypatch.setattr("httpx.AsyncClient", client)
+    gateway = MaenifoldGateway(transport=SdkMcpTransport(broker.endpoint, timeout=1))
+    gateway.discover("alpaca")
+
+    def execute(domain, command, parameters, *, on_dispatch=None):
+        if command in {"place_stock_order", "cancel_order_by_id"}:
+            return gateway.execute(domain, command, parameters, on_dispatch=on_dispatch)
+        return original_execute(domain, command, parameters)
+
+    monkeypatch.setattr(broker, "execute", execute)
+    yield service, broker, proposal, gateway, state
+    service.close()
+
+
+@pytest.mark.parametrize("change", ["age", "midnight", "pause", "account", "config", "fields", "research", "laya", "book", "quotes", "cancel"])
+def test_sdk_preparation_changes_block_order_before_call_tool(sdk_desk, monkeypatch, change):
+    from tradingagents.web import service as service_module
+    service, broker, proposal, _, sdk = sdk_desk
+    owned = service.store.data["proposals"][0]
+    run = service._find_run(proposal["run_id"])
+
+    def change_at_initialize():
+        if change == "age":
+            class Later(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return datetime.now(UTC) + timedelta(minutes=16)
+            monkeypatch.setattr(service_module, "datetime", Later)
+        elif change == "midnight":
+            monkeypatch.setattr(service_module, "today", lambda: "2099-01-01")
+        elif change == "pause":
+            service.store.data["paused"] = True
+        elif change == "account":
+            service.store.data["paper_account_id"] = "different"
+        elif change == "config":
+            service.store.data["config"]["max_order_notional"] = 1
+        elif change == "fields":
+            owned["qty"] += 1
+        elif change == "research":
+            run["results"][0]["rating"] = "Sell"
+        elif change == "laya":
+            run["results"][0]["laya"]["auto_execute"] = False
+        elif change == "book":
+            service.market["positions"] = [{"symbol": "AAPL", "qty": "100"}]
+        elif change == "quotes":
+            service.market["quotes"]["AAPL"]["timestamp"] = "2000-01-01T00:00:00+00:00"
+        else:
+            owned["cancellation"] = {"status": "unknown"}
+
+    sdk["initialize"] = change_at_initialize
+    with pytest.raises((ValueError, GatewayError)):
+        service.submit(proposal["id"])
+    assert sdk["initialized"] == 3  # discovery twice, then mutation session preparation
+    assert sdk["mutations"] == broker.submitted == []
+    assert "submission_intent" not in owned
+
+
+@pytest.mark.parametrize("kind", ["submit", "cancel"])
+@pytest.mark.parametrize("failure", ["save", "expiry_during_save"])
+def test_sdk_intent_persistence_and_expiry_prevent_mutation(sdk_desk, monkeypatch, kind, failure):
+    from tradingagents.web import service as service_module
+    service, _, proposal, _, sdk = sdk_desk
+    if kind == "cancel":
+        service.submit(proposal["id"])
+        sdk["mutations"].clear()
+    original_save = service.store.save
+
+    def save():
+        owned = service.store.data["proposals"][0]
+        pending = owned.get("cancellation", {}).get("status") == "intent" if kind == "cancel" else owned["status"] == "submitting"
+        if pending and failure == "save":
+            raise OSError("fixture persistence failed")
+        original_save()
+        if pending and failure == "expiry_during_save":
+            class Later(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return datetime.now(UTC) + timedelta(minutes=16)
+            monkeypatch.setattr(service_module, "datetime", Later)
+
+    monkeypatch.setattr(service.store, "save", save)
+    with pytest.raises((ValueError, OSError, GatewayError)):
+        if kind == "submit":
+            service.submit(proposal["id"])
+        else:
+            service.cancel_order("broker-order")
+    assert sdk["mutations"] == []
+
+
+def test_sdk_exact_durable_intents_one_attempt_and_no_repeated_cancel(sdk_desk):
+    service, broker, proposal, _, sdk = sdk_desk
+    service.submit(proposal["id"])
+    service.pause(True)  # Pause must still permit protective cancellation.
+    assert service.cancel_order("broker-order")["status"] == "cancel_requested"
+    with pytest.raises(ValueError, match="do not resend"):
+        service.cancel_order("broker-order")
+    assert [call["command"] for call in sdk["mutations"]] == ["place_stock_order", "cancel_order_by_id"]
+    assert len(broker.submitted) == 1
+
+
+def test_sdk_schema_rejection_never_initializes_mutation_or_saves_intent(sdk_desk):
+    service, broker, proposal, gateway, sdk = sdk_desk
+    gateway._cache["alpaca"][1]["place_stock_order"].schema.update(required=["forbidden_missing_field"])
+    with pytest.raises(GatewayError):
+        service.submit(proposal["id"])
+    assert sdk["initialized"] == 2
+    assert sdk["mutations"] == broker.submitted == []
+    assert "submission_intent" not in service.store.data["proposals"][0]
+
+
+@pytest.mark.parametrize("change", ["account", "identity", "intent", "receipt", "cancellation", "expiry"])
+def test_sdk_cancel_preparation_rechecks_ownership_and_freshness(sdk_desk, monkeypatch, change):
+    from tradingagents.web import service as service_module
+    service, _, proposal, _, sdk = sdk_desk
+    service.submit(proposal["id"])
+    sdk["mutations"].clear()
+    owned = service.store.data["proposals"][0]
+
+    def change_at_initialize():
+        if change == "account":
+            service.store.data["paper_account_id"] = "changed"
+        elif change == "identity":
+            owned["broker_order_id"] = "changed"
+        elif change == "intent":
+            owned["submission_intent"]["arguments"]["qty"] = "1"
+        elif change == "receipt":
+            owned["broker_receipt"]["status"] = "canceled"
+        elif change == "cancellation":
+            owned["cancellation"] = {"status": "unknown"}
+        else:
+            class Later(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return datetime.now(UTC) + timedelta(minutes=16)
+            monkeypatch.setattr(service_module, "datetime", Later)
+
+    sdk["initialize"] = change_at_initialize
+    with pytest.raises((ValueError, GatewayError)):
+        service.cancel_order("broker-order")
+    assert sdk["mutations"] == []
+
+
+def test_sdk_lost_submission_reply_is_unknown_and_never_replayed(sdk_desk):
+    service, broker, proposal, _, sdk = sdk_desk
+    broker.submit_error = TimeoutError("lost reply")
+    with pytest.raises(ValueError, match="unknown"):
+        service.submit(proposal["id"])
+    assert service.store.data["proposals"][0]["status"] == "unknown"
+    with pytest.raises(ValueError, match="unknown"):
+        service.submit(proposal["id"])
+    assert len(sdk["mutations"]) == len(broker.submitted) == 1
+
+
+@pytest.mark.parametrize("kind", ["submit", "cancel"])
+def test_sdk_crash_after_durable_intent_recovers_unknown_without_resend(sdk_desk, monkeypatch, kind):
+    from tradingagents.web.store import DeskStore
+    service, _, proposal, _, sdk = sdk_desk
+    if kind == "cancel":
+        service.submit(proposal["id"])
+        sdk["mutations"].clear()
+    original_save = service.store.save
+
+    class Interrupted(BaseException):
+        pass
+
+    def save_then_stop():
+        original_save()
+        owned = service.store.data["proposals"][0]
+        pending = owned.get("cancellation", {}).get("status") == "intent" if kind == "cancel" else owned["status"] == "submitting"
+        if pending:
+            raise Interrupted()
+
+    monkeypatch.setattr(service.store, "save", save_then_stop)
+    with pytest.raises(Interrupted):
+        if kind == "submit":
+            service.submit(proposal["id"])
+        else:
+            service.cancel_order("broker-order")
+    assert sdk["mutations"] == []
+    service.store = DeskStore(service.store.directory, service.store.data["config"])
+    owned = service.store.data["proposals"][0]
+    assert (owned["cancellation"]["status"] if kind == "cancel" else owned["status"]) == "unknown"
+    with pytest.raises(ValueError, match="unknown"):
+        if kind == "submit":
+            service.submit(proposal["id"])
+        else:
+            service.cancel_order("broker-order")
+    assert sdk["mutations"] == []
 
 
 @pytest.fixture(autouse=True)

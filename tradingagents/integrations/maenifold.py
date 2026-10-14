@@ -155,11 +155,11 @@ class Gateway(Protocol):
 
     def discover(self, domain: str) -> dict[str, GatewayCommand]: ...
 
-    def execute(self, domain: str, command: str, parameters: dict[str, Any]) -> Any: ...
+    def execute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any: ...
 
 
 class McpTransport(Protocol):
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any: ...
+    async def call_tool(self, name: str, arguments: dict[str, Any], *, on_dispatch=None) -> Any: ...
 
 
 def _is_result_envelope(value: Any) -> bool:
@@ -261,7 +261,7 @@ class SdkMcpTransport:
         self.endpoint = endpoint
         self.timeout = timeout
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+    async def call_tool(self, name: str, arguments: dict[str, Any], *, on_dispatch=None) -> Any:
         try:
             import httpx
             from mcp import ClientSession
@@ -290,6 +290,8 @@ class SdkMcpTransport:
                 ) as session,
             ):
                 await session.initialize()
+                if on_dispatch is not None:
+                    on_dispatch()
                 return await session.call_tool(name, arguments=arguments)
         except TimeoutError as exc:
             raise GatewayTimeout(
@@ -359,7 +361,7 @@ class MaenifoldGateway:
         self._limited_until = 0.0
         self._retrying = False
 
-    async def _call(self, name, arguments):
+    async def _call(self, name, arguments, *, on_dispatch=None):
         with self._lock:
             remaining = self._limited_until - time.monotonic()
             retrying = self._retrying
@@ -385,7 +387,16 @@ class MaenifoldGateway:
                 with gateway_observation(domain, command, "gateway_transport",
                                          parameters=arguments.get("parameters"), ordinal=attempt + 1) as observed:
                     try:
-                        raw = await self.transport.call_tool(name, arguments)
+                        if on_dispatch is None:
+                            raw = await self.transport.call_tool(name, arguments)
+                        else:
+                            def dispatch():
+                                with self._lock:
+                                    remaining = self._limited_until - time.monotonic()
+                                    if remaining > 0 or self._retrying:
+                                        raise GatewayRateLimited(remaining)
+                                on_dispatch()
+                            raw = await self.transport.call_tool(name, arguments, on_dispatch=dispatch)
                         observed.update(output=raw, result_available=True)
                         return normalize_tool_result(raw)
                     except GatewayRateLimited as exc:
@@ -466,13 +477,13 @@ class MaenifoldGateway:
     def discover(self, domain: str) -> dict[str, GatewayCommand]:
         return _run_sync(lambda: self.adiscover(domain))
 
-    async def aexecute(self, domain: str, command: str, parameters: dict[str, Any]) -> Any:
+    async def aexecute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any:
         with gateway_observation(domain, command, "gateway_logical", parameters=parameters) as observed:
-            response = await self._aexecute(domain, command, parameters)
+            response = await self._aexecute(domain, command, parameters, on_dispatch=on_dispatch)
             observed.update(output=response, result_available=True)
             return response
 
-    async def _aexecute(self, domain: str, command: str, parameters: dict[str, Any]) -> Any:
+    async def _aexecute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any:
         if not isinstance(parameters, dict):
             raise GatewayError("Gateway parameters must be an object.")
         commands = await self.adiscover(domain)
@@ -480,12 +491,13 @@ class MaenifoldGateway:
             raise GatewayError(f"Gateway command is unavailable: {domain}.{command}.")
         self._validate(parameters, commands[command].schema)
         response = await self._call(
-            "GatewayExecute", {"domain": domain, "command": command, "parameters": parameters}
+            "GatewayExecute", {"domain": domain, "command": command, "parameters": parameters},
+            on_dispatch=on_dispatch,
         )
         return normalize_tool_result(response)
 
-    def execute(self, domain: str, command: str, parameters: dict[str, Any]) -> Any:
-        return _run_sync(lambda: self.aexecute(domain, command, parameters))
+    def execute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any:
+        return _run_sync(lambda: self.aexecute(domain, command, parameters, on_dispatch=on_dispatch))
 
 
 # This list is code-owned. Federated Gateway metadata currently labels even

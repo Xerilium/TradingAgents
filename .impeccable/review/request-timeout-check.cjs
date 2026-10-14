@@ -11,6 +11,17 @@ context.AbortController=AbortController;
   await assert.rejects(render("api('/api/state',undefined,{timeoutMs:20})"),/did not respond in time/);
   assert(performance.now()-start<500);
   await assert.rejects(render("api('/api/orders',{proposal_id:'test'},{timeoutMs:20})"),/outcome may be unknown/);
+  await assert.rejects(render("api('/api/orders/cancel',{order_id:'test'},{timeoutMs:20})"),/Do not resend cancellation/);
+  // Use the existing action path, shortening only its fixture deadline.
+  render("const realApi=api;api=(path,body,options)=>realApi(path,body,{...options,timeoutMs:20});");
+  let cancelRequests=0;
+  context.fetch=path=>{if(path==='/api/orders/cancel')cancelRequests++;return new Promise(()=>{});};
+  await assert.rejects(render("cancelOrder('timed-out-order')"),/outcome may be unknown/);
+  assert.equal(render('busy.size'),0);
+  assert(render("cancellationPending('timed-out-order')"));
+  await render("cancelOrder('timed-out-order')");
+  assert.equal(cancelRequests,1,'A timed-out cancellation must not resend after busy clears');
+  assert(render('mutationUncertain()'),'New plans and submissions must remain blocked');
   context.AbortController=undefined;
   await assert.rejects(render("api('/api/state',undefined,{timeoutMs:20})"),/did not respond in time/);
   context.fetch=async()=>({ok:true,status:200,json:()=>new Promise(()=>{})});
