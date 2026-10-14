@@ -202,7 +202,7 @@ Accepted runs retain `measurements` in the existing journal and full run-detail
 response. The start timestamp is the run request's entry to the service; elapsed
 time ends after a durable terminal journal checkpoint. This includes
 preflight, queueing and retry waits inside measured operations. Rejected requests
-that never create a run have no run artifact. Artifact publication and the final
+have their own request evidence without creating an accepted run. Artifact publication and the final
 reference save are outside the reported interval.
 
 Stage durations cover preflight, worker queue, per-symbol setup, graph analysis,
@@ -240,6 +240,40 @@ unavailable; the recovery timestamp is not an analytical completion timestamp.
 Existing artifacts are never overwritten or deleted. Once the reference is
 durable, subsequent startups leave finalized and recovered measurements alone.
 Recovery neither resumes research nor invokes providers or order operations.
+
+Every service-admitted research request receives an evidence ID before validation.
+The existing journal's `research_requests` collection keeps rejected requests
+separate from accepted runs; accepted requests and runs link their IDs. Validation,
+readiness, refresh, admission and scheduling have local stage receipts. The existing
+recorder covers preflight Gateway boundaries, including copied contexts in the
+existing refresh workers. Readiness is a local stage, not a count of hidden account
+or provider requests. HTTP parsing/authorization failures before `start_run` remain
+outside this scope. Original exceptions and response shapes are preserved.
+
+Request elapsed time ends at acceptance/rejection; accepted-run elapsed time
+already includes that interval and its existing queue interval. Do not add these
+overlapping totals. Queue/worker timing stays in the linked run. Request snapshots
+reuse `reports/<request-id>/request-measurements-<uuid>.json` and existing receipt
+writers, with integrity references in the journal. They contain sanitized metadata,
+not raw request bodies, readiness errors, settings or credentials. Recording failure
+marks an evidence gap without changing request acceptance or its original failure.
+If all writes fail, durability is unavailable. Interrupted preflight/still-running
+calls recover as interrupted/unknown with unobserved end times left null. Late
+receipts create new partial snapshots; previous snapshots remain immutable.
+
+Memory input observations reuse `source_evidence` and the same bounded, screened
+source artifacts. `graph_memory_state` records exact `past_context`/`memory_note`
+values at their first observed state and each change, with presence flags that
+distinguish missing from empty. This is an observed graph state, not proof that a
+model consumed it. `pm_memory_input` separately records the actual Portfolio Manager
+state-read boundary: `past_context` enters its prompt when nonempty; `memory_note`
+does not enter that prompt. Missing `past_context` reads as the existing empty-string
+default, explicitly marked absent. These artifacts do not add text to prompts,
+settle decisions, change memory selection, or prove provider execution. Oversized,
+unsafe or unwritable captures are unavailable, never silently redacted and labeled
+exact. Source, Gateway and worker boundary counts remain separate; hidden provider
+requests/retries remain unknown. Source partial/terminal/late snapshots use the
+existing immutable evidence path, including recovery of interrupted observations.
 
 The full run-detail response and journal also include `source_evidence` for
 vendor functions executed through `route_to_vendor` and the social/OHLCV input

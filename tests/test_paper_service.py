@@ -203,6 +203,282 @@ def create_proposal(service):
     return proposal
 
 
+@pytest.mark.parametrize("failure", ["date", "readiness", "book", "revision", "symbols", "schedule"])
+def test_request_evidence_owns_rejection_before_run_acceptance(desk, monkeypatch, failure):
+    service, broker = desk
+    kwargs = {}
+    expected_error = RuntimeError("private failure detail")
+    if failure == "date":
+        kwargs["analysis_date"] = "invalid"
+    elif failure == "readiness":
+        def fail(*args, **kwargs):
+            raise expected_error
+        monkeypatch.setattr(service, "readiness", fail)
+    elif failure == "book":
+        broker.errors["get_account_info"] = GatewayError("private upstream detail")
+    elif failure == "revision":
+        kwargs["expected_revision"] = -1
+    elif failure == "symbols":
+        kwargs["symbols"] = ["INVALID"]
+    else:
+        def fail(*args, **kwargs):
+            raise expected_error
+        monkeypatch.setattr(service.executor, "submit", fail)
+    with pytest.raises((ValueError, RuntimeError)) as caught:
+        service.start_run(**kwargs)
+    if failure in {"readiness", "schedule"}:
+        assert caught.value is expected_error
+    request = service.store.data["research_requests"][0]
+    assert request["status"] == ("failed" if failure == "schedule" else "rejected")
+    assert request["ended_at"] and request["elapsed_seconds"] >= 0
+    assert request["stages"][-1]["outcome"] == "error"
+    assert "private" not in json.dumps(request)
+    assert len(service.store.data["runs"]) == (1 if failure == "schedule" else 0)
+    if failure == "schedule":
+        run = service.store.data["runs"][0]
+        assert run["request_id"] == request["id"] and request["run_id"] == run["id"]
+        assert run["status"] == "failed"
+        assert request["stages"][-1]["stage"] == "scheduling"
+    else:
+        assert request["run_id"] is None
+    snapshot = request["snapshots"][-1]
+    payload = (service.store.directory / snapshot["path"]).read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == snapshot["sha256"]
+    assert json.loads(payload)["status"] == request["status"]
+
+
+def test_preflight_workers_have_request_ownership_and_do_not_leak_to_run(desk, monkeypatch):
+    from tradingagents.dataflows.router import observe_gateway_call
+    service, broker = desk
+    execute = broker.execute
+
+    def observed(domain, command, parameters, **kwargs):
+        with observe_gateway_call(domain, command, "gateway_logical"):
+            return execute(domain, command, parameters, **kwargs)
+
+    monkeypatch.setattr(broker, "execute", observed)
+    run_id = service.start_run(["AAPL"])["run_id"]
+    request = service.store.data["research_requests"][0]
+    attempts = request["gateway_evidence"]["attempts"]
+    assert request["status"] == "accepted" and request["run_id"] == run_id
+    assert sum(a["operation"] == "get_account_info" for a in attempts) == 1
+    assert sum(a["operation"] == "get_orders" for a in attempts) == 2
+    assert all(a["outcome"] == "success" and a["capture"] == "metadata_only" for a in attempts)
+    assert service._find_run(run_id)["gateway_evidence"]["attempts"] == []
+    ids = {a["attempt_id"] for a in attempts}
+    service.executor.run_next()
+    assert not ids.intersection(a["attempt_id"] for a in service._find_run(run_id)["gateway_evidence"]["attempts"])
+    size = len(attempts)
+    broker.execute("alpaca", "get_account_info", {})
+    assert len(attempts) == size
+    assert "attempts" not in json.dumps(service.state(compact=True)["research_requests"])
+
+
+def test_concurrent_research_requests_keep_separate_preflight_receipts(desk, monkeypatch):
+    import threading
+
+    from tradingagents.dataflows.router import observe_gateway_call
+    service, broker = desk
+    barrier = threading.Barrier(2, timeout=3)
+    readiness, execute = service.readiness, broker.execute
+
+    def ready(config, **kwargs):
+        if kwargs.get("refresh"):
+            barrier.wait()
+        return readiness(config, **kwargs)
+
+    def observed(domain, command, parameters, **kwargs):
+        with observe_gateway_call(domain, command, "gateway_logical"):
+            return execute(domain, command, parameters, **kwargs)
+
+    monkeypatch.setattr(service, "readiness", ready)
+    monkeypatch.setattr(broker, "execute", observed)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(service.start_run, ["AAPL"]) for _ in range(2)]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append(future.result(timeout=5))
+            except ValueError:
+                outcomes.append(None)
+    assert sum(value is not None for value in outcomes) == 1
+    first, second = service.store.data["research_requests"]
+    assert {first["status"], second["status"]} == {"accepted", "rejected"}
+    assert first["id"] != second["id"]
+    ids = [{a["attempt_id"] for a in r["gateway_evidence"]["attempts"]} for r in (first, second)]
+    assert all(ids) and ids[0].isdisjoint(ids[1])
+    assert all(sum(a["operation"] == "get_account_info" for a in r["gateway_evidence"]["attempts"]) == 1
+               for r in (first, second))
+
+
+def test_request_and_run_intervals_overlap_without_double_counting(desk, monkeypatch):
+    service, _ = desk
+    clock = [10.0]
+    monkeypatch.setattr("tradingagents.web.service.time.monotonic", lambda: clock[0])
+    readiness = service.readiness
+
+    def ready(config, **kwargs):
+        if kwargs.get("refresh"):
+            clock[0] += 3
+        return readiness(config, **kwargs)
+
+    monkeypatch.setattr(service, "readiness", ready)
+    run_id = service.start_run(["AAPL"])["run_id"]
+    request = service.store.data["research_requests"][0]
+    assert request["elapsed_seconds"] == 3
+    clock[0] += 7
+    service.executor.run_next()
+    run = service._find_run(run_id)
+    assert run["measurements"]["elapsed_seconds"] == 10
+    assert next(s for s in run["measurements"]["stages"] if s["stage"] == "queue")["elapsed_seconds"] == 7
+    assert "do not add" in request["timing_scope"]
+    assert request["elapsed_seconds"] == 3
+
+
+@pytest.mark.parametrize("failure", ["artifact", "checkpoint", "journal"])
+def test_request_capture_failures_preserve_rejection_exception(desk, monkeypatch, failure):
+    service, _ = desk
+    expected = RuntimeError("private original exception")
+    def broken(*args, **kwargs):
+        raise OSError("private capture failure")
+    target = {"artifact": "_write_json_artifact", "checkpoint": "checkpoint_request", "journal": "save"}[failure]
+    monkeypatch.setattr(service.store, target, broken)
+    def reject(*args, **kwargs):
+        raise expected
+    monkeypatch.setattr(service, "readiness", reject)
+    with pytest.raises(RuntimeError) as caught:
+        service.start_run(["AAPL"])
+    assert caught.value is expected
+    request = service.store.data["research_requests"][0]
+    assert request["status"] == "rejected" and request["capture_complete"] is False
+    assert "private" not in json.dumps(request)
+
+
+def test_request_recording_failure_does_not_prevent_accepted_run(desk, monkeypatch):
+    service, _ = desk
+    def broken(*args, **kwargs):
+        raise OSError("recording unavailable")
+    monkeypatch.setattr(service.store, "checkpoint_request", broken)
+    result = service.start_run(["AAPL"])
+    assert set(result) == {"run_id"}
+    request = service.store.data["research_requests"][0]
+    assert request["status"] == "accepted" and request["capture_complete"] is False
+    assert request["run_id"] == result["run_id"]
+    service.executor.run_next()
+    assert service._find_run(result["run_id"])["status"] == "completed"
+
+
+def test_request_late_receipts_preserve_terminal_snapshots_and_rejection(desk):
+    from tradingagents.dataflows.router import capture_vendor_evidence, observe_gateway_call
+    service, _ = desk
+    with pytest.raises(ValueError):
+        service.start_run(analysis_date="invalid")
+    request = service.store.data["research_requests"][0]
+    originals = {ref["path"]: (service.store.directory / ref["path"]).read_bytes() for ref in request["snapshots"]}
+    with (capture_vendor_evidence(service._evidence_recorder(request["id"])),
+          observe_gateway_call("alpaca", "get_account_info", "gateway_logical")):
+        pass
+    assert request["status"] == "rejected" and request["run_id"] is None
+    assert request["gateway_evidence"]["late_count"] == 1
+    assert request["capture_complete"] is False
+    assert len(request["snapshots"]) > len(originals)
+    assert all((service.store.directory / path).read_bytes() == payload for path, payload in originals.items())
+
+
+def test_request_restart_preserves_partial_unknown_without_fake_end_times(desk):
+    from uuid import uuid4
+    service, _ = desk
+    with pytest.raises(ValueError):
+        service.start_run(analysis_date="invalid")
+    request = service.store.data["research_requests"][0]
+    request.update(status="preflight", ended_at=None, elapsed_seconds=None)
+    request["stages"][-1].update(outcome="running", ended_at=None, elapsed_seconds=None)
+    receipt = {"attempt_id": str(uuid4()), "origin": "gateway", "boundary_kind": "gateway_transport",
+               "operation": "get_account_info", "vendor": "alpaca", "category": "control_plane",
+               "capture_eligible": False, "outcome": "running", "ended_at": None, "elapsed_seconds": None}
+    service.store.record_source_attempt(request["id"], receipt)
+    service.store.checkpoint_request(request, "before_crash")
+    originals = {ref["path"]: (service.store.directory / ref["path"]).read_bytes() for ref in request["snapshots"]}
+    recovered = DeskStore(service.store.directory, service.store.data["config"])
+    updated = recovered.data["research_requests"][0]
+    assert updated["status"] == "interrupted" and updated["capture_complete"] is False
+    assert updated["ended_at"] is updated["elapsed_seconds"] is None
+    attempt = updated["gateway_evidence"]["attempts"][0]
+    assert attempt["outcome"] == "unknown" and attempt["ended_at"] is attempt["elapsed_seconds"] is None
+    assert updated["stages"][-1]["outcome"] == "unknown"
+    assert all((recovered.directory / path).read_bytes() == payload for path, payload in originals.items())
+    count = len(updated["snapshots"])
+    again = DeskStore(service.store.directory, service.store.data["config"])
+    assert len(again.data["research_requests"][0]["snapshots"]) == count
+
+
+@pytest.mark.parametrize("memory", [{}, {"past_context": "", "memory_note": ""},
+                                    {"past_context": "Prior lesson\r\n\u03b1", "memory_note": "One pending decision."}])
+def test_graph_memory_observation_preserves_missing_empty_and_exact_strings(desk, memory):
+    service, _ = desk
+    class MemoryGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            for messages, state in super().stream_run(initial, **kwargs):
+                yield messages, {**state, **memory}
+    service.graph_factory = MemoryGraph
+    run = service.run_detail(complete_run(service))
+    attempts = [a for a in run["source_evidence"]["attempts"] if a["origin"] == "graph_memory_state"]
+    assert len(attempts) == 1
+    reference = attempts[0]["artifact"]
+    payload = (service.store.directory / reference["path"]).read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == reference["sha256"]
+    assert json.loads(payload) == {key: {"present": key in memory, "value": memory.get(key)}
+                                   for key in ("past_context", "memory_note")}
+
+
+@pytest.mark.parametrize("failure", ["sensitive", "oversized", "disk"])
+def test_graph_memory_capture_gap_does_not_change_analysis(desk, monkeypatch, failure):
+    service, _ = desk
+    memory = "api_key=private" if failure == "sensitive" else "x" * (8 * 1024 * 1024 + 1) if failure == "oversized" else "Lesson"
+    class MemoryGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            for messages, state in super().stream_run(initial, **kwargs):
+                yield messages, {**state, "past_context": memory}
+    service.graph_factory = MemoryGraph
+    if failure == "disk":
+        def fail(*args, **kwargs):
+            raise OSError("private")
+        monkeypatch.setattr(service.store, "_write_source_result", fail)
+    run = service.run_detail(complete_run(service))
+    attempt = next(a for a in run["source_evidence"]["attempts"] if a["origin"] == "graph_memory_state")
+    assert run["results"][0]["rating"] == "Buy"
+    assert attempt["capture"] == "unavailable" and "artifact" not in attempt
+    assert run["source_evidence"]["capture_complete"] is False
+    assert "private" not in json.dumps(attempt)
+
+
+def test_late_memory_observation_and_restart_keep_immutable_partial_snapshots(desk):
+    from uuid import uuid4
+
+    from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
+    service, _ = desk
+    run_id = complete_run(service)
+    run = service._find_run(run_id)
+    evidence = run["source_evidence"]
+    originals = {ref["path"]: (service.store.directory / ref["path"]).read_bytes() for ref in evidence["snapshots"]}
+    with capture_vendor_evidence(service._evidence_recorder(run_id)):
+        observe_source_call("memory_context", "local", "pm_memory_input", lambda: {"past_context": "Late lesson"})
+    assert evidence["late_count"] == 1 and evidence["capture_complete"] is False
+    pending_id = str(uuid4())
+    service.store.record_source_attempt(run_id, {
+        "attempt_id": pending_id, "origin": "pm_memory_input", "boundary_kind": "acquisition",
+        "operation": "memory_context", "outcome": "running", "ended_at": None, "elapsed_seconds": None,
+    })
+    prior_count = len(evidence["snapshots"])
+    recovered = DeskStore(service.store.directory, service.store.data["config"])
+    current = recovered.data["runs"][0]["source_evidence"]
+    assert len(current["snapshots"]) > prior_count
+    pending = next(a for a in current["attempts"] if a["attempt_id"] == pending_id)
+    assert pending["outcome"] == "unknown" and pending["ended_at"] is pending["elapsed_seconds"] is None
+    assert current["capture_complete"] is False
+    assert all((recovered.directory / path).read_bytes() == payload for path, payload in originals.items())
+
+
 @pytest.mark.parametrize("status", ["intent", "requested", "unknown"])
 def test_unresolved_cancellation_blocks_new_plan_and_cross_order_submit(desk, status):
     service, broker = desk
@@ -860,7 +1136,7 @@ def test_router_source_evidence_preserves_output_fallback_and_partial_failure(de
     evidence = run["source_evidence"]
     assert evidence["capture_complete"] is True
     assert evidence["coverage"] == "router_functions_and_social_ohlcv_inputs"
-    failed, success = evidence["attempts"]
+    failed, success = [a for a in evidence["attempts"] if a["origin"] == "vendor_function_return"]
     assert (failed["vendor"], success["vendor"]) == ("first", "second")
     assert failed["outcome"] == "error"
     assert failed["error_class"] == "VendorUnavailableError"
@@ -916,7 +1192,7 @@ def test_router_capture_gap_is_explicit_without_changing_result(desk, monkeypatc
     assert attempt["capture"] == "unavailable"
     assert "artifact" not in attempt
     assert "sensitive filesystem detail" not in json.dumps(evidence)
-    assert not list((service.store.directory / "reports" / run["id"]).glob("source-*"))
+    assert not list((service.store.directory / "reports" / run["id"]).glob(f'source-{attempt["attempt_id"]}-*'))
 
 
 def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, monkeypatch):

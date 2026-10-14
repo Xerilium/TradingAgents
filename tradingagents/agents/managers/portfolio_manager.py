@@ -18,6 +18,7 @@ from tradingagents.agents.context import (
 from tradingagents.agents.rating import parse_rating
 from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
 from tradingagents.agents.structured import NO_EXTERNAL_TOOLS, bind_structured, invoke_structured
+from tradingagents.dataflows.router import observe_source_call
 
 
 def create_portfolio_manager(llm):
@@ -33,6 +34,17 @@ def create_portfolio_manager(llm):
         trader_plan = state["trader_investment_plan"]
 
         past_context = state.get("past_context", "")
+        observe_source_call(
+            "memory_context", "local", "pm_memory_input",
+            lambda: {
+                "past_context": {"present": "past_context" in state, "value": past_context,
+                                 "included_in_prompt": bool(past_context)},
+                "memory_note": {"present": "memory_note" in state, "value": state.get("memory_note"),
+                                "included_in_prompt": False},
+                "scope": "Portfolio Manager state-read boundary; not proof of provider execution.",
+            },
+            symbol=state.get("company_of_interest"), trade_date=state.get("trade_date"),
+        )
         lessons_line = (
             f"- Lessons from prior decisions and outcomes:\n{past_context}\n"
             if past_context

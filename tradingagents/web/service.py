@@ -10,7 +10,8 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -18,7 +19,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from cli.stats_handler import StatsCallbackHandler
-from tradingagents.dataflows.router import capture_vendor_evidence
+from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
     GatewayError,
@@ -333,7 +334,7 @@ class DeskService:
                     })
                 with ThreadPoolExecutor(max_workers=4) as pool:
                     futures = {
-                        key: pool.submit(self.gateway.execute, "alpaca", command, args)
+                        key: pool.submit(copy_context().run, self.gateway.execute, "alpaca", command, args)
                         for key, (command, args) in calls.items()
                     }
                     for key, future in futures.items():
@@ -522,24 +523,98 @@ class DeskService:
     def start_run(self, symbols=None, expected_revision=None, analysis_date=None):
         request_started = time.monotonic()
         requested_at = now()
-        trade_date = today() if analysis_date is None else analysis_date
-        # Reuse the MCP binding's canonical/New York date validation without discovery.
-        try:
-            build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
-        except GatewayError as exc:
-            raise ValueError(str(exc)) from exc
+        request = {
+            "id": str(uuid4()), "owner_kind": "research_request", "run_id": None,
+            "status": "preflight", "started_at": requested_at, "ended_at": None, "elapsed_seconds": None,
+            "stages": [], "snapshots": [], "capture_complete": True,
+            "source_evidence": {"attempts": [], "snapshots": [], "capture_complete": True,
+                                "coverage": "research_preflight_local_boundaries"},
+            "gateway_evidence": {"attempts": [], "snapshots": [], "capture_complete": True,
+                                 "internal_http_requests": None, "internal_model_executions": None},
+            "jev_evidence": {"attempts": [], "snapshots": [], "capture_complete": True,
+                             "internal_http_requests": None, "internal_model_executions": None},
+            "timing_scope": "Service start_run entry through acceptance or rejection, including scheduling. "
+                            "Overlaps accepted run elapsed; do not add these totals. Queue/worker timing is in the linked run. "
+                            "HTTP parsing and authorization before start_run are outside this scope.",
+        }
         with self.store.lock:
-            for prior in self.store.data["runs"]:
-                if prior.get("retry_at"):
-                    remaining = (datetime.fromisoformat(prior["retry_at"]) - datetime.now(UTC)).total_seconds()
-                    if remaining > 0:
-                        raise GatewayRateLimited(remaining)
-        ready = self.readiness(self.store.snapshot()["config"], refresh=True)
-        if not ready["ready"]:
-            raise ValueError(ready["message"])
-        self.refresh()
-        market = self._book()
-        with self.execution_lock, self.store.lock:
+            self.store.data["research_requests"].insert(0, request)
+        self._request_checkpoint(request, "request_started")
+        try:
+            with capture_vendor_evidence(self._evidence_recorder(request["id"])):
+                result = self._start_run(symbols, expected_revision, analysis_date, request, request_started)
+            request["status"] = "accepted"
+            return result
+        except BaseException as exc:
+            request.update(status="interrupted" if not isinstance(exc, Exception) else
+                           "failed" if request["run_id"] else "rejected",
+                           error_class=self._request_error_class(exc))
+            raise
+        finally:
+            with self.store.lock:
+                request.update(ended_at=now(), elapsed_seconds=time.monotonic() - request_started)
+                for origin in ("source", "gateway", "jev"):
+                    try:
+                        self.store.finalize_call_evidence(request, origin)
+                    except Exception:
+                        request.update(capture_complete=False, persistence_error="Request call evidence export unavailable.")
+                    if not request[f"{origin}_evidence"].get("capture_complete", False):
+                        request["capture_complete"] = False
+            self._request_checkpoint(request, "request_terminal")
+
+    @staticmethod
+    def _request_error_class(exc):
+        kind = type(exc).__name__
+        return kind if kind in {"ValueError", "TypeError", "RuntimeError", "OSError", "TimeoutError",
+                                "GatewayError", "GatewayTimeout", "GatewayRateLimited", "InterruptedError"} else "UnexpectedError"
+
+    def _request_checkpoint(self, request, reason):
+        try:
+            self.store.checkpoint_request(request, reason)
+        except Exception:
+            request.update(capture_complete=False, persistence_error="Request evidence checkpoint unavailable.")
+
+    @contextmanager
+    def _request_stage(self, request, name):
+        started = time.monotonic()
+        stage = {"stage": name, "started_at": now(), "ended_at": None, "elapsed_seconds": None, "outcome": "running"}
+        with self.store.lock:
+            request["stages"].append(stage)
+        self._request_checkpoint(request, "stage_started")
+        try:
+            yield
+            stage["outcome"] = "success"
+        except BaseException as exc:
+            stage.update(outcome="error" if isinstance(exc, Exception) else "unknown",
+                         error_class=self._request_error_class(exc))
+            raise
+        finally:
+            stage.update(ended_at=now(), elapsed_seconds=time.monotonic() - started)
+            self._request_checkpoint(request, "stage_finished")
+
+    def _start_run(self, symbols, expected_revision, analysis_date, request, request_started):
+        requested_at = request["started_at"]
+        with self._request_stage(request, "validation"):
+            trade_date = today() if analysis_date is None else analysis_date
+            # Reuse the MCP binding's canonical/New York date validation without discovery.
+            try:
+                build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
+            except GatewayError as exc:
+                raise ValueError(str(exc)) from exc
+            with self.store.lock:
+                for prior in self.store.data["runs"]:
+                    if prior.get("retry_at"):
+                        remaining = (datetime.fromisoformat(prior["retry_at"]) - datetime.now(UTC)).total_seconds()
+                        if remaining > 0:
+                            raise GatewayRateLimited(remaining)
+        with self._request_stage(request, "readiness"):
+            ready = self.readiness(self.store.snapshot()["config"], refresh=True)
+            if not ready["ready"]:
+                raise ValueError(ready["message"])
+        with self._request_stage(request, "refresh"):
+            self.refresh()
+            market = self._book()
+        with self._request_stage(request, "admission"), self.execution_lock, self.store.lock:
             if expected_revision is not None and (
                 isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
                 or expected_revision != self.store.data["config_revision"]
@@ -560,6 +635,7 @@ class DeskService:
                 raise ValueError("An analysis is already running.")
             run = {
                 "id": str(uuid4()),
+                "request_id": request["id"],
                 "status": "queued",
                 "created_at": now(),
                 "trade_date": trade_date,
@@ -590,6 +666,7 @@ class DeskService:
                     "coverage": "router_functions_and_social_ohlcv_inputs",
                     "capture_complete": True,
                     "attempts": [],
+                    "snapshots": [],
                     "limitations": "Nested acquisition boundaries overlap router attempts; do not add them "
                                    "as provider requests. Gateway calls have separate gateway_evidence. "
                                    "Jev screening has separate jev_evidence; hidden SDK/provider retries are not captured. "
@@ -604,10 +681,12 @@ class DeskService:
                 },
             }
             self.store.data["runs"].insert(0, run)
+            request["run_id"] = run["id"]
             self.store.save()
         queued_at = time.monotonic()
         try:
-            self.executor.submit(self._run, run["id"], market, request_started, queued_at)
+            with self._request_stage(request, "scheduling"):
+                self.executor.submit(self._run, run["id"], market, request_started, queued_at)
         except Exception:
             with self.store.lock:
                 run.update(status="failed", error="Analysis worker could not be scheduled.")
@@ -644,7 +723,7 @@ class DeskService:
             run["measurement_artifact"] = self.store.write_measurements(run["id"], measurements)
         except OSError:
             run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
-        for origin in ("gateway", "jev"):
+        for origin in ("source", "gateway", "jev"):
             try:
                 self.store.finalize_call_evidence(run, origin)
             except Exception:
@@ -653,21 +732,23 @@ class DeskService:
                 )
         self.store.save()
 
-    def _run(self, run_id, market, request_started, queued_at):
+    def _evidence_recorder(self, owner_id):
         def record(receipt, output):
             try:
-                self.store.record_source_attempt(run_id, receipt, output)
+                self.store.record_source_attempt(owner_id, receipt, output)
             except Exception:
                 with self.store.lock:
                     origin = receipt.get("origin")
                     key = f"{origin}_evidence" if origin in {"gateway", "jev"} else "source_evidence"
-                    evidence = self._find_run(run_id).setdefault(key, {})
+                    evidence = self.store._evidence_owner(owner_id).setdefault(key, {})
                     evidence.update(capture_complete=False, persistence_error="Source receipt persistence failed.")
                     # In-memory failure remains available if a later journal save succeeds.
-                    with suppress(OSError):
+                    with suppress(Exception):
                         self.store.save()
+        return record
 
-        with capture_vendor_evidence(record):
+    def _run(self, run_id, market, request_started, queued_at):
+        with capture_vendor_evidence(self._evidence_recorder(run_id)):
             self._run_with_evidence(run_id, market, request_started, queued_at)
 
     def _run_with_evidence(self, run_id, market, request_started, queued_at):
@@ -747,6 +828,7 @@ class DeskService:
                     )
                     final = {}
                     seen = set()
+                    memory_seen = None
                     initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
                     self.store.record_portfolio_context(run_id, {
                         "schema_version": 1,
@@ -779,6 +861,14 @@ class DeskService:
                                 self._event(run_id, "tool", call.get("name", "Tool call"), symbol)
                         if state:
                             final.update(state)
+                            memory = {key: {"present": key in state, "value": state.get(key)}
+                                      for key in ("past_context", "memory_note")}
+                            if memory != memory_seen:
+                                observe_source_call(
+                                    "memory_context", "local", "graph_memory_state", lambda memory=memory: memory,
+                                    symbol=symbol, trade_date=run["trade_date"],
+                                )
+                                memory_seen = memory
                             for key in REPORT_KEYS:
                                 if state.get(key) and result["reports"].get(key) != state[key]:
                                     with self.store.lock:

@@ -159,6 +159,77 @@ def test_research_team_stays_blind_to_the_portfolio():
         assert "portfolio_context" not in inspect.getsource(mod)
 
 
+@pytest.mark.parametrize("memory", [{}, {"past_context": "", "memory_note": ""},
+                                    {"past_context": "Exact lesson\r\n\u03b1", "memory_note": "NOTE_NOT_IN_PROMPT"}])
+@pytest.mark.parametrize("capture_failure", [False, True])
+def test_pm_memory_capture_preserves_prompt_result_and_missing_empty(memory, capture_failure):
+    from langchain_core.messages import AIMessage
+
+    from tradingagents.agents.managers import portfolio_manager as module
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    prompts, records = [], []
+    class Model:
+        def with_structured_output(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def invoke(self, prompt):
+            prompts.append(prompt)
+            return AIMessage("Rating: Hold\n\nNo change.")
+
+    state = {"company_of_interest": "AAPL", "trade_date": "2026-10-14", "investment_plan": "Research",
+             "trader_investment_plan": "Plan", "risk_debate_state": dict.fromkeys((
+                 "history", "aggressive_history", "conservative_history", "neutral_history",
+                 "current_aggressive_response", "current_conservative_response", "current_neutral_response"), ""), **memory}
+    state["risk_debate_state"]["count"] = 0
+    original = json.loads(json.dumps(state))
+    node = module.create_portfolio_manager(Model())
+    baseline = node(state)
+
+    def record(receipt, output):
+        if capture_failure:
+            raise OSError("fixture capture failed")
+        records.append((receipt, output))
+
+    with capture_vendor_evidence(record):
+        actual = node(state)
+    assert actual == baseline
+    assert prompts == [prompts[0], prompts[0]]
+    assert state == original
+    assert "NOTE_NOT_IN_PROMPT" not in prompts[-1]
+    if memory.get("past_context"):
+        assert memory["past_context"] in prompts[-1]
+    if not capture_failure:
+        receipt, payload = records[-1]
+        assert receipt["origin"] == "pm_memory_input" and receipt["outcome"] == "success"
+        assert payload["past_context"] == {"present": "past_context" in memory,
+                                           "value": memory.get("past_context", ""),
+                                           "included_in_prompt": bool(memory.get("past_context", ""))}
+        assert payload["memory_note"] == {"present": "memory_note" in memory,
+                                          "value": memory.get("memory_note"), "included_in_prompt": False}
+
+
+def test_pm_capture_failure_does_not_replace_model_exception():
+    from tradingagents.agents.managers import portfolio_manager as module
+    from tradingagents.dataflows.router import capture_vendor_evidence
+    failure = RuntimeError("original model failure")
+    class Model:
+        def with_structured_output(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def invoke(self, prompt):
+            raise failure
+
+    node = module.create_portfolio_manager(Model())
+    state = {"company_of_interest": "AAPL", "trade_date": "2026-10-14", "investment_plan": "R",
+             "trader_investment_plan": "T", "risk_debate_state": {"history": ""}}
+    def broken(*args):
+        raise OSError("capture failure")
+    with capture_vendor_evidence(broken), pytest.raises(RuntimeError) as caught:
+        node(state)
+    assert caught.value is failure
+
+
 @pytest.mark.unit
 def test_completed_run_clears_the_checkpoint_it_wrote(tmp_path, monkeypatch):
     """The clear must key on the same portfolio the run was checkpointed under.

@@ -25,6 +25,7 @@ class DeskStore:
         self.data = {
             "config": defaults,
             "runs": [],
+            "research_requests": [],
             "proposals": [],
             "paused": False,
             "paper_account_id": None,
@@ -37,6 +38,27 @@ class DeskStore:
                     "Paper journal is not an object; preserve it and restore a valid journal."
                 )
             self.data.update(saved)
+        for request in self.data["research_requests"]:
+            interrupted = request["status"] == "preflight"
+            if interrupted:
+                request.update(status="interrupted", recovery_observed_at=datetime.now(UTC).isoformat(),
+                               capture_complete=False)
+                for stage in request["stages"]:
+                    if stage["outcome"] == "running":
+                        stage["outcome"] = "unknown"
+            recovered_calls = False
+            for origin in ("source", "gateway", "jev"):
+                evidence = request.get(f"{origin}_evidence", {})
+                recovered_origin = False
+                for attempt in evidence.get("attempts", []):
+                    if attempt["outcome"] in {"running", "queued"}:
+                        attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
+                        recovered_calls = recovered_origin = True
+                if recovered_origin:
+                    self._snapshot_call_evidence(request, "recovery_unknown", origin)
+                self.finalize_call_evidence(request, origin)
+            if interrupted or recovered_calls:
+                self.checkpoint_request(request, "recovery_unknown")
         for run in self.data["runs"]:
             run.setdefault("portfolio_evidence", {
                 "status": "unavailable",
@@ -50,6 +72,15 @@ class DeskStore:
                 evidence = run.get("source_evidence")
                 if evidence and any(a["outcome"] == "running" for a in evidence["attempts"]):
                     evidence.update(capture_complete=False, persistence_error="Source attempt interrupted; final outcome unavailable.")
+                if evidence and "snapshots" in evidence:
+                    recovered_source = False
+                    for attempt in evidence["attempts"]:
+                        if attempt["outcome"] == "running":
+                            attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
+                            recovered_source = True
+                    if recovered_source:
+                        self._snapshot_call_evidence(run, "recovery_unknown", "source")
+                    self.finalize_call_evidence(run, "source")
                 for origin in ("gateway", "jev"):
                     calls = run.get(f"{origin}_evidence")
                     if calls and any(a["outcome"] in {"queued", "running"} for a in calls.get("attempts", [])):
@@ -130,7 +161,10 @@ class DeskStore:
     def snapshot(self, *, compact=False, run_id=None):
         with self.lock:
             if compact:
-                data = copy.deepcopy({key: value for key, value in self.data.items() if key != "runs"})
+                data = copy.deepcopy({key: value for key, value in self.data.items() if key not in {"runs", "research_requests"}})
+                data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
+                    ("id", "run_id", "status", "started_at", "ended_at", "elapsed_seconds", "capture_complete")}
+                    for r in self.data["research_requests"]]
                 selected = run_id if any(r["id"] == run_id for r in self.data["runs"]) else next((r["id"] for r in self.data["runs"]), None)
                 data["runs"] = []
                 data["research"] = {}
@@ -203,6 +237,28 @@ class DeskStore:
         """Write once under the existing run report path; never replace prior evidence."""
         return self._write_json_artifact(run_id, "measurements", measurements)
 
+    def _evidence_owner(self, owner_id):
+        return next(r for collection in ("runs", "research_requests")
+                    for r in self.data[collection] if r["id"] == owner_id)
+
+    def checkpoint_request(self, request, reason):
+        """Best-effort measurement only: never replace the research outcome."""
+        with self.lock:
+            for origin in ("source", "gateway", "jev"):
+                self._call_counts(request[f"{origin}_evidence"], origin)
+            request["capture_complete"] = not (request.get("persistence_error") or request["status"] == "interrupted"
+                or any(not request[f"{origin}_evidence"]["capture_complete"] for origin in ("source", "gateway", "jev")))
+            try:
+                snapshot = {k: copy.deepcopy(v) for k, v in request.items() if k != "snapshots"}
+                snapshot["snapshot_reason"] = reason
+                request["snapshots"].append(self._write_json_artifact(request["id"], "request-measurements", snapshot))
+            except Exception:
+                request.update(capture_complete=False, persistence_error="Request measurement artifact unavailable.")
+            try:
+                self.save()
+            except Exception:
+                request.update(capture_complete=False, persistence_error="Request journal checkpoint unavailable.")
+
     def record_portfolio_context(self, run_id, context):
         """Keep the consumed context, never reconstruct it from a later account refresh."""
         with self.lock:
@@ -237,13 +293,15 @@ class DeskStore:
             self._record_call_attempt(run_id, receipt, output)
             return
         with self.lock:
-            run = next(r for r in self.data["runs"] if r["id"] == run_id)
+            run = self._evidence_owner(run_id)
             evidence = run["source_evidence"]
             attempt = next((r for r in evidence["attempts"] if r["attempt_id"] == receipt["attempt_id"]), None)
             if attempt is None:
                 attempt = {}
                 evidence["attempts"].append(attempt)
             attempt.update(copy.deepcopy(receipt))
+            if evidence.get("terminal_observed_at"):
+                attempt["late"] = True
             if receipt["outcome"] == "success":
                 try:
                     attempt["artifact"] = self._write_source_result(run_id, receipt["attempt_id"], output)
@@ -256,6 +314,11 @@ class DeskStore:
                     evidence["capture_complete"] = False
             elif receipt["outcome"] == "error":
                 attempt["capture"] = "error_class_only"
+            if attempt.get("late"):
+                evidence["capture_complete"] = False
+                self._snapshot_call_evidence(run, "late_update", "source")
+                if run.get("owner_kind") == "research_request":
+                    self.checkpoint_request(run, "late_update")
             try:
                 self.save()
             except OSError:
@@ -266,7 +329,10 @@ class DeskStore:
     @staticmethod
     def _call_counts(evidence, origin):
         attempts = evidence.get("attempts", [])
-        if origin == "gateway":
+        if origin == "source":
+            evidence["counts"] = {kind: sum(a["origin"] == kind for a in attempts)
+                                  for kind in {a["origin"] for a in attempts}}
+        elif origin == "gateway":
             evidence["counts"] = {
                 kind: {category: sum(a["boundary_kind"] == kind and a["category"] == category for a in attempts)
                        for category in ("source", "control_plane")}
@@ -287,7 +353,7 @@ class DeskStore:
 
     def _record_call_attempt(self, run_id, receipt, output):
         with self.lock:
-            run = next(r for r in self.data["runs"] if r["id"] == run_id)
+            run = self._evidence_owner(run_id)
             origin = receipt["origin"]
             evidence = run.setdefault(f"{origin}_evidence", {
                 "attempts": [], "snapshots": [], "capture_complete": True,
@@ -332,6 +398,8 @@ class DeskStore:
             self._call_counts(evidence, origin)
             if attempt.get("late"):
                 self._snapshot_call_evidence(run, "late_update", origin)
+                if run.get("owner_kind") == "research_request":
+                    self.checkpoint_request(run, "late_update")
             elif receipt["boundary_kind"] == "jev_batch" and receipt.get("ended_at"):
                 self._snapshot_call_evidence(run, "batch_terminal", origin)
             try:
@@ -345,6 +413,8 @@ class DeskStore:
         snapshot = {key: copy.deepcopy(value) for key, value in evidence.items() if key != "snapshots"}
         snapshot.update(run_id=run["id"], run_status=run["status"], reason=reason,
                         observed_at=datetime.now(UTC).isoformat())
+        if run.get("owner_kind") == "research_request":
+            snapshot.update(owner_kind="research_request", request_id=run["id"], run_id=run.get("run_id"))
         try:
             evidence.setdefault("snapshots", []).append(self._write_json_artifact(run["id"], f"{origin}-evidence", snapshot))
         except OSError:
