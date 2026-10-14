@@ -692,8 +692,10 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
 
     from langgraph.graph import END, START, StateGraph
 
+    from tests.test_mcp_gateway import FakeTransport, result
     from tradingagents.dataflows import router
     from tradingagents.dataflows.config import run_config_context
+    from tradingagents.integrations.maenifold import MaenifoldGateway
 
     store = DeskStore(tmp_path / "evidence", {})
     barrier = threading.Barrier(2, timeout=5)
@@ -701,7 +703,14 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
         def acquire():
             barrier.wait()
             return f"source for {symbol}"
-        return router.observe_source_call("social_fixture", "fixture", "http_response_bytes", acquire, symbol=symbol)
+        value = router.observe_source_call("social_fixture", "fixture", "http_response_bytes", acquire, symbol=symbol)
+        transport = FakeTransport()
+        transport.response = result({"symbol": symbol})
+        gateway = MaenifoldGateway(transport=transport)
+        with pytest.raises(StopIteration) as returned:
+            gateway.aexecute("alpaca", "get_asset", {"symbol": symbol}).send(None)
+        assert returned.value.value == {"symbol": symbol}
+        return value
     monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
     monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
 
@@ -740,6 +749,12 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
         path = store.directory / attempts[0]["artifact"]["path"]
         paths.append(path)
         assert path.read_text() == f"source for {symbol}"
+        gateway_evidence = record["gateway_evidence"]
+        assert gateway_evidence["counts"]["gateway_transport"] == {"source": 1, "control_plane": 2}
+        logical = next(a for a in gateway_evidence["attempts"] if a["boundary_kind"] == "gateway_logical")
+        assert logical["parent_attempt_id"] == attempts[0]["attempt_id"]
+        payload = json.loads((store.directory / logical["receipts"][-1]["path"]).read_bytes())["payload"]
+        assert payload["parameters"] == payload["result"] == {"symbol": symbol}
     assert paths[0] != paths[1]
 
 
@@ -1016,6 +1031,138 @@ def test_run_collects_reports_and_laya_gate_without_broker_mutation(desk):
     assert result["rating"] == "Buy"
     assert result["laya"]["auto_execute"] is True
     assert result["reports"]["market_report"]
+    assert broker.submitted == []
+
+
+@pytest.mark.parametrize("failure", ["sensitive", "oversized", "unsupported", "disk"])
+def test_gateway_capture_failure_is_a_gap_without_changing_caller(desk, monkeypatch, failure):
+    from tradingagents.dataflows.router import capture_vendor_evidence
+    from tradingagents.integrations.maenifold import gateway_observation
+
+    service, _ = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    output = {"sensitive": {"api_key": "private-gateway-value"},
+              "oversized": "x" * (8 * 1024 * 1024 + 1), "unsupported": object(), "disk": {"ok": True}}[failure]
+    if failure == "disk":
+        def unavailable(*args):
+            raise OSError("private-disk-error")
+        monkeypatch.setattr(service.store, "_write_source_result", unavailable)
+    def acquire():
+        with gateway_observation("laya", "decide", "gateway_logical", parameters={}) as observed:
+            observed.update(output=output, result_available=True)
+            return output
+    with capture_vendor_evidence(lambda r, o: service.store.record_source_attempt(run_id, r, o)):
+        assert acquire() is output
+    evidence = service.run_detail(run_id)["gateway_evidence"]
+    assert evidence["capture_complete"] is False
+    attempt = evidence["attempts"][0]
+    assert attempt["outcome"] == "success" and attempt["capture"] == "unavailable"
+    assert "private-" not in json.dumps(evidence)
+    for path in (service.store.directory / "reports" / run_id).glob("gateway-receipt-*"):
+        assert b"private-" not in path.read_bytes()
+
+
+def test_gateway_late_start_and_interrupted_snapshot_are_not_complete(desk):
+    from tradingagents.dataflows.router import capture_vendor_evidence
+    from tradingagents.integrations.maenifold import gateway_observation
+
+    service, _ = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    run = service._find_run(run_id)
+    run["status"] = "failed"
+    service.store.finalize_gateway_evidence(run)
+    service.store.save()
+    evidence = run["gateway_evidence"]
+    first = evidence["snapshots"][0]
+    path = service.store.directory / first["path"]
+    original = path.read_bytes()
+    assert json.loads(original)["pending_count"] == 0
+    with (capture_vendor_evidence(lambda r, o: service.store.record_source_attempt(run_id, r, o)),
+          gateway_observation("laya", "decide", "gateway_logical", parameters={}) as observed):
+        assert evidence["late_count"] == evidence["pending_count"] == 1
+        assert evidence["capture_complete"] is False
+        checkpoint = service.store.path.read_bytes()
+        observed.update(output={"ok": True}, result_available=True)
+    assert evidence["capture_complete"] is False
+    assert path.read_bytes() == original
+    # Simulate loss of the late completion checkpoint, leaving its immutable file unreferenced.
+    service.store.path.write_bytes(checkpoint)
+    recovered = DeskStore(service.store.directory, {})
+    restored = recovered.snapshot()["runs"][0]["gateway_evidence"]
+    assert restored["unknown_count"] == 1 and restored["capture_complete"] is False
+    assert restored["attempts"][0]["ended_at"] is None
+    assert restored["attempts"][0]["recovery_observed_at"]
+    assert path.read_bytes() == original
+    assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["gateway_evidence"] == restored
+
+
+def test_final_laya_gateway_receipts_preserve_guard_cache_usage_and_hashes(desk, monkeypatch):
+    from mcp.types import CallToolResult
+
+    from tradingagents.integrations.maenifold import MaenifoldGateway
+
+    service, broker = desk
+    expected = {"contract": {"grade": "auto_execute"},
+                "answers": {key: {"value": True} for key in ("evidence_complete", "decision_consistent")},
+                "cache": {"hit": True}, "usage": {"input_tokens": 42, "output_tokens": 3}}
+    class Transport:
+        def __init__(self):
+            self.calls = []
+        async def call_tool(self, name, arguments):
+            self.calls.append((name, copy.deepcopy(arguments)))
+            if name == "GatewayIndex":
+                return {"domains": [{"name": "laya"}]} if not arguments else {
+                    "commands": [{"name": "decide", "schema": {"type": "object"}}]}
+            return CallToolResult(content=[], structuredContent=copy.deepcopy(expected))
+    transport = Transport()
+    gateway = MaenifoldGateway(transport=transport)
+    original = broker.execute
+    def execute(domain, command, parameters):
+        if domain == "laya":
+            with pytest.raises(StopIteration) as returned:
+                gateway.aexecute(domain, command, parameters).send(None)
+            return returned.value.value
+        return original(domain, command, parameters)
+    monkeypatch.setattr(broker, "execute", execute)
+    run_id = complete_run(service)
+    run = service.run_detail(run_id)
+    calls = [args for name, args in transport.calls if name == "GatewayExecute"]
+    assert len(calls) == 1
+    parameters = calls[0]["parameters"]
+    assert parameters == {
+        "state": {"symbol": "AAPL", "trade_date": run["trade_date"], "rating": "Buy", "reports": run["results"][0]["reports"]},
+        "questions": {
+            "evidence_complete": {"kind": "yes_no", "instructions": "Check the actual reports for material evidence gaps.",
+                                  "criteria": {"true": "The reports contain current evidence supporting this symbol's rating, with no unresolved source errors or material missing information."}},
+            "decision_consistent": {"kind": "yes_no", "instructions": "Check the final recommendation against the supplied reports.",
+                                    "criteria": {"true": "The final rating is consistent with the reports and is not REVIEW or an unsupported claim."}},
+        }, "threshold": "high",
+    }
+    assert "use_cache" not in parameters
+    evidence = run["gateway_evidence"]
+    assert evidence["capture_complete"] is True
+    assert evidence["counts"]["gateway_transport"] == {"source": 1, "control_plane": 2}
+    assert evidence["internal_model_executions"] is None and evidence["internal_http_requests"] is None
+    parent = next(a for a in evidence["attempts"] if a["purpose"] == "final_laya")
+    logical = next(a for a in evidence["attempts"] if a["boundary_kind"] == "gateway_logical")
+    assert logical["parent_attempt_id"] == parent["attempt_id"]
+    for attempt in evidence["attempts"]:
+        for reference in attempt["receipts"]:
+            payload = (service.store.directory / reference["path"]).read_bytes()
+            assert hashlib.sha256(payload).hexdigest() == reference["sha256"]
+            assert len(payload) == reference["bytes"]
+        body = json.loads(payload)
+        if attempt["category"] == "control_plane":
+            assert "payload" not in body
+        else:
+            assert body["payload"]["parameters"] == parameters
+            if attempt["boundary_kind"] == "gateway_transport":
+                assert body["payload"]["result"]["structuredContent"] == expected
+                assert attempt["representation"] == "sdk_envelope_serialization_not_wire_bytes"
+            else:
+                assert body["payload"]["result"] == expected
+    assert run["results"][0]["laya"] == {**expected, "auto_execute": True}
+    assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["gateway_evidence"] == evidence
     assert broker.submitted == []
 
 

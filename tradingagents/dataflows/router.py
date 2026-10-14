@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 import re
@@ -62,6 +63,65 @@ def capture_vendor_evidence(recorder):
     finally:
         _evidence_parent.reset(parent_token)
         _evidence_recorder.reset(token)
+
+
+@contextmanager
+def observe_gateway_call(domain, command, boundary, *, eligible=False, parameters=None,
+                         purpose=None, ordinal=None):
+    """Observe a synchronous or awaited scope using the run's existing recorder.
+
+    The caller sets output only after it is returned. No exception text is recorded.
+    Parameter/result objects are never modified or substituted into the real call.
+    """
+    observation = {"receipt": {}, "output": None, "result_available": False, "parameters": parameters}
+    recorder = _evidence_recorder.get()
+    if recorder is None:
+        yield observation
+        return
+    receipt = observation["receipt"]
+    receipt.update(
+        attempt_id=str(uuid4()), parent_attempt_id=_evidence_parent.get(),
+        operation=command, vendor=domain, boundary_kind=boundary,
+        origin="gateway", purpose=purpose, ordinal=ordinal,
+        category="source" if eligible else "control_plane", capture_eligible=eligible,
+        started_at=datetime.now(UTC).isoformat(), ended_at=None,
+        elapsed_seconds=None, outcome="running",
+        representation="sdk_envelope_serialization_not_wire_bytes" if boundary == "gateway_transport"
+        else "normalized_caller_value",
+    )
+
+    def emit():
+        try:
+            recorder(dict(receipt), {
+                "parameters": observation["parameters"],
+                "result": observation["output"],
+                "result_available": observation["result_available"],
+            } if eligible else None)
+        except Exception:
+            logger.error("Gateway evidence persistence failed; capture is incomplete.")
+
+    emit()
+    started = time.monotonic()
+    token = _evidence_parent.set(receipt["attempt_id"])
+    try:
+        yield observation
+        if receipt["outcome"] == "running":
+            receipt["outcome"] = "success"
+    except BaseException as exc:
+        kind = type(exc).__name__
+        unknown = (isinstance(exc, (asyncio.CancelledError, TimeoutError)) or kind == "GatewayTimeout"
+                   or (boundary == "gateway_transport" and not observation["result_available"]
+                       and kind != "GatewayRateLimited"))
+        receipt.update(outcome="unknown" if unknown else "deferred" if kind == "GatewayRateLimited" else "error",
+                       error_class=kind if kind in {"GatewayError", "GatewayTimeout", "GatewayRateLimited",
+                                                   "CancelledError", "TimeoutError"} else "UnexpectedError")
+        if kind == "GatewayRateLimited":
+            receipt["retry_after_seconds"] = exc.retry_after
+        raise
+    finally:
+        _evidence_parent.reset(token)
+        receipt.update(ended_at=datetime.now(UTC).isoformat(), elapsed_seconds=time.monotonic() - started)
+        emit()
 
 
 def _error_class(error):

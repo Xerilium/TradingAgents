@@ -25,6 +25,30 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 DEFAULT_ENDPOINT = "http://localhost:8080/mcp"
+# Capture policy is narrower than model-call permission. Account/configuration,
+# order and unknown commands are metadata-only, even if their results look safe.
+_EVIDENCE_COMMANDS = {
+    "alpaca": frozenset({"get_asset", "get_clock", "get_calendar", "get_portfolio_history",
+                         "get_stock_bars", "get_stock_latest_quote", "get_stock_latest_trade",
+                         "get_stock_snapshot", "get_news"}),
+    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory"}),
+    "laya": frozenset({"decide"}),
+}
+
+
+def gateway_observation(domain, command, boundary, *, parameters=None, purpose=None, ordinal=None):
+    from tradingagents.dataflows.router import observe_gateway_call
+
+    eligible = command in _EVIDENCE_COMMANDS.get(domain, ())
+    known = eligible or command in ANALYSIS_COMMANDS.get(domain, ()) or (
+        (domain, command) in {("maenifold.system", "GetConfig"), ("gateway", "GatewayIndex")}
+    )
+    return observe_gateway_call(
+        domain if known else "unreviewed_domain", command if known else "unreviewed_command", boundary,
+        eligible=eligible, parameters=parameters if eligible else None, purpose=purpose, ordinal=ordinal,
+    )
+
+
 _EXTRAS_MESSAGE = (
     "The Maenifold integration requires the optional dependencies. "
     'Install this project with its paper extra: pip install -e ".[paper]".'
@@ -356,18 +380,27 @@ class MaenifoldGateway:
                     remaining = self._limited_until - time.monotonic()
                     if remaining > 0 or (self._retrying and not owns_retry):
                         raise GatewayRateLimited(remaining)
-                try:
-                    return normalize_tool_result(await self.transport.call_tool(name, arguments))
-                except GatewayRateLimited as exc:
-                    delay = retry_delay(exc.retry_after, attempt)
-                    with self._lock:
-                        self._limited_until = max(self._limited_until, time.monotonic() + delay)
-                        remaining = self._limited_until - time.monotonic()
-                        if (exc.retry_after > 60 or remaining > 60 or not safe or attempt == 3
-                                or (self._retrying and not owns_retry)):
-                            raise GatewayRateLimited(max(delay, remaining)) from exc
-                        self._retrying = owns_retry = True
-                    await asyncio.sleep(delay)
+                domain = arguments.get("domain") if name == "GatewayExecute" else "gateway"
+                command = arguments.get("command") if name == "GatewayExecute" else "GatewayIndex"
+                with gateway_observation(domain, command, "gateway_transport",
+                                         parameters=arguments.get("parameters"), ordinal=attempt + 1) as observed:
+                    try:
+                        raw = await self.transport.call_tool(name, arguments)
+                        observed.update(output=raw, result_available=True)
+                        return normalize_tool_result(raw)
+                    except GatewayRateLimited as exc:
+                        delay = retry_delay(exc.retry_after, attempt)
+                        observed["receipt"].update(outcome="rate_limited", retry_after_seconds=exc.retry_after)
+                        with self._lock:
+                            self._limited_until = max(self._limited_until, time.monotonic() + delay)
+                            remaining = self._limited_until - time.monotonic()
+                            if (exc.retry_after > 60 or remaining > 60 or not safe or attempt == 3
+                                    or (self._retrying and not owns_retry)):
+                                observed["receipt"]["retry_action"] = "defer"
+                                raise GatewayRateLimited(max(delay, remaining)) from exc
+                            self._retrying = owns_retry = True
+                        observed["receipt"].update(retry_action="retry", scheduled_wait_seconds=delay)
+                await asyncio.sleep(delay)
         finally:
             if owns_retry:
                 with self._lock:
@@ -377,6 +410,10 @@ class MaenifoldGateway:
                         self._limited_until = 0.0
 
     async def adiscover(self, domain: str) -> dict[str, GatewayCommand]:
+        with gateway_observation("gateway", "GatewayIndex", "gateway_discovery"):
+            return await self._adiscover(domain)
+
+    async def _adiscover(self, domain: str) -> dict[str, GatewayCommand]:
         if not domain:
             raise GatewayError("A Gateway domain is required.")
         with self._lock:
@@ -430,6 +467,12 @@ class MaenifoldGateway:
         return _run_sync(lambda: self.adiscover(domain))
 
     async def aexecute(self, domain: str, command: str, parameters: dict[str, Any]) -> Any:
+        with gateway_observation(domain, command, "gateway_logical", parameters=parameters) as observed:
+            response = await self._aexecute(domain, command, parameters)
+            observed.update(output=response, result_available=True)
+            return response
+
+    async def _aexecute(self, domain: str, command: str, parameters: dict[str, Any]) -> Any:
         if not isinstance(parameters, dict):
             raise GatewayError("Gateway parameters must be an object.")
         commands = await self.adiscover(domain)
@@ -618,12 +661,16 @@ def build_langchain_tools(
 
             def bind(selected: GatewayCommand) -> Callable[..., str]:
                 def invoke(**parameters: Any) -> str:
-                    try:
-                        bounded = _bound_parameters(selected, parameters, symbol, trade_date)
-                        value = gateway.execute(selected.domain, selected.name, bounded)
-                    except GatewayError as exc:
-                        raise ToolException(str(exc)) from exc
-                    return json.dumps(value, ensure_ascii=False, default=str)
+                    with gateway_observation(selected.domain, selected.name, "gateway_invocation",
+                                             purpose="analyst_tool") as observed:
+                        try:
+                            bounded = _bound_parameters(selected, parameters, symbol, trade_date)
+                            observed["parameters"] = bounded
+                            value = gateway.execute(selected.domain, selected.name, bounded)
+                        except GatewayError as exc:
+                            raise ToolException(str(exc)) from exc
+                        observed.update(output=value, result_available=True)
+                        return json.dumps(value, ensure_ascii=False, default=str)
 
                 return invoke
 

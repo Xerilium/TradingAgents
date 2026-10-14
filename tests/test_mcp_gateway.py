@@ -1,16 +1,20 @@
 """Gateway protocol, schema and capability-boundary regression tests."""
 
 import asyncio
+import copy
 import json
 import socket
+import time
 import unittest
 from unittest.mock import patch
 
 import pytest
 
+from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.integrations.maenifold import (
     GatewayCommand,
     GatewayError,
+    GatewayTimeout,
     MaenifoldGateway,
     SdkMcpTransport,
     build_langchain_tools,
@@ -397,6 +401,157 @@ class BoundContextTests(unittest.TestCase):
         ):
             with self.assertRaises(GatewayError):
                 build_langchain_tools(MarketGateway(), **parameters)
+
+
+def test_gateway_evidence_distinguishes_invocation_logical_discovery_and_transport():
+    events = []
+    transport = FakeTransport()
+    gateway = MaenifoldGateway(transport=transport)
+    with capture_vendor_evidence(lambda receipt, output: events.append(copy.deepcopy((receipt, output)))):
+        tools = build_langchain_tools(gateway, domains=("alpaca",), symbol="AAPL")
+        returned = tools[0].invoke({"symbol": "AAPL"})
+    assert json.loads(returned) == {"equity": "100000"}
+    latest = {r["attempt_id"]: (r, o) for r, o in events}
+    receipts = [r for r, _ in latest.values()]
+    assert {kind: sum(r["boundary_kind"] == kind for r in receipts) for kind in
+            ("gateway_invocation", "gateway_logical", "gateway_discovery", "gateway_transport")} == {
+        "gateway_invocation": 1, "gateway_logical": 1, "gateway_discovery": 2, "gateway_transport": 3,
+    }
+    invocation = next(r for r in receipts if r["boundary_kind"] == "gateway_invocation")
+    logical, output = next((r, o) for r, o in latest.values() if r["boundary_kind"] == "gateway_logical")
+    assert invocation["purpose"] == "analyst_tool"
+    assert logical["parent_attempt_id"] == invocation["attempt_id"]
+    assert output == {"parameters": {"symbol": "AAPL"}, "result": {"equity": "100000"}, "result_available": True}
+    attempts = [r for r in receipts if r["boundary_kind"] == "gateway_transport"]
+    assert len(attempts) == len(transport.calls)
+    assert sum(r["category"] == "source" for r in attempts) == 1
+    assert all(o is None for r, o in events if r["category"] == "control_plane")
+    assert all(r["ended_at"] and r["elapsed_seconds"] >= 0 for r in receipts)
+    assert all(len([e for e, _ in events if e["attempt_id"] == r["attempt_id"]]) == 2 for r in receipts)
+
+
+@pytest.mark.parametrize("command,domain", [("GetConfig", "maenifold.system"), ("get_account_config", "alpaca"),
+                                           ("register", "custom")])
+@pytest.mark.parametrize("failed", [False, True])
+def test_control_plane_never_supplies_parameters_results_or_errors_to_recorder(command, domain, failed):
+    transport = FakeTransport()
+    secret = {"api_key": "never-record", "settings": "private-config"}
+    error = GatewayError("private-error-text")
+    transport.response = error if failed else secret
+    gateway = MaenifoldGateway(transport=transport)
+    gateway._cache[domain] = (time.monotonic(), {command: GatewayCommand(domain, command, "", {"type": "object"})})
+    events = []
+    with capture_vendor_evidence(lambda receipt, output: events.append(copy.deepcopy((receipt, output)))):
+        if failed:
+            with pytest.raises(GatewayError) as caught:
+                gateway.execute(domain, command, secret)
+            assert caught.value is error
+        else:
+            # Normalization rejects error-like dictionaries; this payload has no error marker.
+            assert gateway.execute(domain, command, secret) == secret
+    assert events and all(output is None for _, output in events)
+    encoded = json.dumps(events)
+    assert all(value not in encoded for value in ("never-record", "private-config", "private-error-text"))
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("error", [GatewayTimeout("private-timeout"), asyncio.CancelledError("private-cancel")])
+def test_gateway_timeout_and_cancellation_keep_unknown_outcome_and_exception_identity(error):
+    class Transport(FakeTransport):
+        async def call_tool(self, name, arguments):
+            if name == "GatewayExecute":
+                self.calls.append((name, arguments))
+                raise error
+            return await super().call_tool(name, arguments)
+    events = []
+    transport = Transport()
+    gateway = MaenifoldGateway(transport=transport)
+    async def run():
+        with capture_vendor_evidence(lambda receipt, output: events.append(copy.deepcopy((receipt, output)))):
+            with pytest.raises(type(error)) as caught:
+                await gateway.aexecute("alpaca", "get_asset", {"symbol": "AAPL"})
+            assert caught.value is error
+    asyncio.run(run())
+    latest = {r["attempt_id"]: r for r, _ in events}
+    source = [r for r in latest.values() if r["category"] == "source"]
+    assert len(source) == 2
+    assert all(r["outcome"] == "unknown" for r in source)
+    assert sum(name == "GatewayExecute" for name, _ in transport.calls) == 1
+    assert "private-" not in json.dumps(events)
+
+
+def test_gateway_schema_failure_is_one_logical_call_with_no_execution_attempt():
+    gateway = MaenifoldGateway(transport=FakeTransport())
+    events = []
+    with (capture_vendor_evidence(lambda r, o: events.append(copy.deepcopy(r))),
+          pytest.raises(GatewayError, match="schema validation")):
+        gateway.execute("alpaca", "get_asset", {})
+    latest = {r["attempt_id"]: r for r in events}.values()
+    assert sum(r["boundary_kind"] == "gateway_logical" for r in latest) == 1
+    assert not any(r["boundary_kind"] == "gateway_transport" and r["category"] == "source" for r in latest)
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_late_gateway_completion_preserves_incomplete_terminal_snapshot(tmp_path, cancel):
+    import hashlib
+    from uuid import uuid4
+
+    from tradingagents.web.store import DeskStore
+
+    async def run():
+        started, release = asyncio.Event(), asyncio.Event()
+        class Transport(FakeTransport):
+            async def call_tool(self, name, arguments):
+                if name == "GatewayExecute":
+                    self.calls.append((name, arguments))
+                    started.set()
+                    await release.wait()
+                    return result({"symbol": "AAPL", "cache": {"hit": True}, "usage": {"input_tokens": 5}})
+                return await super().call_tool(name, arguments)
+        transport = Transport()
+        gateway = MaenifoldGateway(transport=transport)
+        await gateway.adiscover("alpaca")
+        store = DeskStore(tmp_path / "late", {})
+        run_id = str(uuid4())
+        record = {"id": run_id, "status": "running", "symbols": ["AAPL"], "results": []}
+        store.data["runs"].append(record)
+        with capture_vendor_evidence(lambda r, o: store.record_source_attempt(run_id, r, o)):
+            task = asyncio.create_task(gateway.aexecute("alpaca", "get_asset", {"symbol": "AAPL"}))
+            await started.wait()
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(asyncio.shield(task), timeout=0.01)
+        record["status"] = "failed"
+        store.finalize_gateway_evidence(record)
+        store.save()
+        evidence = record["gateway_evidence"]
+        terminal = evidence["snapshots"][0]
+        path = store.directory / terminal["path"]
+        original = path.read_bytes()
+        frozen = json.loads(original)
+        assert frozen["pending_count"] == 2  # Logical call and its one transport attempt.
+        assert frozen["capture_complete"] is False
+        assert frozen["counts"]["gateway_transport"]["source"] == 1
+        if cancel:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            release.set()
+            assert (await task)["cache"] == {"hit": True}
+        assert evidence["pending_count"] == 0
+        assert evidence["unknown_count"] == (2 if cancel else 0)
+        assert evidence["late_count"] == 2
+        assert evidence["capture_complete"] is False
+        assert len(evidence["snapshots"]) == 3
+        assert path.read_bytes() == original
+        assert hashlib.sha256(original).hexdigest() == terminal["sha256"]
+        recovered = DeskStore(store.directory, {})
+        assert recovered.snapshot()["runs"][0]["gateway_evidence"] == evidence
+        compact = recovered.snapshot(compact=True)["runs"][0]["gateway_evidence"]
+        assert "attempts" not in compact and "snapshots" not in compact
+        assert compact["capture_complete"] is False
+        assert sum(name == "GatewayExecute" for name, _ in transport.calls) == 1
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

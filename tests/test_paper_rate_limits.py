@@ -1,5 +1,6 @@
 """Bounded rate limit receipts, shared cooldown and HTTP propagation; no network."""
 
+import copy
 import json
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -10,6 +11,7 @@ import pytest
 
 from tests.test_paper_server import handler
 from tests.test_paper_service import BrokerFake
+from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.integrations.maenifold import (
     GatewayRateLimited,
     MaenifoldGateway,
@@ -190,8 +192,34 @@ def test_three_retries_clamped_to_sixty_and_no_mutation_replay(monkeypatch, requ
         assert transport.calls == 1
         assert waits == expected_waits
 
-    with pytest.raises(StopIteration):
+    events = []
+    with capture_vendor_evidence(lambda r, o: events.append(copy.deepcopy(r))), pytest.raises(StopIteration):
         check().send(None)
+    attempts = list({r["attempt_id"]: r for r in events}.values())
+    assert len(attempts) == 5  # Four read attempts and one mutation attempt, never five retries.
+    assert [r["ordinal"] for r in attempts] == [1, 2, 3, 4, 1]
+    assert [r["retry_action"] for r in attempts] == ["retry", "retry", "retry", "defer", "defer"]
+    assert [r["scheduled_wait_seconds"] for r in attempts[:3]] == expected_waits
+    assert all(r["elapsed_seconds"] == 0 for r in attempts)  # Waits are outside transport timings.
+
+
+def test_gateway_evidence_cooldown_has_zero_transport_attempts(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr("tradingagents.integrations.maenifold.time.monotonic", lambda: clock[0])
+    class Transport:
+        async def call_tool(self, *args):
+            pytest.fail("Existing cooldown must reject before transport")
+    gateway = MaenifoldGateway(transport=Transport())
+    gateway._limited_until = 1000
+    events = []
+    with (capture_vendor_evidence(lambda r, o: events.append(copy.deepcopy(r))),
+          pytest.raises(GatewayRateLimited) as caught):
+        gateway.aexecute("laya", "decide", {}).send(None)
+    assert caught.value.retry_after == 900
+    latest = list({r["attempt_id"]: r for r in events}.values())
+    assert sum(r["boundary_kind"] == "gateway_logical" for r in latest) == 1
+    assert not any(r["boundary_kind"] == "gateway_transport" for r in latest)
+    assert all(r["outcome"] == "deferred" for r in latest)
 
 
 @pytest.mark.parametrize("name, arguments", [

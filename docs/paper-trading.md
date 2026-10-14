@@ -223,9 +223,49 @@ configured fallback and trading guards are unchanged by capture failures.
 source coverage or evidence quality. A successful vendor return can itself be
 an empty-data/error sentinel. Partial receipts/files survive later analytical
 failure; interrupted attempts remain marked as having an unknown final outcome.
-Gateway supplemental sources, Jev/screening calls and hidden SDK/provider retry
-attempts remain outside this coverage. It is not a replay interface or a frozen
+Gateway supplemental sources have separate `gateway_evidence` below. Jev/screening
+calls and hidden SDK/provider retry attempts remain outside this coverage.
+It is not a replay interface or a frozen
 cross-application evidence snapshot.
+
+### Run-scoped Gateway evidence
+
+`gateway_evidence` records analyst-tool and final-Laya invocation parents, logical
+executions, discovery scopes, and actual `transport.call_tool` attempts separately.
+Each scope has an ID/parent, UTC start/end and monotonic elapsed time. Transport
+ordinals and retry/defer decisions record observed attempts only; an existing
+cooldown can reject a logical call with zero transport attempts. Retry sleeps are
+outside transport durations. These counts overlap and must not be added together.
+MCP transport invocations do not establish HTTP-request or internal model-execution
+counts; those fields remain null (unknown).
+
+Payload capture is explicitly limited to Alpaca asset/clock/calendar,
+portfolio-history, stock bars/latest quote/latest trade/snapshot/news reads,
+Maenifold SearchMemories/ReadMemory, and Laya decide. Actual bound parameters and
+normalized results are captured without changing caller values. Transport results
+are labeled SDK-envelope serializations, never original wire bytes. Account,
+configuration, order and unreviewed commands are metadata-only, as is discovery.
+No catalogs, GetConfig parameters/results/error text, registration payloads or
+credentials are archived. Eligible payloads pass the existing 8 MiB limit and
+credential screening; unsafe, oversized, unsupported or unwritable evidence is
+an explicit gap, not a change to the caller's result or exception.
+
+Immutable `gateway-receipt-*.bin` JSON artifacts preserve scope observations and
+screened payloads with hashes and byte counts. Run-terminal `gateway-evidence-*.json`
+snapshots preserve the known receipt references/counts. Later observations append
+new snapshots and are labeled late; they never replace the terminal snapshot or
+make its incomplete evidence complete. Pending counts refer to scopes, not unique
+requests. Timeout/cancellation retains unknown outcomes; restart marks unfinished
+scopes unknown without inventing an end time. Compact state omits full receipts
+and snapshot history. Full run detail and the report directory retain them.
+
+The final Laya guard's exact questions, criteria, high threshold and strict
+grade-plus-two-boolean predicate are unchanged. `use_cache` remains omitted;
+capture does not override the server default. Returned cache/usage metadata is
+retained when safe, but a Gateway call is not proof of a model execution. This
+coverage starts inside accepted run workers. Rejected preflight ownership, Jev
+workers and hidden SDK/provider attempts remain separate gaps. Offline fixtures
+verify these boundaries; no live capture coverage is claimed.
 
 StockTwits captures the existing response body bytes before JSON filtering or
 screening. Reddit captures the existing capped RSS response bytes before XML/HTML

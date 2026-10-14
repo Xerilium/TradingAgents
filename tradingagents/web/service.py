@@ -23,6 +23,7 @@ from tradingagents.integrations.maenifold import (
     GatewayRateLimited,
     MaenifoldGateway,
     build_langchain_tools,
+    gateway_observation,
     verify_paper_configuration,
 )
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
@@ -481,13 +482,18 @@ class DeskService:
                     "status": "unavailable",
                     "reason": "No graph has consumed a portfolio context for this run yet.",
                 },
+                "gateway_evidence": {
+                    "attempts": [], "snapshots": [], "capture_complete": True,
+                    "internal_http_requests": None, "internal_model_executions": None,
+                },
                 "source_evidence": {
                     "coverage": "router_functions_and_social_ohlcv_inputs",
                     "capture_complete": True,
                     "attempts": [],
                     "limitations": "Nested acquisition boundaries overlap router attempts; do not add them "
-                                   "as provider requests. Jev/screening, Gateway tools and hidden SDK/provider "
-                                   "retries are not captured. Success means the boundary returned, not usable data.",
+                                   "as provider requests. Gateway calls have separate gateway_evidence. "
+                                   "Jev/screening and hidden SDK/provider retries are not captured. "
+                                   "Success means the boundary returned, not usable data.",
                 },
                 "measurements": {
                     "started_at": requested_at,
@@ -538,6 +544,12 @@ class DeskService:
             run["measurement_artifact"] = self.store.write_measurements(run["id"], measurements)
         except OSError:
             run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
+        try:
+            self.store.finalize_gateway_evidence(run)
+        except Exception:
+            run.setdefault("gateway_evidence", {}).update(
+                capture_complete=False, persistence_error="Gateway terminal evidence export failed."
+            )
         self.store.save()
 
     def _run(self, run_id, market, request_started, queued_at):
@@ -546,7 +558,8 @@ class DeskService:
                 self.store.record_source_attempt(run_id, receipt, output)
             except Exception:
                 with self.store.lock:
-                    evidence = self._find_run(run_id)["source_evidence"]
+                    key = "gateway_evidence" if receipt.get("origin") == "gateway" else "source_evidence"
+                    evidence = self._find_run(run_id).setdefault(key, {})
                     evidence.update(capture_complete=False, persistence_error="Source receipt persistence failed.")
                     # In-memory failure remains available if a later journal save succeeds.
                     with suppress(OSError):
@@ -685,10 +698,7 @@ class DeskService:
                     rating = run_rating(final)
                     self._event(run_id, "laya", "Checking evidence with Laya", symbol)
                     next_stage("laya")
-                    laya = self.gateway.execute(
-                        "laya",
-                        "decide",
-                        {
+                    laya_parameters = {
                             "state": {
                                 "symbol": symbol,
                                 "trade_date": run["trade_date"],
@@ -712,8 +722,11 @@ class DeskService:
                                 },
                             },
                             "threshold": "high",
-                        },
-                    )
+                        }
+                    with gateway_observation("laya", "decide", "gateway_invocation",
+                                             parameters=laya_parameters, purpose="final_laya") as observed:
+                        laya = self.gateway.execute("laya", "decide", laya_parameters)
+                        observed.update(output=laya, result_available=True)
                     laya = _payload(laya)
                     answers = laya.get("answers", {})
                     gate = laya.get("contract", {}).get("grade") == "auto_execute" and all(
