@@ -111,3 +111,58 @@ def test_one_cache_file_per_symbol_across_days(tmp_path, monkeypatch):
 
     assert len(downloads) == 3, "each new day refetches"
     assert [p.name for p in tmp_path.iterdir()] == ["AAPL-YFin-data.csv"]
+
+
+@pytest.mark.parametrize("use_cache", [True, False])
+def test_evidence_uses_the_consumed_frame_before_cleaning(tmp_path, monkeypatch, use_cache):
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    frame = pd.DataFrame({"Close": [1.2345678901234567, 9.876543210987654]},
+                         index=pd.DatetimeIndex(["2026-07-17", "2026-07-18"], name="Date"))
+    original = frame.copy(deep=True)
+    captures, reads, downloads = [], [], []
+    if use_cache:
+        _write(tmp_path, last_date="2026-07-18")
+        cache_frame = frame.reset_index()
+        cache_frame["Date"] = cache_frame["Date"].astype(str)
+        def read(*args, **kwargs):
+            reads.append(1)
+            return cache_frame
+        monkeypatch.setattr(ohlcv.pd, "read_csv", read)
+    def history(**kwargs):
+        downloads.append(1)
+        return frame
+    def record(receipt, output):
+        captures.append((receipt, output, output.copy(deep=True) if isinstance(output, pd.DataFrame) else None))
+    with capture_vendor_evidence(record):
+        result = _load(tmp_path, monkeypatch, "2026-07-17", history)
+    receipt, consumed, preserved = captures[-1]
+    assert len(captures) == 2
+    assert receipt["origin"] == ("parsed_cache_dataframe" if use_cache else "yahoo_sdk_dataframe")
+    assert consumed is (cache_frame if use_cache else frame)
+    assert len(preserved) == 2  # Later as-of filtering removes the second row only from the result.
+    assert len(result) == 1
+    assert result["Close"].iloc[0] == original["Close"].iloc[0]
+    assert reads == ([1] if use_cache else [])
+    assert downloads == ([] if use_cache else [1])
+    if use_cache:
+        assert isinstance(preserved["Date"].iloc[0], str)
+    else:
+        pd.testing.assert_frame_equal(frame, original)
+
+
+def test_evidence_preserves_existing_sdk_error_wrapping_without_extra_calls(tmp_path, monkeypatch):
+    from tradingagents.dataflows.errors import VendorUnavailableError
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    error = ValueError("private sdk error")
+    captured, calls = [], []
+    def history(**kwargs):
+        calls.append(1)
+        raise error
+    with capture_vendor_evidence(lambda receipt, output: captured.append(receipt)), pytest.raises(VendorUnavailableError) as caught:
+        _load(tmp_path, monkeypatch, "2026-07-17", history)
+    assert caught.value.__cause__ is error
+    assert calls == [1]
+    assert captured[-1]["error_class"] == "VendorUnavailableError"
+    assert "private sdk error" not in str(captured)

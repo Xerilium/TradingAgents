@@ -527,7 +527,7 @@ def test_router_source_evidence_preserves_output_fallback_and_partial_failure(de
     assert observed[0] is output
     evidence = run["source_evidence"]
     assert evidence["capture_complete"] is True
-    assert evidence["coverage"] == "router_vendor_functions_only"
+    assert evidence["coverage"] == "router_functions_and_social_ohlcv_inputs"
     failed, success = evidence["attempts"]
     assert (failed["vendor"], success["vendor"]) == ("first", "second")
     assert failed["outcome"] == "error"
@@ -600,8 +600,10 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
     store = DeskStore(tmp_path / "evidence", {})
     barrier = threading.Barrier(2, timeout=5)
     def source(symbol):
-        barrier.wait()
-        return f"source for {symbol}"
+        def acquire():
+            barrier.wait()
+            return f"source for {symbol}"
+        return router.observe_source_call("social_fixture", "fixture", "http_response_bytes", acquire, symbol=symbol)
     monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
     monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
 
@@ -633,7 +635,9 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
     paths = []
     for record, symbol in zip(store.data["runs"], ["AAPL", "META"], strict=True):
         attempts = record["source_evidence"]["attempts"]
-        assert len(attempts) == 1
+        assert len(attempts) == 2
+        assert attempts[1]["parent_attempt_id"] == attempts[0]["attempt_id"]
+        assert attempts[1]["arguments"] == {"symbol": symbol}
         assert attempts[0]["arguments"] == {"symbol": symbol}
         path = store.directory / attempts[0]["artifact"]["path"]
         paths.append(path)
@@ -672,6 +676,101 @@ def test_router_journal_checkpoint_failure_remains_explicit(desk, monkeypatch):
     assert evidence["attempts"][0]["artifact"]["sha256"]
     assert "private filesystem error" not in json.dumps(evidence)
     assert json.loads(service.store.path.read_text())["runs"][0]["source_evidence"] == evidence
+
+
+def test_consumed_frame_artifact_preserves_precision_dtypes_axes_and_missing_values(desk, monkeypatch):
+    import struct
+
+    import numpy as np
+    import pandas as pd
+
+    from tradingagents.dataflows import router
+
+    service, _ = desk
+    frame = pd.DataFrame({
+        "Close": [np.nextafter(1.0, 2.0), -0.0, np.nan],
+        "Small": np.array([np.nextafter(np.float32(1), np.float32(2)), -0.0, np.inf], dtype="float32"),
+        "Volume": pd.Series([2**63 - 1, pd.NA, -1], dtype="Int64"),
+        "When": pd.to_datetime(["2026-01-01T00:00:00.000000123Z", None, "2026-01-03T00:00:00Z"], format="mixed"),
+        "Label": pd.Series([None, "exact text", float("nan")], dtype="object"),
+    })
+    frame.index = pd.date_range("2026-01-01T12:00:00.000000123", periods=3, tz="America/New_York", name="Date")
+    frame.columns.name = "Fields"
+    original = frame.copy(deep=True)
+    run_id = service.start_run(["AAPL"])["run_id"]
+    def acquire(symbol):
+        return router.observe_source_call("ohlcv_history", "yfinance", "yahoo_sdk_dataframe", lambda: frame, symbol=symbol)
+    monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": acquire})
+    monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
+    with router.capture_vendor_evidence(lambda receipt, output: service.store.record_source_attempt(run_id, receipt, output)):
+        assert router.route_to_vendor("get_stock_data", "AAPL") is frame
+    pd.testing.assert_frame_equal(frame, original)
+    parent, child = service.run_detail(run_id)["source_evidence"]["attempts"]
+    assert child["parent_attempt_id"] == parent["attempt_id"]
+    assert child["origin"] == "yahoo_sdk_dataframe"
+    assert parent["origin"] == "vendor_function_return"
+    receipt = child["artifact"]
+    assert receipt["format"] == "pandas-frame-v1-json"
+    payload = (service.store.directory / receipt["path"]).read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == receipt["sha256"]
+    encoded = json.loads(payload)
+
+    def scalar(value):
+        kind = value["type"]
+        if kind == "numpy":
+            return np.frombuffer(bytes.fromhex(value["hex"]), dtype=value["dtype"])[0]
+        if kind == "float64":
+            return struct.unpack(">d", bytes.fromhex(value["hex"]))[0]
+        if kind == "int":
+            return int(value["decimal"])
+        if kind == "timestamp":
+            timestamp = pd.Timestamp(int(value["nanoseconds"]), unit="ns")
+            return timestamp.tz_localize("UTC").tz_convert(value["timezone"]) if value["timezone"] else timestamp
+        if kind == "pd.NA":
+            return pd.NA
+        if kind == "pd.NaT":
+            return pd.NaT
+        return None if kind == "none" else value["value"]
+
+    columns = [scalar(v) for v in encoded["columns"]["values"]]
+    reconstructed = pd.DataFrame({name: pd.Series([scalar(row[i]) for row in encoded["data"]],
+                                                 dtype=encoded["dtypes"][i]["name"])
+                                  for i, name in enumerate(columns)})
+    reconstructed.index = pd.DatetimeIndex([scalar(v) for v in encoded["index"]["values"]],
+                                           name=scalar(encoded["index"]["name"]), freq=encoded["index"]["frequency"])
+    reconstructed.columns.name = scalar(encoded["columns"]["name"])
+    pd.testing.assert_frame_equal(reconstructed, original, check_exact=True)
+    assert reconstructed["Close"].to_numpy().tobytes() == original["Close"].to_numpy().tobytes()
+    assert reconstructed["Small"].to_numpy().tobytes() == original["Small"].to_numpy().tobytes()
+
+
+@pytest.mark.parametrize("shape", ["multiindex", "category", "object", "attributes", "credentials"])
+def test_unsupported_consumed_frames_are_explicit_gaps_without_mutation(desk, shape):
+    import pandas as pd
+
+    from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
+
+    service, _ = desk
+    frame = pd.DataFrame({"Close": [1.0]})
+    if shape == "multiindex":
+        frame.index = pd.MultiIndex.from_tuples([("AAPL", 1)])
+    elif shape == "category":
+        frame["Close"] = frame["Close"].astype("category")
+    elif shape == "object":
+        frame["Close"] = [object()]
+    elif shape == "credentials":
+        frame["api_key"] = ["must-not-be-written"]
+    else:
+        frame.attrs["custom"] = "not silently dropped"
+    original = frame.copy(deep=True)
+    run_id = service.start_run(["AAPL"])["run_id"]
+    with capture_vendor_evidence(lambda receipt, output: service.store.record_source_attempt(run_id, receipt, output)):
+        assert observe_source_call("ohlcv_history", "yfinance", "yahoo_sdk_dataframe", lambda: frame) is frame
+    pd.testing.assert_frame_equal(frame, original)
+    evidence = service.run_detail(run_id)["source_evidence"]
+    assert evidence["capture_complete"] is False
+    assert evidence["attempts"][0]["capture"] == "unavailable"
+    assert "artifact" not in evidence["attempts"][0]
 
 
 def test_refresh_normalizes_actual_snapshot_and_never_exposes_config_secrets(desk):

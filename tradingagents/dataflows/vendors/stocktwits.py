@@ -96,13 +96,20 @@ def fetch_stocktwits_messages(
     """
     url = _API.format(ticker=_stocktwits_symbol(ticker))
     req = Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
-    try:
+    from tradingagents.dataflows.router import observe_source_call
+
+    def read_response():
         with urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
+            return resp.read()
+
+    try:
+        raw = observe_source_call("stocktwits_stream", "stocktwits", "http_response_bytes", read_response,
+                                  ticker=ticker, start_date=start_date, end_date=end_date)
+        data = json.loads(raw)
     except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
-        logger.warning("StockTwits fetch failed for %s: %s", ticker, exc)
+        logger.warning("StockTwits fetch failed for %s: %s", ticker, type(exc).__name__)
         return f"<stocktwits unavailable: {type(exc).__name__}>"
 
     fetched = data.get("messages", []) if isinstance(data, dict) else []

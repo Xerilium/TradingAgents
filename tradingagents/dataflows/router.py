@@ -49,15 +49,18 @@ from tradingagents.dataflows.vendors.yahoo.news import get_global_news_yfinance,
 logger = logging.getLogger(__name__)
 
 _evidence_recorder = ContextVar("vendor_evidence_recorder", default=None)
+_evidence_parent = ContextVar("vendor_evidence_parent", default=None)
 
 
 @contextmanager
 def capture_vendor_evidence(recorder):
     """Bind the desk's recorder to this execution context, including graph child tasks."""
     token = _evidence_recorder.set(recorder)
+    parent_token = _evidence_parent.set(None)
     try:
         yield
     finally:
+        _evidence_parent.reset(parent_token)
         _evidence_recorder.reset(token)
 
 
@@ -79,6 +82,10 @@ def _source_arguments(function, args, kwargs):
         bound = inspect.signature(function).bind_partial(*args, **kwargs).arguments
     except (ValueError, TypeError):
         return {}, "unavailable"
+    return _safe_source_arguments(bound), "ticker_date_allowlist_only"
+
+
+def _safe_source_arguments(bound):
     selected = {}
     for key, value in bound.items():
         if isinstance(value, str) and (
@@ -87,16 +94,30 @@ def _source_arguments(function, args, kwargs):
                 and re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T[0-9:.+Z-]+)?", value))
         ):
             selected[key] = value
-    return selected, "ticker_date_allowlist_only"
+    return selected
 
 
-def _invoke_vendor(method, vendor, function, args, kwargs):
+def observe_source_call(operation, vendor, origin, acquire, **arguments):
+    """Observe one existing acquisition, without adding calls or changing its return.
+
+    These boundaries can nest inside router attempts; they are not additional
+    provider requests. Origins describe the consumed representation, not HTTP
+    internals hidden by a cache parser or SDK.
+    """
+    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments)
+
+
+def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None):
     recorder = _evidence_recorder.get()
     if recorder is None:
         return function(*args, **kwargs)
     arguments, argument_scope = _source_arguments(function, args, kwargs)
+    if source_arguments is not None:
+        arguments = _safe_source_arguments(source_arguments)
     receipt = {
         "attempt_id": str(uuid4()), "operation": method, "vendor": vendor,
+        "origin": origin, "parent_attempt_id": _evidence_parent.get(),
+        "boundary_kind": "router_function" if source_arguments is None else "acquisition",
         "function": f"{getattr(function, '__module__', '')}.{getattr(function, '__qualname__', type(function).__name__)}",
         "arguments": arguments, "argument_scope": argument_scope,
         "started_at": datetime.now(UTC).isoformat(), "ended_at": None,
@@ -113,6 +134,7 @@ def _invoke_vendor(method, vendor, function, args, kwargs):
     emit()
     started = time.monotonic()
     output = None
+    parent_token = _evidence_parent.set(receipt["attempt_id"])
     try:
         output = function(*args, **kwargs)
         receipt["outcome"] = "success"
@@ -121,6 +143,7 @@ def _invoke_vendor(method, vendor, function, args, kwargs):
         receipt.update(outcome="error", error_class=_error_class(exc))
         raise
     finally:
+        _evidence_parent.reset(parent_token)
         receipt.update(ended_at=datetime.now(UTC).isoformat(), elapsed_seconds=time.monotonic() - started)
         emit(output)
 

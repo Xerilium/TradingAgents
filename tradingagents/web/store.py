@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 import threading
 import time
 from datetime import UTC, datetime
@@ -201,7 +202,7 @@ class DeskStore:
                 try:
                     attempt["artifact"] = self._write_source_result(run_id, receipt["attempt_id"], output)
                     attempt["capture"] = "recorded"
-                except (OSError, TypeError, ValueError, RecursionError) as exc:
+                except (OSError, TypeError, ValueError, OverflowError, RecursionError) as exc:
                     attempt["capture"] = "unavailable"
                     attempt["capture_error"] = (
                         "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
@@ -217,9 +218,14 @@ class DeskStore:
                 # Retain the receipt in memory for the run's next existing journal save.
 
     def _write_source_result(self, run_id, attempt_id, output):
+        import pandas as pd
+
         if str(UUID(run_id)) != run_id or str(UUID(attempt_id)) != attempt_id:
             raise ValueError("Invalid source evidence ID.")
-        if isinstance(output, str):
+        if isinstance(output, pd.DataFrame):
+            payload = json.dumps(self._frame_evidence(output), ensure_ascii=False, allow_nan=False).encode("utf-8")
+            format_name = "pandas-frame-v1-json"
+        elif isinstance(output, str):
             payload, format_name = output.encode("utf-8"), "utf-8-text"
         elif isinstance(output, bytes):
             payload, format_name = output, "bytes"
@@ -242,3 +248,68 @@ class DeskStore:
             stream.flush()
             os.fsync(stream.fileno())
         return {**self._measurement_reference(destination, payload), "format": format_name}
+
+    @staticmethod
+    def _frame_evidence(frame):
+        """Safe tagged values: exact numeric bits, axes and dtypes; no executable codec."""
+        import numpy as np
+        import pandas as pd
+
+        if frame.size > 100_000 or len(frame.index) > 100_000 or len(frame.columns) > 100_000 or frame.attrs:
+            raise ValueError("Unsupported frame size or attributes.")
+        if any(isinstance(label, str) and re.search(r"(?i)api[_ -]?key|authorization|token|password|secret|cookie|headers", label)
+               for label in frame.columns):
+            raise ValueError("Frame columns may contain credentials.")
+
+        def dtype_name(dtype):
+            name = str(dtype)
+            if not re.fullmatch(r"(?:u?int(?:8|16|32|64)|float(?:16|32|64)|bool|object|str|string|"
+                                r"U?Int(?:8|16|32|64)|Float(?:32|64)|boolean|datetime64\[(?:ns|us|ms|s)(?:, [^\]]+)?\])", name):
+                raise ValueError("Unsupported frame dtype.")
+            metadata = {"name": name}
+            if isinstance(dtype, np.dtype):
+                metadata["numpy_dtype"] = dtype.str
+            if isinstance(dtype, pd.StringDtype):
+                metadata.update(storage=dtype.storage, missing=scalar(dtype.na_value))
+            return metadata
+
+        def scalar(value):
+            if value is pd.NA:
+                return {"type": "pd.NA"}
+            if value is pd.NaT:
+                return {"type": "pd.NaT"}
+            if value is None:
+                return {"type": "none"}
+            if isinstance(value, pd.Timestamp):
+                return {"type": "timestamp", "nanoseconds": str(value.value),
+                        "timezone": str(value.tz) if value.tz is not None else None}
+            if isinstance(value, np.generic) and value.dtype.kind in "biuf" and value.dtype.itemsize <= 8:
+                return {"type": "numpy", "dtype": value.dtype.str, "hex": value.tobytes().hex()}
+            if isinstance(value, bool):
+                return {"type": "bool", "value": value}
+            if isinstance(value, int):
+                return {"type": "int", "decimal": str(value)}
+            if isinstance(value, float):
+                return {"type": "float64", "hex": struct.pack(">d", value).hex()}
+            if isinstance(value, str):
+                return {"type": "str", "value": value}
+            raise TypeError("Unsupported frame cell or axis label.")
+
+        def axis(index):
+            if type(index) not in {pd.Index, pd.RangeIndex, pd.DatetimeIndex}:
+                raise ValueError("Unsupported frame axis.")
+            metadata = {"kind": type(index).__name__, "dtype": dtype_name(index.dtype),
+                        "name": scalar(index.name), "values": [scalar(v) for v in index]}
+            if isinstance(index, pd.RangeIndex):
+                metadata["range"] = [index.start, index.stop, index.step]
+            if isinstance(index, pd.DatetimeIndex):
+                metadata["frequency"] = index.freqstr
+            return metadata
+
+        return {
+            "schema": "pandas-frame-v1", "index": axis(frame.index), "columns": axis(frame.columns),
+            "dtypes": [dtype_name(dtype) for dtype in frame.dtypes],
+            "allows_duplicate_labels": frame.flags.allows_duplicate_labels,
+            "data": [[scalar(frame.iat[row, column]) for column in range(len(frame.columns))]
+                     for row in range(len(frame.index))],
+        }

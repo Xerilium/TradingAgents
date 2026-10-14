@@ -121,3 +121,35 @@ def test_html_entities_in_message_bodies_are_decoded():
     with patch.object(stocktwits, "urlopen", return_value=_stream("S&amp;P wasn&#39;t up")):
         out = stocktwits.fetch_stocktwits_messages("NVDA")
     assert "S&P wasn't up" in out
+
+
+def test_evidence_captures_response_before_screening_without_an_extra_read():
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    captured = []
+    with patch.object(stocktwits, "urlopen", return_value=_stream("SPAM", "long NVDA")) as opened:
+        baseline = stocktwits.fetch_stocktwits_messages("NVDA", screen=_drop_spam)
+        with capture_vendor_evidence(lambda receipt, output: captured.append((receipt, output))):
+            result = stocktwits.fetch_stocktwits_messages("NVDA", screen=_drop_spam)
+    assert result == baseline
+    assert opened.call_count == 2  # Exactly one request in each run.
+    receipt, raw = captured[-1]
+    assert receipt["origin"] == "http_response_bytes"
+    assert receipt["boundary_kind"] == "acquisition"
+    assert receipt["outcome"] == "success"
+    assert json.loads(raw)["messages"][0]["body"] == "SPAM"
+    assert "SPAM" not in result
+    assert len(captured) == 2  # Start/end receipts, not two requests.
+
+
+def test_evidence_records_acquisition_failure_without_changing_placeholder():
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    captured = []
+    with patch.object(stocktwits, "urlopen", side_effect=TimeoutError("private error")) as opened, \
+            capture_vendor_evidence(lambda receipt, output: captured.append(receipt)):
+        result = stocktwits.fetch_stocktwits_messages("META")
+    assert result == "<stocktwits unavailable: TimeoutError>"
+    opened.assert_called_once()
+    assert captured[-1]["error_class"] == "TimeoutError"
+    assert "private error" not in str(captured)

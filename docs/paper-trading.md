@@ -154,7 +154,8 @@ durable, subsequent startups leave finalized and recovered measurements alone.
 Recovery neither resumes research nor invokes providers or order operations.
 
 The full run-detail response and journal also include `source_evidence` for
-vendor functions executed through `route_to_vendor` during that run. Each actual
+vendor functions executed through `route_to_vendor` and the social/OHLCV input
+boundaries below during that run. Each actual
 configured fallback attempt has its own ID, operation, selected vendor/function,
 allowlisted supplied ticker/date arguments, start/end timestamps, elapsed time
 and return/error outcome. Error receipts contain classifications rather than
@@ -179,9 +180,42 @@ configured fallback and trading guards are unchanged by capture failures.
 source coverage or evidence quality. A successful vendor return can itself be
 an empty-data/error sentinel. Partial receipts/files survive later analytical
 failure; interrupted attempts remain marked as having an unknown final outcome.
-Direct social/verified-snapshot bypasses, Gateway supplemental sources and
-SDK/provider retry attempts are not captured by this slice. It is not a replay
-interface or a frozen cross-application evidence snapshot.
+Gateway supplemental sources, Jev/screening calls and hidden SDK/provider retry
+attempts remain outside this coverage. It is not a replay interface or a frozen
+cross-application evidence snapshot.
+
+StockTwits captures the existing response body bytes before JSON filtering or
+screening. Reddit captures the existing capped RSS response bytes before XML/HTML
+normalization. Transport errors retain safe classifications; malformed bodies
+that were successfully read remain inspectable even if parsing later fails.
+Neither adds a request or changes Reddit's existing retry policy.
+
+OHLCV capture retains the frame returned by the existing cache read, before cache
+eligibility checks, or the frame returned by the Yahoo SDK history/retry boundary,
+before index reset, cleaning, date filtering or gap filling. Origins are explicitly
+`http_response_bytes`, `parsed_cache_dataframe` or `yahoo_sdk_dataframe`; a cache
+frame is not the original CSV bytes and an SDK frame is not underlying HTTP.
+A cache candidate may subsequently be rejected. No mutable cache is reread for
+evidence. These inputs also cover the existing verified-snapshot path through
+`load_ohlcv`; calculated snapshot/analyst Markdown is not substituted for input.
+
+Nested receipts carry `parent_attempt_id` and `boundary_kind`: a source boundary
+inside a router attempt is overlapping evidence, not another provider request.
+The SDK retry wrapper remains opaque. Raw acquisition may contain rows/posts
+later excluded by the existing as-of filters; capture does not feed them back
+into analysis or alter those filters.
+
+DataFrames use `pandas-frame-v1-json`, a non-executable tagged representation.
+It retains ordered axis labels/names, index kind/range/frequency, column dtypes
+(including NumPy byte order and supported string storage/missing semantics),
+and per-cell values. Numeric scalars use exact binary hex or decimal integers;
+timestamps use nanoseconds plus timezone; `None`, `pd.NA`, `pd.NaT` and floating
+NaN bits remain distinct. No pickle or lossy display-string conversion is used.
+Supported frames have simple/Range/Datetime axes and numeric, boolean, object
+with supported scalar values, string, nullable numeric or datetime columns.
+MultiIndex, categories, arbitrary objects/attributes, unsupported timestamp
+ranges/types, more than 100,000 cells/axis entries, or serialized payloads above
+8 MiB produce explicit gaps. Source objects and analytical returns are unchanged.
 
 ```powershell
 rtk proxy .venv\Scripts\python.exe -m pytest

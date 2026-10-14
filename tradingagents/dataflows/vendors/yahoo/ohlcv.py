@@ -169,6 +169,8 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     continuous series. Pass ``False`` to read the values as the vendor reported
     them, leaving a cell that was never reported empty.
     """
+    from tradingagents.dataflows.router import observe_source_call
+
     # Resolve broker/forex symbols (XAUUSD+ -> GC=F) to Yahoo's convention,
     # then reject values that would escape the cache directory when
     # interpolated into the cache filename (e.g. ``../../tmp/x``).
@@ -198,7 +200,11 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     # re-fetch rather than serving the poisoned file forever.
     data = None
     if os.path.exists(data_file):
-        cached = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
+        cached = observe_source_call(
+            "ohlcv_cache_read", "yfinance", "parsed_cache_dataframe",
+            lambda: pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8"),
+            symbol=symbol, as_of_date=as_of_date,
+        )
         if (
             not cached.empty
             and "Close" in cached.columns
@@ -209,12 +215,16 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     if data is None:
         # yf.download catches every error, a rate limit included, and returns
         # an empty frame. Ticker.history raises the rate limit, so it is retried.
-        downloaded = yf_retry(lambda: yf.Ticker(canonical).history(
-            start=start_str,
-            end=end_str,
-            auto_adjust=True,
-            actions=False,
-        ))
+        downloaded = observe_source_call(
+            "ohlcv_history", "yfinance", "yahoo_sdk_dataframe",
+            lambda: yf_retry(lambda: yf.Ticker(canonical).history(
+                start=start_str,
+                end=end_str,
+                auto_adjust=True,
+                actions=False,
+            )),
+            symbol=canonical, as_of_date=as_of_date, start_date=start_str, end_date=end_str,
+        )
         if downloaded is None:
             raise_for_empty(symbol, canonical, "price rows")
         downloaded = _ensure_date_column(downloaded.reset_index())

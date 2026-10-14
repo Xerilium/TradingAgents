@@ -202,9 +202,15 @@ def _fetch_subreddit_rss(
     """
     url = _RSS.format(sub=sub, qs=_search_qs(ticker, limit))
     req = Request(url, headers={"User-Agent": _UA})
-    try:
+    from tradingagents.dataflows.router import observe_source_call
+
+    def read_response():
         with urlopen(req, timeout=timeout) as resp:
-            root = ET.fromstring(_read_capped(resp))
+            return _read_capped(resp)
+
+    try:
+        raw = observe_source_call("reddit_rss", "reddit", "http_response_bytes", read_response, ticker=ticker)
+        root = ET.fromstring(raw)
     except HTTPError as exc:
         if exc.code == 429 and _retry:
             # Honour a server-supplied Retry-After exactly (including 0); jitter
@@ -217,12 +223,12 @@ def _fetch_subreddit_rss(
             )
             time.sleep(wait)
             return _fetch_subreddit_rss(ticker, sub, limit, timeout, _retry=False)
-        logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, exc)
+        logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
         return None
     except (OSError, http.client.HTTPException, ET.ParseError) as exc:
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
-        logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, exc)
+        logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
         return None
 
     posts = []

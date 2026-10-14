@@ -52,6 +52,52 @@ def _raise(exc):
     return _resp(_r)
 
 
+def test_evidence_preserves_feed_bytes_before_html_normalization():
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    captured = []
+    with patch.object(reddit, "urlopen", return_value=_atom_resp()) as opened:
+        baseline = reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0)
+        with capture_vendor_evidence(lambda receipt, output: captured.append((receipt, output))):
+            result = reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0)
+    assert result == baseline
+    assert opened.call_count == 2
+    receipt, raw = captured[-1]
+    assert raw == _SAMPLE_ATOM.encode("utf-8")
+    assert receipt["origin"] == "http_response_bytes"
+    assert receipt["operation"] == "reddit_rss"
+    assert b"&lt;" in raw and "&lt;" not in result[0]["selftext"]
+
+
+def test_evidence_does_not_add_to_existing_reddit_retry():
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    captured = []
+    error = HTTPError("url", 429, "private error", {"Retry-After": "0"}, None)
+    with patch.object(reddit, "urlopen", side_effect=[error, _atom_resp()]) as opened, \
+            patch.object(reddit.time, "sleep") as slept, \
+            capture_vendor_evidence(lambda receipt, output: captured.append((receipt, output))):
+        result = reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0)
+    assert len(result) == 2
+    assert opened.call_count == 2
+    slept.assert_called_once_with(0.0)
+    assert [r["outcome"] for r, _ in captured] == ["running", "error", "running", "success"]
+    assert captured[-1][1] == _SAMPLE_ATOM.encode("utf-8")
+    assert "private error" not in str([r for r, _ in captured])
+
+
+def test_malformed_feed_bytes_survive_parse_failure_without_refetch():
+    from tradingagents.dataflows.router import capture_vendor_evidence
+
+    captured = []
+    with patch.object(reddit, "urlopen", return_value=_resp(lambda: b"<<not xml>>")) as opened, \
+            capture_vendor_evidence(lambda receipt, output: captured.append((receipt, output))):
+        assert reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0) is None
+    opened.assert_called_once()
+    assert captured[-1][1] == b"<<not xml>>"
+    assert captured[-1][0]["outcome"] == "success"  # Body read succeeded; parsing did not.
+
+
 @pytest.mark.unit
 class TestIsoToTimestamp:
     def test_parses_offset_and_z(self):

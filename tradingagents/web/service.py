@@ -478,12 +478,12 @@ class DeskService:
                 "results": [],
                 "account_id": market["account"]["id"],
                 "source_evidence": {
-                    "coverage": "router_vendor_functions_only",
+                    "coverage": "router_functions_and_social_ohlcv_inputs",
                     "capture_complete": True,
                     "attempts": [],
-                    "limitations": "Direct social/snapshot calls, Gateway tools and internal provider "
-                                   "requests are not captured. Success means the vendor function returned, "
-                                   "not that the response contains usable market data.",
+                    "limitations": "Nested acquisition boundaries overlap router attempts; do not add them "
+                                   "as provider requests. Jev/screening, Gateway tools and hidden SDK/provider "
+                                   "retries are not captured. Success means the boundary returned, not usable data.",
                 },
                 "measurements": {
                     "started_at": requested_at,
