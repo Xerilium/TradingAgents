@@ -986,7 +986,7 @@ class DeskService:
         with self.execution_lock:
             self.refresh()
             market = self._book()
-            with self.store.lock:
+            with self.lock, self.store.lock:
                 proposal = next(p for p in self.store.data["proposals"] if p["id"] == proposal_id)
                 reviewed = copy.deepcopy(proposal.get("reviewed"))
                 args = self._order_arguments(proposal)
@@ -1004,7 +1004,7 @@ class DeskService:
 
             def dispatch():
                 nonlocal intent_started, ready
-                with self.store.lock:
+                with self.lock, self.store.lock:
                     self._submission_guard(proposal, reviewed, market, args)
                     intent_started = True
                     proposal.update(status="submitting", submission_intent={
@@ -1110,7 +1110,7 @@ class DeskService:
 
             def dispatch():
                 nonlocal intent_started, ready
-                with self.store.lock:
+                with self.lock, self.store.lock:
                     guard()
                     intent_started = True
                     owned["cancellation"] = copy.deepcopy(cancellation)

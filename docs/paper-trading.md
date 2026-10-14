@@ -104,6 +104,10 @@ At dispatch it also rejects any newer contradictory account or paper-mode
 observation published by Refresh, even when the persistent account pin is
 unchanged. A harmless refresh or unrelated quote/research failure does not
 invalidate the fresh cancellation verification.
+Initial submission validation and both mutation dispatch callbacks acquire the
+market lock before the journal lock, matching state snapshots. Both pre-save and
+post-save checks remain inside that ordered critical section, so concurrent state
+reads cannot invert these locks around intent persistence.
 
 The blotter retains the last verified owned receipt when a broker list omits it,
 with cancellation state alongside broker status. A browser timeout keeps mutation

@@ -268,6 +268,74 @@ def test_sdk_cancel_checks_new_account_observations_without_requiring_other_feed
         assert "cancellation" not in service.store.data["proposals"][0]
 
 
+@pytest.mark.parametrize("boundary", ["submit_initial", "submit_dispatch", "cancel_dispatch"])
+def test_mutation_guards_complete_with_concurrent_state_snapshot(sdk_desk, monkeypatch, boundary):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    service, _, proposal, _, sdk = sdk_desk
+    if boundary == "cancel_dispatch":
+        service.submit(proposal["id"])
+        sdk["mutations"].clear()
+    start_reader, reader_holds_market, mutation_waits_market = (threading.Event() for _ in range(3))
+    mutation_thread = {}
+    market_lock = service.lock
+
+    class BoundedLock:
+        """Keep a regression failure bounded even if the two threads invert locks."""
+        def __init__(self, lock, market=False):
+            self.lock, self.market = lock, market
+
+        def __enter__(self):
+            if self.market and threading.get_ident() == mutation_thread.get("id") and reader_holds_market.is_set():
+                mutation_waits_market.set()
+            assert self.lock.acquire(timeout=2), "Mutation/state lock acquisition exceeded its bound"
+            return self
+
+        def __exit__(self, *args):
+            self.lock.release()
+
+    monkeypatch.setattr(service, "lock", BoundedLock(market_lock, market=True))
+    monkeypatch.setattr(service.store, "lock", BoundedLock(service.store.lock))
+
+    def prepare_contention():
+        start_reader.set()
+        assert reader_holds_market.wait(2), "Concurrent state reader did not acquire market lock"
+
+    if boundary == "submit_initial":
+        book = service._book
+
+        def initial_book():
+            value = book()
+            if not start_reader.is_set():
+                prepare_contention()
+            return value
+
+        monkeypatch.setattr(service, "_book", initial_book)
+    else:
+        sdk["initialize"] = prepare_contention
+
+    def read_state():
+        assert start_reader.wait(2), "Mutation did not reach the selected boundary"
+        with market_lock:
+            reader_holds_market.set()
+            assert mutation_waits_market.wait(2), "Mutation did not contend for market lock"
+            return service.state()
+
+    def mutate():
+        mutation_thread["id"] = threading.get_ident()
+        return service.cancel_order("broker-order") if boundary == "cancel_dispatch" else service.submit(proposal["id"])
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        reader = executor.submit(read_state)
+        mutation = executor.submit(mutate)
+        snapshot = reader.result(timeout=5)
+        outcome = mutation.result(timeout=5)
+    assert snapshot["account"]["id"] == "paper-account"
+    assert len(sdk["mutations"]) == 1
+    assert outcome["status"] == "cancel_requested" if boundary == "cancel_dispatch" else outcome["order"]["status"] == "accepted"
+
+
 def test_sdk_lost_submission_reply_is_unknown_and_never_replayed(sdk_desk):
     service, broker, proposal, _, sdk = sdk_desk
     broker.submit_error = TimeoutError("lost reply")
