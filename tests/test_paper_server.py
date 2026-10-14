@@ -67,6 +67,17 @@ def test_valid_local_json_request_dispatches_once():
     assert request._send.call_args.args == (200, {"paused": True})
 
 
+@pytest.mark.parametrize("date", [None, "2020-01-02"])
+def test_run_request_forwards_optional_analysis_date(date):
+    payload = {"symbols": ["META"], "config_revision": 3}
+    if date is not None:
+        payload["analysis_date"] = date
+    request, service = handler(path="/api/runs", body=json.dumps(payload).encode())
+    request.do_POST()
+    service.start_run.assert_called_once_with(["META"], expected_revision=3, analysis_date=date)
+    assert request._send.call_args.args[0] == 200
+
+
 def test_disconnected_browser_response_closes_without_retrying_the_operation():
     request, service = handler()
     request.send_response = Mock()

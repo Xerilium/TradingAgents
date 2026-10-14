@@ -196,6 +196,58 @@ def create_proposal(service):
     return proposal
 
 
+@pytest.mark.parametrize("value", ["", "2026-2-01", "2026-02-30", "2999-01-01", 20260101, True, [], {}])
+def test_invalid_analysis_date_fails_before_provider_access(desk, monkeypatch, value):
+    service, broker = desk
+    broker.calls.clear()
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid dates must not probe providers")
+    monkeypatch.setattr(service, "readiness", unexpected)
+    with pytest.raises(ValueError, match="date|YYYY-MM-DD"):
+        service.start_run(["AAPL"], analysis_date=value)
+    assert broker.calls == []
+    assert service.executor.pending == []
+
+
+def test_omitted_analysis_date_uses_new_york_today(desk):
+    from tradingagents.web.service import today
+    service, _ = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    assert service._find_run(run_id)["trade_date"] == today()
+
+
+def test_historical_analysis_preserves_date_and_labels_current_portfolio(desk):
+    service, broker = desk
+    observed = {}
+    class DatedGraph(ScriptedGraph):
+        def create_run_state(self, symbol, date, portfolio):
+            observed["date"] = date
+            return {**super().create_run_state(symbol, date, portfolio), "portfolio_context": "Cash: 100000"}
+
+        def stream_run(self, initial, **kwargs):
+            observed["portfolio_context"] = initial["portfolio_context"]
+            yield from super().stream_run(initial, **kwargs)
+
+        def record_decision(self, symbol, date, final):
+            observed["recorded_date"] = date
+
+    service.graph_factory = DatedGraph
+    run_id = service.start_run(["AAPL"], analysis_date="2020-01-02")["run_id"]
+    service.executor.run_next()
+    run = service._find_run(run_id)
+    assert run["status"] == "completed"
+    assert run["trade_date"] == run["results"][0]["trade_date"] == "2020-01-02"
+    assert observed["date"] == observed["recorded_date"] == "2020-01-02"
+    assert run["account_context"]["basis"] == "current"
+    assert run["account_context"]["captured_at"]
+    assert "not a historical portfolio snapshot" in observed["portfolio_context"]
+    assert "Cash: 100000" in observed["portfolio_context"]
+    assert json.loads(service.store.path.read_text())["runs"][0]["trade_date"] == "2020-01-02"
+    with pytest.raises(ValueError, match="Analysis date"):
+        service.propose(run_id)
+    assert broker.submitted == []
+
+
 def test_refresh_normalizes_actual_snapshot_and_never_exposes_config_secrets(desk):
     service, broker = desk
     state = service.refresh()

@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
+    GatewayError,
     GatewayRateLimited,
     MaenifoldGateway,
     build_langchain_tools,
@@ -418,7 +419,13 @@ class DeskService:
             raise ValueError("Broker positions are incomplete; analysis and execution are blocked.")
         return market
 
-    def start_run(self, symbols=None, expected_revision=None):
+    def start_run(self, symbols=None, expected_revision=None, analysis_date=None):
+        trade_date = today() if analysis_date is None else analysis_date
+        # Reuse the MCP binding's canonical/New York date validation without discovery.
+        try:
+            build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
+        except GatewayError as exc:
+            raise ValueError(str(exc)) from exc
         with self.store.lock:
             for prior in self.store.data["runs"]:
                 if prior.get("retry_at"):
@@ -453,7 +460,13 @@ class DeskService:
                 "id": str(uuid4()),
                 "status": "queued",
                 "created_at": now(),
-                "trade_date": today(),
+                "trade_date": trade_date,
+                "account_context": {
+                    "basis": "current",
+                    "captured_at": market["updated_at"],
+                    "description": "Current account cash and holdings captured at run creation; "
+                    "not a historical portfolio snapshot for the analysis date.",
+                },
                 "symbols": symbols,
                 "config": config,
                 "events": [],
@@ -539,6 +552,12 @@ class DeskService:
                     final = {}
                     seen = set()
                     initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
+                    account_context = run.get("account_context")
+                    if account_context:
+                        initial["portfolio_context"] = (
+                            f"{account_context['description']} Captured at {account_context['captured_at']}.\n"
+                            + initial.get("portfolio_context", "")
+                        )
                     for messages, state in graph.stream_run(
                         initial, **graph.propagator.get_graph_args()
                     ):

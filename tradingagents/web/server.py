@@ -162,7 +162,10 @@ class DeskHandler(BaseHTTPRequestHandler):
             elif path == "/api/config":
                 result = service.save_config(data)
             elif path == "/api/runs":
-                result = service.start_run(data.get("symbols"), expected_revision=data.get("config_revision"))
+                result = service.start_run(
+                    data.get("symbols"), expected_revision=data.get("config_revision"),
+                    analysis_date=data.get("analysis_date"),
+                )
             elif path == "/api/runs/cancel":
                 result = service.cancel_run(data["run_id"])
             elif path == "/api/proposals":

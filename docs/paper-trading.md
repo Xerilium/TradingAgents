@@ -77,6 +77,19 @@ clear an unknown outcome. Use one server process per data directory.
 
 ## Execution boundaries
 
+The existing `POST /api/runs` endpoint accepts optional `analysis_date` in canonical
+`YYYY-MM-DD` format, alongside `symbols` and `config_revision`. Omission or JSON
+`null` uses the current New York date; the UI retains this default. Invalid or
+future dates fail before account/provider access. For example:
+`{"symbols":["META"],"analysis_date":"2020-01-02"}`.
+
+Historical research retains that date through the integrated graph, MCP tools,
+reports and Laya check. It still uses current account cash and holdings captured
+at run creation, explicitly labeled in the run's `account_context` and the
+graph's portfolio context. This is not a historical portfolio simulation.
+Historical runs cannot produce paper order proposals; existing current-date,
+account, configuration and submission freshness guards still apply.
+
 - USD stocks, long positions, whole-share DAY limit orders, regular-session
   execution only. No shorting, leverage, options, or fractional orders.
 - Default allocation 70%, cash reserve 20%, per-stock cap 15%, per-order cap
