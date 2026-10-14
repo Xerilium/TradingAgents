@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from langchain_core.tools import BaseTool
+
 import tradingagents
 from tradingagents.agents.context import build_instrument_context, resolve_instrument_identity
 from tradingagents.agents.rating import run_rating
@@ -57,6 +59,7 @@ class TradingAgentsGraph:
         debug=False,
         config: dict[str, Any] = None,
         callbacks: list | None = None,
+        supplemental_tools: list[BaseTool] | None = None,
     ):
         """Initialize the trading agents graph and components.
 
@@ -65,10 +68,13 @@ class TradingAgentsGraph:
             debug: Whether to run in debug mode
             config: Configuration dictionary. If None, uses default config
             callbacks: Optional list of callback handlers (e.g., for tracking LLM/tool stats)
+            supplemental_tools: Additional research tools for the market, news,
+                and fundamentals analysts. Broker mutations must be excluded by the caller.
         """
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
+        self.supplemental_tools = tuple(supplemental_tools or ())
 
         set_config(self.config)
 
@@ -98,6 +104,7 @@ class TradingAgentsGraph:
             self.deep_thinking_llm,
             self.conditional_logic,
             max_tool_rounds,
+            supplemental_tools=self.supplemental_tools,
         )
 
         self.propagator = Propagator(
@@ -148,6 +155,14 @@ class TradingAgentsGraph:
         the run keeps its files and how it retries are left out.
         """
         settings = {k: v for k, v in self.config.items() if k not in _NOT_IN_SIGNATURE}
+        supplemental_tools = getattr(self, "supplemental_tools", ())
+        if supplemental_tools:
+            settings["supplemental_tools"] = [
+                {"name": tool.name, "description": tool.description,
+                 "schema": (tool.args_schema if isinstance(tool.args_schema, dict)
+                            else tool.get_input_schema().model_json_schema())}
+                for tool in supplemental_tools
+            ]
         digest = hashlib.sha256(json.dumps(settings, sort_keys=True, default=str).encode()).hexdigest()[:12]
         return "|".join([
             "analysts=" + ",".join(self.selected_analysts),

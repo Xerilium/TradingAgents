@@ -29,6 +29,28 @@
 
 # TradingAgents: Multi-Agents LLM Financial Trading Framework
 
+## Paper trading desk
+
+A local Active Trader-style workspace connects TradingAgents to Maenifold, Laya,
+and Alpaca paper trading through the official MCP SDK. Start with FANGMAN, edit
+the stock universe and risk limits, inspect agent research, and review each paper
+order before submitting it. See [setup and operation](docs/paper-trading.md).
+
+```powershell
+rtk proxy .venv\Scripts\python.exe -m tradingagents.web.server
+```
+
+The workspace supports up to 1,000 symbols, including a 500-stock index. Import
+a CSV with a `Symbol` or `Ticker` column in Settings, review the draft, then save.
+Search and filters narrow the candidate list without changing your research
+selection. Large research selections show a workload review before launch;
+duration estimates use completed runs with the same model configuration.
+Watchlists, research, positions, proposals and orders use bounded pages.
+
+Open <http://127.0.0.1:8088>. The default Maenifold endpoint is
+<http://localhost:8080/mcp>. Research defaults to your existing Codex ChatGPT
+sign-in (`chatgpt` provider); no API key or Azure endpoint is required.
+
 ## News
 
 <!-- news:start -->

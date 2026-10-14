@@ -28,10 +28,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install (with dev extras)
+      - name: Install (with dev and paper extras)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,paper]"
       - name: Run test suite
         run: pytest -q
 
@@ -50,6 +50,11 @@ jobs:
           # Catches undeclared runtime deps (e.g. #994 python-dotenv): a bare
           # install must import the package and the CLI module.
           python -c "import tradingagents, cli.main; print('clean-install import OK')"
+      - name: Paper desk install and packaged assets
+        run: |
+          pip install ".[paper]"
+          cd /tmp
+          python -c "from importlib.resources import files; import tradingagents.web.server; assets=files('tradingagents.web').joinpath('static'); assert all(assets.joinpath(name).is_file() for name in ('index.html', 'app.css', 'app.js')); print('paper install and assets OK')"
 
   lint:
     name: ruff (strict, full repo)

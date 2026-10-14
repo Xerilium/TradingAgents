@@ -1,0 +1,40 @@
+// Offline UAT regressions: actual application functions, no upstream requests.
+const source=require('node:fs').readFileSync('.impeccable/review/paper-desk-render-check.cjs','utf8');
+const harness=source.split("assert(render('renderOverview()')")[0];
+const checks=String.raw`
+(async()=>{
+ await render('stateWait');
+ const bars=fixture.bars.META.map(bar=>({...bar}));
+ let calls=[];
+ context.fetch=async(path)=>{calls.push(path);return {ok:true,status:200,json:async()=>({symbol:path.split('/').at(-1).split('?')[0],bars})};};
+ render("state.bars={META:[]};chartLoadedAt.clear();chartErrors.clear();selectedSymbol='META';");
+ await render('ensureChart()');
+ assert.equal(calls.length,1,'An empty snapshot must not prevent initial detail loading');
+ assert(render('stockChart()').includes('daily price candles'));
+ render("state.bars.AAPL=state.bars.META;chartMode='equity';selectStock('AAPL');");
+ assert.equal(render('chartMode'),'stock');
+ assert.equal(render('selectedSymbol'),'AAPL');
+ assert(render('chartPanel()').includes('AAPL daily price candles'));
+ render("state.bars={};chartLoadedAt.clear();chartErrors.clear();selectedSymbol='AAPL';");
+ let release;
+ calls=[];
+ context.fetch=path=>{calls.push(path);return new Promise(resolve=>release=()=>resolve({ok:true,json:async()=>({symbol:'AAPL',bars})}));};
+ const first=render('ensureChart()');
+ render("selectStock('META');selectStock('AAPL');selectStock('META');");
+ assert.equal(calls.length,1,'Rapid switching must not queue a request per click');
+ context.fetch=async(path)=>{calls.push(path);return {ok:true,json:async()=>({symbol:'META',bars})};};
+ release();await first;for(let i=0;i<15;i++)await Promise.resolve();
+ assert.equal(calls.length,2,'Load only the most recent focus after the in-flight request');
+ assert.equal(render('selectedSymbol'),'META');
+ assert(render('chartPanel()').includes('META daily price candles'));
+ let rateCalls=0;
+ context.fetch=async()=>{rateCalls++;return {ok:false,status:429,headers:{get:()=> '60'},json:async()=>({error:'Rate limit'})};};
+ await assert.rejects(render("api('/api/instruments/META')"),/429/);
+ for(let i=0;i<20;i++)await assert.rejects(render("api('/api/instruments/AAPL')"),/429/);
+ assert.equal(rateCalls,1,'Shared cooldown must block repeated clicks');
+ render('rateLimitedUntil=0;');
+ context.fetch=async()=>({ok:true,json:async()=>fixture});
+ await render("api('/api/state')");
+ console.log('PASS: META empty-cache recovery, linked chart switching, rapid-selection coalescing, 429 click suppression and recovery.');
+})().catch(error=>{console.error(error);process.exitCode=1;});`;
+new Function('require','process',harness+checks)(require,process);

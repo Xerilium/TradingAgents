@@ -1,8 +1,10 @@
 import logging
 from collections import Counter
+from collections.abc import Iterable
 from typing import Any, TypedDict
 
 from langchain_core.messages import HumanMessage
+from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -99,12 +101,14 @@ class GraphSetup:
         deep_thinking_llm: Any,
         conditional_logic: ConditionalLogic,
         max_tool_rounds: int,
+        supplemental_tools: Iterable[BaseTool] | None = None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
         self.conditional_logic = conditional_logic
         self.max_tool_rounds = max_tool_rounds
+        self.supplemental_tools = tuple(supplemental_tools or ())
 
     def setup_graph(
         self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None
@@ -120,13 +124,13 @@ class GraphSetup:
             memory_node: Node that settles past decisions and returns the run's
                 ``past_context``. It runs alongside the analysts.
         """
-        plan = build_analyst_execution_plan(selected_analysts)
+        plan = build_analyst_execution_plan(selected_analysts, self.supplemental_tools)
 
         analyst_factories = {
-            "market": lambda: create_market_analyst(self.quick_thinking_llm),
-            "social": lambda: create_sentiment_analyst(self.quick_thinking_llm),
-            "news": lambda: create_news_analyst(self.quick_thinking_llm),
-            "fundamentals": lambda: create_fundamentals_analyst(self.quick_thinking_llm),
+            "market": lambda tools: create_market_analyst(self.quick_thinking_llm, tools=tools),
+            "social": lambda tools: create_sentiment_analyst(self.quick_thinking_llm),
+            "news": lambda tools: create_news_analyst(self.quick_thinking_llm, tools=tools),
+            "fundamentals": lambda tools: create_fundamentals_analyst(self.quick_thinking_llm, tools=tools),
         }
 
         bull_researcher_node = create_bull_researcher(self.quick_thinking_llm)
@@ -143,7 +147,7 @@ class GraphSetup:
 
         for spec in plan.specs:
             workflow.add_node(spec.agent_node,
-                              _analyst_graph(spec, analyst_factories[spec.key](), self.max_tool_rounds))
+                              _analyst_graph(spec, analyst_factories[spec.key](spec.tools), self.max_tool_rounds))
 
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)

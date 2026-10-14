@@ -1,0 +1,112 @@
+"""Atomic local journal. Unknown broker submissions are never retried blindly."""
+
+from __future__ import annotations
+
+import copy
+import json
+import os
+import threading
+import time
+from pathlib import Path
+
+
+class DeskStore:
+    def __init__(self, directory: Path, defaults: dict):
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.path = self.directory / "desk.json"
+        self.lock = threading.RLock()
+        self.data = {
+            "config": defaults,
+            "runs": [],
+            "proposals": [],
+            "paused": False,
+            "paper_account_id": None,
+            "config_revision": 0,
+        }
+        if self.path.exists():
+            saved = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(saved, dict):
+                raise ValueError(
+                    "Paper journal is not an object; preserve it and restore a valid journal."
+                )
+            self.data.update(saved)
+        for run in self.data["runs"]:
+            if run["status"] in {"queued", "running", "cancelling"}:
+                run["status"] = "interrupted"
+                run["error"] = "Server stopped during analysis. Start a new run."
+        for proposal in self.data["proposals"]:
+            if proposal["status"] == "submitting":
+                proposal["status"] = "unknown"
+                proposal["reason"] = (
+                    "Submission interrupted. Refresh broker orders to reconcile; do not resubmit."
+                )
+        self.save()
+
+    @staticmethod
+    def result_summary(result):
+        summary = {key: value for key, value in result.items() if key not in {"reports", "laya"}}
+        summary["report_keys"] = list(result.get("reports", {}))
+        summary["revision"] = result.get("revision", 0)
+        laya = result.get("laya") or {}
+        summary["laya"] = {
+            "grade": laya.get("contract", {}).get("grade", laya.get("grade")),
+            "auto_execute": laya.get("auto_execute") is True,
+            "summary": laya.get("contract", {}).get("summary", laya.get("summary")),
+        } if laya else None
+        return copy.deepcopy(summary)
+
+    def snapshot(self, *, compact=False, run_id=None):
+        with self.lock:
+            if compact:
+                data = copy.deepcopy({key: value for key, value in self.data.items() if key != "runs"})
+                selected = run_id if any(r["id"] == run_id for r in self.data["runs"]) else next((r["id"] for r in self.data["runs"]), None)
+                data["runs"] = []
+                data["research"] = {}
+                for run in self.data["runs"]:
+                    results = run.get("results", [])
+                    counts = {status: sum(r.get("status") == status for r in results)
+                              for status in ("completed", "failed", "cancelled", "running")}
+                    counts["queued"] = max(0, len(run["symbols"]) - len(results))
+                    summary = {key: copy.deepcopy(value) for key, value in run.items()
+                               if key not in {"results", "config", "events"}}
+                    summary.update(
+                        counts=counts,
+                        results=[self.result_summary(r) for r in results] if run["id"] == selected else [],
+                        events=copy.deepcopy(run.get("events", [])[-40:]) if run["id"] == selected else [],
+                        event_count=len(run.get("events", [])),
+                        config={key: run.get("config", {}).get(key) for key in
+                                ("name", "llm_provider", "deep_think_llm", "quick_think_llm",
+                                 "max_debate_rounds", "max_risk_discuss_rounds")},
+                    )
+                    data["runs"].append(summary)
+                    for result in results:
+                        if result["symbol"] not in data["research"]:
+                            status = self.result_summary(result)
+                            data["research"][result["symbol"]] = {
+                                **{key: status.get(key) for key in
+                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision")},
+                                "run_id": run["id"],
+                                "laya": {key: status["laya"].get(key) for key in
+                                         ("grade", "auto_execute")} if status["laya"] else None,
+                            }
+                return data
+            return copy.deepcopy(self.data)
+
+    def save(self):
+        with self.lock:
+            temporary = self.path.with_suffix(".tmp")
+            with temporary.open("w", encoding="utf-8") as stream:
+                json.dump(self.data, stream, ensure_ascii=False, indent=2, allow_nan=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # Windows indexers can briefly hold the destination open. Retry
+            # only this local atomic rename; never repeat broker operations.
+            for attempt in range(3):
+                try:
+                    os.replace(temporary, self.path)
+                    break
+                except PermissionError:
+                    if attempt == 2:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))

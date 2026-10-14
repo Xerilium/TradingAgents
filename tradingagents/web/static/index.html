@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#182b3b">
+  <meta name="description" content="TradingAgents paper trading desk. Portfolio, agent research, and controlled paper execution.">
+  <title>TradingAgents · Paper desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23182b3b'/%3E%3Cpath d='M7 11h18M16 11v14M7 7h18' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/lists.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to workspace</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Application navigation">
+      <a class="brand" href="#overview" aria-label="TradingAgents portfolio">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 8h22M5 13h22M16 13v15"/></svg>
+        <span>Trading<span class="brand-light">Agents</span><small>Paper desk</small></span>
+      </a>
+      <nav id="navigation" aria-label="Main"></nav>
+      <div class="sidebar-bottom">
+        <div class="paper-identity"><span class="paper-dot"></span><strong>Paper trading</strong><span>Simulation environment</span></div>
+        <button id="pause-trading" class="sidebar-button" type="button">Pause execution</button>
+        <div id="gateway-status" class="gateway-status"><span class="status-dot"></span><span>Checking gateway</span></div>
+        <span class="sidebar-footer">TradingAgents + maenifold</span>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="breadcrumb"><span id="universe-name">FANGMAN</span><span class="breadcrumb-slash">/</span><span id="page-label">Portfolio</span></div>
+        <div class="topbar-actions"><span id="last-updated" class="muted">Waiting for connection</span><button id="refresh" class="button button-quiet button-small" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 8a7 7 0 0 1 11.6-3L20 8M4 16l2.3 3A7 7 0 0 0 18 16"/></svg><span>Refresh</span></button></div>
+      </header>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <main id="main" tabindex="-1"><div class="initial-state"><div class="loading-bar"></div><h1>Opening your paper desk</h1><p>Connecting to your local TradingAgents service.</p></div></main>
+      <footer class="workspace-footer"><span>Local workspace · maenifold MCP · Alpaca paper</span><span>Snapshot market data · USD</span></footer>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="order-dialog" aria-labelledby="order-dialog-title">
+    <form method="dialog"><button class="close-dialog icon-button" aria-label="Close order preview" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></form>
+    <div id="order-preview"></div>
+  </dialog>
+  <dialog id="research-dialog" aria-labelledby="research-dialog-title">
+    <form method="dialog"><button class="close-dialog icon-button" aria-label="Close research workload review" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></form>
+    <div id="research-preview"></div>
+  </dialog>
+</body>
+</html>
