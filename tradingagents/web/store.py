@@ -38,6 +38,10 @@ class DeskStore:
                 )
             self.data.update(saved)
         for run in self.data["runs"]:
+            run.setdefault("portfolio_evidence", {
+                "status": "unavailable",
+                "reason": "Legacy run did not record its consumed portfolio context; cash and holdings are unknown.",
+            })
             if run["status"] in {"queued", "running", "cancelling"}:
                 run["status"] = "interrupted"
                 run["error"] = "Server stopped during analysis. Start a new run."
@@ -125,7 +129,11 @@ class DeskStore:
                               for status in ("completed", "failed", "cancelled", "running")}
                     counts["queued"] = max(0, len(run["symbols"]) - len(results))
                     summary = {key: copy.deepcopy(value) for key, value in run.items()
-                               if key not in {"results", "config", "events", "source_evidence"}}
+                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence"}}
+                    portfolio_evidence = run.get("portfolio_evidence", {})
+                    summary["portfolio_evidence"] = {
+                        key: copy.deepcopy(value) for key, value in portfolio_evidence.items() if key != "context"
+                    }
                     if "source_evidence" in run:
                         evidence = run["source_evidence"]
                         summary["source_evidence"] = {
@@ -176,12 +184,29 @@ class DeskStore:
 
     def write_measurements(self, run_id, measurements):
         """Write once under the existing run report path; never replace prior evidence."""
+        return self._write_json_artifact(run_id, "measurements", measurements)
+
+    def record_portfolio_context(self, run_id, context):
+        """Keep the consumed context, never reconstruct it from a later account refresh."""
+        with self.lock:
+            run = next(r for r in self.data["runs"] if r["id"] == run_id)
+            if "context" in run.get("portfolio_evidence", {}):
+                return
+            evidence = {"status": "recorded", "context": copy.deepcopy(context)}
+            try:
+                evidence["artifact"] = self._write_json_artifact(run_id, "portfolio-context", context)
+            except OSError:
+                evidence.update(status="journal_only", reason="Portfolio artifact could not be written; context remains in journal.")
+            run["portfolio_evidence"] = evidence
+            self.save()
+
+    def _write_json_artifact(self, run_id, kind, content):
         if str(UUID(run_id)) != run_id:
-            raise ValueError("Invalid run ID for measurement export.")
-        relative = Path("reports") / run_id / f"measurements-{uuid4()}.json"
+            raise ValueError("Invalid run ID for evidence export.")
+        relative = Path("reports") / run_id / f"{kind}-{uuid4()}.json"
         destination = self.directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(measurements, sort_keys=True, ensure_ascii=False,
+        payload = json.dumps(content, sort_keys=True, ensure_ascii=False,
                              indent=2, allow_nan=False).encode("utf-8")
         with destination.open("xb") as stream:
             stream.write(payload)

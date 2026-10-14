@@ -249,6 +249,104 @@ def test_historical_analysis_preserves_date_and_labels_current_portfolio(desk):
     assert broker.submitted == []
 
 
+@pytest.mark.parametrize("historical", [False, True])
+def test_consumed_portfolio_evidence_survives_refresh_restart_and_export(desk, historical):
+    service, broker = desk
+    broker.account.update(cash="12345.6789012345", currency="CAD")
+    broker.positions = [
+        {"symbol": "MSFT", "qty": "-2.125", "avg_entry_price": "301.123456789"},
+        {"symbol": "AAPL", "qty": "3.75"},
+    ]
+    observed = {}
+
+    class PortfolioGraph(ScriptedGraph):
+        def create_run_state(self, symbol, date, portfolio):
+            observed["portfolio"] = portfolio.model_dump(mode="json")
+            observed["text"] = portfolio.render(symbol)
+            return {"portfolio_context": observed["text"]}
+
+        def stream_run(self, initial, **kwargs):
+            observed["input"] = copy.deepcopy(initial)
+            yield from super().stream_run(initial, **kwargs)
+
+    service.graph_factory = PortfolioGraph
+    run_id = service.start_run(["AAPL"], analysis_date="2020-01-02" if historical else None)["run_id"]
+    accepted = copy.deepcopy(service._find_run(run_id))
+    preflight = copy.deepcopy(service.executor.pending[0][1][1])
+    assert accepted["portfolio_evidence"]["status"] == "unavailable"
+    # Change the live snapshot even before worker dispatch; it must use its own preflight book.
+    broker.account.update(id="later-account", cash="999", currency="EUR")
+    broker.positions = []
+    service.refresh()
+    service.executor.run_next()
+    run = service._find_run(run_id)
+    assert run["status"] == "completed"
+    evidence = copy.deepcopy(run["portfolio_evidence"])
+    assert evidence["status"] == "recorded"
+    context = evidence["context"]
+    assert context["portfolio"] == observed["portfolio"] == {
+        "cash": 12345.6789012345, "currency": "USD",  # Existing graph currency policy is unchanged.
+        "positions": [{"ticker": "MSFT", "quantity": -2.125, "average_price": 301.123456789},
+                      {"ticker": "AAPL", "quantity": 3.75, "average_price": None}],
+    }
+    assert context["account_id"] == preflight["account"]["id"] == accepted["account_id"]
+    assert context["analysis_date"] == run["trade_date"]
+    assert context["account_context"] == accepted["account_context"]
+    assert context["account_context"]["captured_at"] == preflight["updated_at"]
+    assert context["account_context"]["basis"] == "current"
+    assert "not a historical portfolio snapshot" in context["account_context"]["description"]
+    assert observed["input"]["portfolio_context"] == (
+        f"{accepted['account_context']['description']} Captured at {preflight['updated_at']}.\n" + observed["text"]
+    )
+    artifact = evidence["artifact"]
+    path = service.store.directory / artifact["path"]
+    payload = path.read_bytes()
+    assert json.loads(payload) == context
+    assert hashlib.sha256(payload).hexdigest() == artifact["sha256"]
+    assert len(payload) == artifact["bytes"]
+    assert "never-display" not in payload.decode()
+    service.refresh()
+    # Repeated recording cannot replace the first consumed book.
+    service.store.record_portfolio_context(run_id, {"portfolio": {"cash": 999}})
+    assert service._find_run(run_id)["portfolio_evidence"] == evidence
+    recovered = DeskStore(service.store.directory, {})
+    assert recovered.snapshot()["runs"][0]["portfolio_evidence"] == evidence
+    assert "context" not in recovered.snapshot(compact=True)["runs"][0]["portfolio_evidence"]
+    assert path.read_bytes() == payload
+    assert len(list(path.parent.glob("portfolio-context-*.json"))) == 1
+    assert broker.submitted == []
+
+
+def test_legacy_portfolio_is_unknown_not_reconstructed(desk):
+    service, _ = desk
+    run_id = complete_run(service)
+    service._find_run(run_id).pop("portfolio_evidence")
+    service.store.save()
+    recovered = DeskStore(service.store.directory, {})
+    evidence = recovered.snapshot()["runs"][0]["portfolio_evidence"]
+    assert evidence["status"] == "unavailable"
+    assert "unknown" in evidence["reason"]
+    assert "context" not in evidence and "artifact" not in evidence
+
+
+def test_portfolio_artifact_failure_preserves_consumed_context_in_journal(desk, monkeypatch):
+    service, _ = desk
+    original = service.store._write_json_artifact
+
+    def fail_portfolio(run_id, kind, content):
+        if kind == "portfolio-context":
+            raise OSError("offline fixture")
+        return original(run_id, kind, content)
+
+    monkeypatch.setattr(service.store, "_write_json_artifact", fail_portfolio)
+    run_id = complete_run(service)
+    evidence = service._find_run(run_id)["portfolio_evidence"]
+    assert evidence["status"] == "journal_only"
+    assert evidence["context"]["portfolio"]["cash"] == 100000
+    assert "artifact" not in evidence
+    assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["portfolio_evidence"] == evidence
+
+
 @pytest.mark.parametrize("fail", [False, True])
 def test_run_measurements_capture_real_callbacks_and_terminal_artifact(desk, monkeypatch, fail):
     from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel

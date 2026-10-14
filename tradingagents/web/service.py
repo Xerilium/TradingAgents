@@ -477,6 +477,10 @@ class DeskService:
                 "events": [],
                 "results": [],
                 "account_id": market["account"]["id"],
+                "portfolio_evidence": {
+                    "status": "unavailable",
+                    "reason": "No graph has consumed a portfolio context for this run yet.",
+                },
                 "source_evidence": {
                     "coverage": "router_functions_and_social_ohlcv_inputs",
                     "capture_complete": True,
@@ -629,6 +633,14 @@ class DeskService:
                     final = {}
                     seen = set()
                     initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
+                    self.store.record_portfolio_context(run_id, {
+                        "schema_version": 1,
+                        "run_id": run_id,
+                        "analysis_date": run["trade_date"],
+                        "account_id": market["account"]["id"],
+                        "account_context": copy.deepcopy(run["account_context"]),
+                        "portfolio": portfolio.model_dump(mode="json"),
+                    })
                     account_context = run.get("account_context")
                     if account_context:
                         initial["portfolio_context"] = (

@@ -75,6 +75,26 @@ its stable client order ID. Unknown outcomes block new submissions; the desk
 never retries a broker mutation automatically. Do not remove the journal to
 clear an unknown outcome. Use one server process per data directory.
 
+## Consumed portfolio evidence
+
+When an accepted run first passes its `PortfolioContext` to the graph, its full
+run detail and journal retain `portfolio_evidence`: the exact cash, currency and
+ordered positions (ticker, quantity and nullable average price), bound to the
+preflight account ID, snapshot capture timestamp and analysis date. The existing
+current-account description is preserved even for historical analysis dates.
+This records the context actually supplied, including the existing USD currency
+policy; it does not substitute the broker's currency or change graph input text.
+
+A unique `reports/<run-id>/portfolio-context-<uuid>.json` stores the same context
+with its SHA-256, byte count and relative path. Later refreshes and store reloads
+do not replace it. Compact state carries the status/reference without the full
+positions. If artifact writing fails, `journal_only` explicitly identifies the
+remaining journal evidence. Legacy runs have unavailable/unknown context, never
+holdings reconstructed from today's account. Accepted runs that have not supplied
+a context to a graph also remain explicitly unavailable. Rejected preflight
+requests and their attempt accounting remain outside this evidence boundary.
+No credentials, raw Gateway configuration or full broker response is included.
+
 ## Execution boundaries
 
 Known retryable Gateway reads and Codex rate-limit failures permit at most the
