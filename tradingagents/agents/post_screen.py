@@ -13,10 +13,13 @@ block says screening was unavailable.
 """
 
 import logging
+import math
 import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC
+from email.utils import parsedate_to_datetime
 
 import requests
 
@@ -95,14 +98,27 @@ def system_one(state, questions: dict) -> dict[str, dict]:
         failure, retry_after = f"HTTP {response.status_code}", _retry_after(response)
         if response.status_code not in _RETRY_STATUSES:
             break
+        if retry_after is not None and retry_after > _MAX_WAIT:
+            raise TypeSafeError(
+                f"{failure}; Retry-After {retry_after:g} seconds exceeds the "
+                f"{_MAX_WAIT:g}-second automatic wait limit; screening deferred"
+            )
     raise TypeSafeError(failure)
 
 
 def _retry_after(response) -> float | None:
+    value = response.headers.get("retry-after")
     try:
-        return min(max(0.0, float(response.headers.get("retry-after"))), _MAX_WAIT)
+        delay = float(value)
     except (TypeError, ValueError):
-        return None
+        try:
+            deadline = parsedate_to_datetime(value)
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=UTC)
+            delay = deadline.timestamp() - time.time()
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return max(0.0, delay) if math.isfinite(delay) else None
 
 
 def _answers(response, questions: dict) -> dict[str, dict]:

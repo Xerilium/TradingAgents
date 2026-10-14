@@ -119,12 +119,47 @@ def test_a_retry_after_header_sets_the_wait(post):
 
 
 @pytest.mark.unit
-def test_a_long_retry_after_is_capped(post):
-    post.queue.extend([_Response(529, headers={"retry-after": "600"}), _ok()])
+@pytest.mark.parametrize("status", [429, 529])
+@pytest.mark.parametrize("header", ["900", "Wed, 14 Oct 2026 12:15:00 GMT"])
+def test_a_long_retry_after_defers_without_sleep_or_replacement(post, monkeypatch, status, header):
+    monkeypatch.setattr(typesafe.time, "time", lambda: 1791979200)
+    post.queue.append(_Response(status, headers={"retry-after": header}))
+    with pytest.raises(typesafe.TypeSafeError, match=f"HTTP {status}; Retry-After 900 seconds.*deferred"):
+        typesafe.system_one("s", QUESTIONS)
+    assert len(post) == 1
+    assert post.sleeps == []
 
-    typesafe.system_one("s", QUESTIONS)
 
-    assert post.sleeps == [typesafe._MAX_WAIT]
+@pytest.mark.unit
+@pytest.mark.parametrize("header,wait", [("30", 30), ("7", 7), ("0", 0),
+                                         ("Wed, 14 Oct 2026 12:00:30 GMT", 30)])
+def test_short_retry_deadlines_keep_three_total_attempts(post, monkeypatch, header, wait):
+    monkeypatch.setattr(typesafe.time, "time", lambda: 1791979200)
+    post.queue.extend([_Response(429, headers={"retry-after": header})] * 3)
+    with pytest.raises(typesafe.TypeSafeError, match="^HTTP 429$"):
+        typesafe.system_one("s", QUESTIONS)
+    assert len(post) == 3
+    assert post.sleeps == [wait, wait]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("header", [None, "bad", "nan", "inf", "-inf"])
+def test_unknown_delays_keep_default_jitter(post, monkeypatch, header):
+    monkeypatch.setattr(typesafe.random, "uniform", lambda a, b: 1.1)
+    post.queue.extend([_Response(529, headers={"retry-after": header})] * 3)
+    with pytest.raises(typesafe.TypeSafeError, match="^HTTP 529$"):
+        typesafe.system_one("s", QUESTIONS)
+    assert len(post) == 3
+    assert post.sleeps == [1.1, 2.2]
+
+
+@pytest.mark.unit
+def test_terminal_response_keeps_identity_despite_long_retry_header(post):
+    post.queue.append(_Response(401, headers={"retry-after": "900"}))
+    with pytest.raises(typesafe.TypeSafeError, match="^HTTP 401$"):
+        typesafe.system_one("s", QUESTIONS)
+    assert len(post) == 1
+    assert post.sleeps == []
 
 
 @pytest.mark.unit
@@ -235,6 +270,18 @@ def test_one_failed_request_leaves_every_post_unscreened(jev):
 
     assert keep == [True, True]
     assert note == "<Jev screening unavailable (HTTP 401); posts are unscreened>"
+
+
+@pytest.mark.unit
+def test_deferred_screening_discloses_unscreened_posts(jev, post):
+    jev["a"] = _Response(429, headers={"retry-after": "900"})
+    keep, note = typesafe.jev_screen("NVDA")(["a"])
+    assert keep == [True]
+    assert "HTTP 429; Retry-After 900 seconds" in note
+    assert "screening deferred" in note
+    assert "posts are unscreened" in note
+    assert len(post) == 1
+    assert post.sleeps == []
 
 
 @pytest.mark.unit

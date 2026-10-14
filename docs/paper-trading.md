@@ -94,6 +94,12 @@ Explicit structured retry metadata takes precedence over generic 429 text or a
 parent message, including nested error metadata and JSON-encoded MCP text blocks.
 Text-only rate limits use the default only when no explicit delay is present.
 
+Jev post screening retains its separate three-total-attempt policy and 30-second
+automatic wait limit. A valid longer `Retry-After`, in seconds or HTTP-date form,
+defers screening without sleeping or issuing a replacement request. Posts remain
+available with the explicit unscreened disclosure and the HTTP failure and delay.
+Malformed or non-finite delays retain the existing bounded jittered backoff.
+
 The existing `POST /api/runs` endpoint accepts optional `analysis_date` in canonical
 `YYYY-MM-DD` format, alongside `symbols` and `config_revision`. Omission or JSON
 `null` uses the current New York date; the UI retains this default. Invalid or
