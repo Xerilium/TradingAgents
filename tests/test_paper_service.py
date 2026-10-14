@@ -415,6 +415,22 @@ def test_legacy_proposal_missing_review_cannot_be_submitted(desk):
     assert broker.submitted == []
 
 
+def test_terminal_before_cancel_returns_owned_receipt_without_cancellation_intent(desk):
+    service, broker = desk
+    proposal = create_proposal(service)
+    service.submit(proposal["id"])
+    broker.receipts[proposal["client_order_id"]].update(
+        status="filled", filled_qty=str(proposal["qty"]), filled_avg_price="100")
+    assert service.cancel_order("broker-order") == {"status": "filled"}
+    service.refresh()
+    owned = service.store.data["proposals"][0]
+    assert owned["broker_receipt"]["status"] == owned["status"] == "filled"
+    assert "cancellation" not in owned
+    assert "reconciliation_error" not in owned
+    service._require_known_submissions()
+    assert not any(command == "cancel_order_by_id" for _, command, _ in broker.calls)
+
+
 @pytest.mark.parametrize("value", ["", "2026-2-01", "2026-02-30", "2999-01-01", 20260101, True, [], {}])
 def test_invalid_analysis_date_fails_before_provider_access(desk, monkeypatch, value):
     service, broker = desk

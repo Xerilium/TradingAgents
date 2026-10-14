@@ -153,6 +153,29 @@ async function keyboardAction(action,path,dataset={}){
   assert(!render("cancellationPending('order-1')"));
   assert(render('orderBlotter()').includes('Cancellation resolved'));
   assert(!render('orderBlotter()').includes('data-action="cancel-order"'));
+  // A fill discovered before cancellation dispatch has no cancellation record.
+  fixture.proposals=[{...owned,status:'filled',cancellation:undefined,
+    broker_receipt:{...owned.broker_receipt,status:'filled',filled_qty:'2'}},
+    {id:'next',symbol:'AAPL',status:'proposed'}];
+  fixture.orders=[];
+  fixture.errors=[];
+  render("pendingCancellations.clear();pendingCancellations.add('order-1');state={...state,proposals:[]};");
+  assert(render('mutationUncertain()'),'Missing owned evidence cannot clear a pending cancellation');
+  await render('readState({force:true})'); // Explicit refresh returns the authoritative terminal receipt.
+  assert(!render("cancellationPending('order-1')"));
+  assert(!render('mutationUncertain()'),'Terminal-before-cancel must restore new action eligibility');
+  assert(!/data-proposal="next" disabled/.test(render('renderOrders()')));
+  for(const status of ['accepted','partially_filled']){
+    render(`pendingCancellations.add('order-1');state.proposals[0].status='${status}';state.proposals[0].broker_receipt.status='${status}';`);
+    assert(render('mutationUncertain()'),'Open or partial evidence must retain the browser latch');
+  }
+  render("state.proposals[0].status='filled';state.proposals[0].broker_receipt.status='filled';state.proposals[0].reconciliation_error='conflicting receipt';");
+  assert(render('mutationUncertain()'),'Conflicting terminal evidence cannot clear uncertainty');
+  render("delete state.proposals[0].reconciliation_error;");
+  for(const status of ['intent','requested','unknown']){
+    render(`state.proposals[0].cancellation={status:'${status}'};`);
+    assert(render('mutationUncertain()'),'Unresolved durable cancellation cannot be overridden by a stale terminal receipt');
+  }
   fixture.runs[0].status='running';
   await keyboardAction('stop-run','/api/runs/cancel');
   assert(focusCalls>0,'Rendering must restore matching keyboard focus');

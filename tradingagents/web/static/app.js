@@ -115,7 +115,13 @@ const orders = () => {
   }
   return list;
 };
-function cancellationPending(id){const p=proposals().find(p=>p.broker_order_id===id);return ['intent','requested','unknown'].includes(p?.cancellation?.status)||(pendingCancellations.has(id)&&!(p?.cancellation?.status==='resolved'&&!p.reconciliation_error));}
+function cancellationPending(id){
+  const p=proposals().find(p=>p.broker_order_id===id);
+  if(['intent','requested','unknown'].includes(p?.cancellation?.status))return true;
+  const terminal=p?.broker_receipt?.id===id&&['filled','canceled','expired','rejected'].includes(p?.broker_receipt?.status)&&p.status===p.broker_receipt.status;
+  if(p&&!p.reconciliation_error&&(p.cancellation?.status==='resolved'||terminal))pendingCancellations.delete(id);
+  return pendingCancellations.has(id);
+}
 function mutationUncertain(){return pendingCancellations.size>0&&[...pendingCancellations].some(cancellationPending)||proposals().some(p=>['unknown','submitting'].includes(p.status)||p.reconciliation_error||cancellationPending(p.broker_order_id));}
 function cancellationLabel(o){const p=proposals().find(p=>p.broker_order_id===o.id);const status=p?.cancellation?.status;return `${o.localReceipt?'<span class="asset-name">Last verified receipt</span>':''}${p?.reconciliation_error?'<span class="asset-name">Receipt conflict · Refresh to reconcile</span>':''}${status||cancellationPending(o.id)?`<span class="asset-name">${status==='resolved'?'Cancellation resolved':status==='requested'?'Cancellation requested · Refresh to reconcile':'Cancellation outcome unknown · Refresh to reconcile'}</span>`:''}`;}
 async function cancelOrder(id){

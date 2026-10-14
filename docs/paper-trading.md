@@ -100,10 +100,18 @@ or partially filled receipt does not resolve cancellation uncertainty. Only an
 exact authoritative terminal receipt resolves it. Pause still allows guarded
 cancellation and explicit Refresh. Cancellation verifies the current pinned
 account and owned order independently of research or quote availability.
+At dispatch it also rejects any newer contradictory account or paper-mode
+observation published by Refresh, even when the persistent account pin is
+unchanged. A harmless refresh or unrelated quote/research failure does not
+invalidate the fresh cancellation verification.
 
 The blotter retains the last verified owned receipt when a broker list omits it,
 with cancellation state alongside broker status. A browser timeout keeps mutation
 controls blocked; use explicit Refresh to reconcile, never an automatic replay.
+If the owned order became terminal before cancellation could be sent, its
+authoritative terminal receipt clears browser uncertainty after Refresh without
+requiring a cancellation record. Missing or conflicting receipts and unresolved
+durable cancellation states keep actions blocked.
 These source and offline safeguards do not attest the running broker process on
 each request. Paper startup proof remains a separate supervised release gate;
 offline verification is not live-order or deployment evidence.

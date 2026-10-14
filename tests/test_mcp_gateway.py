@@ -229,6 +229,45 @@ def test_sdk_cancel_preparation_rechecks_ownership_and_freshness(sdk_desk, monke
     assert sdk["mutations"] == []
 
 
+@pytest.mark.parametrize("observation", ["changed_account", "missing_account", "failed_account", "unverified_paper",
+                                          "harmless", "quotes_failed", "research_failed"])
+def test_sdk_cancel_checks_new_account_observations_without_requiring_other_feeds(sdk_desk, monkeypatch, observation):
+    service, broker, proposal, _, sdk = sdk_desk
+    service.submit(proposal["id"])
+    sdk["mutations"].clear()
+    original_discover = broker.discover
+
+    def refresh_during_initialize():
+        if observation == "changed_account":
+            broker.account["id"] = "different-account"
+        elif observation == "missing_account":
+            broker.account.pop("id")
+        elif observation == "failed_account":
+            broker.errors["get_account_info"] = GatewayError("account unavailable")
+        elif observation == "unverified_paper":
+            broker.paper = "false"
+        elif observation == "quotes_failed":
+            broker.errors["get_stock_snapshot"] = GatewayError("quotes unavailable")
+        elif observation == "research_failed":
+            def discover(domain):
+                if domain == "laya":
+                    raise GatewayError("research unavailable")
+                return original_discover(domain)
+            monkeypatch.setattr(broker, "discover", discover)
+        service.refresh()
+        assert service.store.data["paper_account_id"] == "paper-account"
+
+    sdk["initialize"] = refresh_during_initialize
+    if observation in {"harmless", "quotes_failed", "research_failed"}:
+        assert service.cancel_order("broker-order")["status"] == "cancel_requested"
+        assert [call["command"] for call in sdk["mutations"]] == ["cancel_order_by_id"]
+    else:
+        with pytest.raises(GatewayError):
+            service.cancel_order("broker-order")
+        assert sdk["mutations"] == []
+        assert "cancellation" not in service.store.data["proposals"][0]
+
+
 def test_sdk_lost_submission_reply_is_unknown_and_never_replayed(sdk_desk):
     service, broker, proposal, _, sdk = sdk_desk
     broker.submit_error = TimeoutError("lost reply")

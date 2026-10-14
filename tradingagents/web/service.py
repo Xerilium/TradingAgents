@@ -139,6 +139,7 @@ class DeskService:
         self.chart_cache = {}
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paper-analysis")
         self.cancelled = set()
+        self._account_observation = None
         self.market = {
             "connection": {
                 "connected": False,
@@ -281,6 +282,7 @@ class DeskService:
 
     def refresh(self):
         with self.refresh_lock:
+            paper_check_started = False
             config = self.store.snapshot()["config"]
             market = {
                 "connection": {
@@ -305,6 +307,7 @@ class DeskService:
                     self.gateway.discover(domain)
                     market["connection"]["domains"].append(domain)
                 market["connection"]["connected"] = True
+                paper_check_started = True
                 proof = verify_paper_configuration(self.gateway)
                 market["connection"]["paper_verified"] = proof.get("paper") is True
                 market["connection"]["message"] = (
@@ -379,6 +382,11 @@ class DeskService:
                             self._reconcile(market.get("orders", []) + market.get("open_orders", []), account["id"])
                         self.store.save()
             with self.lock:
+                if paper_check_started:
+                    self._account_observation = {
+                        "paper_verified": market["connection"]["paper_verified"],
+                        "account_id": (market.get("account") or {}).get("id"),
+                    }
                 self.market = market
         return self.state()
 
@@ -1044,6 +1052,8 @@ class DeskService:
                 )
             if owned.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN:
                 raise ValueError("Cancellation outcome is pending or unknown. Refresh to reconcile; do not resend.")
+            with self.lock:
+                account_observation = self._account_observation
             try:
                 verify_paper_configuration(self.gateway)
                 account = _payload(self.gateway.execute("alpaca", "get_account_info", {}))
@@ -1081,6 +1091,12 @@ class DeskService:
 
             def guard(persisted=False):
                 self._fresh(verified_at)
+                with self.lock:
+                    current = self._account_observation
+                    if current is not account_observation and (
+                            current is None or current["paper_verified"] is not True
+                            or current["account_id"] != account["id"]):
+                        raise ValueError("Newer account or paper-mode evidence contradicts cancellation verification.")
                 if (account["id"] != self.store.data["paper_account_id"]
                         or owned.get("broker_order_id") != order_id
                         or owned.get("submission_intent") != intent
