@@ -217,6 +217,15 @@ MultiIndex, categories, arbitrary objects/attributes, unsupported timestamp
 ranges/types, more than 100,000 cells/axis entries, or serialized payloads above
 8 MiB produce explicit gaps. Source objects and analytical returns are unchanged.
 
+Credential-marker screening checks the original UTF-8 text and bounded decoded
+views for HTML/XML entities and JSON string escapes, including nested escaped
+key delimiters. At most four decoding passes are allowed; deeper unresolved
+encodings and non-UTF-8 bodies are explicit unsupported captures. This is a
+targeted screen, not complete secret detection. Safe artifacts always retain
+their original bytes and hashes, never the decoded screening view. Numeric axes
+are read as positional array scalars so float32/float64 NaN payloads (including
+signaling bits), signed zero and large integer labels avoid Python float coercion.
+
 ```powershell
 rtk proxy .venv\Scripts\python.exe -m pytest
 rtk proxy .venv\Scripts\python.exe -m ruff check tradingagents/web tradingagents/paper tradingagents/integrations

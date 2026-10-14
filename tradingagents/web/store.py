@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import html
 import json
 import os
 import re
@@ -236,10 +237,21 @@ class DeskStore:
             raise TypeError("Unsupported source response type.")
         if len(payload) > 8 * 1024 * 1024:
             raise ValueError("Source response exceeds evidence size limit.")
-        # Withhold suspicious responses entirely; do not create a silently redacted raw artifact.
-        if re.search(rb'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
-                     rb'["\s]*[:=]|bearer\s+\S+|sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY', payload):
-            raise ValueError("Source response may contain credentials.")
+        # Screen bounded textual views only; successful artifacts keep the original bytes.
+        # RSS can entity-escape JSON, which can itself contain escaped key delimiters.
+        view = payload.decode("utf-8")  # Non-UTF-8 bodies are an explicit unsupported capture.
+        marker = (r'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
+                  r'''["'\s]*[:=]|bearer\s+\S+|sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY''')
+        for _ in range(4):
+            if re.search(marker, view):
+                raise ValueError("Source response may contain credentials.")
+            decoded = re.sub(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})',
+                             lambda match: json.loads('"' + match.group() + '"'), html.unescape(view))
+            if decoded == view:
+                break
+            view = decoded
+        else:
+            raise ValueError("Source response encoding exceeds screening depth.")
         relative = Path("reports") / run_id / f"source-{attempt_id}-{uuid4()}.bin"
         destination = self.directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -258,7 +270,7 @@ class DeskStore:
         if frame.size > 100_000 or len(frame.index) > 100_000 or len(frame.columns) > 100_000 or frame.attrs:
             raise ValueError("Unsupported frame size or attributes.")
         if any(isinstance(label, str) and re.search(r"(?i)api[_ -]?key|authorization|token|password|secret|cookie|headers", label)
-               for label in frame.columns):
+               for label in (frame.columns.array[i] for i in range(len(frame.columns)))):
             raise ValueError("Frame columns may contain credentials.")
 
         def dtype_name(dtype):
@@ -298,8 +310,11 @@ class DeskStore:
         def axis(index):
             if type(index) not in {pd.Index, pd.RangeIndex, pd.DatetimeIndex}:
                 raise ValueError("Unsupported frame axis.")
+            # Index iteration can coerce float32 to Python float and quiet signaling
+            # NaNs. Positional array scalars preserve their original dtype and bits.
+            values = index.array
             metadata = {"kind": type(index).__name__, "dtype": dtype_name(index.dtype),
-                        "name": scalar(index.name), "values": [scalar(v) for v in index]}
+                        "name": scalar(index.name), "values": [scalar(values[i]) for i in range(len(index))]}
             if isinstance(index, pd.RangeIndex):
                 metadata["range"] = [index.start, index.stop, index.step]
             if isinstance(index, pd.DatetimeIndex):

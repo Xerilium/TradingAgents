@@ -773,6 +773,89 @@ def test_unsupported_consumed_frames_are_explicit_gaps_without_mutation(desk, sh
     assert "artifact" not in evidence["attempts"][0]
 
 
+@pytest.mark.parametrize("raw", [
+    b'<rss>{&amp;quot;api_key&amp;quot;:&amp;quot;placeholder&amp;quot;}</rss>',
+    b'<rss>{&#34;api_key&#34;:&#34;placeholder&#34;}</rss>',
+    json.dumps({"body": json.dumps({"api_key": "placeholder"})}).encode(),
+    b'{"\\u0061pi_key":"placeholder"}',
+    b'not-utf8-\xff',
+    b'&amp;amp;amp;amp;amp;amp;amp;quot;too deep',
+])
+def test_encoded_unsafe_or_unsupported_response_is_a_gap_without_changing_result(desk, raw):
+    from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
+
+    service, _ = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    calls = []
+    def read_response():
+        calls.append(1)
+        return raw
+    with capture_vendor_evidence(lambda receipt, output: service.store.record_source_attempt(run_id, receipt, output)):
+        assert observe_source_call("rss_fixture", "fixture", "http_response_bytes", read_response) is raw
+    evidence = service.run_detail(run_id)["source_evidence"]
+    assert calls == [1]
+    assert evidence["capture_complete"] is False
+    assert evidence["attempts"][0]["outcome"] == "success"
+    assert evidence["attempts"][0]["capture"] == "unavailable"
+    assert "artifact" not in evidence["attempts"][0]
+    assert not list((service.store.directory / "reports" / run_id).glob("source-*"))
+
+
+@pytest.mark.parametrize("raw", [
+    b'<rss>&amp;quot;AAPL &amp;amp; META&amp;quot;</rss>',
+    json.dumps({"body": json.dumps({"company": 'AAPL "quoted"', "close": 123.45})}).encode(),
+])
+def test_decoded_screening_keeps_safe_original_bytes_and_hash(desk, raw):
+    from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
+
+    service, _ = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    calls = []
+    def read_response():
+        calls.append(1)
+        return raw
+    with capture_vendor_evidence(lambda receipt, output: service.store.record_source_attempt(run_id, receipt, output)):
+        assert observe_source_call("social_fixture", "fixture", "http_response_bytes", read_response) is raw
+    receipt = service.run_detail(run_id)["source_evidence"]["attempts"][0]["artifact"]
+    assert (service.store.directory / receipt["path"]).read_bytes() == raw
+    assert receipt["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert receipt["bytes"] == len(raw)
+    assert calls == [1]
+
+
+@pytest.mark.parametrize("axis_name", ["index", "columns"])
+@pytest.mark.parametrize("dtype, bits", [
+    ("float32", [0x7f800001, 0x80000000, 0x7fc00005, 0x3f800001]),
+    ("float64", [0x7ff0000000000001, 0x8000000000000000, 0x7ff8000000000005, 0x3ff0000000000001]),
+    ("uint64", [0, 2**53 + 1, 2**63 + 1, 2**64 - 1]),
+])
+def test_numeric_frame_axes_preserve_scalar_bits(axis_name, dtype, bits):
+    import numpy as np
+    import pandas as pd
+
+    values = np.array(bits, dtype="uint32" if dtype == "float32" else "uint64").view(dtype)
+    axis = pd.Index(values, name="numeric")
+    frame = (pd.DataFrame({"Close": range(len(values))}, index=axis) if axis_name == "index"
+             else pd.DataFrame([range(len(values))], columns=axis))
+    before = getattr(frame, axis_name).to_numpy(copy=True).tobytes()
+    encoded = DeskStore._frame_evidence(frame)[axis_name]
+    assert encoded["dtype"]["name"] == dtype
+    assert all(value["type"] == "numpy" for value in encoded["values"])
+    recovered = b"".join(bytes.fromhex(value["hex"]) for value in encoded["values"])
+    assert recovered == before == values.tobytes()
+    assert getattr(frame, axis_name).to_numpy().tobytes() == before
+
+
+def test_nullable_numeric_axis_keeps_missing_distinct_from_integer():
+    import pandas as pd
+
+    frame = pd.DataFrame({"Close": [1, 2]}, index=pd.Index(pd.array([2**63 - 1, pd.NA], dtype="Int64")))
+    encoded = DeskStore._frame_evidence(frame)["index"]
+    assert encoded["dtype"]["name"] == "Int64"
+    assert encoded["values"][0]["type"] == "numpy"
+    assert encoded["values"][1] == {"type": "pd.NA"}
+
+
 def test_refresh_normalizes_actual_snapshot_and_never_exposes_config_secrets(desk):
     service, broker = desk
     state = service.refresh()
