@@ -120,5 +120,22 @@ class VendorRoutingTests(unittest.TestCase):
             router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
 
 
+def test_captured_error_preserves_original_exception_and_safe_receipt(monkeypatch, caplog):
+    error = ValueError("authorization=never-record-this")
+    def source(symbol, as_of_date=None):
+        raise error
+    monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
+    monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
+    receipts = []
+    with router.capture_vendor_evidence(lambda receipt, output: receipts.append(receipt)), pytest.raises(ValueError) as caught:
+        router.route_to_vendor("get_stock_data", "META", as_of_date="2020-01-02")
+    assert caught.value is error
+    assert [r["outcome"] for r in receipts] == ["running", "error"]
+    assert receipts[-1]["error_class"] == "ValueError"
+    assert receipts[-1]["arguments"] == {"symbol": "META", "as_of_date": "2020-01-02"}
+    assert "never-record-this" not in str(receipts)
+    assert "never-record-this" not in caplog.text
+
+
 if __name__ == "__main__":
     unittest.main()

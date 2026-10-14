@@ -499,6 +499,181 @@ def test_stats_callback_parallel_calls_are_counted_once():
     assert (calls["started"], calls["ended"], calls["errors"]) == (20, 20, 0)
 
 
+@pytest.mark.parametrize("output", ["date,close\n2020-01-02,123.45\n", {"price": 123.45}, b"source bytes"])
+def test_router_source_evidence_preserves_output_fallback_and_partial_failure(desk, monkeypatch, caplog, output):
+    from tradingagents.dataflows import router
+    from tradingagents.dataflows.errors import VendorUnavailableError
+
+    service, _ = desk
+    observed = []
+    def first(symbol, start_date, end_date, api_key=None):
+        raise VendorUnavailableError("api_key=never-record-this")
+    def second(symbol, start_date, end_date, api_key=None):
+        return output
+    monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"first": first, "second": second})
+    monkeypatch.setattr(router, "get_vendor", lambda *args: "first,second")
+
+    class SourceGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            observed.append(router.route_to_vendor("get_stock_data", "AAPL", "2020-01-01", "2020-01-02", api_key="never-record-this"))
+            yield from super().stream_run(initial, **kwargs)
+            raise RuntimeError("Later analytical failure")
+
+    service.graph_factory = SourceGraph
+    run_id = service.start_run(["AAPL"])["run_id"]
+    service.executor.run_next()
+    run = service.run_detail(run_id)
+    assert run["status"] == "failed"
+    assert observed[0] is output
+    evidence = run["source_evidence"]
+    assert evidence["capture_complete"] is True
+    assert evidence["coverage"] == "router_vendor_functions_only"
+    failed, success = evidence["attempts"]
+    assert (failed["vendor"], success["vendor"]) == ("first", "second")
+    assert failed["outcome"] == "error"
+    assert failed["error_class"] == "VendorUnavailableError"
+    assert "artifact" not in failed
+    assert success["outcome"] == "success"
+    assert success["function"].endswith(".second")
+    assert success["arguments"] == {"symbol": "AAPL", "start_date": "2020-01-01", "end_date": "2020-01-02"}
+    assert success["started_at"] <= success["ended_at"]
+    assert success["elapsed_seconds"] >= 0
+    receipt = success["artifact"]
+    payload = (service.store.directory / receipt["path"]).read_bytes()
+    assert len(payload) == receipt["bytes"]
+    assert hashlib.sha256(payload).hexdigest() == receipt["sha256"]
+    decoded = json.loads(payload) if isinstance(output, dict) else payload.decode() if isinstance(output, str) else payload
+    assert decoded == output
+    assert "never-record-this" not in json.dumps(evidence)
+    assert "never-record-this" not in caplog.text
+    saved = json.loads(service.store.path.read_text())["runs"][0]
+    assert saved["source_evidence"] == evidence
+    assert "attempts" not in service.state(compact=True)["runs"][0]["source_evidence"]
+    # Outside the completed run, router calls do not leak into its evidence.
+    router.route_to_vendor("get_stock_data", "META", "2020-01-01", "2020-01-02")
+    assert service.run_detail(run_id)["source_evidence"] == evidence
+
+
+@pytest.mark.parametrize("failure", ["disk", "sensitive", "oversized", "unsupported"])
+def test_router_capture_gap_is_explicit_without_changing_result(desk, monkeypatch, failure):
+    from tradingagents.dataflows import router
+
+    service, _ = desk
+    output = {"disk": "valid source", "sensitive": {"api_key": "do-not-persist"},
+              "oversized": "x" * (8 * 1024 * 1024 + 1), "unsupported": object()}[failure]
+    def source(symbol):
+        return output
+    monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
+    monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
+    if failure == "disk":
+        def write_failure(*args):
+            raise OSError("sensitive filesystem detail")
+        monkeypatch.setattr(service.store, "_write_source_result", write_failure)
+
+    class SourceGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            assert router.route_to_vendor("get_stock_data", "AAPL") is output
+            yield from super().stream_run(initial, **kwargs)
+
+    service.graph_factory = SourceGraph
+    run = service.run_detail(complete_run(service))
+    evidence = run["source_evidence"]
+    assert evidence["capture_complete"] is False
+    attempt = evidence["attempts"][0]
+    assert attempt["outcome"] == "success"
+    assert attempt["capture"] == "unavailable"
+    assert "artifact" not in attempt
+    assert "sensitive filesystem detail" not in json.dumps(evidence)
+    assert not list((service.store.directory / "reports" / run["id"]).glob("source-*"))
+
+
+def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, monkeypatch):
+    import threading
+    from typing import TypedDict
+    from uuid import uuid4
+
+    from langgraph.graph import END, START, StateGraph
+
+    from tradingagents.dataflows import router
+    from tradingagents.dataflows.config import run_config_context
+
+    store = DeskStore(tmp_path / "evidence", {})
+    barrier = threading.Barrier(2, timeout=5)
+    def source(symbol):
+        barrier.wait()
+        return f"source for {symbol}"
+    monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
+    monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
+
+    class State(TypedDict):
+        symbol: str
+
+    def acquire(state):
+        router.route_to_vendor("get_stock_data", state["symbol"])
+        return {}
+
+    graph = StateGraph(State)
+    graph.add_node("source", acquire)
+    graph.add_edge(START, "source")
+    graph.add_edge("source", END)
+    compiled = graph.compile()
+    ids = [str(uuid4()), str(uuid4())]
+    for run_id in ids:
+        store.data["runs"].append({"id": run_id, "status": "running", "source_evidence": {
+            "coverage": "router_vendor_functions_only", "capture_complete": True, "attempts": [],
+        }})
+    def run(pair):
+        run_id, symbol = pair
+        with router.capture_vendor_evidence(lambda receipt, output: store.record_source_attempt(run_id, receipt, output)):
+            # The production graph uses this context-copy boundary before its child tasks.
+            context = run_config_context({})
+            context.run(compiled.invoke, {"symbol": symbol})
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(run, zip(ids, ["AAPL", "META"], strict=True)))
+    paths = []
+    for record, symbol in zip(store.data["runs"], ["AAPL", "META"], strict=True):
+        attempts = record["source_evidence"]["attempts"]
+        assert len(attempts) == 1
+        assert attempts[0]["arguments"] == {"symbol": symbol}
+        path = store.directory / attempts[0]["artifact"]["path"]
+        paths.append(path)
+        assert path.read_text() == f"source for {symbol}"
+    assert paths[0] != paths[1]
+
+
+def test_router_journal_checkpoint_failure_remains_explicit(desk, monkeypatch):
+    from tradingagents.dataflows import router
+
+    service, _ = desk
+    def source(symbol):
+        return "bounded source response"
+    monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
+    monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
+    class SourceGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            assert router.route_to_vendor("get_stock_data", "AAPL") == "bounded source response"
+            yield from super().stream_run(initial, **kwargs)
+    service.graph_factory = SourceGraph
+    run_id = service.start_run(["AAPL"])["run_id"]
+    save = service.store.save
+    failed = []
+    def checkpoint():
+        if service._find_run(run_id)["source_evidence"]["attempts"] and not failed:
+            failed.append(True)
+            raise OSError("private filesystem error")
+        save()
+    monkeypatch.setattr(service.store, "save", checkpoint)
+    service.executor.run_next()
+    run = service.run_detail(run_id)
+    assert run["status"] == "completed"
+    evidence = run["source_evidence"]
+    assert evidence["capture_complete"] is False
+    assert "persistence_error" in evidence
+    assert evidence["attempts"][0]["artifact"]["sha256"]
+    assert "private filesystem error" not in json.dumps(evidence)
+    assert json.loads(service.store.path.read_text())["runs"][0]["source_evidence"] == evidence
+
+
 def test_refresh_normalizes_actual_snapshot_and_never_exposes_config_secrets(desk):
     service, broker = desk
     state = service.refresh()

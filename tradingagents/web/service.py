@@ -9,12 +9,14 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from cli.stats_handler import StatsCallbackHandler
+from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
     GatewayError,
@@ -475,6 +477,14 @@ class DeskService:
                 "events": [],
                 "results": [],
                 "account_id": market["account"]["id"],
+                "source_evidence": {
+                    "coverage": "router_vendor_functions_only",
+                    "capture_complete": True,
+                    "attempts": [],
+                    "limitations": "Direct social/snapshot calls, Gateway tools and internal provider "
+                                   "requests are not captured. Success means the vendor function returned, "
+                                   "not that the response contains usable market data.",
+                },
                 "measurements": {
                     "started_at": requested_at,
                     "ended_at": None,
@@ -527,6 +537,21 @@ class DeskService:
         self.store.save()
 
     def _run(self, run_id, market, request_started, queued_at):
+        def record(receipt, output):
+            try:
+                self.store.record_source_attempt(run_id, receipt, output)
+            except Exception:
+                with self.store.lock:
+                    evidence = self._find_run(run_id)["source_evidence"]
+                    evidence.update(capture_complete=False, persistence_error="Source receipt persistence failed.")
+                    # In-memory failure remains available if a later journal save succeeds.
+                    with suppress(OSError):
+                        self.store.save()
+
+        with capture_vendor_evidence(record):
+            self._run_with_evidence(run_id, market, request_started, queued_at)
+
+    def _run_with_evidence(self, run_id, market, request_started, queued_at):
         stats = StatsCallbackHandler()
         with self.store.lock:
             run = self._find_run(run_id)

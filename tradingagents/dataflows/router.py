@@ -1,4 +1,11 @@
+import inspect
 import logging
+import re
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.errors import (
@@ -40,6 +47,82 @@ from tradingagents.dataflows.vendors.yahoo.market import (
 from tradingagents.dataflows.vendors.yahoo.news import get_global_news_yfinance, get_news_yfinance
 
 logger = logging.getLogger(__name__)
+
+_evidence_recorder = ContextVar("vendor_evidence_recorder", default=None)
+
+
+@contextmanager
+def capture_vendor_evidence(recorder):
+    """Bind the desk's recorder to this execution context, including graph child tasks."""
+    token = _evidence_recorder.set(recorder)
+    try:
+        yield
+    finally:
+        _evidence_recorder.reset(token)
+
+
+def _error_class(error):
+    for kind in (VendorUnavailableError, VendorNotConfiguredError, NoMarketDataError,
+                 TimeoutError, ConnectionError, ValueError, TypeError):
+        if isinstance(error, kind):
+            return kind.__name__
+    return "UnexpectedError"
+
+
+def _logged_error(error):
+    return _error_class(error) if _evidence_recorder.get() is not None else error
+
+
+def _source_arguments(function, args, kwargs):
+    """Retain only recognizable supplied ticker/date values, never arbitrary kwargs."""
+    try:
+        bound = inspect.signature(function).bind_partial(*args, **kwargs).arguments
+    except (ValueError, TypeError):
+        return {}, "unavailable"
+    selected = {}
+    for key, value in bound.items():
+        if isinstance(value, str) and (
+            (key in {"symbol", "ticker"} and re.fullmatch(r"[A-Za-z0-9.^=+_-]{1,32}", value))
+            or (key in {"start_date", "end_date", "curr_date", "current_date", "as_of_date", "trade_date"}
+                and re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T[0-9:.+Z-]+)?", value))
+        ):
+            selected[key] = value
+    return selected, "ticker_date_allowlist_only"
+
+
+def _invoke_vendor(method, vendor, function, args, kwargs):
+    recorder = _evidence_recorder.get()
+    if recorder is None:
+        return function(*args, **kwargs)
+    arguments, argument_scope = _source_arguments(function, args, kwargs)
+    receipt = {
+        "attempt_id": str(uuid4()), "operation": method, "vendor": vendor,
+        "function": f"{getattr(function, '__module__', '')}.{getattr(function, '__qualname__', type(function).__name__)}",
+        "arguments": arguments, "argument_scope": argument_scope,
+        "started_at": datetime.now(UTC).isoformat(), "ended_at": None,
+        "elapsed_seconds": None, "outcome": "running",
+    }
+
+    def emit(output=None):
+        try:
+            recorder(dict(receipt), output)
+        except Exception:
+            # Recording must never change vendor fallback or the analytical result.
+            logger.error("Router evidence persistence failed; capture is incomplete.")
+
+    emit()
+    started = time.monotonic()
+    output = None
+    try:
+        output = function(*args, **kwargs)
+        receipt["outcome"] = "success"
+        return output
+    except Exception as exc:
+        receipt.update(outcome="error", error_class=_error_class(exc))
+        raise
+    finally:
+        receipt.update(ended_at=datetime.now(UTC).isoformat(), elapsed_seconds=time.monotonic() - started)
+        emit(output)
 
 # Tools organized by category
 TOOLS_CATEGORIES = {
@@ -233,9 +316,9 @@ def route_to_vendor(method: str, *args, **kwargs):
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return impl_func(*args, **kwargs)
+            return _invoke_vendor(method, vendor, impl_func, args, kwargs)
         except VendorUnavailableError as e:
-            logger.warning("Vendor %r unavailable for %s: %s; trying next vendor.", vendor, method, e)
+            logger.warning("Vendor %r unavailable for %s: %s; trying next vendor.", vendor, method, _logged_error(e))
             # Kept so an all-unavailable chain can say the vendor was the
             # problem, rather than reporting nothing about the symbol.
             last_unavailable = e
@@ -252,7 +335,7 @@ def route_to_vendor(method: str, *args, **kwargs):
             # Don't let one vendor's failure crash the call when another can
             # serve it, but never swallow silently: a broken primary must be
             # visible in the logs (#989), not hidden behind a fallback's verdict.
-            logger.warning("Vendor %r failed for %s: %s", vendor, method, e)
+            logger.warning("Vendor %r failed for %s: %s", vendor, method, _logged_error(e))
             if first_error is None:
                 first_error = e
             failed = e
@@ -277,7 +360,7 @@ def route_to_vendor(method: str, *args, **kwargs):
             # verdict can't hide a broken primary (network/auth/etc.).
             logger.warning(
                 "Returning NO_DATA for %s, but a vendor errored earlier: %s",
-                method, first_error,
+                method, _logged_error(first_error),
             )
         return no_data_available(last_no_data)
 
@@ -287,7 +370,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     # abort the run.
     if first_error is not None:
         if category in OPTIONAL_CATEGORIES:
-            logger.warning("Optional %s unavailable for %s: %s", category, method, first_error)
+            logger.warning("Optional %s unavailable for %s: %s", category, method, _logged_error(first_error))
             return (
                 f"DATA_UNAVAILABLE: optional {category} could not be retrieved "
                 f"({first_error}). Proceed without it; do not fabricate values."

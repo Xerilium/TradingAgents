@@ -153,6 +153,36 @@ Existing artifacts are never overwritten or deleted. Once the reference is
 durable, subsequent startups leave finalized and recovered measurements alone.
 Recovery neither resumes research nor invokes providers or order operations.
 
+The full run-detail response and journal also include `source_evidence` for
+vendor functions executed through `route_to_vendor` during that run. Each actual
+configured fallback attempt has its own ID, operation, selected vendor/function,
+allowlisted supplied ticker/date arguments, start/end timestamps, elapsed time
+and return/error outcome. Error receipts contain classifications rather than
+exception text. These are function attempts, not underlying HTTP requests.
+An execution-context binding follows graph child tasks and isolates concurrent
+runs; no recorder remains bound after the run exits.
+
+Successful function returns are saved once as unique
+`reports/<run-id>/source-<attempt-id>-<uuid>.bin` files with format, SHA-256 and
+byte-count references. UTF-8 text and bytes retain their content exactly; JSON
+values use JSON serialization without a fallback string representation. Raw
+source outputs are not included in the polling state or journal. Compact state
+includes only evidence coverage, capture status and attempt count; inspect the
+full run detail for receipts and the referenced local files for source results.
+
+Capture has an 8 MiB per-response limit. Unsupported responses, credential-like
+fields/markers, or storage failures are explicitly unavailable rather than
+silently truncated/redacted. No raw headers, config, credentials or arbitrary
+kwargs are intentionally recorded. Existing analytical return values, errors,
+configured fallback and trading guards are unchanged by capture failures.
+`capture_complete` describes recording only within this router scope, never full
+source coverage or evidence quality. A successful vendor return can itself be
+an empty-data/error sentinel. Partial receipts/files survive later analytical
+failure; interrupted attempts remain marked as having an unknown final outcome.
+Direct social/verified-snapshot bypasses, Gateway supplemental sources and
+SDK/provider retry attempts are not captured by this slice. It is not a replay
+interface or a frozen cross-application evidence snapshot.
+
 ```powershell
 rtk proxy .venv\Scripts\python.exe -m pytest
 rtk proxy .venv\Scripts\python.exe -m ruff check tradingagents/web tradingagents/paper tradingagents/integrations

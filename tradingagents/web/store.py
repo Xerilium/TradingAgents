@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from datetime import UTC, datetime
@@ -40,6 +41,9 @@ class DeskStore:
                 run["error"] = "Server stopped during analysis. Start a new run."
             if run["status"] in {"completed", "failed", "cancelled", "interrupted"}:
                 self._recover_measurements(run)
+                evidence = run.get("source_evidence")
+                if evidence and any(a["outcome"] == "running" for a in evidence["attempts"]):
+                    evidence.update(capture_complete=False, persistence_error="Source attempt interrupted; final outcome unavailable.")
         for proposal in self.data["proposals"]:
             if proposal["status"] == "submitting":
                 proposal["status"] = "unknown"
@@ -119,7 +123,14 @@ class DeskStore:
                               for status in ("completed", "failed", "cancelled", "running")}
                     counts["queued"] = max(0, len(run["symbols"]) - len(results))
                     summary = {key: copy.deepcopy(value) for key, value in run.items()
-                               if key not in {"results", "config", "events"}}
+                               if key not in {"results", "config", "events", "source_evidence"}}
+                    if "source_evidence" in run:
+                        evidence = run["source_evidence"]
+                        summary["source_evidence"] = {
+                            "coverage": evidence["coverage"],
+                            "capture_complete": evidence["capture_complete"],
+                            "attempt_count": len(evidence["attempts"]),
+                        }
                     summary.update(
                         counts=counts,
                         results=[self.result_summary(r) for r in results] if run["id"] == selected else [],
@@ -175,3 +186,59 @@ class DeskStore:
             stream.flush()
             os.fsync(stream.fileno())
         return self._measurement_reference(destination, payload)
+
+    def record_source_attempt(self, run_id, receipt, output=None):
+        """Persist router receipts without exposing output or exception text in the journal."""
+        with self.lock:
+            run = next(r for r in self.data["runs"] if r["id"] == run_id)
+            evidence = run["source_evidence"]
+            attempt = next((r for r in evidence["attempts"] if r["attempt_id"] == receipt["attempt_id"]), None)
+            if attempt is None:
+                attempt = {}
+                evidence["attempts"].append(attempt)
+            attempt.update(copy.deepcopy(receipt))
+            if receipt["outcome"] == "success":
+                try:
+                    attempt["artifact"] = self._write_source_result(run_id, receipt["attempt_id"], output)
+                    attempt["capture"] = "recorded"
+                except (OSError, TypeError, ValueError, RecursionError) as exc:
+                    attempt["capture"] = "unavailable"
+                    attempt["capture_error"] = (
+                        "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
+                    )
+                    evidence["capture_complete"] = False
+            elif receipt["outcome"] == "error":
+                attempt["capture"] = "error_class_only"
+            try:
+                self.save()
+            except OSError:
+                evidence["capture_complete"] = False
+                evidence["persistence_error"] = "Journal checkpoint failed; durability is unavailable."
+                # Retain the receipt in memory for the run's next existing journal save.
+
+    def _write_source_result(self, run_id, attempt_id, output):
+        if str(UUID(run_id)) != run_id or str(UUID(attempt_id)) != attempt_id:
+            raise ValueError("Invalid source evidence ID.")
+        if isinstance(output, str):
+            payload, format_name = output.encode("utf-8"), "utf-8-text"
+        elif isinstance(output, bytes):
+            payload, format_name = output, "bytes"
+        elif output is None or isinstance(output, (dict, list, bool, int, float)):
+            payload = json.dumps(output, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            format_name = "json"
+        else:
+            raise TypeError("Unsupported source response type.")
+        if len(payload) > 8 * 1024 * 1024:
+            raise ValueError("Source response exceeds evidence size limit.")
+        # Withhold suspicious responses entirely; do not create a silently redacted raw artifact.
+        if re.search(rb'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
+                     rb'["\s]*[:=]|bearer\s+\S+|sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY', payload):
+            raise ValueError("Source response may contain credentials.")
+        relative = Path("reports") / run_id / f"source-{attempt_id}-{uuid4()}.bin"
+        destination = self.directory / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return {**self._measurement_reference(destination, payload), "format": format_name}
