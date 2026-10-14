@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID, uuid4
 
 
 class DeskStore:
@@ -35,6 +38,17 @@ class DeskStore:
             if run["status"] in {"queued", "running", "cancelling"}:
                 run["status"] = "interrupted"
                 run["error"] = "Server stopped during analysis. Start a new run."
+                if run.get("measurements"):
+                    run["measurements"].update(
+                        run_id=run["id"], status="interrupted", ended_at=None, elapsed_seconds=None,
+                        recovery_observed_at=datetime.now(UTC).isoformat(),
+                        completeness="Partial journal checkpoint; process termination time and "
+                                     "callbacks since the checkpoint are unavailable.",
+                    )
+                    try:
+                        run["measurement_artifact"] = self.write_measurements(run["id"], run["measurements"])
+                    except OSError:
+                        run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
         for proposal in self.data["proposals"]:
             if proposal["status"] == "submitting":
                 proposal["status"] = "unknown"
@@ -110,3 +124,19 @@ class DeskStore:
                     if attempt == 2:
                         raise
                     time.sleep(0.05 * (attempt + 1))
+
+    def write_measurements(self, run_id, measurements):
+        """Write once under the existing run report path; never replace prior evidence."""
+        if str(UUID(run_id)) != run_id:
+            raise ValueError("Invalid run ID for measurement export.")
+        relative = Path("reports") / run_id / f"measurements-{uuid4()}.json"
+        destination = self.directory / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(measurements, sort_keys=True, ensure_ascii=False,
+                             indent=2, allow_nan=False).encode("utf-8")
+        with destination.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return {"path": relative.as_posix(), "sha256": hashlib.sha256(payload).hexdigest(),
+                "bytes": len(payload), "format": "json"}

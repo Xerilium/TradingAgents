@@ -110,6 +110,39 @@ account, configuration and submission freshness guards still apply.
 
 ## Verification
 
+Accepted runs retain `measurements` in the existing journal and full run-detail
+response. The start timestamp is the run request's entry to the service; elapsed
+time ends after a durable terminal journal checkpoint. This includes
+preflight, queueing and retry waits inside measured operations. Rejected requests
+that never create a run have no run artifact. Artifact publication and the final
+reference save are outside the reported interval.
+
+Stage durations cover preflight, worker queue, per-symbol setup, graph analysis,
+decision persistence and the direct Laya check. They are observed boundary times,
+not a decomposition of every internal provider operation. Analysis includes its
+existing source acquisition and memory work. Success, failure and cancellation
+retain measurements; an interrupted process exports the last available journal
+checkpoint on recovery, with unknown end time and elapsed duration left null.
+
+The existing statistics callback counts logical LLM/tool starts, normal ends and
+errors. Matching callback IDs prevent double counting when the same handler is
+bound to both model and graph. Callback durations sum completed matched calls
+and can overlap during parallel analysis; they are not wall-clock stage totals.
+Direct source-prefetch calls and the direct Laya check do not emit these tool
+callbacks. Provider-internal requests/retries are unavailable, not inferred from
+logical counts. Token usage is labeled complete, partial or unavailable according
+to exposed response usage; missing usage is null rather than zero. Existing CLI
+statistics retain their original output fields.
+
+Each terminal run writes a unique `reports/<run-id>/measurements-<uuid>.json`
+under the desk data directory. `measurement_artifact` records its relative path,
+SHA-256, byte count and format in the journal/full run response. Files are created
+exclusively, so subsequent runs cannot overwrite previous artifacts. The payload
+contains timing/counts only, without prompts, conversations, credentials, source
+results or whole configurations. An artifact-write failure is explicit and keeps
+available measurements in the journal. A filesystem failure that also prevents
+journal writes cannot guarantee durability.
+
 ```powershell
 rtk proxy .venv\Scripts\python.exe -m pytest
 rtk proxy .venv\Scripts\python.exe -m ruff check tradingagents/web tradingagents/paper tradingagents/integrations

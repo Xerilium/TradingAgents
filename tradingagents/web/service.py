@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from cli.stats_handler import StatsCallbackHandler
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
     GatewayError,
@@ -420,6 +421,8 @@ class DeskService:
         return market
 
     def start_run(self, symbols=None, expected_revision=None, analysis_date=None):
+        request_started = time.monotonic()
+        requested_at = now()
         trade_date = today() if analysis_date is None else analysis_date
         # Reuse the MCP binding's canonical/New York date validation without discovery.
         try:
@@ -472,10 +475,24 @@ class DeskService:
                 "events": [],
                 "results": [],
                 "account_id": market["account"]["id"],
+                "measurements": {
+                    "started_at": requested_at,
+                    "ended_at": None,
+                    "elapsed_seconds": None,
+                    "callbacks": StatsCallbackHandler().get_measurements(),
+                    "stages": [{"stage": "preflight", "elapsed_seconds": time.monotonic() - request_started}],
+                },
             }
             self.store.data["runs"].insert(0, run)
             self.store.save()
-        self.executor.submit(self._run, run["id"], market)
+        queued_at = time.monotonic()
+        try:
+            self.executor.submit(self._run, run["id"], market, request_started, queued_at)
+        except Exception:
+            with self.store.lock:
+                run.update(status="failed", error="Analysis worker could not be scheduled.")
+                self._finish_measurements(run, StatsCallbackHandler(), request_started)
+            raise
         return {"run_id": run["id"]}
 
     def _find_run(self, run_id):
@@ -490,17 +507,39 @@ class DeskService:
             run["events"] = run["events"][-500:]
             self.store.save()
 
-    def _run(self, run_id, market):
-        from tradingagents.agents.rating import run_rating
-        from tradingagents.graph.trading_graph import TradingAgentsGraph
-        from tradingagents.portfolio import PortfolioContext, Position
+    def _finish_measurements(self, run, stats, request_started):
+        # Persist terminal state first: the measured interval includes this durable checkpoint.
+        run["completed_at"] = now()
+        self.store.save()
+        measurements = run["measurements"]
+        measurements.update(
+            run_id=run["id"], status=run["status"], ended_at=now(),
+            elapsed_seconds=time.monotonic() - request_started,
+            callbacks=stats.get_measurements(),
+            timing_scope="Request entry through durable terminal journal checkpoint; "
+                         "includes preflight, queueing and observed retry waits. "
+                         "Artifact publication and its final reference save are excluded.",
+        )
+        try:
+            run["measurement_artifact"] = self.store.write_measurements(run["id"], measurements)
+        except OSError:
+            run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
+        self.store.save()
 
+    def _run(self, run_id, market, request_started, queued_at):
+        stats = StatsCallbackHandler()
         with self.store.lock:
             run = self._find_run(run_id)
             run["status"] = "running"
+            run["measurements"]["worker_started_at"] = now()
+            run["measurements"]["stages"].append({"stage": "queue", "elapsed_seconds": time.monotonic() - queued_at})
             config = copy.deepcopy(run["config"])
             self.store.save()
         try:
+            from tradingagents.agents.rating import run_rating
+            from tradingagents.graph.trading_graph import TradingAgentsGraph
+            from tradingagents.portfolio import PortfolioContext, Position
+
             portfolio = PortfolioContext(
                 cash=float(market["account"]["cash"]),
                 currency="USD",
@@ -530,6 +569,19 @@ class DeskService:
                     run["results"].append(result)
                     self.store.save()
                 started = datetime.now(UTC)
+                stage = "setup"
+                stage_started = time.monotonic()
+
+                def next_stage(name, measured_symbol=symbol):
+                    nonlocal stage, stage_started
+                    ended = time.monotonic()
+                    with self.store.lock:
+                        run["measurements"]["stages"].append({
+                            "symbol": measured_symbol, "stage": stage,
+                            "elapsed_seconds": ended - stage_started,
+                        })
+                    stage, stage_started = name, ended
+
                 try:
                     graph_config = build_default_config()
                     graph_config.update(config)
@@ -547,7 +599,7 @@ class DeskService:
                         self.gateway, symbol=symbol, trade_date=run["trade_date"]
                     )
                     graph = (self.graph_factory or TradingAgentsGraph)(
-                        config=graph_config, supplemental_tools=tools
+                        config=graph_config, supplemental_tools=tools, callbacks=[stats]
                     )
                     final = {}
                     seen = set()
@@ -558,8 +610,11 @@ class DeskService:
                             f"{account_context['description']} Captured at {account_context['captured_at']}.\n"
                             + initial.get("portfolio_context", "")
                         )
+                    graph_args = graph.propagator.get_graph_args()
+                    graph_args["config"] = {**graph_args.get("config", {}), "callbacks": [stats]}
+                    next_stage("analysis")
                     for messages, state in graph.stream_run(
-                        initial, **graph.propagator.get_graph_args()
+                        initial, **graph_args
                     ):
                         if run_id in self.cancelled:
                             raise InterruptedError("Analysis stopped by operator.")
@@ -588,9 +643,11 @@ class DeskService:
                                         if result["reports"].get(key) != content:
                                             result["reports"][key] = content
                                             result["revision"] += 1
+                    next_stage("decision_persistence")
                     graph.record_decision(symbol, run["trade_date"], final)
                     rating = run_rating(final)
                     self._event(run_id, "laya", "Checking evidence with Laya", symbol)
+                    next_stage("laya")
                     laya = self.gateway.execute(
                         "laya",
                         "decide",
@@ -657,6 +714,12 @@ class DeskService:
                             run["error"] = str(exc)
                             run["retry_at"] = (datetime.now(UTC) + timedelta(seconds=exc.retry_after)).isoformat()
                         break
+                finally:
+                    next_stage(None)
+                    with self.store.lock:
+                        result["elapsed_seconds"] = round((datetime.now(UTC) - started).total_seconds(), 3)
+                        run["measurements"]["callbacks"] = stats.get_measurements()
+                        self.store.save()
             with self.store.lock:
                 run["status"] = (
                     "cancelled"
@@ -673,6 +736,9 @@ class DeskService:
             with self.store.lock:
                 run.update(status="failed", error=str(exc)[:600])
                 self.store.save()
+        finally:
+            with self.store.lock:
+                self._finish_measurements(run, stats, request_started)
 
     def cancel_run(self, run_id):
         with self.store.lock:

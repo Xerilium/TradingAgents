@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -246,6 +247,172 @@ def test_historical_analysis_preserves_date_and_labels_current_portfolio(desk):
     with pytest.raises(ValueError, match="Analysis date"):
         service.propose(run_id)
     assert broker.submitted == []
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_run_measurements_capture_real_callbacks_and_terminal_artifact(desk, monkeypatch, fail):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langchain_core.tools import tool
+
+    service, _ = desk
+    clock = [100.0]
+    monkeypatch.setattr("tradingagents.web.service.time.monotonic", lambda: clock[0])
+
+    @tool
+    def source(fail: bool) -> str:
+        """An isolated source fixture."""
+        clock[0] += 2
+        if fail:
+            raise ValueError("private source error")
+        return "private source result"
+
+    class MeasuredGraph(ScriptedGraph):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.model = FakeMessagesListChatModel(
+                responses=[AIMessage(content="private response", usage_metadata={
+                    "input_tokens": 3, "output_tokens": 2, "total_tokens": 5,
+                }), AIMessage(content="private response without usage")],
+                callbacks=kwargs["callbacks"],
+            )
+
+        def stream_run(self, initial, **kwargs):
+            config = kwargs["config"]
+            # Same handler bound to model and graph must count each actual invocation once.
+            self.model.invoke("private prompt", config=config)
+            source.invoke({"fail": False}, config=config)
+            self.model.invoke("private prompt", config=config)
+            try:
+                source.invoke({"fail": True}, config=config)
+            except ValueError:
+                if fail:
+                    raise
+            yield from super().stream_run(initial, **kwargs)
+
+    service.graph_factory = MeasuredGraph
+    run_id = service.start_run(["AAPL"])["run_id"]
+    clock[0] += 7  # Observable queue delay, without sleeping.
+    service.executor.run_next()
+    run = service.run_detail(run_id)
+    measurements = run["measurements"]
+    assert run["status"] == measurements["status"] == ("failed" if fail else "completed")
+    assert measurements["started_at"] <= measurements["ended_at"]
+    assert measurements["elapsed_seconds"] == 11
+    assert next(s for s in measurements["stages"] if s["stage"] == "queue")["elapsed_seconds"] == 7
+    assert next(s for s in measurements["stages"] if s["stage"] == "analysis")["elapsed_seconds"] == 4
+    callbacks = measurements["callbacks"]
+    assert callbacks["logical_calls"]["llm"] == {"started": 2, "ended": 2, "errors": 0, "elapsed_seconds": 0}
+    assert callbacks["logical_calls"]["tool"] == {"started": 2, "ended": 1, "errors": 1, "elapsed_seconds": 4}
+    assert callbacks["usage"] == {"availability": "partial", "calls_with_usage": 1, "input_tokens": 3, "output_tokens": 2}
+    assert callbacks["provider_internal_attempts"] is None
+    receipt = run["measurement_artifact"]
+    payload = (service.store.directory / receipt["path"]).read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == receipt["sha256"]
+    assert len(payload) == receipt["bytes"]
+    assert json.loads(payload) == measurements
+    assert b"private" not in payload
+    saved = json.loads(service.store.path.read_text())["runs"][0]
+    assert saved["measurement_artifact"] == receipt
+    assert saved["measurements"] == measurements
+
+
+def test_measurement_artifacts_are_distinct_and_missing_usage_is_unavailable(desk):
+    service, _ = desk
+    first = service.run_detail(complete_run(service))
+    first_path = service.store.directory / first["measurement_artifact"]["path"]
+    original = first_path.read_bytes()
+    second = service.run_detail(complete_run(service))
+    assert first["measurement_artifact"]["path"] != second["measurement_artifact"]["path"]
+    assert first_path.read_bytes() == original
+    assert second["measurements"]["callbacks"]["usage"] == {
+        "availability": "unavailable", "calls_with_usage": 0, "input_tokens": None, "output_tokens": None,
+    }
+
+
+def test_failed_setup_retains_terminal_measurements(desk):
+    service, _ = desk
+    def failed_graph(**kwargs):
+        raise ValueError("offline setup failure")
+    service.graph_factory = failed_graph
+    run_id = service.start_run(["AAPL"])["run_id"]
+    service.executor.run_next()
+    run = service.run_detail(run_id)
+    assert run["status"] == "failed"
+    assert run["measurements"]["ended_at"]
+    assert run["measurement_artifact"]["sha256"]
+    assert run["results"][0]["elapsed_seconds"] >= 0
+
+
+def test_measurement_export_failure_keeps_measurements_in_journal(desk, monkeypatch):
+    service, _ = desk
+    def failed_export(*args):
+        raise OSError("fixture disk failure")
+    monkeypatch.setattr(service.store, "write_measurements", failed_export)
+    run = service.run_detail(complete_run(service))
+    assert "measurement_export_error" in run
+    assert "measurement_artifact" not in run
+    saved = json.loads(service.store.path.read_text())["runs"][0]
+    assert saved["measurements"]["ended_at"]
+
+
+def test_stats_callback_error_and_deduplication_preserve_cli_statistics():
+    from uuid import uuid4
+
+    from cli.stats_handler import StatsCallbackHandler
+
+    stats = StatsCallbackHandler()
+    run_id = uuid4()
+    stats.on_chat_model_start({}, [], run_id=run_id)
+    stats.on_llm_start({}, [], run_id=run_id)
+    stats.on_llm_error(ValueError("private error"), run_id=run_id)
+    stats.on_llm_error(ValueError("private error"), run_id=run_id)
+    assert stats.get_stats() == {"llm_calls": 1, "tool_calls": 0, "tokens_in": 0, "tokens_out": 0}
+    assert stats.get_measurements()["logical_calls"]["llm"]["errors"] == 1
+    assert "private" not in json.dumps(stats.get_measurements())
+
+
+def test_scheduling_failure_is_durable_and_measured(desk, monkeypatch):
+    service, _ = desk
+    def reject(*args):
+        raise RuntimeError("executor unavailable")
+    monkeypatch.setattr(service.executor, "submit", reject)
+    with pytest.raises(RuntimeError, match="executor unavailable"):
+        service.start_run(["AAPL"])
+    run = json.loads(service.store.path.read_text())["runs"][0]
+    assert run["status"] == run["measurements"]["status"] == "failed"
+    assert run["measurements"]["ended_at"]
+    assert run["measurement_artifact"]["sha256"]
+
+
+def test_recovered_interrupted_run_exports_only_known_measurements(desk):
+    service, _ = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    recovered = DeskStore(service.store.directory, service.store.data["config"])
+    run = recovered.data["runs"][0]
+    assert run["id"] == run_id
+    assert run["status"] == run["measurements"]["status"] == "interrupted"
+    assert run["measurements"]["ended_at"] is None
+    assert run["measurements"]["elapsed_seconds"] is None
+    assert run["measurements"]["recovery_observed_at"]
+    assert "unavailable" in run["measurements"]["completeness"]
+    assert (recovered.directory / run["measurement_artifact"]["path"]).is_file()
+
+
+def test_stats_callback_parallel_calls_are_counted_once():
+    from uuid import uuid4
+
+    from cli.stats_handler import StatsCallbackHandler
+
+    stats = StatsCallbackHandler()
+    def invoke(_):
+        run_id = uuid4()
+        stats.on_tool_start({}, "private input", run_id=run_id)
+        stats.on_tool_end("private output", run_id=run_id)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(invoke, range(20)))
+    calls = stats.get_measurements()["logical_calls"]["tool"]
+    assert (calls["started"], calls["ended"], calls["errors"]) == (20, 20, 0)
 
 
 def test_refresh_normalizes_actual_snapshot_and_never_exposes_config_secrets(desk):
