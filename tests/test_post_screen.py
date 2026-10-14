@@ -1,9 +1,14 @@
 """Jev post screening, against TypeSafe's documented request and response shapes."""
 
+import copy
+import threading
+from contextlib import suppress
+
 import pytest
 import requests
 
 from tradingagents.agents import post_screen as typesafe
+from tradingagents.dataflows.router import capture_vendor_evidence
 
 QUESTIONS = {"is_urgent": {"type": "noul", "instructions": "Does this convey urgency?"}}
 ANSWERS = {"is_urgent": {"type": "noul", "noul": 0.95}}
@@ -14,8 +19,10 @@ class _Response:
         self.status_code = status
         self._payload = payload
         self.headers = headers or {}
+        self.reads = 0
 
     def json(self):
+        self.reads += 1
         if self._payload is None:
             raise ValueError("no JSON")
         return self._payload
@@ -26,6 +33,18 @@ class _Calls(list):
         super().__init__()
         self.queue = []
         self.sleeps = []
+
+
+@pytest.fixture
+def evidence():
+    events = []
+    with capture_vendor_evidence(lambda r, o: events.append(copy.deepcopy((r, o)))):
+        yield events
+
+
+def _latest(events, boundary):
+    return [(r, o) for r, o in {r["attempt_id"]: (r, o) for r, o in events}.values()
+            if r["boundary_kind"] == boundary]
 
 
 @pytest.fixture
@@ -121,36 +140,51 @@ def test_a_retry_after_header_sets_the_wait(post):
 @pytest.mark.unit
 @pytest.mark.parametrize("status", [429, 529])
 @pytest.mark.parametrize("header", ["900", "Wed, 14 Oct 2026 12:15:00 GMT"])
-def test_a_long_retry_after_defers_without_sleep_or_replacement(post, monkeypatch, status, header):
+def test_a_long_retry_after_defers_without_sleep_or_replacement(post, monkeypatch, status, header, evidence):
     monkeypatch.setattr(typesafe.time, "time", lambda: 1791979200)
     post.queue.append(_Response(status, headers={"retry-after": header}))
     with pytest.raises(typesafe.TypeSafeError, match=f"HTTP {status}; Retry-After 900 seconds.*deferred"):
         typesafe.system_one("s", QUESTIONS)
     assert len(post) == 1
     assert post.sleeps == []
+    [(receipt, payload)] = _latest(evidence, "jev_post")
+    assert receipt["outcome"] == "deferred" and receipt["retry_action"] == "defer"
+    assert receipt["retry_after_seconds"] == 900
+    assert receipt["http_status"] == status
+    assert payload["result_available"] is False
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("header,wait", [("30", 30), ("7", 7), ("0", 0),
                                          ("Wed, 14 Oct 2026 12:00:30 GMT", 30)])
-def test_short_retry_deadlines_keep_three_total_attempts(post, monkeypatch, header, wait):
+def test_short_retry_deadlines_keep_three_total_attempts(post, monkeypatch, header, wait, evidence):
     monkeypatch.setattr(typesafe.time, "time", lambda: 1791979200)
     post.queue.extend([_Response(429, headers={"retry-after": header})] * 3)
     with pytest.raises(typesafe.TypeSafeError, match="^HTTP 429$"):
         typesafe.system_one("s", QUESTIONS)
     assert len(post) == 3
     assert post.sleeps == [wait, wait]
+    receipts = [r for r, _ in _latest(evidence, "jev_post")]
+    assert [r["ordinal"] for r in receipts] == [1, 2, 3]
+    assert [r["retry_action"] for r in receipts] == ["wait", "wait", "exhausted"]
+    assert [r["selected_wait_seconds"] for r in receipts[:2]] == post.sleeps
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("header", [None, "bad", "nan", "inf", "-inf"])
-def test_unknown_delays_keep_default_jitter(post, monkeypatch, header):
-    monkeypatch.setattr(typesafe.random, "uniform", lambda a, b: 1.1)
+def test_unknown_delays_keep_default_jitter(post, monkeypatch, header, evidence):
+    draws = []
+    def jitter(a, b):
+        draws.append((a, b))
+        return 1.1
+    monkeypatch.setattr(typesafe.random, "uniform", jitter)
     post.queue.extend([_Response(529, headers={"retry-after": header})] * 3)
     with pytest.raises(typesafe.TypeSafeError, match="^HTTP 529$"):
         typesafe.system_one("s", QUESTIONS)
     assert len(post) == 3
     assert post.sleeps == [1.1, 2.2]
+    assert draws == [(0.8, 1.2), (0.8, 1.2)]
+    assert [r["selected_wait_seconds"] for r, _ in _latest(evidence, "jev_post")[:2]] == post.sleeps
 
 
 @pytest.mark.unit
@@ -242,6 +276,101 @@ def test_each_post_is_its_own_state_under_the_fixed_questions(jev, post):
     body = post[0][1]["json"]
     assert body["state"] == {"instrument": "NVIDIA Corporation (NVDA)", "post": "NVDA to 200"}
     assert body["questions"] == typesafe.QUESTIONS
+
+
+@pytest.mark.unit
+def test_screen_evidence_keeps_exact_body_single_json_read_and_parent_ids(jev, post, evidence):
+    responses = [_post_answers(0.299), _post_answers(0.3, "neutral", 0.5)]
+    responses[1]._payload.update(cache={"hit": True}, usage={"input_tokens": 12, "output_tokens": 2})
+    jev.update(zip(["off topic", "on topic"], responses, strict=True))
+    keep, note = typesafe.jev_screen("NVDA")(["off topic", "on topic"])
+    assert keep == [False, True]
+    assert "1 neutral" in note
+    [(batch, batch_payload)] = _latest(evidence, "jev_batch")
+    assert batch["screening_applied"] is True
+    assert batch_payload["result"] == {"keep": keep, "screening_applied": True}
+    jobs = _latest(evidence, "jev_job")
+    attempts = _latest(evidence, "jev_post")
+    assert len(jobs) == len(attempts) == len(post) == 2
+    jobs_by_id = {r["attempt_id"]: r for r, _ in jobs}
+    bodies = {call[1]["json"]["state"]["post"]: call[1]["json"] for call in post}
+    for receipt, payload in attempts:
+        job = jobs_by_id[receipt["parent_attempt_id"]]
+        assert job["parent_attempt_id"] == batch["attempt_id"]
+        assert job["queued_at"] <= job["started_at"] <= receipt["started_at"]
+        text = payload["parameters"]["state"]["post"]
+        assert payload["parameters"] == bodies[text]
+        assert payload["result"] == jev[text]._payload
+        assert receipt["http_status"] == 200 and receipt["outcome"] == "success"
+        assert receipt["request_started_at"] <= receipt["request_ended_at"]
+        assert receipt["request_elapsed_seconds"] >= 0
+    assert [r.reads for r in responses] == [1, 1]
+    import json
+    assert all(text not in json.dumps(evidence) for text in ("Authorization", "ts-test", "https://"))
+
+
+@pytest.mark.unit
+def test_confirmed_queued_cancellations_have_no_post_attempt(jev, post, monkeypatch, evidence):
+    submitted, release = threading.Event(), threading.Event()
+    futures = []
+    original_pool = typesafe.ThreadPoolExecutor
+    class Pool(original_pool):
+        def submit(self, *args, **kwargs):
+            future = super().submit(*args, **kwargs)
+            futures.append(future)
+            if len(futures) == 8:
+                submitted.set()
+            return future
+    monkeypatch.setattr(typesafe, "ThreadPoolExecutor", Pool)
+    monkeypatch.setattr(typesafe, "_WORKERS", 1)
+    def fake_post(url, **kwargs):
+        post.append((url, kwargs))
+        if kwargs["json"]["state"]["post"] == "bad":
+            assert submitted.wait(2)
+            return _Response(401)
+        assert release.wait(2)
+        return _post_answers(0.9)
+    monkeypatch.setattr(typesafe.requests, "post", fake_post)
+    try:
+        keep, note = typesafe.jev_screen("NVDA")(["bad"] + [f"p{i}" for i in range(7)])
+        assert keep == [True] * 8 and "unscreened" in note
+        jobs = [r for r, _ in _latest(evidence, "jev_job")]
+        cancelled = [r for r in jobs if r["outcome"] == "cancelled"]
+        assert len(cancelled) == sum(f.cancelled() for f in futures) >= 6
+        assert all(r["started_at"] is None for r in cancelled)
+        attempted = {r["parent_attempt_id"] for r, _ in _latest(evidence, "jev_post")}
+        assert not attempted.intersection(r["attempt_id"] for r in cancelled)
+        assert len(post) == len(_latest(evidence, "jev_post")) <= 2
+    finally:
+        release.set()
+        for future in futures:
+            if not future.cancelled():
+                with suppress(typesafe.TypeSafeError):
+                    future.result(timeout=2)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("error", [requests.Timeout("private-error"), requests.ConnectionError("private-error")])
+def test_post_unknown_outcomes_do_not_claim_no_remote_work(post, evidence, error):
+    post.queue.extend([error] * 3)
+    with pytest.raises(typesafe.TypeSafeError, match=type(error).__name__):
+        typesafe.system_one("s", QUESTIONS)
+    attempts = _latest(evidence, "jev_post")
+    assert len(attempts) == len(post) == 3
+    assert all(r["outcome"] == "unknown" and not o["result_available"] for r, o in attempts)
+    assert attempts[-1][0]["retry_action"] == "exhausted"
+    assert "private-error" not in str(evidence)
+
+
+@pytest.mark.unit
+def test_error_response_body_is_not_parsed(post, evidence):
+    response = _Response(401, {"private": "unused body"})
+    post.queue.append(response)
+    with pytest.raises(typesafe.TypeSafeError, match="HTTP 401"):
+        typesafe.system_one("s", QUESTIONS)
+    [(receipt, payload)] = _latest(evidence, "jev_post")
+    assert response.reads == 0 and receipt["error_body"] == "not_consumed"
+    assert payload["result_available"] is False and "unused body" not in str(evidence)
 
 
 @pytest.mark.unit

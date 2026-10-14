@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -693,12 +694,23 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
     from langgraph.graph import END, START, StateGraph
 
     from tests.test_mcp_gateway import FakeTransport, result
+    from tradingagents.agents import post_screen
     from tradingagents.dataflows import router
     from tradingagents.dataflows.config import run_config_context
     from tradingagents.integrations.maenifold import MaenifoldGateway
 
     store = DeskStore(tmp_path / "evidence", {})
     barrier = threading.Barrier(2, timeout=5)
+    screening_barrier = threading.Barrier(2, timeout=5)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "offline-key")
+    monkeypatch.setattr(post_screen, "resolve_instrument_identity", lambda ticker: {})
+    def post(url, **kwargs):
+        screening_barrier.wait()
+        return SimpleNamespace(status_code=200, json=lambda: {"answers": {
+            "about": {"type": "noul", "noul": 0.9},
+            "stance": {"type": "choice", "choice": "bullish", "confidence": 0.9},
+        }})
+    monkeypatch.setattr(post_screen.requests, "post", post)
     def source(symbol):
         def acquire():
             barrier.wait()
@@ -710,6 +722,7 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
         with pytest.raises(StopIteration) as returned:
             gateway.aexecute("alpaca", "get_asset", {"symbol": symbol}).send(None)
         assert returned.value.value == {"symbol": symbol}
+        assert post_screen.jev_screen(symbol)([f"{symbol} post"])[0] == [True]
         return value
     monkeypatch.setitem(router.VENDOR_METHODS, "get_stock_data", {"yfinance": source})
     monkeypatch.setattr(router, "get_vendor", lambda *args: "yfinance")
@@ -755,6 +768,17 @@ def test_router_evidence_isolated_across_concurrent_graph_contexts(tmp_path, mon
         assert logical["parent_attempt_id"] == attempts[0]["attempt_id"]
         payload = json.loads((store.directory / logical["receipts"][-1]["path"]).read_bytes())["payload"]
         assert payload["parameters"] == payload["result"] == {"symbol": symbol}
+        screening = record["jev_evidence"]
+        assert screening["counts"] == {"jev_batch": 1, "jev_job": 1, "jev_post": 1}
+        assert screening["capture_complete"] is True
+        batch = next(a for a in screening["attempts"] if a["boundary_kind"] == "jev_batch")
+        job = next(a for a in screening["attempts"] if a["boundary_kind"] == "jev_job")
+        post_attempt = next(a for a in screening["attempts"] if a["boundary_kind"] == "jev_post")
+        assert batch["parent_attempt_id"] == attempts[0]["attempt_id"]
+        assert job["parent_attempt_id"] == batch["attempt_id"]
+        assert post_attempt["parent_attempt_id"] == job["attempt_id"]
+        body = json.loads((store.directory / post_attempt["receipts"][-1]["path"]).read_bytes())
+        assert body["payload"]["parameters"]["state"] == {"instrument": symbol, "post": f"{symbol} post"}
     assert paths[0] != paths[1]
 
 
@@ -1094,6 +1118,119 @@ def test_gateway_late_start_and_interrupted_snapshot_are_not_complete(desk):
     assert restored["attempts"][0]["recovery_observed_at"]
     assert path.read_bytes() == original
     assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["gateway_evidence"] == restored
+
+
+def test_jev_workers_finish_late_without_rewriting_terminal_evidence(desk, monkeypatch):
+    import threading
+
+    from tests.test_post_screen import _post_answers, _Response
+    from tradingagents.agents import post_screen
+
+    service, broker = desk
+    monkeypatch.setenv("TYPESAFE_API_KEY", "offline-key")
+    monkeypatch.setattr(post_screen, "resolve_instrument_identity", lambda ticker: {})
+    started, release = threading.Event(), threading.Event()
+    futures, calls = [], []
+    pool_type = post_screen.ThreadPoolExecutor
+    class Pool(pool_type):
+        def submit(self, *args, **kwargs):
+            future = super().submit(*args, **kwargs)
+            futures.append(future)
+            return future
+    monkeypatch.setattr(post_screen, "ThreadPoolExecutor", Pool)
+    def post(url, **kwargs):
+        text = kwargs["json"]["state"]["post"]
+        calls.append(text)
+        if text == "slow":
+            started.set()
+            assert release.wait(5)
+            return _post_answers(0.1)
+        assert started.wait(2)
+        return _Response(401)
+    monkeypatch.setattr(post_screen.requests, "post", post)
+    class ScreeningGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            keep, note = post_screen.jev_screen("AAPL")(["slow", "bad"])
+            assert keep == [True, True] and "unscreened" in note
+            yield from super().stream_run(initial, **kwargs)
+    service.graph_factory = ScreeningGraph
+    try:
+        run_id = complete_run(service)
+        evidence = service._find_run(run_id)["jev_evidence"]
+        assert evidence["counts"] == {"jev_batch": 1, "jev_job": 2, "jev_post": 2}
+        assert len(calls) == 2 and evidence["pending_count"] == 2
+        assert evidence["capture_complete"] is False
+        snapshots = {ref["path"]: (service.store.directory / ref["path"]).read_bytes() for ref in evidence["snapshots"]}
+        assert {json.loads(p)["reason"] for p in snapshots.values()} == {"batch_terminal", "run_terminal"}
+        assert all(json.loads(p)["pending_count"] == 2 for p in snapshots.values())
+        checkpoint = service.store.path.read_bytes()
+    finally:
+        release.set()
+        for future in futures:
+            if not future.cancelled():
+                with suppress(post_screen.TypeSafeError):
+                    future.result(timeout=2)
+    assert evidence["pending_count"] == 0 and evidence["late_count"] == 2
+    assert evidence["capture_complete"] is False
+    assert next(a for a in evidence["attempts"] if a["boundary_kind"] == "jev_batch")["screening_applied"] is False
+    assert len(calls) == 2
+    for ref in evidence["snapshots"]:
+        payload = (service.store.directory / ref["path"]).read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == ref["sha256"]
+        if ref["path"] in snapshots:
+            assert payload == snapshots[ref["path"]]
+    assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["jev_evidence"] == evidence
+    compact = service.state(compact=True)["runs"][0]["jev_evidence"]
+    assert "attempts" not in compact and "snapshots" not in compact
+    assert compact["internal_http_requests"] is None and compact["internal_model_executions"] is None
+    # Recreate the durable checkpoint before the late worker returned, without replaying it.
+    service.store.path.write_bytes(checkpoint)
+    restored = DeskStore(service.store.directory, {}).snapshot()["runs"][0]["jev_evidence"]
+    assert restored["unknown_count"] == 2 and restored["capture_complete"] is False
+    assert all(a["ended_at"] is None for a in restored["attempts"] if a["outcome"] == "unknown")
+    assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["jev_evidence"] == restored
+    assert broker.submitted == [] and len(calls) == 2
+
+
+@pytest.mark.parametrize("failure", ["sensitive", "oversized", "unsupported", "disk"])
+def test_jev_capture_failure_preserves_actual_screening(desk, monkeypatch, failure):
+    from tests.test_post_screen import _post_answers
+    from tradingagents.agents import post_screen
+
+    service, _ = desk
+    monkeypatch.setenv("TYPESAFE_API_KEY", "offline-key")
+    monkeypatch.setattr(post_screen, "resolve_instrument_identity", lambda ticker: {})
+    response = _post_answers(0.9)
+    response._payload.update({
+        "sensitive": {"api_key": "never-persist"}, "oversized": {"extra": "x" * (8 * 1024 * 1024 + 1)},
+        "unsupported": {"extra": object()}, "disk": {},
+    }[failure])
+    calls = []
+    def post(url, **kwargs):
+        calls.append(kwargs["json"])
+        return response
+    monkeypatch.setattr(post_screen.requests, "post", post)
+    if failure == "disk":
+        original = service.store._write_source_result
+        def write(run_id, attempt_id, output, prefix="source"):
+            if prefix == "jev-receipt":
+                raise OSError("private-path")
+            return original(run_id, attempt_id, output, prefix)
+        monkeypatch.setattr(service.store, "_write_source_result", write)
+    class ScreeningGraph(ScriptedGraph):
+        def stream_run(self, initial, **kwargs):
+            keep, note = post_screen.jev_screen("AAPL")(["post"])
+            assert keep == [True] and note.startswith("Screened by Jev:")
+            yield from super().stream_run(initial, **kwargs)
+    service.graph_factory = ScreeningGraph
+    run_id = complete_run(service)
+    evidence = service.run_detail(run_id)["jev_evidence"]
+    assert evidence["capture_complete"] is False
+    assert len(calls) == response.reads == 1
+    assert next(a for a in evidence["attempts"] if a["boundary_kind"] == "jev_post")["capture"] == "unavailable"
+    assert "private-path" not in json.dumps(evidence)
+    for path in (service.store.directory / "reports" / run_id).glob("jev-receipt-*"):
+        assert b"never-persist" not in path.read_bytes()
 
 
 def test_final_laya_gateway_receipts_preserve_guard_cache_usage_and_hashes(desk, monkeypatch):

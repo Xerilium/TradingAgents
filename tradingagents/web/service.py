@@ -486,13 +486,17 @@ class DeskService:
                     "attempts": [], "snapshots": [], "capture_complete": True,
                     "internal_http_requests": None, "internal_model_executions": None,
                 },
+                "jev_evidence": {
+                    "attempts": [], "snapshots": [], "capture_complete": True,
+                    "internal_http_requests": None, "internal_model_executions": None,
+                },
                 "source_evidence": {
                     "coverage": "router_functions_and_social_ohlcv_inputs",
                     "capture_complete": True,
                     "attempts": [],
                     "limitations": "Nested acquisition boundaries overlap router attempts; do not add them "
                                    "as provider requests. Gateway calls have separate gateway_evidence. "
-                                   "Jev/screening and hidden SDK/provider retries are not captured. "
+                                   "Jev screening has separate jev_evidence; hidden SDK/provider retries are not captured. "
                                    "Success means the boundary returned, not usable data.",
                 },
                 "measurements": {
@@ -544,12 +548,13 @@ class DeskService:
             run["measurement_artifact"] = self.store.write_measurements(run["id"], measurements)
         except OSError:
             run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
-        try:
-            self.store.finalize_gateway_evidence(run)
-        except Exception:
-            run.setdefault("gateway_evidence", {}).update(
-                capture_complete=False, persistence_error="Gateway terminal evidence export failed."
-            )
+        for origin in ("gateway", "jev"):
+            try:
+                self.store.finalize_call_evidence(run, origin)
+            except Exception:
+                run.setdefault(f"{origin}_evidence", {}).update(
+                    capture_complete=False, persistence_error="Call terminal evidence export failed."
+                )
         self.store.save()
 
     def _run(self, run_id, market, request_started, queued_at):
@@ -558,7 +563,8 @@ class DeskService:
                 self.store.record_source_attempt(run_id, receipt, output)
             except Exception:
                 with self.store.lock:
-                    key = "gateway_evidence" if receipt.get("origin") == "gateway" else "source_evidence"
+                    origin = receipt.get("origin")
+                    key = f"{origin}_evidence" if origin in {"gateway", "jev"} else "source_evidence"
                     evidence = self._find_run(run_id).setdefault(key, {})
                     evidence.update(capture_complete=False, persistence_error="Source receipt persistence failed.")
                     # In-memory failure remains available if a later journal save succeeds.

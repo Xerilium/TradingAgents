@@ -223,8 +223,8 @@ configured fallback and trading guards are unchanged by capture failures.
 source coverage or evidence quality. A successful vendor return can itself be
 an empty-data/error sentinel. Partial receipts/files survive later analytical
 failure; interrupted attempts remain marked as having an unknown final outcome.
-Gateway supplemental sources have separate `gateway_evidence` below. Jev/screening
-calls and hidden SDK/provider retry attempts remain outside this coverage.
+Gateway supplemental sources and Jev screening have separate `gateway_evidence`
+and `jev_evidence` below. Hidden SDK/provider retry attempts remain outside this coverage.
 It is not a replay interface or a frozen
 cross-application evidence snapshot.
 
@@ -263,9 +263,45 @@ The final Laya guard's exact questions, criteria, high threshold and strict
 grade-plus-two-boolean predicate are unchanged. `use_cache` remains omitted;
 capture does not override the server default. Returned cache/usage metadata is
 retained when safe, but a Gateway call is not proof of a model execution. This
-coverage starts inside accepted run workers. Rejected preflight ownership, Jev
-workers and hidden SDK/provider attempts remain separate gaps. Offline fixtures
+coverage starts inside accepted run workers. Rejected preflight ownership and
+hidden SDK/provider attempts remain separate gaps. Offline fixtures
 verify these boundaries; no live capture coverage is claimed.
+
+### Jev worker and POST evidence
+
+`jev_evidence` separately counts screening batches, worker jobs and observed
+`requests.post` invocations. Jobs have IDs and post indices before submission,
+queued/start/end timestamps, and parent links to their batch. Each worker and
+cancellation callback receives its own copied recorder context. Only confirmed
+`future.cancelled()` outcomes are labeled cancelled; these queued jobs have zero
+POST attempts. Existing active workers continue after the unscreened fallback,
+without a new wait, stop or retry policy. A returned worker answer does not prove
+that screening used it: the batch records `screening_applied` and its keep flags.
+
+POST receipts retain the actual JSON body (state, selected model, questions),
+attempt ordinal, request start/end and monotonic duration, status or safe error
+class, and the selected retry/defer/wait. Request timings exclude retry sleeps
+and JSON parsing; the enclosing attempt duration also covers parsing. Existing
+jitter is sampled once, and three total attempts and long-delay deferral remain
+unchanged. Timeouts and connection failures leave remote outcomes unknown.
+
+The payload from the existing single successful-response `json()` call is
+captured before validation, including safely returned model/cache/usage metadata.
+Error bodies are not additionally read or parsed. Headers, authorization,
+environment contents, raw configured URLs, cookies, request objects and exception
+text are excluded. The existing size and credential screening applies; capture
+gaps cannot change the actual answer, filtering or unscreened fallback.
+
+Screened `jev-receipt-*.bin` artifacts and `jev-evidence-*.json` snapshots reuse
+the existing immutable writer and SHA-256 references. Batch/run snapshots remain
+unchanged when late observations append new snapshots. Queued/running scopes keep
+recording incomplete; late or unknown outcomes cannot make it complete. Restart
+retains unfinished work as unknown without inventing an end time or replaying it.
+Compact state carries counts/completeness, not receipt bodies or snapshot history.
+Counts describe application POST invocations, not redirects, adapter retries,
+server receipt or internal model passes; hidden request/model counts remain null.
+Legacy runs without `jev_evidence` are unrecorded, not proof of zero screening calls.
+These boundaries have offline fixture coverage only, not live verification.
 
 StockTwits captures the existing response body bytes before JSON filtering or
 screening. Reddit captures the existing capped RSS response bytes before XML/HTML

@@ -65,32 +65,26 @@ def capture_vendor_evidence(recorder):
         _evidence_recorder.reset(token)
 
 
-@contextmanager
-def observe_gateway_call(domain, command, boundary, *, eligible=False, parameters=None,
-                         purpose=None, ordinal=None):
-    """Observe a synchronous or awaited scope using the run's existing recorder.
-
-    The caller sets output only after it is returned. No exception text is recorded.
-    Parameter/result objects are never modified or substituted into the real call.
-    """
+def _call_observation(domain, command, boundary, eligible, parameters, purpose, ordinal, origin):
     observation = {"receipt": {}, "output": None, "result_available": False, "parameters": parameters}
     recorder = _evidence_recorder.get()
-    if recorder is None:
-        yield observation
-        return
     receipt = observation["receipt"]
     receipt.update(
         attempt_id=str(uuid4()), parent_attempt_id=_evidence_parent.get(),
         operation=command, vendor=domain, boundary_kind=boundary,
-        origin="gateway", purpose=purpose, ordinal=ordinal,
+        origin=origin, purpose=purpose, ordinal=ordinal,
         category="source" if eligible else "control_plane", capture_eligible=eligible,
         started_at=datetime.now(UTC).isoformat(), ended_at=None,
         elapsed_seconds=None, outcome="running",
         representation="sdk_envelope_serialization_not_wire_bytes" if boundary == "gateway_transport"
         else "normalized_caller_value",
     )
+    if origin == "jev":
+        receipt["representation"] = "requests_post_body_and_parsed_json" if boundary == "jev_post" else "screening_inputs_or_results"
 
     def emit():
+        if recorder is None:
+            return
         try:
             recorder(dict(receipt), {
                 "parameters": observation["parameters"],
@@ -98,7 +92,37 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
                 "result_available": observation["result_available"],
             } if eligible else None)
         except Exception:
-            logger.error("Gateway evidence persistence failed; capture is incomplete.")
+            logger.error("Call evidence persistence failed; capture is incomplete.")
+
+    observation["emit"] = emit
+    observation["enabled"] = recorder is not None
+    return observation
+
+
+def queued_jev_job(index, state):
+    observation = _call_observation("jev", "system_one", "jev_job", True, state, None, None, "jev")
+    observation["receipt"].update(outcome="queued", post_index=index, queued_at=datetime.now(UTC).isoformat(), started_at=None)
+    observation["emit"]()
+    return observation
+
+
+def observe_jev_call(boundary, *, parameters=None, ordinal=None, observation=None):
+    return observe_gateway_call("jev", "system_one" if boundary != "jev_batch" else "screen",
+                                boundary, eligible=True, parameters=parameters, ordinal=ordinal,
+                                origin="jev", observation=observation)
+
+
+@contextmanager
+def observe_gateway_call(domain, command, boundary, *, eligible=False, parameters=None,
+                         purpose=None, ordinal=None, origin="gateway", observation=None):
+    """Observe an existing call without substituting its values or exceptions."""
+    observation = observation or _call_observation(domain, command, boundary, eligible, parameters, purpose, ordinal, origin)
+    if not observation["enabled"]:
+        yield observation
+        return
+    receipt = observation["receipt"]
+    receipt.update(outcome="running", started_at=datetime.now(UTC).isoformat())
+    emit = observation["emit"]
 
     emit()
     started = time.monotonic()
@@ -112,9 +136,10 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
         unknown = (isinstance(exc, (asyncio.CancelledError, TimeoutError)) or kind == "GatewayTimeout"
                    or (boundary == "gateway_transport" and not observation["result_available"]
                        and kind != "GatewayRateLimited"))
-        receipt.update(outcome="unknown" if unknown else "deferred" if kind == "GatewayRateLimited" else "error",
+        receipt.update(outcome="unknown" if unknown else "deferred" if kind == "GatewayRateLimited" else
+                       receipt["outcome"] if receipt["outcome"] in {"deferred", "unknown"} else "error",
                        error_class=kind if kind in {"GatewayError", "GatewayTimeout", "GatewayRateLimited",
-                                                   "CancelledError", "TimeoutError"} else "UnexpectedError")
+                                                   "CancelledError", "TimeoutError", "TypeSafeError"} else "UnexpectedError")
         if kind == "GatewayRateLimited":
             receipt["retry_after_seconds"] = exc.retry_after
         raise

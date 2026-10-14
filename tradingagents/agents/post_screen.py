@@ -18,12 +18,14 @@ import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC
+from contextvars import copy_context
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 
 import requests
 
 from tradingagents.agents.context import resolve_instrument_identity
+from tradingagents.dataflows.router import observe_jev_call, queued_jev_job
 
 logger = logging.getLogger(__name__)
 
@@ -82,27 +84,49 @@ def system_one(state, questions: dict) -> dict[str, dict]:
     }
     headers = {"Authorization": f"Bearer {os.environ.get('TYPESAFE_API_KEY', '')}"}
     backoff, retry_after = 1.0, None
+    previous = None
     for attempt in range(_ATTEMPTS):
         if attempt:
-            time.sleep(retry_after if retry_after is not None else backoff * random.uniform(0.8, 1.2))
+            wait = retry_after if retry_after is not None else backoff * random.uniform(0.8, 1.2)
+            previous["receipt"].update(retry_action="wait", selected_wait_seconds=wait)
+            previous["emit"]()
+            time.sleep(wait)
             backoff *= 2
-        try:
-            response = requests.post(_url(), json=body, headers=headers, timeout=_TIMEOUT)
-        except requests.RequestException as exc:
-            failure, retry_after = type(exc).__name__, None
-            if isinstance(exc, _TRANSIENT):
-                continue
-            break
-        if response.status_code == 200:
-            return _answers(response, questions)
-        failure, retry_after = f"HTTP {response.status_code}", _retry_after(response)
-        if response.status_code not in _RETRY_STATUSES:
-            break
-        if retry_after is not None and retry_after > _MAX_WAIT:
-            raise TypeSafeError(
-                f"{failure}; Retry-After {retry_after:g} seconds exceeds the "
-                f"{_MAX_WAIT:g}-second automatic wait limit; screening deferred"
-            )
+        with observe_jev_call("jev_post", parameters=body, ordinal=attempt + 1) as observed:
+            previous = observed
+            receipt = observed["receipt"]
+            receipt["request_started_at"] = datetime.now(UTC).isoformat()
+            request_started = time.monotonic()
+            try:
+                response = requests.post(_url(), json=body, headers=headers, timeout=_TIMEOUT)
+            except requests.RequestException as exc:
+                failure, retry_after = type(exc).__name__, None
+                receipt.update(outcome="unknown", error_class=failure if failure in {
+                    "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout", "ChunkedEncodingError",
+                    "InvalidHeader", "TooManyRedirects"} else "RequestException")
+                if isinstance(exc, _TRANSIENT):
+                    receipt["retry_action"] = "retry_pending" if attempt + 1 < _ATTEMPTS else "exhausted"
+                    continue
+                receipt["retry_action"] = "stop"
+                break
+            finally:
+                receipt.update(request_ended_at=datetime.now(UTC).isoformat(),
+                               request_elapsed_seconds=time.monotonic() - request_started)
+            receipt["http_status"] = response.status_code
+            if response.status_code == 200:
+                return _answers(response, questions, observed)
+            failure, retry_after = f"HTTP {response.status_code}", _retry_after(response)
+            receipt.update(outcome="error", retry_after_seconds=retry_after, error_body="not_consumed")
+            if response.status_code not in _RETRY_STATUSES:
+                receipt["retry_action"] = "stop"
+                break
+            if retry_after is not None and retry_after > _MAX_WAIT:
+                receipt.update(outcome="deferred", retry_action="defer")
+                raise TypeSafeError(
+                    f"{failure}; Retry-After {retry_after:g} seconds exceeds the "
+                    f"{_MAX_WAIT:g}-second automatic wait limit; screening deferred"
+                )
+            receipt["retry_action"] = "retry_pending" if attempt + 1 < _ATTEMPTS else "exhausted"
     raise TypeSafeError(failure)
 
 
@@ -121,9 +145,11 @@ def _retry_after(response) -> float | None:
     return max(0.0, delay) if math.isfinite(delay) else None
 
 
-def _answers(response, questions: dict) -> dict[str, dict]:
+def _answers(response, questions: dict, observed=None) -> dict[str, dict]:
     try:
         payload = response.json()
+        if observed is not None:
+            observed.update(output=payload, result_available=True)
         answers = payload["answers"]
         if all(answers[q]["type"] == spec["type"] for q, spec in questions.items()):
             logger.debug("TypeSafe answered with %s", payload.get("model"))
@@ -157,7 +183,7 @@ def jev_screen(ticker: str):
     name = resolve_instrument_identity(ticker).get("company_name")
     instrument = f"{name} ({ticker})" if name else ticker
 
-    def screen(posts: list[str]) -> tuple[list[bool], str]:
+    def apply_screen(posts: list[str]) -> tuple[list[bool], str]:
         try:
             answers = _ask_each(instrument, posts)
             keep = [a["about"]["noul"] >= _OFF_TOPIC_BELOW for a in answers]
@@ -172,6 +198,14 @@ def jev_screen(ticker: str):
             f"{instrument}; their stance on its stock: {counts}."
         )
 
+    def screen(posts: list[str]) -> tuple[list[bool], str]:
+        with observe_jev_call("jev_batch", parameters={"instrument": instrument, "posts": posts}) as observed:
+            keep, note = apply_screen(posts)
+            applied = note.startswith("Screened by Jev:")
+            observed["receipt"].update(screening_applied=applied, outcome="success" if applied else "unscreened")
+            observed.update(output={"keep": keep, "screening_applied": applied}, result_available=True)
+            return keep, note
+
     return screen
 
 
@@ -185,11 +219,33 @@ def _ask_each(instrument: str, posts: list[str]) -> list[dict]:
     sent are cancelled, and those in flight finish in the background unread."""
     answers: list = [None] * len(posts)
     pool = ThreadPoolExecutor(max_workers=_WORKERS)
+
+    def ask(job, state):
+        with observe_jev_call("jev_job", observation=job) as observed:
+            answer = system_one(state, QUESTIONS)
+            observed.update(output=answer, result_available=True)
+            return answer
+
     try:
-        futures = {
-            pool.submit(system_one, {"instrument": instrument, "post": post}, QUESTIONS): i
-            for i, post in enumerate(posts)
-        }
+        futures = {}
+        for i, post in enumerate(posts):
+            state = {"instrument": instrument, "post": post}
+            job = queued_jev_job(i, state)
+            worker_context, callback_context = copy_context(), copy_context()
+            try:
+                future = pool.submit(worker_context.run, ask, job, state)
+            except BaseException:
+                job["receipt"].update(outcome="error", error_class="SubmissionFailed", ended_at=datetime.now(UTC).isoformat())
+                job["emit"]()
+                raise
+            futures[future] = i
+
+            def cancelled(future, observation=job):
+                if future.cancelled():
+                    observation["receipt"].update(outcome="cancelled", ended_at=datetime.now(UTC).isoformat())
+                    observation["emit"]()
+
+            future.add_done_callback(lambda completed, context=callback_context, callback=cancelled: context.run(callback, completed))
         for future in as_completed(futures):
             answers[futures[future]] = future.result()
     finally:

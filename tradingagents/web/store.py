@@ -50,13 +50,14 @@ class DeskStore:
                 evidence = run.get("source_evidence")
                 if evidence and any(a["outcome"] == "running" for a in evidence["attempts"]):
                     evidence.update(capture_complete=False, persistence_error="Source attempt interrupted; final outcome unavailable.")
-                gateway = run.get("gateway_evidence")
-                if gateway and any(a["outcome"] == "running" for a in gateway.get("attempts", [])):
-                    for attempt in gateway["attempts"]:
-                        if attempt["outcome"] == "running":
-                            attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                    self._snapshot_gateway_evidence(run, "recovery_unknown")
-                self.finalize_gateway_evidence(run)
+                for origin in ("gateway", "jev"):
+                    calls = run.get(f"{origin}_evidence")
+                    if calls and any(a["outcome"] in {"queued", "running"} for a in calls.get("attempts", [])):
+                        for attempt in calls["attempts"]:
+                            if attempt["outcome"] in {"queued", "running"}:
+                                attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
+                        self._snapshot_call_evidence(run, "recovery_unknown", origin)
+                    self.finalize_call_evidence(run, origin)
         for proposal in self.data["proposals"]:
             if proposal["status"] == "submitting":
                 proposal["status"] = "unknown"
@@ -136,12 +137,13 @@ class DeskStore:
                               for status in ("completed", "failed", "cancelled", "running")}
                     counts["queued"] = max(0, len(run["symbols"]) - len(results))
                     summary = {key: copy.deepcopy(value) for key, value in run.items()
-                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence"}}
-                    if "gateway_evidence" in run:
-                        summary["gateway_evidence"] = {
-                            key: copy.deepcopy(value) for key, value in run["gateway_evidence"].items()
-                            if key not in {"attempts", "snapshots"}
-                        }
+                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence", "jev_evidence"}}
+                    for name in ("gateway_evidence", "jev_evidence"):
+                        if name in run:
+                            summary[name] = {
+                                key: copy.deepcopy(value) for key, value in run[name].items()
+                                if key not in {"attempts", "snapshots"}
+                            }
                     portfolio_evidence = run.get("portfolio_evidence", {})
                     summary["portfolio_evidence"] = {
                         key: copy.deepcopy(value) for key, value in portfolio_evidence.items() if key != "context"
@@ -228,8 +230,8 @@ class DeskStore:
 
     def record_source_attempt(self, run_id, receipt, output=None):
         """Persist router receipts without exposing output or exception text in the journal."""
-        if receipt.get("origin") == "gateway":
-            self._record_gateway_attempt(run_id, receipt, output)
+        if receipt.get("origin") in {"gateway", "jev"}:
+            self._record_call_attempt(run_id, receipt, output)
             return
         with self.lock:
             run = next(r for r in self.data["runs"] if r["id"] == run_id)
@@ -259,14 +261,20 @@ class DeskStore:
                 # Retain the receipt in memory for the run's next existing journal save.
 
     @staticmethod
-    def _gateway_counts(evidence):
+    def _call_counts(evidence, origin):
         attempts = evidence.get("attempts", [])
-        evidence["counts"] = {
-            kind: {category: sum(a["boundary_kind"] == kind and a["category"] == category for a in attempts)
-                   for category in ("source", "control_plane")}
-            for kind in ("gateway_invocation", "gateway_logical", "gateway_discovery", "gateway_transport")
-        }
-        evidence["pending_count"] = sum(a["outcome"] == "running" for a in attempts)
+        if origin == "gateway":
+            evidence["counts"] = {
+                kind: {category: sum(a["boundary_kind"] == kind and a["category"] == category for a in attempts)
+                       for category in ("source", "control_plane")}
+                for kind in ("gateway_invocation", "gateway_logical", "gateway_discovery", "gateway_transport")
+            }
+        else:
+            evidence["counts"] = {kind: sum(a["boundary_kind"] == kind for a in attempts)
+                                  for kind in ("jev_batch", "jev_job", "jev_post")}
+            evidence["queued_count"] = sum(a["outcome"] == "queued" for a in attempts)
+            evidence["cancelled_count"] = sum(a["outcome"] == "cancelled" for a in attempts)
+        evidence["pending_count"] = sum(a["outcome"] in {"queued", "running"} for a in attempts)
         evidence["unknown_count"] = sum(a["outcome"] == "unknown" for a in attempts)
         evidence["late_count"] = sum(a.get("late", False) for a in attempts)
         evidence["capture_complete"] = not (
@@ -274,10 +282,11 @@ class DeskStore:
             or evidence.get("persistence_error") or any(a.get("capture_error") for a in attempts)
         )
 
-    def _record_gateway_attempt(self, run_id, receipt, output):
+    def _record_call_attempt(self, run_id, receipt, output):
         with self.lock:
             run = next(r for r in self.data["runs"] if r["id"] == run_id)
-            evidence = run.setdefault("gateway_evidence", {
+            origin = receipt["origin"]
+            evidence = run.setdefault(f"{origin}_evidence", {
                 "attempts": [], "snapshots": [], "capture_complete": True,
                 "internal_http_requests": None, "internal_model_executions": None,
             })
@@ -290,6 +299,15 @@ class DeskStore:
             attempt.update(copy.deepcopy(receipt))
             if evidence.get("terminal_observed_at"):
                 attempt["late"] = True
+            if origin == "jev":
+                parent_id = attempt.get("parent_attempt_id")
+                parents = {a["attempt_id"]: a for a in evidence["attempts"]}
+                while parent_id in parents:
+                    parent = parents[parent_id]
+                    if parent["boundary_kind"] == "jev_batch" and parent.get("ended_at"):
+                        attempt["late"] = True
+                        break
+                    parent_id = parent.get("parent_attempt_id")
             try:
                 # Only eligible scopes supply a payload. Control-plane data never reaches a writer.
                 body = {"receipt": {**copy.deepcopy(receipt), "late": attempt.get("late", False)}}
@@ -300,7 +318,7 @@ class DeskStore:
                         from mcp.types import CallToolResult
                         if isinstance(result, CallToolResult):
                             body["payload"]["result"] = result.model_dump(mode="json")
-                reference = self._write_source_result(run_id, receipt["attempt_id"], body, "gateway-receipt")
+                reference = self._write_source_result(run_id, receipt["attempt_id"], body, f"{origin}-receipt")
                 attempt["receipts"].append(reference)
                 attempt["capture"] = "recorded" if receipt["capture_eligible"] else "metadata_only"
             except (OSError, TypeError, ValueError, OverflowError, RecursionError) as exc:
@@ -308,31 +326,36 @@ class DeskStore:
                 attempt["capture_error"] = (
                     "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
                 )
-            self._gateway_counts(evidence)
-            if evidence.get("terminal_observed_at"):
-                self._snapshot_gateway_evidence(run, "late_update")
+            self._call_counts(evidence, origin)
+            if attempt.get("late"):
+                self._snapshot_call_evidence(run, "late_update", origin)
+            elif receipt["boundary_kind"] == "jev_batch" and receipt.get("ended_at"):
+                self._snapshot_call_evidence(run, "batch_terminal", origin)
             try:
                 self.save()
             except OSError:
-                evidence.update(capture_complete=False, persistence_error="Gateway journal checkpoint failed.")
+                evidence.update(capture_complete=False, persistence_error="Call evidence journal checkpoint failed.")
 
-    def _snapshot_gateway_evidence(self, run, reason):
-        evidence = run["gateway_evidence"]
-        self._gateway_counts(evidence)
+    def _snapshot_call_evidence(self, run, reason, origin):
+        evidence = run[f"{origin}_evidence"]
+        self._call_counts(evidence, origin)
         snapshot = {key: copy.deepcopy(value) for key, value in evidence.items() if key != "snapshots"}
         snapshot.update(run_id=run["id"], run_status=run["status"], reason=reason,
                         observed_at=datetime.now(UTC).isoformat())
         try:
-            evidence.setdefault("snapshots", []).append(self._write_json_artifact(run["id"], "gateway-evidence", snapshot))
+            evidence.setdefault("snapshots", []).append(self._write_json_artifact(run["id"], f"{origin}-evidence", snapshot))
         except OSError:
-            evidence.update(capture_complete=False, persistence_error="Gateway snapshot export failed.")
+            evidence.update(capture_complete=False, persistence_error="Call evidence snapshot export failed.")
 
     def finalize_gateway_evidence(self, run):
+        self.finalize_call_evidence(run, "gateway")
+
+    def finalize_call_evidence(self, run, origin):
         with self.lock:
-            evidence = run.get("gateway_evidence")
+            evidence = run.get(f"{origin}_evidence")
             if evidence and not evidence.get("terminal_observed_at"):
                 evidence["terminal_observed_at"] = datetime.now(UTC).isoformat()
-                self._snapshot_gateway_evidence(run, "run_terminal")
+                self._snapshot_call_evidence(run, "run_terminal", origin)
 
     def _write_source_result(self, run_id, attempt_id, output, prefix="source"):
         import pandas as pd
