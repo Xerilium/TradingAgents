@@ -1,5 +1,6 @@
 """Bounded rate limit receipts, shared cooldown and HTTP propagation; no network."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from unittest.mock import Mock
@@ -67,6 +68,52 @@ def test_http_date_preserves_long_deadline_and_handles_past_or_malformed(monkeyp
 def test_wrapped_tool_limits(payload):
     with pytest.raises(GatewayRateLimited, match="429"):
         normalize_tool_result(payload)
+
+
+@pytest.mark.parametrize("payload", [
+    {"isError": True, "content": [{"type": "text", "text": "Error: HTTP 429"}],
+     "error": {"code": 429, "retry_after": 900}},
+    {"message": "HTTP 429", "error": {"code": 429, "retryAfter": 900}},
+    {"error": {"code": 429, "metadata": {"retry_after": 900}}},
+    {"isError": True, "content": [{"type": "text", "text": "Error: HTTP 429"}],
+     "structuredContent": {"error": {"code": 429, "retryAfter": 900}}},
+    {"isError": False, "content": [{"type": "text", "text": "Error: HTTP 429"}],
+     "structuredContent": {"error": {"code": 429, "retryAfter": 900}}},
+    {"isError": True, "content": [
+        {"type": "text", "text": "Error: HTTP 429"},
+        {"type": "text", "text": json.dumps({"error": {"code": 429, "retry_after": 900}})},
+    ]},
+])
+@pytest.mark.parametrize("mutation", [False, True])
+def test_structured_deadline_precedes_text_fallback_in_gateway(monkeypatch, payload, mutation):
+    clock = [100.0]
+    monkeypatch.setattr("tradingagents.integrations.maenifold.time.monotonic", lambda: clock[0])
+    async def no_sleep(delay):
+        pytest.fail("Explicit long retry metadata must not become a short default wait")
+    monkeypatch.setattr("tradingagents.integrations.maenifold.asyncio.sleep", no_sleep)
+    class Transport:
+        calls = 0
+        async def call_tool(self, *args):
+            self.calls += 1
+            assert self.calls == 1
+            return payload
+    transport = Transport()
+    gateway = MaenifoldGateway(transport=transport)
+    async def check():
+        with pytest.raises(GatewayRateLimited) as caught:
+            await gateway._call(
+                "GatewayExecute" if mutation else "GatewayIndex",
+                {"domain": "alpaca", "command": "place_stock_order"} if mutation else {},
+            )
+        assert caught.value.retry_after == 900
+        assert gateway._limited_until == 1000
+        clock[0] += 60
+        with pytest.raises(GatewayRateLimited) as blocked:
+            await gateway._call("GatewayIndex", {})
+        assert blocked.value.retry_after == 840
+        assert transport.calls == 1
+    with pytest.raises(StopIteration):
+        check().send(None)
 
 
 def test_shared_gateway_cooldown_blocks_new_calls_and_recovers(monkeypatch):

@@ -16,6 +16,7 @@ import re
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time as datetime_time, timedelta
 from email.utils import parsedate_to_datetime
@@ -65,18 +66,39 @@ class GatewayRateLimited(GatewayError):
 
 
 def reported_rate_limit(value):
-    """Recognize structured provider receipts without surfacing their payload."""
+    """Prefer explicit nested retry metadata over text-only rate-limit defaults."""
     if not isinstance(value, dict):
         return None
-    for key in ("status_code", "httpStatusCode", "status", "code", "type"):
-        if str(value.get(key)) in {"429", "rateLimitExceeded", "usageLimitExceeded"}:
-            return GatewayRateLimited(value.get("retry_after", value.get("retryAfter")))
-    if re.search(r"\b429\b|too many requests|rate.?limit|usage limit", str(value.get("message", "")), re.I):
-        return GatewayRateLimited(value.get("retry_after", value.get("retryAfter")))
-    for nested in value.values():
-        if isinstance(nested, dict) and (limited := reported_rate_limit(nested)):
-            return limited
-    return None
+    pending, nodes, seen = [(value, 0)], [], set()
+    while pending:
+        node, depth = pending.pop()
+        if not isinstance(node, dict) or id(node) in seen or depth > 16:
+            continue
+        seen.add(id(node))
+        nodes.append(node)
+        pending.extend((nested, depth + 1) for nested in node.values() if isinstance(nested, dict))
+        for block in node.get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text":
+                # Plain-text fallback is considered only after structured metadata.
+                with suppress(ValueError, TypeError):
+                    pending.append((json.loads(block.get("text", "")), depth + 1))
+    pattern = r"\b429\b|too many requests|rate.?limit|usage limit"
+    matched = any(
+        any(str(node.get(key)) in {"429", "rateLimitExceeded", "usageLimitExceeded"}
+            for key in ("status_code", "httpStatusCode", "status", "code", "type"))
+        or re.search(pattern, str(node.get("message", "")), re.I)
+        or any(isinstance(block, dict) and block.get("type") == "text"
+               and re.search(pattern, str(block.get("text", "")), re.I)
+               for block in node.get("content") or [])
+        for node in nodes
+    )
+    if not matched:
+        return None
+    for node in nodes:
+        required = node.get("retry_after", node.get("retryAfter"))
+        if required is not None:
+            return GatewayRateLimited(required)
+    return GatewayRateLimited()
 
 
 def _rate_limit_exception(exc):
@@ -134,16 +156,22 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
         or value.get("status") in ("error", "failed")
         or value.get("action") == "error"
         or bool(value.get("error"))
+        or (_is_result_envelope(value) and any(
+            isinstance(block, dict) and block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+            and block["text"].lstrip().lower().startswith(("error:", "tool error:"))
+            for block in value.get("content") or []
+        ))
     ):
         # Do not echo arbitrary upstream payloads: system configuration results
         # can contain secrets. Callers receive a stable, non-secret error.
         error = value.get("error")
+        if limited := reported_rate_limit(value):
+            raise limited
         for block in value.get("content") or []:
             if (isinstance(block, dict) and block.get("type") == "text"
                     and re.search(r"\b429\b|too many requests|rate.?limit", block.get("text", ""), re.I)):
                 raise GatewayRateLimited()
-        if limited := reported_rate_limit(value):
-            raise limited
         metadata = error if isinstance(error, dict) else value
         status = metadata.get("status_code", metadata.get("code", metadata.get("status")))
         if str(status) == "429" or re.search(r"\b429\b|too many requests|rate.?limit", str(error or value.get("message", "")), re.I):
