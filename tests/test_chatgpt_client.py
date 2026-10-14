@@ -69,12 +69,13 @@ def install_server(monkeypatch, server):
     return client.ChatGPTChatModel(model_name="test-model")
 
 
-def test_rate_limit_retries_three_times_with_sixty_second_cap(monkeypatch):
+@pytest.mark.parametrize("required, expected_waits", [(25, [25, 50, 60]), (60, [60, 60, 60])])
+def test_rate_limit_retries_three_times_with_sixty_second_cap(monkeypatch, required, expected_waits):
     servers=[]
     waits=[]
     def create(timeout):
         server=FakeServer([{'method':'turn/completed','params':{'turn':{
-            'status':'failed','error':{'message':'HTTP 429','retry_after':25}}}}])
+            'status':'failed','error':{'message':'HTTP 429','retry_after':required}}}}])
         servers.append(server)
         return server
     monkeypatch.setattr(client,'_AppServer',create)
@@ -82,7 +83,38 @@ def test_rate_limit_retries_three_times_with_sixty_second_cap(monkeypatch):
     with pytest.raises(client.GatewayRateLimited):
         client.ChatGPTChatModel(model_name='test-model').invoke([HumanMessage(content='Test')])
     assert len(servers)==4
-    assert waits==[25,50,60]
+    assert waits==expected_waits
+    assert all(server.closed for server in servers)
+
+
+@pytest.mark.parametrize("initial_short_wait, http_date", [(False, False), (False, True), (True, False)])
+def test_long_server_delay_stops_without_early_sleep_or_replacement(monkeypatch, initial_short_wait, http_date):
+    from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
+
+    fixed = datetime(2026, 10, 14, 12, tzinfo=UTC)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz)
+    monkeypatch.setattr("tradingagents.integrations.maenifold.datetime", Clock)
+    required = format_datetime(fixed + timedelta(seconds=900), usegmt=True) if http_date else 900
+    delays = ([5] if initial_short_wait else []) + [required]
+    servers, waits = [], []
+    def create(timeout):
+        assert len(servers) < len(delays), "Must not replace a deferred provider call"
+        server = FakeServer([{"method": "turn/completed", "params": {"turn": {
+            "status": "failed", "error": {"message": "HTTP 429", "retry_after": delays[len(servers)]},
+        }}}])
+        servers.append(server)
+        return server
+    monkeypatch.setattr(client, "_AppServer", create)
+    monkeypatch.setattr(client.time, "sleep", waits.append)
+    with pytest.raises(client.GatewayRateLimited) as caught:
+        client.ChatGPTChatModel(model_name="test-model").invoke([HumanMessage(content="Test")])
+    assert caught.value.retry_after == 900
+    assert waits == ([5] if initial_short_wait else [])
+    assert len(servers) == len(delays)
     assert all(server.closed for server in servers)
 
 

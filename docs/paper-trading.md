@@ -77,6 +77,19 @@ clear an unknown outcome. Use one server process per data directory.
 
 ## Execution boundaries
 
+Known retryable Gateway reads and Codex rate-limit failures permit at most the
+initial attempt plus three retries, with exponential automatic waits capped at
+60 seconds. A finite server `Retry-After` (seconds or HTTP date) longer than
+60 seconds is preserved and returned as a defer/error: no automatic sleep or
+replacement request is made. The shared Gateway cooldown retains the full
+deadline, including for other callers and retries already waiting when a
+concurrent response extends it. Requests already in flight are not canceled.
+Mutations are never automatically retried. Invalid/non-finite delays use the
+existing 30-second default; past/zero delays retain the one-second minimum.
+These rules do not expose or count hidden provider-internal attempts. The current
+browser cooldown display still caps at 60 seconds; an earlier manual retry is
+blocked by the authoritative backend deadline. Its display is a separate UI gap.
+
 The existing `POST /api/runs` endpoint accepts optional `analysis_date` in canonical
 `YYYY-MM-DD` format, alongside `symbols` and `config_revision`. Omission or JSON
 `null` uses the current New York date; the UI retains this default. Invalid or

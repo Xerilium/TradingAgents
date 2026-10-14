@@ -39,20 +39,21 @@ class GatewayTimeout(GatewayError):
 
 
 def retry_after_seconds(value=None):
-    """Accept Retry-After delay or HTTP date without exposing upstream text."""
+    """Preserve the server's required delay; only automatic backoff is capped."""
     try:
         delay = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         try:
             delay = (parsedate_to_datetime(str(value)) - datetime.now(UTC)).total_seconds()
         except (TypeError, ValueError, OverflowError):
             delay = 30
-    return min(60, max(1, math.ceil(delay))) if math.isfinite(delay) else 30
+    return max(1, math.ceil(delay)) if math.isfinite(delay) else 30
 
 
 def retry_delay(retry_after, retry_index):
-    """Three retry delays, with Retry-After as the initial backoff floor."""
-    return min(60, retry_after_seconds(retry_after) * (2 ** retry_index))
+    """Capped backoff, never shorter than Retry-After; callers defer above 60."""
+    required = retry_after_seconds(retry_after)
+    return max(required, min(60, required * (2 ** retry_index)))
 
 
 class GatewayRateLimited(GatewayError):
@@ -321,14 +322,22 @@ class MaenifoldGateway:
         owns_retry = False
         try:
             for attempt in range(4):
+                # A concurrent in-flight call may extend the shared deadline while
+                # this call sleeps. Do not issue its scheduled retry before then.
+                with self._lock:
+                    remaining = self._limited_until - time.monotonic()
+                    if remaining > 0 or (self._retrying and not owns_retry):
+                        raise GatewayRateLimited(remaining)
                 try:
                     return normalize_tool_result(await self.transport.call_tool(name, arguments))
                 except GatewayRateLimited as exc:
                     delay = retry_delay(exc.retry_after, attempt)
                     with self._lock:
                         self._limited_until = max(self._limited_until, time.monotonic() + delay)
-                        if not safe or attempt == 3 or (self._retrying and not owns_retry):
-                            raise GatewayRateLimited(delay) from exc
+                        remaining = self._limited_until - time.monotonic()
+                        if (exc.retry_after > 60 or remaining > 60 or not safe or attempt == 3
+                                or (self._retrying and not owns_retry)):
+                            raise GatewayRateLimited(max(delay, remaining)) from exc
                         self._retrying = owns_retry = True
                     await asyncio.sleep(delay)
         finally:

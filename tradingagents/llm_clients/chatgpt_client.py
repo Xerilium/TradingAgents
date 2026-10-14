@@ -265,7 +265,7 @@ class ChatGPTChatModel(BaseChatModel):
             try:
                 return self._generate_once(messages, stop, run_manager, **kwargs)
             except GatewayRateLimited as exc:
-                if attempt == 3:
+                if attempt == 3 or exc.retry_after > 60:
                     raise
                 time.sleep(retry_delay(exc.retry_after, attempt))
 

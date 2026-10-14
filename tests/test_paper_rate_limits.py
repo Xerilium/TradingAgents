@@ -15,12 +15,14 @@ from tradingagents.integrations.maenifold import (
     _rate_limit_exception,
     normalize_tool_result,
     retry_after_seconds,
+    retry_delay,
 )
 from tradingagents.web.service import DeskService
 
 
 @pytest.mark.parametrize(
-    "value, expected", [("5", 5), (None, 30), ("invalid", 30), ("nan", 30), ("0", 1), ("900", 60)]
+    "value, expected", [("5", 5), (None, 30), ("invalid", 30), ("nan", 30),
+                        ("inf", 30), ("-5", 1), ("0", 1), ("60", 60), ("60.01", 61), ("900", 900)]
 )
 def test_retry_after(value, expected):
     assert retry_after_seconds(value) == expected
@@ -36,6 +38,19 @@ def test_http_date_and_nested_sdk_exception():
     limited = _rate_limit_exception(ExceptionGroup("AnyIO", [ExceptionGroup("nested", [error])]))
     assert limited.retry_after == 7
     assert "private payload" not in str(limited)
+
+
+def test_http_date_preserves_long_deadline_and_handles_past_or_malformed(monkeypatch):
+    fixed = datetime(2026, 10, 14, 12, tzinfo=UTC)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz)
+    monkeypatch.setattr("tradingagents.integrations.maenifold.datetime", Clock)
+    assert retry_after_seconds(format_datetime(fixed + timedelta(seconds=900), usegmt=True)) == 900
+    assert retry_after_seconds(format_datetime(fixed - timedelta(seconds=10), usegmt=True)) == 1
+    assert retry_after_seconds("Wed, 99 Oct 2026 12:00:00 GMT") == 30
+    assert retry_delay(900, 0) == retry_delay(900, 3) == 900
 
 
 @pytest.mark.parametrize(
@@ -93,7 +108,8 @@ def test_shared_gateway_cooldown_blocks_new_calls_and_recovers(monkeypatch):
         coroutine.send(None)
 
 
-def test_three_retries_clamped_to_sixty_and_no_mutation_replay(monkeypatch):
+@pytest.mark.parametrize("required, expected_waits", [(25, [25, 50, 60]), (60, [60, 60, 60])])
+def test_three_retries_clamped_to_sixty_and_no_mutation_replay(monkeypatch, required, expected_waits):
     clock = [100.0]
     monkeypatch.setattr("tradingagents.integrations.maenifold.time.monotonic", lambda: clock[0])
     waits = []
@@ -109,7 +125,7 @@ def test_three_retries_clamped_to_sixty_and_no_mutation_replay(monkeypatch):
 
         async def call_tool(self, *args):
             self.calls += 1
-            raise GatewayRateLimited(25)
+            raise GatewayRateLimited(required)
 
     async def check():
         transport = Transport()
@@ -117,7 +133,7 @@ def test_three_retries_clamped_to_sixty_and_no_mutation_replay(monkeypatch):
         with pytest.raises(GatewayRateLimited):
             await gateway._call("GatewayIndex", {})
         assert transport.calls == 4
-        assert waits == [25, 50, 60]
+        assert waits == expected_waits
         transport = Transport()
         gateway = MaenifoldGateway(transport=transport)
         with pytest.raises(GatewayRateLimited):
@@ -125,22 +141,99 @@ def test_three_retries_clamped_to_sixty_and_no_mutation_replay(monkeypatch):
                 "GatewayExecute", {"domain": "alpaca", "command": "place_stock_order"}
             )
         assert transport.calls == 1
-        assert waits == [25, 50, 60]
+        assert waits == expected_waits
 
     with pytest.raises(StopIteration):
         check().send(None)
 
 
+@pytest.mark.parametrize("name, arguments", [
+    ("GatewayIndex", {}),
+    ("GatewayExecute", {"domain": "alpaca", "command": "place_stock_order"}),
+])
+def test_long_retry_after_defers_and_preserves_shared_cooldown(monkeypatch, name, arguments):
+    clock = [100.0]
+    monkeypatch.setattr("tradingagents.integrations.maenifold.time.monotonic", lambda: clock[0])
+    async def no_sleep(delay):
+        pytest.fail("A long server deadline must defer, not sleep or retry early")
+    monkeypatch.setattr("tradingagents.integrations.maenifold.asyncio.sleep", no_sleep)
+    class Transport:
+        calls = 0
+        async def call_tool(self, *args):
+            self.calls += 1
+            if self.calls == 1:
+                raise GatewayRateLimited(900)
+            return {"domains": []}
+    transport = Transport()
+    gateway = MaenifoldGateway(transport=transport)
+    async def check():
+        with pytest.raises(GatewayRateLimited) as caught:
+            await gateway._call(name, arguments)
+        assert caught.value.retry_after == 900
+        assert transport.calls == 1
+        clock[0] += 60
+        for _ in range(20):
+            with pytest.raises(GatewayRateLimited) as blocked:
+                await gateway._call("GatewayIndex", {})
+            assert blocked.value.retry_after == 840
+        assert transport.calls == 1
+        clock[0] += 839
+        with pytest.raises(GatewayRateLimited) as blocked:
+            await gateway._call("GatewayIndex", {})
+        assert blocked.value.retry_after == 1
+        clock[0] += 1
+        assert await gateway._call("GatewayIndex", {}) == {"domains": []}
+        assert transport.calls == 2
+    with pytest.raises(StopIteration):
+        check().send(None)
+
+
+def test_inflight_long_limit_stops_another_call_scheduled_retry(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr("tradingagents.integrations.maenifold.time.monotonic", lambda: clock[0])
+    class Hold:
+        def __await__(self):
+            yield "inflight"
+    class Transport:
+        calls = 0
+        async def call_tool(self, *args):
+            self.calls += 1
+            if self.calls == 1:
+                await Hold()
+                raise GatewayRateLimited(900)
+            raise GatewayRateLimited(5)
+    transport = Transport()
+    gateway = MaenifoldGateway(transport=transport)
+    inflight = gateway._call("GatewayIndex", {})
+    assert inflight.send(None) == "inflight"
+    waits = []
+    async def sleep(delay):
+        waits.append(delay)
+        with pytest.raises(GatewayRateLimited) as first:
+            inflight.send(None)
+        assert first.value.retry_after == 900
+        clock[0] += delay
+    monkeypatch.setattr("tradingagents.integrations.maenifold.asyncio.sleep", sleep)
+    waiting = gateway._call("GatewayIndex", {})
+    with pytest.raises(GatewayRateLimited) as second:
+        waiting.send(None)
+    assert second.value.retry_after == 895
+    assert waits == [5]
+    assert transport.calls == 2  # Only the two requests already in flight.
+    assert gateway._limited_until == 1000
+
+
 @pytest.mark.parametrize(
     "route, method", [("/api/instruments/META", "GET"), ("/api/refresh", "POST")]
 )
-def test_http_preserves_rate_limit_and_retry_after(route, method):
+@pytest.mark.parametrize("delay", [8, 900])
+def test_http_preserves_rate_limit_and_retry_after(route, method, delay):
     request, service = handler(path=route, body=b"{}")
-    service.chart.side_effect = GatewayRateLimited(8)
-    service.refresh.side_effect = GatewayRateLimited(8)
+    service.chart.side_effect = GatewayRateLimited(delay)
+    service.refresh.side_effect = GatewayRateLimited(delay)
     getattr(request, "do_" + method)()
     assert request._send.call_args.args[0] == 429
-    assert request._send.call_args.kwargs["headers"] == {"Retry-After": 8}
+    assert request._send.call_args.kwargs["headers"] == {"Retry-After": delay}
     assert len(service.mock_calls) == 1
 
 
