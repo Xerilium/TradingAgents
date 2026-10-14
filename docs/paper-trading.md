@@ -86,9 +86,10 @@ deadline, including for other callers and retries already waiting when a
 concurrent response extends it. Requests already in flight are not canceled.
 Mutations are never automatically retried. Invalid/non-finite delays use the
 existing 30-second default; past/zero delays retain the one-second minimum.
-These rules do not expose or count hidden provider-internal attempts. The current
-browser cooldown display still caps at 60 seconds; an earlier manual retry is
-blocked by the authoritative backend deadline. Its display is a separate UI gap.
+These rules do not expose or count hidden provider-internal attempts. The browser
+displays and honors the full server cooldown, including deadlines beyond 60
+seconds. Expiry restores manual actions only; it never replays a request or an
+order. Invalid or unknown browser delays retain the 30-second default.
 Explicit structured retry metadata takes precedence over generic 429 text or a
 parent message, including nested error metadata and JSON-encoded MCP text blocks.
 Text-only rate limits use the default only when no explicit delay is present.

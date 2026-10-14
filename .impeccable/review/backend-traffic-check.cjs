@@ -47,5 +47,33 @@ const {context,render,fixture,requests}=globalThis.traffic;
  const failedDetail=await render("api('/api/runs/r/results/META')");
  assert.equal(failedDetail.error,'Review step failed');
  assert.equal(failedDetail.reports.market_report,'Retained evidence','A failed review must not hide completed reports');
+ // Cooldown is a server deadline, not an automatic retry timer. Advance only fake time.
+ let now=Date.parse('2026-10-14T12:00:00Z');
+ context.Date=class extends Date {static now(){return now;}};
+ render('state.runs=[];stateErrorMessage="";');
+ for(const [header,seconds] of [['900',900],['60',60],['5',5],['garbage',30],[null,30],['NaN',30],['Infinity',30],['0',1],[new Date(now+900000).toUTCString(),900]]){
+  now=Date.parse('2026-10-14T12:00:00Z');
+  const start=now;let calls=0;
+  render('rateLimitedUntil=0;');
+  context.fetch=async()=>{calls++;return {ok:false,status:429,headers:{get:()=>header}};};
+  await assert.rejects(render("api('/api/refresh',{})"),e=>e.status===429);
+  assert.equal(render('rateLimitedUntil'),start+seconds*1000);
+  assert(render('rateLimitMessage()').includes(render('time(rateLimitedUntil)')));
+  for(const elapsed of [...new Set([Math.min(60000,seconds*1000-1),seconds*1000-1])]){
+   now=start+elapsed;for(const fn of intervals)await fn();
+   assert.equal(render("$('#refresh').disabled"),true);
+   for(const path of ['/api/refresh','/api/instruments/META','/api/runs','/api/proposals','/api/orders','/api/orders/cancel'])
+    await assert.rejects(render(`api(${JSON.stringify(path)},{})`),/rate limit/);
+   assert.equal(calls,1,'Blocked actions and countdown ticks must not send requests');
+  }
+  now=start+seconds*1000;for(const fn of intervals)await fn();
+  assert.equal(render('coolingDown()'),false);
+  assert.equal(render("$('#refresh').disabled"),false);
+  assert.equal(calls,1,'Expiry must not replay refresh, research or orders');
+  context.fetch=async()=>{calls++;return {ok:true,status:200,json:async()=>({})};};
+  await render("api('/api/refresh',{})");
+  assert.equal(calls,2,'An explicit action is allowed after the true deadline');
+ }
+ console.log('PASS: 900-second and HTTP-date cooldowns remain blocked after 60 seconds; normal and malformed delays expire without replay.');
  console.log('PASS: zero idle polling, no automatic broker refresh, old revision-loop reproduced offline (4 capped requests), fixed guard fetches once.');
 })().catch(e=>{console.error(e);process.exitCode=1});

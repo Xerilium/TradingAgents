@@ -140,7 +140,7 @@ async function api(path, body, {timeoutMs=path.startsWith('/api/instruments/')||
         body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
       if(response.status===429){
         const retry=response.headers?.get?.('Retry-After');
-        const delay=Math.min(60000,retry&&Number.isFinite(Number(retry))?Math.max(1,Number(retry))*1000:retry&&Number.isFinite(Date.parse(retry))?Math.max(1000,Date.parse(retry)-Date.now()):30000);
+        const delay=retry&&Number.isFinite(Number(retry))?Math.max(1,Number(retry))*1000:retry&&Number.isFinite(Date.parse(retry))?Math.max(1000,Date.parse(retry)-Date.now()):30000;
         rateLimitedUntil=Math.max(rateLimitedUntil,Date.now()+delay);
         const limited=new Error(rateLimitMessage());limited.status=429;
         renderNotice();throw limited;
