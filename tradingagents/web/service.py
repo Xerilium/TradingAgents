@@ -540,19 +540,19 @@ class DeskService:
         with self.store.lock:
             self.store.data["research_requests"].insert(0, request)
         self._request_checkpoint(request, "request_started")
+        terminal = {"status": "accepted"}
         try:
             with capture_vendor_evidence(self._evidence_recorder(request["id"])):
                 result = self._start_run(symbols, expected_revision, analysis_date, request, request_started)
-            request["status"] = "accepted"
             return result
         except BaseException as exc:
-            request.update(status="interrupted" if not isinstance(exc, Exception) else
-                           "failed" if request["run_id"] else "rejected",
-                           error_class=self._request_error_class(exc))
+            terminal = {"status": "interrupted" if not isinstance(exc, Exception) else
+                        "failed" if request["run_id"] else "rejected",
+                        "error_class": self._request_error_class(exc)}
             raise
         finally:
             with self.store.lock:
-                request.update(ended_at=now(), elapsed_seconds=time.monotonic() - request_started)
+                request.update(**terminal, ended_at=now(), elapsed_seconds=time.monotonic() - request_started)
                 for origin in ("source", "gateway", "jev"):
                     try:
                         self.store.finalize_call_evidence(request, origin)

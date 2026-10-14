@@ -275,6 +275,7 @@ def test_preflight_workers_have_request_ownership_and_do_not_leak_to_run(desk, m
 
 
 def test_concurrent_research_requests_keep_separate_preflight_receipts(desk, monkeypatch):
+    import sys
     import threading
 
     from tradingagents.dataflows.router import observe_gateway_call
@@ -293,8 +294,31 @@ def test_concurrent_research_requests_keep_separate_preflight_receipts(desk, mon
 
     monkeypatch.setattr(service, "readiness", ready)
     monkeypatch.setattr(broker, "execute", observed)
+    partial_terminal_saves = []
+
+    def start_observed():
+        # Exercise persistence at each unlocked request boundary, including the
+        # gap between deciding an outcome and entering the final store lock.
+        def trace(frame, event, arg):
+            if (event == "line" and frame.f_code is service.start_run.__func__.__code__
+                    and not service.store.lock._is_owned()):
+                with service.store.lock:
+                    service.store.save()
+                    saved = json.loads(service.store.path.read_text(encoding="utf-8"))
+                    partial_terminal_saves.extend(r["id"] for r in saved["research_requests"]
+                        if r["status"] != "preflight"
+                        and (r["ended_at"] is None or r["elapsed_seconds"] is None))
+            return trace
+
+        previous = sys.gettrace()
+        sys.settrace(trace)
+        try:
+            return service.start_run(["AAPL"])
+        finally:
+            sys.settrace(previous)
+
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(service.start_run, ["AAPL"]) for _ in range(2)]
+        futures = [pool.submit(start_observed) for _ in range(2)]
         outcomes = []
         for future in futures:
             try:
@@ -302,6 +326,7 @@ def test_concurrent_research_requests_keep_separate_preflight_receipts(desk, mon
             except ValueError:
                 outcomes.append(None)
     assert sum(value is not None for value in outcomes) == 1
+    assert partial_terminal_saves == []
     first, second = service.store.data["research_requests"]
     assert {first["status"], second["status"]} == {"accepted", "rejected"}
     assert first["id"] != second["id"]
