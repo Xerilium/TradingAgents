@@ -38,17 +38,8 @@ class DeskStore:
             if run["status"] in {"queued", "running", "cancelling"}:
                 run["status"] = "interrupted"
                 run["error"] = "Server stopped during analysis. Start a new run."
-                if run.get("measurements"):
-                    run["measurements"].update(
-                        run_id=run["id"], status="interrupted", ended_at=None, elapsed_seconds=None,
-                        recovery_observed_at=datetime.now(UTC).isoformat(),
-                        completeness="Partial journal checkpoint; process termination time and "
-                                     "callbacks since the checkpoint are unavailable.",
-                    )
-                    try:
-                        run["measurement_artifact"] = self.write_measurements(run["id"], run["measurements"])
-                    except OSError:
-                        run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
+            if run["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+                self._recover_measurements(run)
         for proposal in self.data["proposals"]:
             if proposal["status"] == "submitting":
                 proposal["status"] = "unknown"
@@ -56,6 +47,51 @@ class DeskStore:
                     "Submission interrupted. Refresh broker orders to reconcile; do not resubmit."
                 )
         self.save()
+
+    def _recover_measurements(self, run):
+        measurements = run.get("measurements")
+        if not measurements:
+            return  # Older runs never collected measurements.
+        finalized = bool(measurements.get("ended_at") or measurements.get("recovery_observed_at"))
+        if run.get("measurement_artifact") and finalized and measurements.get("status") == run["status"]:
+            return
+        if str(UUID(run["id"])) != run["id"]:
+            raise ValueError("Invalid run ID for measurement recovery.")
+        try:
+            # A crash can leave a complete immutable artifact before its journal reference.
+            candidates = []
+            directory = self.directory / "reports" / run["id"]
+            for path in directory.glob("measurements-*.json"):
+                try:
+                    payload = path.read_bytes()
+                    candidate = json.loads(payload)
+                except (OSError, ValueError):
+                    continue  # Preserve partial files; they are not completion evidence.
+                if (isinstance(candidate, dict) and candidate.get("run_id") == run["id"]
+                        and candidate.get("status") == run["status"]
+                        and candidate.get("started_at") == measurements.get("started_at")
+                        and (candidate.get("ended_at") or candidate.get("recovery_observed_at"))):
+                    candidates.append((candidate, self._measurement_reference(path, payload)))
+            if len(candidates) == 1:
+                run["measurements"], run["measurement_artifact"] = candidates[0]
+            else:
+                # No unambiguous final artifact: preserve only what the journal recorded.
+                measurements.update(run_id=run["id"], status=run["status"])
+                measurements.setdefault("recovery_observed_at", datetime.now(UTC).isoformat())
+                if not measurements.get("ended_at"):
+                    measurements.update(
+                        ended_at=None, elapsed_seconds=None, callbacks_final=False,
+                        completeness="Partial journal checkpoint; process termination time and "
+                                     "callbacks since the checkpoint are unavailable.",
+                    )
+                run["measurement_artifact"] = self.write_measurements(run["id"], measurements)
+            run.pop("measurement_export_error", None)
+        except OSError:
+            run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
+
+    def _measurement_reference(self, path, payload):
+        return {"path": path.relative_to(self.directory).as_posix(),
+                "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "format": "json"}
 
     @staticmethod
     def result_summary(result):
@@ -138,5 +174,4 @@ class DeskStore:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        return {"path": relative.as_posix(), "sha256": hashlib.sha256(payload).hexdigest(),
-                "bytes": len(payload), "format": "json"}
+        return self._measurement_reference(destination, payload)

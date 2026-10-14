@@ -143,6 +143,16 @@ results or whole configurations. An artifact-write failure is explicit and keeps
 available measurements in the journal. A filesystem failure that also prevents
 journal writes cannot guarantee durability.
 
+Startup also repairs terminal runs whose measurement finalization was interrupted.
+It preserves their analytical status. A unique complete artifact matching the run,
+request start and terminal status is reattached with its integrity reference. If
+no unambiguous final artifact exists, recovery exports the durable journal
+checkpoint and labels unknown final callback counts/end time/elapsed time as
+unavailable; the recovery timestamp is not an analytical completion timestamp.
+Existing artifacts are never overwritten or deleted. Once the reference is
+durable, subsequent startups leave finalized and recovered measurements alone.
+Recovery neither resumes research nor invokes providers or order operations.
+
 ```powershell
 rtk proxy .venv\Scripts\python.exe -m pytest
 rtk proxy .venv\Scripts\python.exe -m ruff check tradingagents/web tradingagents/paper tradingagents/integrations

@@ -399,6 +399,90 @@ def test_recovered_interrupted_run_exports_only_known_measurements(desk):
     assert (recovered.directory / run["measurement_artifact"]["path"]).is_file()
 
 
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+@pytest.mark.parametrize("gap", ["terminal_checkpoint", "artifact_before_reference"])
+def test_terminal_measurement_interruption_recovery_is_idempotent(desk, monkeypatch, status, gap):
+    from uuid import uuid4
+
+    from cli.stats_handler import StatsCallbackHandler
+
+    service, broker = desk
+    run_id = service.start_run(["AAPL"])["run_id"]
+    run = service._find_run(run_id)
+    run["status"] = status
+    stats = StatsCallbackHandler()
+    call_id = uuid4()
+    stats.on_llm_start({}, ["private prompt"], run_id=call_id)
+    stats.on_llm_error(ValueError("private error"), run_id=call_id)
+    save = service.store.save
+    calls = [0]
+
+    class ProcessStopped(BaseException):
+        pass
+
+    def crash_save():
+        calls[0] += 1
+        if calls[0] == 1:
+            save()  # Analytical terminal state has reached disk.
+            if gap == "terminal_checkpoint":
+                raise ProcessStopped()
+        else:
+            raise ProcessStopped()  # Artifact is durable; its reference is not.
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service.store, "save", crash_save)
+        with pytest.raises(ProcessStopped):
+            service._finish_measurements(run, stats, 0.0)
+
+    journal_before = json.loads(service.store.path.read_text())["runs"][0]
+    assert journal_before["status"] == status
+    assert not journal_before.get("measurement_artifact")
+    directory = service.store.directory / "reports" / run_id
+    artifacts_before = {p.name: p.read_bytes() for p in directory.glob("measurements-*.json")}
+    if gap == "artifact_before_reference":
+        assert len(artifacts_before) == 1
+        known_final = json.loads(next(iter(artifacts_before.values())))
+    else:
+        assert artifacts_before == {}
+    broker_calls = copy.deepcopy(broker.calls)
+    recovered = DeskStore(service.store.directory, service.store.data["config"])
+    restored = recovered.data["runs"][0]
+    assert restored["status"] == status  # Never turn a completed analysis into interrupted.
+    assert restored["completed_at"] == journal_before["completed_at"]
+    assert restored["measurements"]["started_at"] == journal_before["measurements"]["started_at"]
+    if gap == "artifact_before_reference":
+        assert restored["measurements"] == known_final
+        assert restored["measurement_artifact"]["path"].endswith(next(iter(artifacts_before)))
+        assert len(list(directory.glob("measurements-*.json"))) == 1
+    else:
+        assert restored["measurements"]["ended_at"] is None
+        assert restored["measurements"]["elapsed_seconds"] is None
+        assert restored["measurements"]["callbacks_final"] is False
+        assert restored["measurements"]["callbacks"] == journal_before["measurements"]["callbacks"]
+        assert restored["measurements"]["stages"] == journal_before["measurements"]["stages"]
+    receipt = restored["measurement_artifact"]
+    artifact = (recovered.directory / receipt["path"]).read_bytes()
+    assert hashlib.sha256(artifact).hexdigest() == receipt["sha256"]
+    assert json.loads(artifact) == restored["measurements"]
+    after = {p.name: p.read_bytes() for p in directory.glob("measurements-*.json")}
+    again = DeskStore(service.store.directory, service.store.data["config"])
+    assert again.data["runs"][0] == restored
+    assert {p.name: p.read_bytes() for p in directory.glob("measurements-*.json")} == after
+    assert all(after[name] == payload for name, payload in artifacts_before.items())
+    assert again.data["proposals"] == service.store.data["proposals"]
+    assert broker.calls == broker_calls
+
+
+def test_finalized_run_does_not_reexport_on_startup(desk):
+    service, _ = desk
+    run = service.run_detail(complete_run(service))
+    directory = service.store.directory / "reports" / run["id"]
+    artifacts = {p.name: p.read_bytes() for p in directory.glob("measurements-*.json")}
+    reopened = DeskStore(service.store.directory, service.store.data["config"])
+    assert reopened.data["runs"][0] == run
+    assert {p.name: p.read_bytes() for p in directory.glob("measurements-*.json")} == artifacts
+
+
 def test_stats_callback_parallel_calls_are_counted_once():
     from uuid import uuid4
 
