@@ -8,6 +8,7 @@ Protocol reference: https://learn.chatgpt.com/docs/app-server
 from __future__ import annotations
 
 import json
+import asyncio
 import os
 import queue
 import shutil
@@ -104,20 +105,30 @@ class _AppServer:
                 self.process.stdout.close()
 
     def send(self, message):
+        self._check_request()
         try:
             self.process.stdin.write(json.dumps(message) + "\n")
             self.process.stdin.flush()
         except (OSError, ValueError) as exc:
             raise RuntimeError("Codex app-server connection closed.") from exc
 
-    def receive(self):
+    def _check_request(self):
+        cancelled = getattr(self, "cancelled", None)
+        if cancelled is not None and cancelled.is_set():
+            raise InterruptedError("ChatGPT request cancelled.")
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("ChatGPT request timed out. Check Codex sign-in and account limits.")
-        try:
-            item = self.messages.get(timeout=remaining)
-        except queue.Empty as exc:
-            raise TimeoutError("ChatGPT request timed out. Check Codex sign-in and account limits.") from exc
+        return remaining
+
+    def receive(self):
+        while True:
+            remaining = self._check_request()
+            try:
+                item = self.messages.get(timeout=min(remaining, 0.1))
+                break
+            except queue.Empty:
+                continue
         if isinstance(item, Exception):
             raise item
         return item
@@ -140,6 +151,7 @@ class _AppServer:
             self.events.append(item)
 
     def event(self):
+        self._check_request()
         return self.events.popleft() if self.events else self.receive()
 
     def close(self):
@@ -243,6 +255,7 @@ class ChatGPTChatModel(BaseChatModel):
 
     model_name: str
     timeout: float = Field(default=300, gt=0)
+    max_retries: int = Field(default=3, ge=0, le=3)
     reasoning_effort: str = "high"
 
     @property
@@ -261,13 +274,42 @@ class ChatGPTChatModel(BaseChatModel):
         self, messages: list[BaseMessage], stop: list[str] | None = None,
         run_manager: CallbackManagerForLLMRun | None = None, **kwargs,
     ) -> ChatResult:
-        for attempt in range(4):
+        deadline = kwargs.setdefault("_request_deadline", time.monotonic() + self.timeout)
+        cancelled = kwargs.get("_request_cancelled")
+        for attempt in range(self.max_retries + 1):
+            if cancelled is not None and cancelled.is_set():
+                raise InterruptedError("ChatGPT request cancelled.")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("ChatGPT request timed out.")
             try:
                 return self._generate_once(messages, stop, run_manager, **kwargs)
             except GatewayRateLimited as exc:
-                if attempt == 3 or exc.retry_after > 60:
+                if attempt == self.max_retries or exc.retry_after > 60:
                     raise
-                time.sleep(retry_delay(exc.retry_after, attempt))
+                delay = retry_delay(exc.retry_after, attempt)
+                if time.monotonic() + delay >= deadline:
+                    raise TimeoutError("ChatGPT request deadline does not allow another retry.") from exc
+                if cancelled is None:
+                    time.sleep(delay)
+                elif cancelled.wait(delay):
+                    raise InterruptedError("ChatGPT request cancelled.") from exc
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        # BaseChatModel's default executor path cannot stop a synchronous retry
+        # loop. Give this specific request a cooperative cancellation signal.
+        cancelled = threading.Event()
+        kwargs["_request_cancelled"] = cancelled
+        kwargs["_request_deadline"] = time.monotonic() + self.timeout
+        manager = run_manager.get_sync() if run_manager is not None else None
+        worker = asyncio.create_task(asyncio.to_thread(self._generate, messages, stop, manager, **kwargs))
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            cancelled.set()
+            # Actual receive/retry waits observe the signal; _generate_once then
+            # closes its own helper. Do not leave an orphan provider retry loop.
+            await asyncio.gather(worker, return_exceptions=True)
+            raise
 
     def _generate_once(
         self, messages: list[BaseMessage], stop: list[str] | None = None,
@@ -280,7 +322,14 @@ class ChatGPTChatModel(BaseChatModel):
         permitted = {tool["name"] for tool in functions}
         if kwargs.get("tool_choice") == "any" and len(functions) == 1:
             instructions += f"\nReturn your answer by calling the {functions[0]['name']} function."
-        server = _AppServer(self.timeout)
+        cancelled = kwargs.get("_request_cancelled")
+        if cancelled is not None and cancelled.is_set():
+            raise InterruptedError("ChatGPT request cancelled.")
+        remaining = kwargs.get("_request_deadline", time.monotonic() + self.timeout) - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("ChatGPT request timed out.")
+        server = _AppServer(min(self.timeout, remaining))
+        server.cancelled = cancelled
         try:
             _initialize_chatgpt(server)
             effective = server.rpc("config/read", {"includeLayers": False}).get("config", {})
@@ -370,6 +419,7 @@ class ChatGPTClient(BaseLLMClient):
     def get_llm(self) -> ChatGPTChatModel:
         return ChatGPTChatModel(
             model_name=self.model, timeout=self.kwargs.get("timeout", 300),
+            max_retries=self.kwargs.get("max_retries", 3),
             reasoning_effort=self.kwargs.get("reasoning_effort") or "high", callbacks=self.kwargs.get("callbacks"),
         )
 

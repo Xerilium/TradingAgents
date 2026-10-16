@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "tdd",
+  "name": "Test Driven Development",
+  "initial": "pending",
+  "states": {
+    "pending": {
+      "on": {
+        "pass": "blue-team"
+      }
+    },
+    "blue-team": {
+      "role": "blue-team",
+      "prompt": "Create or refine the tests/spec checks that define the requested behavior before implementation.\nDo not complete the product implementation in this stage.\nPass when the test/spec signal is ready for implementation. Fail with missing-requirement notes.",
+      "on": {
+        "fail": "pending",
+        "pass": "swe"
+      }
+    },
+    "swe": {
+      "role": "swe",
+      "prompt": "Implement the requested behavior in the Kanban item.\nRun focused validation that proves the change.\nPass only when implementation and validation are complete. Fail with specific remediation notes.",
+      "on": {
+        "fail": "blue-team",
+        "pass": "red-team"
+      }
+    },
+    "red-team": {
+      "role": "red-team",
+      "prompt": "Audit the work against the Kanban item and prior process history.\nDo not make implementation changes in this stage.\nPass only if the work satisfies the item and has meaningful validation. Fail with concrete remediation notes.",
+      "on": {
+        "fail": "swe",
+        "pass": "done"
+      }
+    },
+    "done": {
+      "terminal": true,
+      "on": {}
+    }
+  }
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 import json
@@ -33,6 +34,7 @@ from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
 from tradingagents.paper.engine import plan_orders, validate_proposal
 
 from .config import DeskConfig
+from .laya_review import prepare_review
 from .store import DeskStore
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
@@ -113,13 +115,43 @@ def normalize_quotes(raw):
             "timestamp": timestamp,
             "bid": bid,
             "ask": ask,
-            "invalid_quote": (bid_present and bid is None) or (ask_present and ask is None),
+            "invalid_quote": (bid_present and (bid is None or bid <= 0)) or (ask_present and (ask is None or ask <= 0)) or (bid is not None and ask is not None and bid > ask),
             "volume": _number(bar.get("v", bar.get("volume"))),
             "feed": "iex",
         }
         if bid_present or ask_present:
             result[symbol]["quote_timestamp"] = quote.get("t", quote.get("timestamp"))
     return result
+
+
+def research_quote_context(symbol, trade_date, market):
+    """Keep observed broker prices separate from historical analysis and execution."""
+    if trade_date != datetime.now(ZoneInfo("America/New_York")).date().isoformat():
+        return "Broker quote context: omitted for historical analysis to prevent future-data leakage."
+    quote = copy.deepcopy(market.get("quotes", {}).get(symbol, {}))
+    observed = datetime.now(UTC)
+    def age(stamp):
+        try:
+            return (observed - datetime.fromisoformat(stamp.replace("Z", "+00:00"))).total_seconds()
+        except (AttributeError, TypeError, ValueError):
+            return None
+    trade_age = age(quote.get("timestamp"))
+    quote_age = age(quote.get("quote_timestamp"))
+    fresh = all(value is not None and -60 <= value <= 900 for value in (trade_age, quote_age))
+    usable = fresh and not quote.get("invalid_quote", True) and all(
+        _number(quote.get(key)) is not None and _number(quote[key]) > 0 for key in ("price", "bid", "ask")
+    )
+    evidence = {"symbol": symbol, "captured_at": market.get("quotes_updated_at", market.get("updated_at")),
+                "evaluated_at": observed.isoformat(), "market_open": (market.get("clock") or {}).get("is_open"),
+                "fresh": fresh, "valid_two_sided_quote": usable, "quote": quote}
+    return (
+        "Broker quote context (Alpaca via Maenifold): " + json.dumps(evidence, allow_nan=False)
+        + "\nThese are observed prices, not a streaming quote. State the feed, timestamps and freshness. "
+        "A stale, missing or invalid quote is not an execution price. A market-close last trade can still "
+        "be a historical reference. Distinguish unavailable prices from available but stale prices. "
+        "Ground conditional risk levels in verified technical evidence; do not invent support, resistance "
+        "or a stop merely because a quote exists. Execution requires a separate fresh quote check."
+    )
 
 
 class DeskService:
@@ -134,6 +166,8 @@ class DeskService:
         self.lock = threading.RLock()
         self.execution_lock = threading.Lock()
         self.refresh_lock = threading.Lock()
+        self.quotes_next_refresh = 0.0
+        self.quotes_refresh_failed = False
         self.account_lock = threading.Lock()
         self.account_status = None
         self.chart_lock = threading.Lock()
@@ -281,6 +315,52 @@ class DeskService:
             self.store.save()
         return self.state()
 
+    def refresh_quotes(self):
+        """Single-flight quote-only refresh, shared across tabs, with a 45s deadline."""
+        if not self.refresh_lock.acquire(blocking=False):
+            return self.state()
+        try:
+            if time.monotonic() < self.quotes_next_refresh:
+                if self.quotes_refresh_failed:
+                    raise GatewayRateLimited(self.quotes_next_refresh - time.monotonic())
+                return self.state()
+            if not self._book()["connection"].get("connected"):
+                raise ValueError("Connect the paper account before refreshing quotes.")
+            self.quotes_next_refresh = time.monotonic() + 60
+            symbols = self.store.snapshot()["config"]["universe"]
+
+            async def fetch():
+                quotes = {}
+                clock = await self.gateway.aexecute("alpaca", "get_clock", {})
+                for offset in range(0, len(symbols), 100):
+                    raw = await self.gateway.aexecute("alpaca", "get_stock_snapshot", {
+                        "symbols": ",".join(symbols[offset:offset + 100]), "feed": "iex",
+                    })
+                    batch = normalize_quotes(raw)
+                    if any(not batch.get(symbol, {}).get("timestamp") for symbol in symbols[offset:offset + 100]):
+                        raise ValueError("The quote response is incomplete; the previous snapshot is retained.")
+                    quotes.update(batch)
+                return quotes, _payload(clock)
+
+            async def bounded():
+                return await asyncio.wait_for(fetch(), timeout=45)
+
+            try:
+                quotes, clock = asyncio.run(bounded())
+            except Exception as exc:
+                self.quotes_refresh_failed = True
+                self.quotes_next_refresh = time.monotonic() + max(300, getattr(exc, "retry_after", 0))
+                if isinstance(exc, TimeoutError):
+                    raise ValueError("Quote refresh exceeded 45 seconds. The previous snapshot is retained.") from exc
+                raise
+            with self.lock:
+                self.quotes_refresh_failed = False
+                self.market.update(quotes=quotes, clock=clock, quotes_updated_at=now())
+                self.market["errors"] = [e for e in self.market["errors"] if e.get("source") != "quotes"]
+            return self.state()
+        finally:
+            self.refresh_lock.release()
+
     def refresh(self):
         with self.refresh_lock:
             paper_check_started = False
@@ -389,6 +469,9 @@ class DeskService:
                         "account_id": (market.get("account") or {}).get("id"),
                     }
                 self.market = market
+                self.market["quotes_updated_at"] = market["updated_at"]
+                self.quotes_next_refresh = time.monotonic() + 60
+                self.quotes_refresh_failed = False
         return self.state()
 
     @staticmethod
@@ -830,6 +913,11 @@ class DeskService:
                     seen = set()
                     memory_seen = None
                     initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
+                    quote_context = research_quote_context(symbol, run["trade_date"], market)
+                    initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote_context
+                    with self.store.lock:
+                        result["quote_context"] = quote_context
+                        self.store.save()
                     self.store.record_portfolio_context(run_id, {
                         "schema_version": 1,
                         "run_id": run_id,
@@ -890,35 +978,22 @@ class DeskService:
                     rating = run_rating(final)
                     self._event(run_id, "laya", "Checking evidence with Laya", symbol)
                     next_stage("laya")
-                    laya_parameters = {
-                            "state": {
-                                "symbol": symbol,
-                                "trade_date": run["trade_date"],
-                                "rating": rating,
-                                "reports": result["reports"],
-                            },
-                            "questions": {
-                                "evidence_complete": {
-                                    "kind": "yes_no",
-                                    "instructions": "Check the actual reports for material evidence gaps.",
-                                    "criteria": {
-                                        "true": "The reports contain current evidence supporting this symbol's rating, with no unresolved source errors or material missing information."
-                                    },
-                                },
-                                "decision_consistent": {
-                                    "kind": "yes_no",
-                                    "instructions": "Check the final recommendation against the supplied reports.",
-                                    "criteria": {
-                                        "true": "The final rating is consistent with the reports and is not REVIEW or an unsupported claim."
-                                    },
-                                },
-                            },
-                            "threshold": "high",
-                        }
+                    laya_parameters, review = prepare_review(
+                        self.gateway, getattr(graph, "quick_thinking_llm", None),
+                        symbol, run["trade_date"], rating, result["reports"], quote_context,
+                        cancelled=lambda: run_id in self.cancelled,
+                    )
+                    with self.store.lock:
+                        result["laya_review"] = review
+                        self.store.save()
+                    if run_id in self.cancelled:
+                        raise InterruptedError("Analysis stopped by operator.")
                     with gateway_observation("laya", "decide", "gateway_invocation",
                                              parameters=laya_parameters, purpose="final_laya") as observed:
                         laya = self.gateway.execute("laya", "decide", laya_parameters)
                         observed.update(output=laya, result_available=True)
+                    if run_id in self.cancelled:
+                        raise InterruptedError("Analysis stopped by operator.")
                     laya = _payload(laya)
                     answers = laya.get("answers", {})
                     gate = laya.get("contract", {}).get("grade") == "auto_execute" and all(

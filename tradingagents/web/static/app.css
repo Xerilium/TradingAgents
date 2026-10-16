@@ -44,3 +44,12 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 .watchlist-table thead{position:sticky;top:0;z-index:1}
 @media(max-width:790px){.research-rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-height:210px}.research-layout .symbol-list{flex-direction:column}.research-layout .collection-toolbar label{flex:1}.research-rows .research-symbol{min-height:56px;gap:5px}.research-rows .research-symbol .badge{font-size:10px}.research-layout .queue-progress{padding-top:8px;padding-bottom:8px}}
 @media(max-width:600px){.settings-form .form-control{font-size:16px}.report-content{font-size:14px;line-height:1.7}.report-section summary{min-height:44px}.watchlist-panel .table-scroll{max-height:340px}.research-layout .symbol-list .collection-toolbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.research-layout .collection-search{min-width:0!important}}
+
+.quote-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.research-layout{align-items:start}
+.research-detail-panel{min-width:0;display:flex;flex-direction:column;height:clamp(320px,65vh,680px)}
+.research-detail-panel .result-top{flex:none}
+.research-detail-scroll{min-height:0;flex:1;overflow:auto;scrollbar-gutter:stable;overflow-wrap:anywhere}
+.research-detail-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.research-detail-scroll .report-raw pre{max-height:none;overflow:visible}
+@media(max-width:600px){.research-detail-panel{height:60vh;min-height:320px}}

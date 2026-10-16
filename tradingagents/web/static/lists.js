@@ -62,10 +62,31 @@ const DeskLists = (() => {
     return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   }
 
-  function quoteState(quote,now=Date.now()) {
+  function marketState(clock,now=Date.now()) {
+    if(typeof clock?.is_open!=='boolean'||!Number.isFinite(now))return 'unknown';
+    const observed=typeof clock.timestamp==='string'?Date.parse(clock.timestamp):NaN;
+    const boundary=Date.parse(clock.is_open?clock.next_close:clock.next_open);
+    // A broker observation establishes an interval, not a fifteen-minute lease.
+    // Never extrapolate past its next transition or infer false from a missing flag.
+    if(!Number.isFinite(observed)||observed>now||!Number.isFinite(boundary)||boundary<=now||boundary<=observed)return 'unknown';
+    return clock.is_open?'open':'closed';
+  }
+
+  function quoteState(quote,now=Date.now(),clock=null) {
     if(!quote||quote.price===null||quote.price===undefined||typeof quote.price==='boolean'||typeof quote.price==='string'&&!quote.price.trim()||!Number.isFinite(Number(quote.price)))return 'missing';
     const timestamps=[quote.timestamp,quote.quote_timestamp??quote.timestamp].map(value=>new Date(value).getTime());
-    return timestamps.some(timestamp=>!Number.isFinite(timestamp)||now-timestamp>900000||timestamp>now+60000)?'stale':'current';
+    if(timestamps.some(timestamp=>!Number.isFinite(timestamp)||timestamp>now+60000))return 'stale';
+    const market=marketState(clock,now);
+    // Closed describes the session, not execution freshness. Keep the observed
+    // last-trade date visible; never imply it is an official closing auction.
+    if(market==='closed') {
+      // The clock does not include the previous session's close. Only extend
+      // references from its observed NY date; do not invent a holiday calendar.
+      if(timestamps.every(timestamp=>dateNY(timestamp)===dateNY(clock.timestamp)))return 'closed';
+      return 'unverified';
+    }
+    if(market==='unknown')return 'unknown';
+    return timestamps.some(timestamp=>now-timestamp>900000)?'stale':'current';
   }
 
   function duration(seconds) {
@@ -91,5 +112,5 @@ const DeskLists = (() => {
     return {seconds:median*stocks,perStock:median,samples:recent.length};
   }
 
-  return {page,parseSymbols,dateNY,quoteState,duration,estimate};
+  return {page,parseSymbols,dateNY,marketState,quoteState,duration,estimate};
 })();

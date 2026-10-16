@@ -157,7 +157,9 @@ class DeskHandler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be a JSON object.")
             service = self.server.service
             path = urlsplit(self.path).path
-            if path == "/api/refresh":
+            if path == "/api/quotes/refresh":
+                result = service.refresh_quotes()
+            elif path == "/api/refresh":
                 result = service.refresh()
             elif path == "/api/config":
                 result = service.save_config(data)

@@ -222,3 +222,5 @@ __marimo__/
 .env.enterprise
 reports/
 .paper-desk/
+
+.gate/
