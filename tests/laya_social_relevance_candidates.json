@@ -1,0 +1,41 @@
+{
+  "purpose": "Frozen comparison candidates, not production configuration; identical stance questions and source state.",
+  "two_sided_yes_no": {
+    "about": {
+      "kind": "yes_no",
+      "instructions": "Is `post` about `instrument`: the company, its stock, products or outlook?",
+      "criteria": {
+        "true": "`post` discusses `instrument` itself: the company, its stock, products or outlook.",
+        "false": "`post` names `instrument` only in passing or in a list of tickers, is spam or promotion, or is about a different company."
+      }
+    },
+    "stance": {
+      "kind": "choice",
+      "instructions": "What does the author of `post` expect for the stock price of `instrument`?",
+      "criteria": {
+        "bullish": "The author expects `instrument`'s stock to rise, or is buying or holding it long.",
+        "bearish": "The author expects `instrument`'s stock to fall, or is selling or shorting it.",
+        "neutral": "The author gives no view of their own on `instrument`'s stock: a question, news without opinion or someone else's view quoted."
+      }
+    }
+  },
+  "explicit_choice": {
+    "about": {
+      "kind": "choice",
+      "instructions": "Classify whether `post` is relevant to `instrument`.",
+      "criteria": {
+        "relevant": "`post` discusses `instrument` itself: the company, its stock, products or outlook.",
+        "off_topic": "`post` names `instrument` only in passing or in a list of tickers, is spam or promotion, or is about a different company."
+      }
+    },
+    "stance": {
+      "kind": "choice",
+      "instructions": "What does the author of `post` expect for the stock price of `instrument`?",
+      "criteria": {
+        "bullish": "The author expects `instrument`'s stock to rise, or is buying or holding it long.",
+        "bearish": "The author expects `instrument`'s stock to fall, or is selling or shorting it.",
+        "neutral": "The author gives no view of their own on `instrument`'s stock: a question, news without opinion or someone else's view quoted."
+      }
+    }
+  }
+}

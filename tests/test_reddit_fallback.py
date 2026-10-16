@@ -171,7 +171,7 @@ class TestRss429Backoff:
         slept.assert_called_once_with(0.0)
 
     def test_headerless_429_fallback_is_jittered(self):
-        # No Retry-After -> our own ~5s fallback, jittered so concurrent runs
+        # No Retry-After -> our own 60s fallback, jittered so concurrent runs
         # don't retry in lockstep (kept within a tight band).
         err = HTTPError("url", 429, "Too Many Requests", {}, None)
         with patch.object(reddit, "urlopen", side_effect=[err, _atom_resp()]), \
@@ -179,7 +179,16 @@ class TestRss429Backoff:
             reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0)
         slept.assert_called_once()
         (wait,), _ = slept.call_args
-        assert 48.0 <= wait <= 72.0  # 60s +/-20% jitter
+        assert 48.0 <= wait <= 60.0  # jitter never exceeds the 60-second cap
+
+    def test_maximum_jitter_is_clamped_without_adding_retries(self):
+        err = HTTPError("url", 429, "Too Many Requests", {}, None)
+        with patch.object(reddit, "urlopen", side_effect=[err, _atom_resp()]) as opened, \
+             patch.object(reddit.random, "uniform", return_value=.2), \
+             patch.object(reddit.time, "sleep") as slept:
+            reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0)
+        slept.assert_called_once_with(60.0)
+        assert opened.call_count == 2
 
 
 @pytest.mark.unit

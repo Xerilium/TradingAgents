@@ -216,7 +216,7 @@ def _fetch_subreddit_rss(
             # Honour a server-supplied Retry-After exactly (including 0); jitter
             # only our own fallback so concurrent runs don't retry in lockstep.
             retry_after = _retry_after_seconds(exc)
-            wait = retry_after if retry_after is not None else _jitter(_RETRY_FALLBACK_SECONDS)
+            wait = retry_after if retry_after is not None else min(60.0, _jitter(_RETRY_FALLBACK_SECONDS))
             logger.warning(
                 "Reddit RSS 429 for r/%s · %s — backing off %.1fs then retrying once",
                 sub, ticker, wait,

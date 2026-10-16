@@ -5,11 +5,12 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from tradingagents.agents.context import (
+    get_desk_execution_policy,
     get_instrument_context_from_state,
     get_language_instruction,
     get_portfolio_context_from_state,
 )
-from tradingagents.agents.schemas import TraderProposal, render_trader_proposal
+from tradingagents.agents.schemas import DeskTraderProposal, TraderProposal, render_trader_proposal
 from tradingagents.agents.structured import (
     NO_EXTERNAL_TOOLS,
     bind_structured,
@@ -31,6 +32,7 @@ def create_trader(llm):
         # only offer it (and the grounding instruction) when it has content.
         market_report = (state["market_report"] or "").strip()
         portfolio_context = get_portfolio_context_from_state(state)
+        policy = get_desk_execution_policy(state)
 
         if market_report:
             grounding = (
@@ -81,9 +83,16 @@ def create_trader(llm):
                 ),
             },
         ]
+        if policy:
+            for message in messages:
+                message["content"] = message["content"].replace("entry, stop-loss, position sizing", "advisory entry and stop-loss")
+                message["content"] = message["content"].replace("sized by how strong the case is", "with quantity determined by configured desk policy")
+                message["content"] = message["content"].replace(
+                    "**Entry Price**, **Stop Loss**, **Position Sizing**: when you can state them",
+                    "**Entry Price**, **Stop Loss**: advisory conditional levels when supported; leave Position Sizing unset because configured policy owns quantities")
 
         trader_plan = invoke_structured_or_freetext(
-            structured_llm,
+            bind_structured(llm, DeskTraderProposal, "Trader") if policy else structured_llm,
             llm,
             messages,
             render_trader_proposal,

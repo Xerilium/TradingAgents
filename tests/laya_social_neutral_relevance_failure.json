@@ -1,0 +1,209 @@
+{
+  "source": ".paper-desk/laya-social-neutral-instrument-context.json",
+  "post": "What time does Meta Platforms report earnings?",
+  "calls": [
+    {
+      "command": "count_context",
+      "parameters": {
+        "state": {
+          "instrument": "Meta Platforms (META)",
+          "post": "What time does Meta Platforms report earnings?"
+        },
+        "questions": {
+          "about": {
+            "kind": "yes_no",
+            "instructions": "Is `post` about `instrument`: the company, its stock, products or outlook?",
+            "criteria": {
+              "true": "`post` discusses `instrument` itself, rather than merely mentioning its ticker in a list, spam, promotion or discussion of another company."
+            }
+          },
+          "stance": {
+            "kind": "choice",
+            "instructions": "What does the author of `post` expect for the stock price of `instrument`?",
+            "criteria": {
+              "bullish": "The author expects `instrument`'s stock to rise, or is buying or holding it long.",
+              "bearish": "The author expects `instrument`'s stock to fall, or is selling or shorting it.",
+              "neutral": "The author gives no view of their own on `instrument`'s stock: a question, news without opinion or someone else's view quoted."
+            }
+          }
+        },
+        "model": "multilingual"
+      },
+      "result": {
+        "model": "multilingual",
+        "max_tokens": 8192,
+        "effective_max_tokens": 8192,
+        "state_complete": true,
+        "questions_complete": true,
+        "sequence_tokens": {
+          "about": 89,
+          "stance": 126
+        },
+        "sequence_sha256": {
+          "about": "88a962a3cfa04af0672f5157ec67c5d06df817dd89f000e42c24d84aa18770fb",
+          "stance": "6b39bbe0bb07e08f7baae8bd4c50db8e74c6ca93c3820b20247639cb5f423dc6"
+        },
+        "request_sha256": "b089f52d3886e206aab574e31d9a83e10872ee6b617bdbcf194488d3a0a40b7a",
+        "repo": "convaiinnovations/laya",
+        "revision": "7b928d828b7b0e022f929d9bd2e44165aa270148",
+        "head_max_len": 256,
+        "tokenizer_sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f"
+      }
+    },
+    {
+      "command": "decide",
+      "parameters": {
+        "state": {
+          "instrument": "Meta Platforms (META)",
+          "post": "What time does Meta Platforms report earnings?"
+        },
+        "questions": {
+          "about": {
+            "kind": "yes_no",
+            "instructions": "Is `post` about `instrument`: the company, its stock, products or outlook?",
+            "criteria": {
+              "true": "`post` discusses `instrument` itself, rather than merely mentioning its ticker in a list, spam, promotion or discussion of another company."
+            }
+          },
+          "stance": {
+            "kind": "choice",
+            "instructions": "What does the author of `post` expect for the stock price of `instrument`?",
+            "criteria": {
+              "bullish": "The author expects `instrument`'s stock to rise, or is buying or holding it long.",
+              "bearish": "The author expects `instrument`'s stock to fall, or is selling or shorting it.",
+              "neutral": "The author gives no view of their own on `instrument`'s stock: a question, news without opinion or someone else's view quoted."
+            }
+          }
+        },
+        "model": "multilingual"
+      },
+      "result": {
+        "contract": {
+          "grade": "auto_execute",
+          "autonomous": true,
+          "requires_human": false,
+          "threshold": 0.8,
+          "margin_threshold": 0.05,
+          "decisions": {
+            "about": {
+              "value": "false",
+              "confidence": 0.8786,
+              "margin": 0.7572,
+              "grade": "auto_execute",
+              "reason": "confidence 0.88 >= 0.80 with margin 0.76",
+              "requires_human": false
+            },
+            "stance": {
+              "value": "neutral",
+              "confidence": 0.9032,
+              "margin": 0.9612,
+              "grade": "auto_execute",
+              "reason": "confidence 0.90 >= 0.80 with margin 0.96",
+              "requires_human": false
+            }
+          },
+          "grade_counts": {
+            "auto_execute": 2,
+            "ask_human": 0,
+            "escalate": 0,
+            "reconsider": 0
+          },
+          "reasons": [],
+          "summary": "all 2 answers clear the auto-execute bar; proceed",
+          "routing": {
+            "model": "multilingual",
+            "repo": "convaiinnovations/laya/multilingual",
+            "reason": "explicit model='multilingual'",
+            "detection": null,
+            "workflow": null
+          }
+        },
+        "grade": "auto_execute",
+        "autonomous": true,
+        "requires_human": false,
+        "summary": "all 2 answers clear the auto-execute bar; proceed",
+        "answers": {
+          "about": {
+            "kind": "yes_no",
+            "value": false,
+            "confidence": 0.8786,
+            "margin": 0.7572,
+            "grade": "auto_execute",
+            "reason": "confidence 0.88 >= 0.80 with margin 0.76",
+            "requires_human": false,
+            "probabilities": {
+              "false": 0.8786,
+              "true": 0.1214
+            },
+            "raw": {
+              "type": "noul",
+              "noul": 0.1214,
+              "confidence": 0.8786,
+              "action": {
+                "act_probability": 1.0
+              }
+            }
+          },
+          "stance": {
+            "kind": "choice",
+            "value": "neutral",
+            "confidence": 0.9032,
+            "margin": 0.9612,
+            "grade": "auto_execute",
+            "reason": "confidence 0.90 >= 0.80 with margin 0.96",
+            "requires_human": false,
+            "probabilities": {
+              "bullish": 0.0021,
+              "bearish": 0.0184,
+              "neutral": 0.9796
+            },
+            "raw": {
+              "type": "choice",
+              "choice": "neutral",
+              "probabilities": {
+                "bullish": 0.0021,
+                "bearish": 0.0184,
+                "neutral": 0.9796
+              },
+              "confidence": 0.9032,
+              "action": {
+                "act_probability": 1.0
+              }
+            }
+          }
+        },
+        "routing": {
+          "model": "multilingual",
+          "reason": "explicit model='multilingual'",
+          "repo": "convaiinnovations/laya/multilingual"
+        },
+        "latency_ms": 196.799,
+        "cached": false,
+        "usage": {
+          "input_tokens": 215,
+          "output_tokens": 0,
+          "context_budget": {
+            "model": "multilingual",
+            "max_tokens": 8192,
+            "effective_max_tokens": 8192,
+            "state_complete": true,
+            "questions_complete": true,
+            "sequence_tokens": {
+              "about": 89,
+              "stance": 126
+            },
+            "sequence_sha256": {
+              "about": "88a962a3cfa04af0672f5157ec67c5d06df817dd89f000e42c24d84aa18770fb",
+              "stance": "6b39bbe0bb07e08f7baae8bd4c50db8e74c6ca93c3820b20247639cb5f423dc6"
+            },
+            "request_sha256": "b089f52d3886e206aab574e31d9a83e10872ee6b617bdbcf194488d3a0a40b7a"
+          }
+        }
+      }
+    }
+  ],
+  "expected_relevant": true,
+  "observed_keep": [
+    false
+  ]
+}

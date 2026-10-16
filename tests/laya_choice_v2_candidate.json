@@ -1,0 +1,18 @@
+{
+  "evidence_complete": {
+    "kind": "choice",
+    "instructions": "Assess source evidence only, not the final recommendation. Is an essential source missing or a material source fact unreconciled? Ordinary future uncertainty and a closed market alone are not missing evidence.",
+    "criteria": {
+      "A": "Source evidence is complete and reconciled. Any error is in the recommendation, not the sources.",
+      "B": "An essential source is missing or material source facts remain contradictory or unreconciled."
+    }
+  },
+  "decision_consistent": {
+    "kind": "choice",
+    "instructions": "Compare the final recommendation against source facts and explicit restrictions. A decision that defers until missing facts are resolved can be consistent. A recommendation that invents support or ignores a restriction is inconsistent.",
+    "criteria": {
+      "A": "The recommendation faithfully follows facts and restrictions, including any required deferral. It asserts no contradicted support.",
+      "B": "The recommendation asserts contradicted or unsupported facts, or recommends acting despite a restriction that forbids it."
+    }
+  }
+}

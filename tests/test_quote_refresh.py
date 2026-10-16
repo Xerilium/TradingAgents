@@ -81,6 +81,27 @@ def test_research_context_has_observed_quote_and_excludes_historical_future_data
     assert 'omitted for historical analysis' in historical and '100' not in historical
 
 
+def test_closed_session_reference_is_separate_from_execution_freshness(monkeypatch):
+    from tradingagents.web import service as service_module
+    fixed = datetime.fromisoformat('2026-10-16T02:00:00+00:00')
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz)
+    monkeypatch.setattr(service_module, 'datetime', Clock)
+    quote = {'price': 100, 'bid': 99, 'ask': 101, 'invalid_quote': False,
+             'timestamp': '2026-10-15T20:00:00Z', 'quote_timestamp': '2026-10-15T20:00:00Z'}
+    market = {'quotes': {'META': quote}, 'clock': {'is_open': False,
+              'timestamp': '2026-10-15T22:00:00Z', 'next_open': '2026-10-16T13:30:00Z'}}
+    context = service_module.research_quote_context('META', '2026-10-15', market)
+    assert '"reference_label": "market-closed reference"' in context
+    assert '"fresh_for_execution": false' in context
+    assert '"valid_two_sided_quote": false' in context
+    quote['timestamp'] = quote['quote_timestamp'] = '2026-10-14T20:00:00Z'
+    context = service_module.research_quote_context('META', '2026-10-15', market)
+    assert '"reference_label": "older reference; session unverified"' in context
+
+
 def test_research_worker_passes_and_persists_quote_context(desk):  # noqa: F811 - imported pytest fixture
     service, _ = desk
     received = []

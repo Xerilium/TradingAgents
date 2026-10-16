@@ -209,10 +209,18 @@ def get_portfolio_context_from_state(state: Mapping[str, Any]) -> str:
     an account we were never told about.
     """
     context = state.get("portfolio_context")
+    policy = get_desk_execution_policy(state)
     if isinstance(context, str) and context.strip():
-        return context
+        return context + ("\n\n" + policy if policy else "")
+    if policy:
+        return "Portfolio holdings and cash were not provided.\n\n" + policy
     return (
         "Portfolio context: not provided. You do not know the caller's current "
         "holdings or cash, so do not assume a flat book; give direction and "
         "sizing guidance in terms the caller can apply to their own position."
     )
+
+
+def get_desk_execution_policy(state: Mapping[str, Any]) -> str:
+    value = state.get("desk_execution_policy")
+    return value.strip() if isinstance(value, str) else ""

@@ -35,6 +35,9 @@ A local Active Trader-style workspace connects TradingAgents to Maenifold, Laya,
 and Alpaca paper trading through the official MCP SDK. Start with FANGMAN, edit
 the stock universe and risk limits, inspect agent research, and review each paper
 order before submitting it. See [setup and operation](docs/paper-trading.md).
+Laya classifies individual social posts for relevance and sentiment through
+Maenifold; it does not approve research or authorize orders. Manual submission
+and deterministic paper-trading safeguards remain required.
 
 ```powershell
 rtk proxy .venv\Scripts\python.exe -m tradingagents.web.server

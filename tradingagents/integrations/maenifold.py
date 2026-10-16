@@ -390,10 +390,10 @@ class MaenifoldGateway:
                         if on_dispatch is None:
                             raw = await self.transport.call_tool(name, arguments)
                         else:
-                            def dispatch():
+                            def dispatch(retry_owner=owns_retry):
                                 with self._lock:
                                     remaining = self._limited_until - time.monotonic()
-                                    if remaining > 0 or self._retrying:
+                                    if remaining > 0 or (self._retrying and not retry_owner):
                                         raise GatewayRateLimited(remaining)
                                 on_dispatch()
                             raw = await self.transport.call_tool(name, arguments, on_dispatch=dispatch)

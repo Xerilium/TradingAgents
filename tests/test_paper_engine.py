@@ -111,10 +111,9 @@ def test_hold_and_review_do_not_order_even_without_laya(inputs, rating):
 
 
 @pytest.mark.parametrize("result_patch", [
-    {"status": "failed"}, {"trade_date": "2026-10-12"}, {"laya": {}},
-    {"laya": {"auto_execute": "true"}}, {"rating": "BUY NOW"},
+    {"status": "failed"}, {"trade_date": "2026-10-12"}, {"rating": "BUY NOW"},
 ])
-def test_only_completed_current_and_laya_authorized_analysis_can_propose(inputs, result_patch):
+def test_only_completed_current_recognized_analysis_can_propose(inputs, result_patch):
     inputs["results"][0].update(result_patch)
     assert plan(inputs)[0]["status"] == "blocked"
 

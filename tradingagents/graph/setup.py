@@ -102,6 +102,7 @@ class GraphSetup:
         conditional_logic: ConditionalLogic,
         max_tool_rounds: int,
         supplemental_tools: Iterable[BaseTool] | None = None,
+        social_screen_factory=None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
@@ -109,6 +110,7 @@ class GraphSetup:
         self.conditional_logic = conditional_logic
         self.max_tool_rounds = max_tool_rounds
         self.supplemental_tools = tuple(supplemental_tools or ())
+        self.social_screen_factory = social_screen_factory
 
     def setup_graph(
         self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None
@@ -128,7 +130,7 @@ class GraphSetup:
 
         analyst_factories = {
             "market": lambda tools: create_market_analyst(self.quick_thinking_llm, tools=tools),
-            "social": lambda tools: create_sentiment_analyst(self.quick_thinking_llm),
+            "social": lambda tools: create_sentiment_analyst(self.quick_thinking_llm, screen_factory=self.social_screen_factory),
             "news": lambda tools: create_news_analyst(self.quick_thinking_llm, tools=tools),
             "fundamentals": lambda tools: create_fundamentals_analyst(self.quick_thinking_llm, tools=tools),
         }

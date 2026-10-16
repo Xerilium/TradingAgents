@@ -11,12 +11,17 @@ free-text generation and the rating is read from that text.
 from __future__ import annotations
 
 from tradingagents.agents.context import (
+    get_desk_execution_policy,
     get_instrument_context_from_state,
     get_language_instruction,
     get_portfolio_context_from_state,
 )
 from tradingagents.agents.rating import parse_rating
-from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
+from tradingagents.agents.schemas import (
+    DeskPortfolioDecision,
+    PortfolioDecision,
+    render_pm_decision,
+)
 from tradingagents.agents.structured import NO_EXTERNAL_TOOLS, bind_structured, invoke_structured
 from tradingagents.dataflows.router import observe_source_call
 
@@ -27,6 +32,7 @@ def create_portfolio_manager(llm):
     def portfolio_manager_node(state) -> dict:
         instrument_context = get_instrument_context_from_state(state)
         portfolio_context = get_portfolio_context_from_state(state)
+        policy = get_desk_execution_policy(state)
 
         history = state["risk_debate_state"]["history"]
         risk_debate_state = state["risk_debate_state"]
@@ -86,10 +92,13 @@ Write these sections, in this order, starting with the rating on its own line:
 - **Investment Thesis**: the evidence that decided it, and what would change it
 
 {NO_EXTERNAL_TOOLS}{get_language_instruction()}"""
+        if policy:
+            prompt = prompt.replace(", sized by how decisively it wins", "")
 
         # The typed rating is the decision; the rendered text only carries it.
         # Read back from text, a rating the thesis quotes could replace it.
-        decision = invoke_structured(structured_llm, prompt, "Portfolio Manager")
+        decision = invoke_structured(bind_structured(llm, DeskPortfolioDecision, "Portfolio Manager") if policy else structured_llm,
+                                     prompt, "Portfolio Manager")
         if decision is not None:
             final_trade_decision = render_pm_decision(decision)
             final_rating = decision.rating.value

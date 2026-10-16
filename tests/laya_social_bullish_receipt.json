@@ -1,0 +1,129 @@
+{
+  "source": ".paper-desk/laya-social-bullish.json",
+  "post": "I am buying META because I expect its stock price to rise.",
+  "result": {
+    "contract": {
+      "grade": "reconsider",
+      "autonomous": false,
+      "requires_human": false,
+      "threshold": 0.8,
+      "margin_threshold": 0.05,
+      "decisions": {
+        "about": {
+          "value": "false",
+          "confidence": 0.7844,
+          "margin": 0.5688,
+          "grade": "reconsider",
+          "reason": "confidence 0.78 is below 0.80",
+          "requires_human": false
+        },
+        "stance": {
+          "value": "bullish",
+          "confidence": 0.8908,
+          "margin": 0.9646,
+          "grade": "auto_execute",
+          "reason": "confidence 0.89 >= 0.80 with margin 0.96",
+          "requires_human": false
+        }
+      },
+      "grade_counts": {
+        "auto_execute": 1,
+        "ask_human": 0,
+        "escalate": 0,
+        "reconsider": 1
+      },
+      "reasons": [
+        "about: confidence 0.78 is below 0.80"
+      ],
+      "summary": "1/2 answers fail the auto-execute bar (about): the model is unsure; reconsider or let an LLM decide",
+      "routing": {
+        "model": "multilingual",
+        "repo": "convaiinnovations/laya/multilingual",
+        "reason": "explicit model='multilingual'",
+        "detection": null,
+        "workflow": null
+      }
+    },
+    "grade": "reconsider",
+    "autonomous": false,
+    "requires_human": false,
+    "summary": "1/2 answers fail the auto-execute bar (about): the model is unsure; reconsider or let an LLM decide",
+    "answers": {
+      "about": {
+        "kind": "yes_no",
+        "value": false,
+        "confidence": 0.7844,
+        "margin": 0.5688,
+        "grade": "reconsider",
+        "reason": "confidence 0.78 is below 0.80",
+        "requires_human": false,
+        "probabilities": {
+          "false": 0.7844,
+          "true": 0.2156
+        },
+        "raw": {
+          "type": "noul",
+          "noul": 0.2156,
+          "confidence": 0.7844,
+          "action": {
+            "act_probability": 1.0
+          }
+        }
+      },
+      "stance": {
+        "kind": "choice",
+        "value": "bullish",
+        "confidence": 0.8908,
+        "margin": 0.9646,
+        "grade": "auto_execute",
+        "reason": "confidence 0.89 >= 0.80 with margin 0.96",
+        "requires_human": false,
+        "probabilities": {
+          "bullish": 0.9781,
+          "bearish": 0.0084,
+          "neutral": 0.0135
+        },
+        "raw": {
+          "type": "choice",
+          "choice": "bullish",
+          "probabilities": {
+            "bullish": 0.9781,
+            "bearish": 0.0084,
+            "neutral": 0.0135
+          },
+          "confidence": 0.8908,
+          "action": {
+            "act_probability": 1.0
+          }
+        }
+      }
+    },
+    "routing": {
+      "model": "multilingual",
+      "reason": "explicit model='multilingual'",
+      "repo": "convaiinnovations/laya/multilingual"
+    },
+    "latency_ms": 42505.87,
+    "cached": false,
+    "usage": {
+      "input_tokens": 163,
+      "output_tokens": 0,
+      "context_budget": {
+        "model": "multilingual",
+        "max_tokens": 8192,
+        "effective_max_tokens": 8192,
+        "state_complete": true,
+        "questions_complete": true,
+        "sequence_tokens": {
+          "about": 71,
+          "stance": 92
+        },
+        "sequence_sha256": {
+          "about": "cda40ffde226288d256ab8f81cfce7c23e2eddc19d57b351ca1d7e6195e114cb",
+          "stance": "8339da0f3af11ec25619b36d7f9b78597f26e6a1bae21573796f0212d8df81f6"
+        },
+        "request_sha256": "3c9b81080afa6ef6d851bb300cf56a28b9984a7b08bdd1d0dd434a8bc9b4990c"
+      }
+    }
+  }
+}

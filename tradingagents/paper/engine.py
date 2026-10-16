@@ -194,7 +194,7 @@ def plan_orders(config, account, positions, open_orders, quotes, results, run_id
     """Plan a bounded batch, reserving each buy's cash and total allocation once.
 
     Each analysis must be completed on today's New York date, contain a known
-    rating, and carry ``laya.auto_execute is True`` before it can propose an order.
+    rating, and satisfy the deterministic trading limits before proposing an order.
     Sales never fund buys in this batch. Invalid shared account data raises;
     per-symbol data failures produce a visible blocked row.
     """
@@ -229,8 +229,6 @@ def plan_orders(config, account, positions, open_orders, quotes, results, run_id
                 continue
             if rating not in ("Buy", "Overweight", "Underweight", "Sell"):
                 raise ValueError("Analysis has no recognized rating")
-            if not isinstance(result.get("laya"), dict) or result["laya"].get("auto_execute") is not True:
-                raise ValueError("Laya has not authorized automatic execution")
             if symbol in occupied:
                 raise ValueError("An open order already exists for this symbol")
             quote = _quote(quotes, symbol, now)

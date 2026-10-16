@@ -147,15 +147,24 @@ class DeskStore:
 
     @staticmethod
     def result_summary(result):
-        summary = {key: value for key, value in result.items() if key not in {"reports", "laya"}}
+        summary = {key: value for key, value in result.items() if key not in {"reports", "laya", "social_sentiment"}}
         summary["report_keys"] = list(result.get("reports", {}))
         summary["revision"] = result.get("revision", 0)
         laya = result.get("laya") or {}
         summary["laya"] = {
+            "question_contract_version": laya.get("question_contract_version"),
             "grade": laya.get("contract", {}).get("grade", laya.get("grade")),
             "auto_execute": laya.get("auto_execute") is True,
             "summary": laya.get("contract", {}).get("summary", laya.get("summary")),
         } if laya else None
+        social = result.get("social_sentiment")
+        if social:
+            summary["social_sentiment"] = {
+                "status": social.get("status"), "model": social.get("model"),
+                "sources": {source: {key: copy.deepcopy(value.get(key)) for key in
+                                     ("status", "counts", "note", "admission_version", "stop_reason", "classified_count", "retained_count")}
+                            for source, value in social.get("sources", {}).items()},
+            }
         return copy.deepcopy(summary)
 
     def snapshot(self, *, compact=False, run_id=None):
@@ -209,8 +218,9 @@ class DeskStore:
                                 **{key: status.get(key) for key in
                                    ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision")},
                                 "run_id": run["id"],
+                                "social_sentiment": status.get("social_sentiment"),
                                 "laya": {key: status["laya"].get(key) for key in
-                                         ("grade", "auto_execute")} if status["laya"] else None,
+                                         ("grade", "auto_execute", "question_contract_version")} if status["laya"] else None,
                             }
                 return data
             return copy.deepcopy(self.data)

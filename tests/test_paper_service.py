@@ -11,8 +11,8 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from tests.test_mcp_gateway import _allow_event_loop_pipe  # noqa: F401
 
+from tests.test_mcp_gateway import _allow_event_loop_pipe  # noqa: F401
 from tradingagents.integrations.maenifold import GatewayError
 from tradingagents.web import store as store_module
 from tradingagents.web.service import DeskService, normalize_quotes
@@ -43,7 +43,7 @@ class BrokerFake:
         self.submit_error = None
         self.submitted = []
         self.laya_grade = "auto_execute"
-        self.laya_value = True
+        self.laya_value = "A"
         self.asset_tradable = True
 
     def discover(self, domain):
@@ -220,54 +220,13 @@ def create_proposal(service):
     return proposal
 
 
-def test_laya_audit_is_durable_before_inference_and_sources_unchanged(desk, monkeypatch):
+def test_completed_research_has_no_final_laya_dependency(desk):
     service, broker = desk
-    original = broker.execute
-    observed = []
-    def execute(domain, command, parameters, **kwargs):
-        if (domain, command) == ("laya", "decide"):
-            saved = json.loads(service.store.path.read_text())
-            result = saved["runs"][0]["results"][0]
-            assert result["laya_review"]["parameters"] == parameters
-            assert result["reports"]
-            assert set(result["reports"]) == set(parameters["state"]["source_manifest"])
-            for name, report in result["reports"].items():
-                assert hashlib.sha256(report.encode()).hexdigest() == parameters["state"]["source_manifest"][name]["sha256"]
-            observed.append(result["laya_review"])
-        return original(domain, command, parameters, **kwargs)
-    monkeypatch.setattr(broker, "execute", execute)
     run_id = complete_run(service)
-    assert observed == [service._find_run(run_id)["results"][0]["laya_review"]]
-
-
-def test_laya_audit_save_failure_prevents_decide(desk, monkeypatch):
-    service, broker = desk
-    save = service.store.save
-    failed = []
-    def fail_once():
-        results = service.store.data["runs"][0]["results"] if service.store.data["runs"] else []
-        if results and results[0].get("laya_review") and not failed:
-            failed.append(True)
-            raise OSError("audit disk failure")
-        return save()
-    monkeypatch.setattr(service.store, "save", fail_once)
-    run_id = service.start_run(["AAPL"])["run_id"]
-    service.executor.run_next()
-    assert service._find_run(run_id)["status"] == "failed"
-    assert not any(domain == "laya" and command == "decide" for domain, command, _ in broker.calls)
-
-
-def test_cancellation_during_decide_does_not_publish_completed_result(desk, monkeypatch):
-    service, broker = desk
-    execute = broker.execute
-    def cancelling(domain, command, parameters, **kwargs):
-        if (domain, command) == ("laya", "decide"):
-            service.cancelled.add(service.store.data["runs"][0]["id"])
-        return execute(domain, command, parameters, **kwargs)
-    monkeypatch.setattr(broker, "execute", cancelling)
-    run_id = service.start_run(["AAPL"])["run_id"]
-    service.executor.run_next()
-    assert service._find_run(run_id)["results"][0]["status"] == "cancelled"
+    result = service._find_run(run_id)["results"][0]
+    assert result["reports"] and result["status"] == "completed"
+    assert result["laya"] is None and "laya_review" not in result
+    assert not any(domain == "laya" for domain, _, _ in broker.calls)
 
 
 @pytest.mark.parametrize("failure", ["date", "readiness", "book", "revision", "symbols", "schedule"])
@@ -1649,12 +1608,12 @@ def test_changed_broker_account_is_blocked_and_original_pin_persists(desk):
     assert broker.submitted == []
 
 
-def test_run_collects_reports_and_laya_gate_without_broker_mutation(desk):
+def test_run_collects_reports_without_final_gate_or_broker_mutation(desk):
     service, broker = desk
     complete_run(service)
     result = service.state()["runs"][0]["results"][0]
     assert result["rating"] == "Buy"
-    assert result["laya"]["auto_execute"] is True
+    assert result["laya"] is None
     assert result["reports"]["market_report"]
     assert broker.submitted == []
 
@@ -1834,79 +1793,14 @@ def test_jev_capture_failure_preserves_actual_screening(desk, monkeypatch, failu
         assert b"never-persist" not in path.read_bytes()
 
 
-def test_final_laya_gateway_receipts_preserve_guard_cache_usage_and_hashes(desk, monkeypatch):
-    from mcp.types import CallToolResult
-
-    from tradingagents.integrations.maenifold import MaenifoldGateway
-
-    service, broker = desk
-    expected = {"contract": {"grade": "auto_execute"},
-                "answers": {key: {"value": True} for key in ("evidence_complete", "decision_consistent")},
-                "cache": {"hit": True}, "usage": {"input_tokens": 42, "output_tokens": 3}}
-    class Transport:
-        def __init__(self):
-            self.calls = []
-        async def call_tool(self, name, arguments):
-            self.calls.append((name, copy.deepcopy(arguments)))
-            if name == "GatewayIndex":
-                return {"domains": [{"name": "laya"}]} if not arguments else {
-                    "commands": [{"name": "decide", "schema": {"type": "object"}}]}
-            return CallToolResult(content=[], structuredContent=copy.deepcopy(expected))
-    transport = Transport()
-    gateway = MaenifoldGateway(transport=transport)
-    original = broker.execute
-    def execute(domain, command, parameters):
-        if domain == "laya" and command == "decide":
-            with pytest.raises(StopIteration) as returned:
-                gateway.aexecute(domain, command, parameters).send(None)
-            return returned.value.value
-        return original(domain, command, parameters)
-    monkeypatch.setattr(broker, "execute", execute)
-    run_id = complete_run(service)
-    run = service.run_detail(run_id)
-    calls = [args for name, args in transport.calls if name == "GatewayExecute"]
-    assert len(calls) == 1
-    parameters = calls[0]["parameters"]
-    assert parameters == run["results"][0]["laya_review"]["parameters"]
-    assert parameters["model"] == "multilingual"
-    assert parameters["threshold"] == "high"
-    assert "use_cache" not in parameters
-    evidence = run["gateway_evidence"]
-    assert evidence["capture_complete"] is True
-    assert evidence["counts"]["gateway_transport"] == {"source": 1, "control_plane": 2}
-    assert evidence["internal_model_executions"] is None and evidence["internal_http_requests"] is None
-    parent = next(a for a in evidence["attempts"] if a["purpose"] == "final_laya")
-    logical = next(a for a in evidence["attempts"] if a["boundary_kind"] == "gateway_logical")
-    assert logical["parent_attempt_id"] == parent["attempt_id"]
-    for attempt in evidence["attempts"]:
-        for reference in attempt["receipts"]:
-            payload = (service.store.directory / reference["path"]).read_bytes()
-            assert hashlib.sha256(payload).hexdigest() == reference["sha256"]
-            assert len(payload) == reference["bytes"]
-        body = json.loads(payload)
-        if attempt["category"] == "control_plane":
-            assert "payload" not in body
-        else:
-            assert body["payload"]["parameters"] == parameters
-            if attempt["boundary_kind"] == "gateway_transport":
-                assert body["payload"]["result"]["structuredContent"] == expected
-                assert attempt["representation"] == "sdk_envelope_serialization_not_wire_bytes"
-            else:
-                assert body["payload"]["result"] == expected
-    assert run["results"][0]["laya"] == {**expected, "auto_execute": True}
-    assert DeskStore(service.store.directory, {}).snapshot()["runs"][0]["gateway_evidence"] == evidence
-    assert broker.submitted == []
-
-
-@pytest.mark.parametrize(
-    "grade,value", [("ask_human", True), ("auto_execute", False), ("auto_execute", "true")]
-)
-def test_laya_requires_auto_grade_and_actual_boolean_yes_answers(desk, grade, value):
+@pytest.mark.parametrize("grade,value", [("ask_human", True), ("auto_execute", False), ("auto_execute", "true")])
+def test_retired_laya_opinions_do_not_gate_research(desk, grade, value):
     service, broker = desk
     broker.laya_grade, broker.laya_value = grade, value
     run_id = complete_run(service)
-    assert service.state()["runs"][0]["results"][0]["laya"]["auto_execute"] is False
-    assert service.propose(run_id)["proposals"][0]["status"] == "blocked"
+    assert service.state()["runs"][0]["results"][0]["laya"] is None
+    assert service.propose(run_id)["proposals"][0]["status"] == "proposed"
+    assert broker.submitted == []
 
 
 def test_submit_uses_exact_stock_order_schema_and_duplicate_submit_is_rejected(desk):

@@ -1,4 +1,8 @@
-"""Social-post screening with TypeSafe's Jev, when ``TYPESAFE_API_KEY`` is set.
+"""Per-post social screening: Maenifold Laya for the desk, optional Jev for CLI.
+
+``laya_screen`` uses the injected MCP SDK gateway, a shared bounded serial
+sample, and exact multilingual token preflight. Its labels are sentiment
+evidence, never research approval or trading authority.
 
 Jev answers typed questions with calibrated probabilities. Each StockTwits or
 Reddit post is asked two: is it about the instrument, and which way does it
@@ -12,10 +16,14 @@ Configured by TypeSafe's own SDK variables, ``TYPESAFE_API_KEY``,
 block says screening was unavailable.
 """
 
+import asyncio
+import copy
+import hashlib
 import logging
 import math
 import os
 import random
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
@@ -28,6 +36,192 @@ from tradingagents.agents.context import resolve_instrument_identity
 from tradingagents.dataflows.router import observe_jev_call, queued_jev_job
 
 logger = logging.getLogger(__name__)
+
+# Social classification is evidence, never permission to place an order.
+_LAYA_LOCK = threading.Lock()
+_LAYA_UNCERTAIN_UNTIL = 0.0
+SOCIAL_ADMISSION_VERSION = "stance-contract-v1"
+LAYA_QUESTIONS = {
+    "about": {"kind": "yes_no", "instructions": "Is `post` about `instrument`: the company, its stock, products or outlook?",
+              "criteria": {
+                  "true": "`post` discusses `instrument` itself: the company, its stock, products or outlook.",
+                  "false": "`post` names `instrument` only in passing or in a list of tickers, is spam or promotion, or is about a different company.",
+              }},
+    "stance": {"kind": "choice", "instructions": "What does the author of `post` expect for the stock price of `instrument`?",
+               "criteria": {"bullish": "The author expects `instrument`'s stock to rise, or is buying or holding it long.",
+                            "bearish": "The author expects `instrument`'s stock to fall, or is selling or shorting it.",
+                            "neutral": "The author gives no view of their own on `instrument`'s stock: a question, news without opinion or someone else's view quoted."}},
+}
+
+
+def _laya_payload(value):
+    return value["data"] if isinstance(value, dict) and value.get("success") is True else value
+
+
+def _distribution(answer, labels):
+    if not isinstance(answer, dict):
+        raise ValueError("missing answer")
+    values = answer.get("probabilities")
+    if (not isinstance(values, dict) or set(values) != set(labels)
+            or any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1
+                   for v in values.values()) or abs(sum(values.values()) - 1) > .001):
+        raise ValueError("invalid probability distribution")
+    return values
+
+
+def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
+                source="social", cancelled=lambda: False, instrument=None):
+    """Existing fetcher hook, with serial SDK calls and an honest unclassified remainder.
+
+    One symbol shares a 30-post / 120-second budget across its source callbacks.
+    Every call has a 60-second outer deadline. Unknown outcomes stop further work
+    and impose a process-wide cooldown; there is no replay after dispatch.
+    """
+    if type(max_posts) is not int or not 0 <= max_posts <= 30:
+        raise ValueError("max_posts must be between 0 and 30")
+    budget = budget if budget is not None else {"remaining": max_posts, "deadline": None}
+    instrument = instrument or ticker
+
+    def execute(command, parameters):
+        def dispatch():
+            if cancelled() or time.monotonic() >= budget["deadline"]:
+                raise InterruptedError("Social screening stopped; budget exhausted")
+        from tradingagents.integrations.maenifold import gateway_observation
+        with gateway_observation("laya", command, "gateway_invocation",
+                                 parameters=parameters, purpose="social_sentiment") as observed:
+            if hasattr(gateway, "aexecute"):
+                async def run():
+                    remaining = budget["deadline"] - time.monotonic()
+                    deadline = asyncio.timeout(max(.01, min(60, remaining)))
+                    try:
+                        async with deadline:
+                            return await gateway.aexecute("laya", command, parameters, on_dispatch=dispatch)
+                    except TimeoutError as exc:
+                        # Event-loop timers may fire a clock tick before monotonic
+                        # reaches the deadline. Record which limit actually fired.
+                        if deadline.expired() and remaining <= 60:
+                            exc.social_budget_expired = True
+                        raise
+                result = asyncio.run(run())
+            else:
+                result = gateway.execute("laya", command, parameters, on_dispatch=dispatch)
+            observed.update(output=result, result_available=True)
+            return _laya_payload(result)
+
+    def screen(posts):
+        global _LAYA_UNCERTAIN_UNTIL
+        keep = [True] * len(posts)
+        evidence = {"status": "empty" if not posts else "unavailable", "source": source,
+                    "admission_version": SOCIAL_ADMISSION_VERSION,
+                    "model": "multilingual", "counts": dict.fromkeys(
+                        ("bullish", "bearish", "neutral", "unclear", "off_topic", "unscreened"), 0),
+                    "posts": [], "total_count": len(posts)}
+        rows = evidence["posts"]
+        for post in posts:
+            rows.append({"text": post, "text_sha256": hashlib.sha256(post.encode()).hexdigest(),
+                         "provenance": "Reddit title/body excerpt (body at most 1000 characters)" if source == "reddit" else "source message body",
+                         "status": "unscreened", "model": "multilingual"})
+        acquired = bool(posts) and _LAYA_LOCK.acquire(blocking=False)
+        try:
+            if posts and not acquired:
+                raise ValueError("another social classification is active")
+            if posts and time.monotonic() < _LAYA_UNCERTAIN_UNTIL:
+                raise ValueError("previous inference outcome unknown; cooldown active")
+            if budget["deadline"] is None:
+                budget["deadline"] = time.monotonic() + 120
+            for index, post in enumerate(posts):
+                if cancelled():
+                    evidence["stop_reason"] = "operator_cancelled"
+                    break
+                if index >= max_posts or budget["remaining"] <= 0:
+                    evidence["stop_reason"] = "post_budget_exhausted"
+                    break
+                if time.monotonic() >= budget["deadline"]:
+                    evidence["stop_reason"] = "time_budget_exhausted"
+                    break
+                parameters = {"state": {"instrument": instrument, "post": post},
+                              "questions": copy.deepcopy(LAYA_QUESTIONS), "model": "multilingual"}
+                budget["remaining"] -= 1
+                counts = execute("count_context", parameters)
+                tokens = counts.get("sequence_tokens", {}) if isinstance(counts, dict) else {}
+                if (not isinstance(counts, dict) or counts.get("model") != "multilingual"
+                        or counts.get("max_tokens") != 8192 or counts.get("effective_max_tokens") != 8192
+                        or counts.get("questions_complete") is not True or counts.get("state_complete") is not True
+                        or set(tokens) != set(LAYA_QUESTIONS)
+                        or any(type(n) is not int or not 0 < n <= 7936 for n in tokens.values())):
+                    rows[index]["error"] = "Input exceeds verified token budget; original post retained"
+                    continue
+                response = execute("decide", parameters)
+                rows[index].update(token_budget=counts, result=response)
+                answers = response.get("answers", {}) if isinstance(response, dict) else {}
+                if (not isinstance(answers, dict) or not isinstance(answers.get("about"), dict)
+                        or answers["about"].get("kind") != "yes_no"
+                        or not isinstance(answers.get("stance"), dict) or answers["stance"].get("kind") != "choice"):
+                    raise ValueError("invalid typed social answers")
+                about = _distribution(answers.get("about"), ("true", "false"))["true"]
+                stance = answers.get("stance")
+                probabilities = _distribution(stance, ("bullish", "bearish", "neutral"))
+                choice = stance.get("value")
+                if choice not in probabilities or probabilities[choice] != max(probabilities.values()):
+                    raise ValueError("invalid winning stance")
+                about_answer = answers["about"]
+                # Dropping evidence is an action: only the relevance answer's
+                # own confident contract may exclude it. Reconsider/absent
+                # contracts keep the post, even if P(about) is below .3.
+                relevance_certain = about_answer.get("grade") == "auto_execute"
+                keep[index] = not (about < _OFF_TOPIC_BELOW and relevance_certain)
+                stance_grade = stance.get("grade", "unknown")
+                label = (choice if stance_grade == "auto_execute" and probabilities[choice] >= _STANCE_CONFIDENCE
+                         else "unclear")
+                rows[index].update(status="classified" if keep[index] else "off_topic",
+                                   about_probability=about, relevance_uncertain=not relevance_certain,
+                                   relevance_grade=about_answer.get("grade", "unknown"),
+                                   stance=label, raw_prediction=choice, stance_grade=stance_grade,
+                                   stance_probability=probabilities[choice])
+        except Exception as exc:
+            from tradingagents.integrations.maenifold import GatewayTimeout
+            evidence["error_class"] = type(exc).__name__
+            if isinstance(exc, (TimeoutError, GatewayTimeout)):
+                _LAYA_UNCERTAIN_UNTIL = time.monotonic() + 60
+                expired = (getattr(exc, "social_budget_expired", False)
+                           or budget.get("deadline") is not None and time.monotonic() >= budget["deadline"])
+                evidence["stop_reason"] = "time_budget_exhausted" if expired else "inference_timeout"
+                evidence["error"] = (
+                    "Social screening time budget expired; remaining posts are unscreened. "
+                    if expired else "Laya request timed out; remaining posts are unscreened. "
+                ) + "The in-flight result is unknown and will not be replayed."
+            else:
+                evidence["error"] = str(exc).strip()[:300] or type(exc).__name__
+        finally:
+            if acquired:
+                _LAYA_LOCK.release()
+        for row in rows:
+            key = row["stance"] if row["status"] == "classified" else row["status"]
+            evidence["counts"][key] += 1
+        counts = evidence["counts"]
+        evidence["status"] = ("empty" if not posts else "unavailable" if counts["unscreened"] == len(posts)
+                              else "partial" if counts["unscreened"] else "completed")
+        if counts["unscreened"] == len(posts) and evidence.get("stop_reason"):
+            evidence["status"] = "deferred"
+        uncertain_relevance = sum(row.get("relevance_uncertain", False) for row in rows)
+        evidence["relevance_uncertain_count"] = uncertain_relevance
+        classified = len(posts) - counts["unscreened"]
+        evidence["classified_count"] = classified
+        evidence["retained_count"] = sum(keep)
+        note = ("Laya social sentiment: " + ", ".join(f"{n} {key}" for key, n in counts.items())
+                + f". Coverage: {classified} of {len(posts)} fetched posts classified; {sum(keep)} retained. "
+                + f"{uncertain_relevance} retained posts have uncertain relevance. "
+                + "Classifier stance counts cover only classified retained posts. Uncertain or missing stance contracts count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a different signal and may cover a different displayed sample; different counts are not a data-quality inconsistency. "
+                + (f"Screening deferred: {evidence['stop_reason']}; fetched posts remain available, not a source failure. " if evidence.get("stop_reason") else "")
+                + "Unscreened is not neutral. Classification is evidence, not trade approval.")
+        evidence.update(note=note, completed_at=datetime.now(UTC).isoformat())
+        screen.evidence = evidence
+        if on_evidence:
+            on_evidence(copy.deepcopy(evidence))
+        return keep, note
+
+    screen.evidence = None
+    return screen
 
 _DEFAULT_BASE_URL = "https://api.typesafe.ai"
 _DEFAULT_MODEL = "jev-latest"

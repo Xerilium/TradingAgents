@@ -7,8 +7,9 @@ prompt, so the model reports on data it was given rather than inventing posts:
   2. StockTwits messages: the cashtag stream, with Bullish/Bearish tags
   3. Reddit posts: r/wallstreetbets, r/stocks, r/investing, or crypto communities for a crypto pair
 
-Each source is trimmed to the analysis window. With a TypeSafe key, the social
-posts are screened by Jev first (see post_screen). These feeds serve recent items
+Each source is trimmed to the analysis window. The paper desk injects Maenifold
+Laya screening; other callers can use Jev with a TypeSafe key (see post_screen).
+These feeds serve recent items
 and are not archived, so a historical run's sentiment inputs are not
 point-in-time.
 
@@ -44,7 +45,7 @@ def _seven_days_back(trade_date: str) -> str:
     return (datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
 
 
-def create_sentiment_analyst(llm):
+def create_sentiment_analyst(llm, *, screen_factory=None):
     """Create a sentiment analyst node for the trading graph.
 
     Pre-fetches news + StockTwits + Reddit data, injects them into the
@@ -66,11 +67,12 @@ def create_sentiment_analyst(llm):
         news_block = get_news.func(ticker, start_date, end_date)
         # Pass the analysis window so a historical run trims social posts to it
         # instead of leaking today's chatter into a backtest (#1220).
-        screen = jev_screen(ticker)
+        screen = screen_factory(ticker, "stocktwits", instrument_context=instrument_context) if screen_factory else jev_screen(ticker)
         stocktwits_block = fetch_stocktwits_messages(
             ticker, limit=30, start_date=start_date, end_date=end_date, screen=screen
         )
         subreddits = subreddits_for(ticker)
+        screen = screen_factory(ticker, "reddit", instrument_context=instrument_context) if screen_factory else screen
         reddit_block = fetch_reddit_posts(
             ticker, subreddits, start_date=start_date, end_date=end_date, screen=screen
         )
@@ -171,7 +173,7 @@ Community discussion, without vote or comment counts. Subreddit character matter
 
 ## How to analyze this data (best practices)
 
-1. **Read the StockTwits Bullish/Bearish ratio as a leading retail-sentiment signal.** A 70/30 bullish/bearish split is moderately bullish; ≥90/10 may indicate over-extension and contrarian risk; 50/50 is uncertainty. Sample size matters — base rates on the actual message count, not percentages alone. A block headed "Screened by Jev" has had off-topic posts removed; its stance count is a classifier's read of every on-topic post fetched, labelled or not, of which the posts listed are a sample. Read it alongside the user tags.
+1. **Keep user tags and classifier sentiment separate.** StockTwits Bullish/Bearish/no-label tags are user-provided labels. Laya stance counts come from its classified subset of fetched posts; the displayed posts may be a different sample. State each signal's own numerator and denominator, including classified, unscreened and retained counts. Do not subtract, reconcile or equate these counts. Different totals or labels between classifier output and user tags are not a data-quality inconsistency. For example, one Laya bearish post plus 19 unscreened posts can coexist with ten user Bullish tags, zero Bearish tags and ten unlabelled posts. Unscreened does not mean neutral. Relevance uncertainty means retained evidence, not confirmed irrelevance. A screening budget limit means the fetched posts remain available for your reading; it is not a source outage. Read bodies and user tags independently, and explain differences in coverage without inventing contradictions. The older "Screened by Jev" summary also describes classifier output separately from user tags. Sample size matters: calculate a user-tag ratio using tagged posts only and disclose unlabelled posts and limited coverage.
 
 2. **Look for cross-source divergences.** If news framing is bearish but StockTwits is overwhelmingly bullish, that mismatch is itself a signal — it can mean retail is leaning into a thesis the news flow hasn't caught up to (or vice versa, that retail is chasing while institutions are cautious).
 

@@ -45,6 +45,45 @@ function fixture() {
   return {run,main,fields,context, async event(scope,name,target={}){for(const fn of handlers[scope][name]||[])await fn({target,preventDefault(){}});}};
 }
 const opened = html => [...html.matchAll(/<details\b([^>]*)>/g)].filter(m=>/class="report-section"/.test(m[1])&&/\sopen(?:\s|$|=)/.test(m[1])).map(m=>/data-report="([^"]+)"/.exec(m[1])[1]);
+test('historical choice assessments retain meanings, version, and original labels',()=>{
+  const f=fixture();const html=f.run(`reportLaya({question_contract_version:'research-choice-v1',contract:{grade:'auto_execute'},answers:{evidence_complete:{value:'A'},decision_consistent:{value:'B'}}})`);
+  assert.match(html,/research-choice-v1/);assert.match(html,/Essential evidence supports assessment/);
+  assert.match(html,/Rating is unsupported or disregards restrictions/);assert.match(html,/>A</);assert.match(html,/>B</);
+});
+
+test('unclear social stance shows raw prediction and grade without rewriting historical counts',()=>{
+  const f=fixture();const html=f.run(`reportSocial({sources:{reddit:{admission_version:'stance-contract-v1',counts:{unclear:1},posts:[{status:'classified',stance:'unclear',raw_prediction:'bearish',stance_grade:'reconsider',stance_probability:.8475}]}}})`);
+  assert.match(html,/>Unclear</);assert.match(html,/Raw prediction/);assert.match(html,/bearish/);assert.match(html,/Stance grade/);assert.match(html,/reconsider/);
+  assert.doesNotMatch(html,/Historical screening/);
+  const old=f.run(`reportSocial({sources:{reddit:{counts:{bearish:11},posts:[{stance:'bearish',result:{answers:{stance:{grade:'reconsider'}}}}]}}})`);
+  assert.match(old,/Historical screening/);assert.match(old,/>11</);assert.match(old,/Original evidence is preserved/);
+});
+
+test('retired Laya proposal blockers show historical label and creation time',()=>{
+  const f=fixture();f.run(`state.proposals=[{id:'old',symbol:'META',status:'blocked',reason:'Laya has not authorized automatic execution',created_at:'2026-10-15T00:00:00Z'}];`);
+  const html=f.run('renderOrders()');assert.match(html,/Historical · retired Laya check/);assert.match(html,/2026/);
+  assert.match(html,/Laya has not authorized automatic execution/);
+});
+
+test('order preview explains policy sizing and links the exact associated research',async()=>{
+  const f=fixture();f.run(`$('#order-dialog').showModal=()=>{};$('#order-dialog').close=()=>{};state.proposals=[{id:'new',run_id:'original-run',symbol:'META',status:'proposed',side:'buy',qty:5,limit_price:100,notional:500}];previewOrder('new');`);
+  const html=f.run(`$('#order-preview').innerHTML`);assert.match(html,/configured allocation policy/);assert.match(html,/Research commentary is advisory/);assert.match(html,/Review associated research/);
+  await f.event('document','click',{closest(){return {dataset:{action:'inspect-proposal',proposal:'new'}};}});
+  assert.equal(f.run('selectedRunId'),'original-run');assert.equal(f.run('selectedSymbol'),'META');
+});
+test('T-1.10 historical approval is retired and cannot label stocks cleared',()=>{
+  const f=fixture();const html=f.run(`reportLaya({contract:{grade:'auto_execute'},answers:{evidence_complete:{value:true},decision_consistent:{value:true}}})`);
+  assert.match(html,/retired/);assert.doesNotMatch(html,/fresh research is required/);
+  f.run(`state.research={AAPL:{status:'completed',laya:{auto_execute:true,grade:'auto_execute'}},META:{status:'completed',laya:{auto_execute:true,grade:'auto_execute',question_contract_version:'research-choice-v1'}}};listViews.watch.filter='cleared';`);
+  assert.equal(f.run('reviewLabel(state.research.AAPL)'),'Social screening not recorded');
+  assert.doesNotMatch(f.run('watchlist()'),/Laya cleared|Laya review required|Legacy review|Review required/);
+});
+test('T-1.10 social evidence separates unavailable from neutral and preserves posts',()=>{
+  const f=fixture();const html=f.run(`renderReports({reports:{},social_sentiment:{status:'partial',model:'multilingual',sources:{reddit:{status:'partial',counts:{bullish:1,bearish:0,neutral:0,unclear:1,off_topic:0,unscreened:2},note:'Time budget reached',posts:[{text:'<script>post</script>',text_sha256:'hash123',provenance:'Reddit excerpt',status:'classified',stance:'bullish',stance_probability:0.91}]}}}})`);
+  for(const label of ['Laya social sentiment','Unscreened','Unclear','Neutral','Time budget reached','Reddit excerpt','hash123','does not approve trades'])assert.ok(html.includes(label),label);
+  assert.match(html,/&lt;script&gt;post/);assert.doesNotMatch(html,/<script>/);assert.deepEqual(opened(html),[]);
+  assert.equal(f.run(`reviewLabel({status:'completed',social_sentiment:{status:'unavailable',sources:{}}})`),'Social screening unavailable');
+});
 function disclosure(name,open){return {dataset:{report:name},open,isConnected:true,matches:s=>s==='.report-section'};}
 
 test('T-1.2 disconnected quote control is disabled with recovery, or gives actionable feedback',async()=>{
@@ -84,7 +123,7 @@ test('T-1.5 final Laya-only report arrives collapsed',()=>{const f=fixture();ass
 test('T-1.5 sequential final report/Laya arrival preserves explicit open choice',async()=>{
   const f=fixture();await f.event('document','toggle',disclosure('market_report',true));
   const html=f.run(`renderReports({reports:{market_report:'Updated',final_trade_decision:'Last analyst result'},laya:{grade:'ask_human'}})`);
-  assert.deepEqual(opened(html),['market_report']);assert.match(html,/Full source artifact/);assert.match(html,/<summary[^>]*>Laya research/);
+  assert.deepEqual(opened(html),['market_report']);assert.match(html,/Full source artifact/);assert.match(html,/<summary[^>]*>Historical Laya research check/);
 });
 test('T-1.5 collapse-all stays collapsed after rerender and later arrival',async()=>{
   const f=fixture();await f.event('document','toggle',disclosure('market_report',true));await f.event('document','toggle',disclosure('market_report',false));

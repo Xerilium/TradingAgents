@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
-from tradingagents.agents.schemas import ResearchPlan, render_research_plan
+from tradingagents.agents.context import (
+    get_desk_execution_policy,
+    get_instrument_context_from_state,
+    get_language_instruction,
+)
+from tradingagents.agents.schemas import DeskResearchPlan, ResearchPlan, render_research_plan
 from tradingagents.agents.structured import (
     NO_EXTERNAL_TOOLS,
     bind_structured,
@@ -16,6 +20,7 @@ def create_research_manager(llm):
 
     def research_manager_node(state) -> dict:
         instrument_context = get_instrument_context_from_state(state)
+        policy = get_desk_execution_policy(state)
         history = state["investment_debate_state"].get("history", "")
 
         investment_debate_state = state["investment_debate_state"]
@@ -23,6 +28,8 @@ def create_research_manager(llm):
         prompt = f"""As the Research Manager and debate facilitator, your role is to critically evaluate this round of debate and deliver a clear, actionable investment plan for the trader.
 
 {instrument_context}
+
+{policy}
 
 ---
 
@@ -49,9 +56,13 @@ Write these sections, in this order, starting with the recommendation on its own
 - **Strategic Actions**: concrete steps for the trader, sized against a standard allocation
 
 {NO_EXTERNAL_TOOLS}""" + get_language_instruction()
+        if policy:
+            prompt = prompt.replace(", sized by how decisively it wins", "")
+            prompt = prompt.replace("concrete steps for the trader, sized against a standard allocation",
+                                    "advisory thesis and conditions; configured desk policy determines proposal quantities")
 
         investment_plan = invoke_structured_or_freetext(
-            structured_llm,
+            bind_structured(llm, DeskResearchPlan, "Research Manager") if policy else structured_llm,
             llm,
             prompt,
             render_research_plan,

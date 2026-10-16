@@ -1,0 +1,144 @@
+"""T-1.8 offline behavioral regressions. No model or broker calls."""
+import copy
+import json
+from pathlib import Path
+
+import pytest
+
+from tests.test_mcp_gateway import _allow_event_loop_pipe  # noqa: F401
+from tests.test_paper_service import desk, complete_run  # noqa: F401
+from tests.test_laya_review_budget import Gateway, prepare, summaries  # noqa: F401
+from tradingagents.web import laya_review as review
+
+
+def test_questions_use_two_neutral_contrasting_choices():
+    assert set(review.QUESTIONS) == {"evidence_complete", "decision_consistent"}
+    for question in review.QUESTIONS.values():
+        assert question["kind"] == "choice"
+        assert set(question["criteria"]) == {"A", "B"}
+        assert all(isinstance(v, str) and v.strip() for v in question["criteria"].values())
+        assert question["criteria"]["A"] != question["criteria"]["B"]
+
+
+def test_audit_versions_question_contract_and_keeps_exact_preflight_questions(summaries):
+    gateway = Gateway()
+    params, audit = prepare(gateway)
+    assert isinstance(audit.get("question_contract_version"), str)
+    assert audit["question_contract_version"].strip()
+    assert audit["parameters"]["questions"] == gateway.calls[0][2]["questions"] == params["questions"]
+    assert set(params["state"]["summary"]) == set(review.FIELDS)
+    assert params["state"]["rating"] == params["state"]["summary"]["recommendation"]
+
+
+def run_answer(desk, monkeypatch, answer):
+    service, broker = desk
+    original = broker.execute
+    def execute(domain, command, params, **kwargs):
+        if (domain, command) == ("laya", "decide"):
+            return copy.deepcopy(answer)
+        return original(domain, command, params, **kwargs)
+    monkeypatch.setattr(broker, "execute", execute)
+    run_id = complete_run(service)
+    return service, service._find_run(run_id)["results"][0]
+
+
+def response(first="A", second="A", grade="auto_execute"):
+    return {"contract": {"grade": grade}, "answers": {
+        "evidence_complete": {"value": first}, "decision_consistent": {"value": second}}}
+
+
+def test_only_current_exact_a_a_confident_review_can_pass(desk, monkeypatch):
+    _, result = run_answer(desk, monkeypatch, response())
+    assert result["laya"]["auto_execute"] is True
+    assert result["laya"]["answers"] == response()["answers"]
+    assert result["laya_review"].get("question_contract_version")
+
+
+@pytest.mark.parametrize("first,second,grade", [
+    ("B", "A", "auto_execute"), ("A", "B", "auto_execute"),
+    (True, True, "auto_execute"), (1, 1, "auto_execute"),
+    ("true", "true", "auto_execute"), ("a", "A", "auto_execute"),
+    (" A", "A", "auto_execute"), (None, "A", "auto_execute"),
+    ([], "A", "auto_execute"), ({"value": "A"}, "A", "auto_execute"),
+    ("UNKNOWN", "A", "auto_execute"), ("A", "A", "escalate"),
+    ("A", "A", "ask_human"), ("A", "A", "reconsider"),
+    ("A", "A", None),
+])
+def test_invalid_negative_or_unconfident_answers_never_approve(desk, monkeypatch, first, second, grade):
+    _, result = run_answer(desk, monkeypatch, response(first, second, grade))
+    assert result["laya"]["auto_execute"] is False
+
+
+@pytest.mark.parametrize("answers", [{}, {"evidence_complete": {"value": "A"}},
+                                    {"evidence_complete": {}, "decision_consistent": {"value": "A"}}])
+def test_absent_answers_never_approve(desk, monkeypatch, answers):
+    _, result = run_answer(desk, monkeypatch, {"contract": {"grade": "auto_execute"}, "answers": answers})
+    assert result["laya"]["auto_execute"] is False
+
+
+@pytest.mark.parametrize("bad", [None, [], "A", {"answers": None},
+    {"contract": {"grade": "auto_execute"}, "answers": {"evidence_complete": "A", "decision_consistent": "A"}}])
+def test_malformed_envelopes_cannot_publish_approval(desk, monkeypatch, bad):
+    service, broker = desk
+    original = broker.execute
+    def execute(domain, command, params, **kwargs):
+        if (domain, command) == ("laya", "decide"):
+            return copy.deepcopy(bad)
+        return original(domain, command, params, **kwargs)
+    monkeypatch.setattr(broker, "execute", execute)
+    run_id = service.start_run(["AAPL"])["run_id"]
+    service.executor.run_next()
+    result = service._find_run(run_id)["results"][0]
+    assert (result.get("laya") or {}).get("auto_execute") is not True
+
+
+def test_historical_unversioned_boolean_approval_cannot_build_executable_proposal(desk):
+    service, _ = desk
+    run_id = complete_run(service)
+    result = service._find_run(run_id)["results"][0]
+    result["laya"] = {**response(True, True), "auto_execute": True}
+    result.pop("laya_review", None)
+    original = copy.deepcopy(result)
+    try:
+        proposals = service.propose(run_id)["proposals"]
+    except ValueError as exc:
+        assert "Laya" in str(exc) or "review" in str(exc).lower() or "contract" in str(exc).lower()
+    else:
+        assert all(p["status"] != "proposed" for p in proposals)
+    assert result == original  # Do not rewrite historical research to achieve rejection.
+
+
+def test_semantic_controls_have_four_polarities_and_order_reversal():
+    fixture = json.loads(Path(__file__).with_name("laya_choice_controls.json").read_text())
+    assert fixture["synthetic"] is True
+    assert fixture["reversal"]["criteria_order"] == ["B", "A"]
+    assert fixture["reversal"]["preserve_label_meanings"] is True
+    assert {tuple(c["expected"].values()) for c in fixture["controls"]} == {
+        ("A", "A"), ("A", "B"), ("B", "A"), ("B", "B")}
+    for control in fixture["controls"]:
+        assert set(control["state"]["summary"]) == set(review.FIELDS)
+        assert control["state"]["summary"]["recommendation"] == control["state"]["rating"]
+
+
+@pytest.mark.parametrize("corruption", ["version", "questions", "threshold", "model"])
+def test_changed_contract_cannot_create_or_submit_proposal(desk, corruption):
+    service, broker = desk
+    run_id = complete_run(service)
+    proposal = service.propose(run_id)["proposals"][0]
+    result = service._find_run(run_id)["results"][0]
+    audit = result["laya_review"]
+    if corruption == "version":
+        audit["question_contract_version"] = "future-contract"
+    else:
+        audit["parameters"][corruption] = {} if corruption == "questions" else "changed"
+    with pytest.raises(ValueError, match="Laya"):
+        service.submit(proposal["id"])
+    assert broker.submitted == []
+
+
+def test_compact_research_preserves_contract_provenance(desk):
+    service, _ = desk
+    complete_run(service)
+    compact = service.store.snapshot(compact=True)
+    assert compact["research"]["AAPL"]["laya"]["question_contract_version"] == review.QUESTION_CONTRACT_VERSION
+    assert compact["runs"][0]["results"][0]["laya"]["question_contract_version"] == review.QUESTION_CONTRACT_VERSION

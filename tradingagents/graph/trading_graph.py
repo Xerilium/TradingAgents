@@ -60,6 +60,7 @@ class TradingAgentsGraph:
         config: dict[str, Any] = None,
         callbacks: list | None = None,
         supplemental_tools: list[BaseTool] | None = None,
+        social_screen_factory=None,
     ):
         """Initialize the trading agents graph and components.
 
@@ -105,6 +106,7 @@ class TradingAgentsGraph:
             self.conditional_logic,
             max_tool_rounds,
             supplemental_tools=self.supplemental_tools,
+            social_screen_factory=social_screen_factory,
         )
 
         self.propagator = Propagator(

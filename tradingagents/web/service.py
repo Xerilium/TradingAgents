@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from cli.stats_handler import StatsCallbackHandler
+from tradingagents.agents.post_screen import SOCIAL_ADMISSION_VERSION, laya_screen
 from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
@@ -27,14 +29,12 @@ from tradingagents.integrations.maenifold import (
     GatewayRateLimited,
     MaenifoldGateway,
     build_langchain_tools,
-    gateway_observation,
     verify_paper_configuration,
 )
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
 from tradingagents.paper.engine import plan_orders, validate_proposal
 
 from .config import DeskConfig
-from .laya_review import prepare_review
 from .store import DeskStore
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
@@ -124,6 +124,34 @@ def normalize_quotes(raw):
     return result
 
 
+def desk_execution_policy(config):
+    """Explain the existing engine policy from this run's saved configuration."""
+    allocation = Decimal(str(config["allocation_pct"]))
+    cap = Decimal(str(config["max_position_pct"]))
+    total = len(config["universe"])
+    target = min(allocation / total, cap)
+    overweight = target * Decimal("0.75")
+    return (
+        "Paper desk execution policy (research is advisory; deterministic Python owns order sizing):\n"
+        f"Maximum invested allocation {allocation}% of equity across the full configured universe of {total} stocks, "
+        f"not just this run's selected stocks. Single-position cap {cap}%; cash reserve {config['reserve_pct']}%. "
+        f"Buy target = min({allocation}% / {total}, {cap}%) = {target}% of equity; "
+        f"Overweight target = 75% of that Buy target = {overweight}% of equity. "
+        "Existing holdings reduce the shortfall. Underweight sells half the available held whole shares; "
+        "Sell sells available held whole shares. Hold/REVIEW produces no order. "
+        f"Per-order maximum USD {config['max_order_notional']}; limit-price buffer {config['price_buffer_bps']} basis points. "
+        "Cash reserve, invested allocation, concentration, open-order reservations and order caps can reduce "
+        "the policy target; buys round down to whole shares. No shorting, leverage or fractional orders; "
+        "sales do not fund buys in the same batch. A separate fresh executable two-sided quote, current "
+        "completed research, verified paper account and explicit manual submission are required. "
+        "Your job is thesis, rating, evidence and conditional risk discussion, not order authorization. "
+        "Do not invent a standard allocation, starter multiplier, percentage allocation or share quantity. "
+        "State that proposal quantity is calculated from configured policy and the current broker book; "
+        "research prose and advisory price levels do not override these rules. Distinguish current "
+        "observations from conditions that must be checked at execution."
+    )
+
+
 def research_quote_context(symbol, trade_date, market):
     """Keep observed broker prices separate from historical analysis and execution."""
     if trade_date != datetime.now(ZoneInfo("America/New_York")).date().isoformat():
@@ -141,14 +169,31 @@ def research_quote_context(symbol, trade_date, market):
     usable = fresh and not quote.get("invalid_quote", True) and all(
         _number(quote.get(key)) is not None and _number(quote[key]) > 0 for key in ("price", "bid", "ask")
     )
+    clock = market.get("clock") or {}
+    reference_label = "current reference" if fresh else "execution-stale reference"
+    try:
+        clock_time = datetime.fromisoformat(clock["timestamp"].replace("Z", "+00:00"))
+        next_open = datetime.fromisoformat(clock["next_open"].replace("Z", "+00:00"))
+        if clock.get("is_open") is False and clock_time <= observed < next_open:
+            stamps = [datetime.fromisoformat(quote[key].replace("Z", "+00:00")) for key in ("timestamp", "quote_timestamp")]
+            if all(stamp <= observed + timedelta(seconds=60) and stamp.astimezone(ZoneInfo("America/New_York")).date()
+                   == clock_time.astimezone(ZoneInfo("America/New_York")).date() for stamp in stamps):
+                reference_label = "market-closed reference"
+            else:
+                reference_label = "older reference; session unverified"
+    except (KeyError, AttributeError, TypeError, ValueError):
+        pass
     evidence = {"symbol": symbol, "captured_at": market.get("quotes_updated_at", market.get("updated_at")),
                 "evaluated_at": observed.isoformat(), "market_open": (market.get("clock") or {}).get("is_open"),
-                "fresh": fresh, "valid_two_sided_quote": usable, "quote": quote}
+                "fresh": fresh, "fresh_for_execution": fresh, "reference_label": reference_label,
+                "valid_two_sided_quote": usable, "quote": quote}
     return (
         "Broker quote context (Alpaca via Maenifold): " + json.dumps(evidence, allow_nan=False)
         + "\nThese are observed prices, not a streaming quote. State the feed, timestamps and freshness. "
-        "A stale, missing or invalid quote is not an execution price. A market-close last trade can still "
-        "be a historical reference. Distinguish unavailable prices from available but stale prices. "
+        "Use reference_label to describe the observation separately from fresh_for_execution. A market-closed "
+        "reference is not missing or stale merely because trading is closed; it is an observed IEX last trade, "
+        "not an official closing-auction price. Older session-unverified references must not be described as "
+        "the latest close. A missing, invalid or execution-stale quote is not an execution price. "
         "Ground conditional risk levels in verified technical evidence; do not invent support, resistance "
         "or a stop merely because a quote exists. Execution requires a separate fresh quote check."
     )
@@ -871,6 +916,7 @@ class DeskService:
                     "reports": {},
                     "rating": None,
                     "laya": None,
+                    "social_sentiment": {"status": "not_requested", "model": "multilingual", "sources": {}},
                     "revision": 0,
                 }
                 with self.store.lock:
@@ -904,19 +950,46 @@ class DeskService:
                         checkpoint_enabled=False,
                     )
                     tools = build_langchain_tools(
-                        self.gateway, symbol=symbol, trade_date=run["trade_date"]
+                        self.gateway, domains=("alpaca", "maenifold.memory"),
+                        symbol=symbol, trade_date=run["trade_date"]
                     )
+                    social_budget = {"remaining": 30, "deadline": None}
+                    def screen_factory(ticker, source, current=result, budget=social_budget, *, instrument_context=""):
+                        def record(evidence):
+                            with self.store.lock:
+                                social = current["social_sentiment"]
+                                social["sources"][source] = evidence
+                                statuses = [s["status"] for s in social["sources"].values()]
+                                social["status"] = ("completed" if all(s in {"completed", "empty"} for s in statuses)
+                                                    else "unavailable" if all(s in {"unavailable", "not_screened"} for s in statuses) else "partial")
+                                current["revision"] += 1
+                                self.store.save()
+                        with self.store.lock:
+                            current["social_sentiment"]["sources"][source] = {
+                                "admission_version": SOCIAL_ADMISSION_VERSION,
+                                "status": "not_screened", "source": source, "counts": {}, "posts": [],
+                                "note": "No eligible posts supplied by the source; inspect the sentiment report for source availability."}
+                            current["social_sentiment"]["status"] = "partial"
+                            self.store.save()
+                        company = re.search(r"(?:Company|Name): ([^\n;]+)", instrument_context)
+                        instrument = f"{company.group(1)} ({ticker})" if company else ticker
+                        return laya_screen(ticker, self.gateway, budget=budget, instrument=instrument,
+                                           source=source, on_evidence=record,
+                                           cancelled=lambda: run_id in self.cancelled)
                     graph = (self.graph_factory or TradingAgentsGraph)(
-                        config=graph_config, supplemental_tools=tools, callbacks=[stats]
+                        config=graph_config, supplemental_tools=tools, callbacks=[stats],
+                        social_screen_factory=screen_factory,
                     )
                     final = {}
                     seen = set()
                     memory_seen = None
                     initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
+                    initial["desk_execution_policy"] = desk_execution_policy(config)
                     quote_context = research_quote_context(symbol, run["trade_date"], market)
                     initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote_context
                     with self.store.lock:
                         result["quote_context"] = quote_context
+                        result["desk_execution_policy"] = initial["desk_execution_policy"]
                         self.store.save()
                     self.store.record_portfolio_context(run_id, {
                         "schema_version": 1,
@@ -976,35 +1049,12 @@ class DeskService:
                     next_stage("decision_persistence")
                     graph.record_decision(symbol, run["trade_date"], final)
                     rating = run_rating(final)
-                    self._event(run_id, "laya", "Checking evidence with Laya", symbol)
-                    next_stage("laya")
-                    laya_parameters, review = prepare_review(
-                        self.gateway, getattr(graph, "quick_thinking_llm", None),
-                        symbol, run["trade_date"], rating, result["reports"], quote_context,
-                        cancelled=lambda: run_id in self.cancelled,
-                    )
-                    with self.store.lock:
-                        result["laya_review"] = review
-                        self.store.save()
                     if run_id in self.cancelled:
                         raise InterruptedError("Analysis stopped by operator.")
-                    with gateway_observation("laya", "decide", "gateway_invocation",
-                                             parameters=laya_parameters, purpose="final_laya") as observed:
-                        laya = self.gateway.execute("laya", "decide", laya_parameters)
-                        observed.update(output=laya, result_available=True)
-                    if run_id in self.cancelled:
-                        raise InterruptedError("Analysis stopped by operator.")
-                    laya = _payload(laya)
-                    answers = laya.get("answers", {})
-                    gate = laya.get("contract", {}).get("grade") == "auto_execute" and all(
-                        answers.get(key, {}).get("value") is True
-                        for key in ("evidence_complete", "decision_consistent")
-                    )
                     with self.store.lock:
                         result.update(
                             status="completed",
                             rating=rating,
-                            laya={**laya, "auto_execute": gate},
                             elapsed_seconds=round((datetime.now(UTC) - started).total_seconds(), 1),
                             revision=result["revision"] + 1,
                         )
@@ -1012,7 +1062,7 @@ class DeskService:
                     self._event(
                         run_id,
                         "complete",
-                        f"{rating} · Laya {laya.get('contract', {}).get('grade', 'unknown')}",
+                        f"{rating} · Research completed",
                         symbol,
                     )
                 except InterruptedError as exc:
@@ -1105,8 +1155,8 @@ class DeskService:
 
     def _review(self, proposal, run):
         results = [r for r in run["results"] if r.get("symbol") == proposal["symbol"]]
-        if len(results) != 1 or results[0].get("status") != "completed" or results[0].get("laya", {}).get("auto_execute") is not True:
-            raise ValueError("Completed research and Laya approval are required.")
+        if len(results) != 1 or results[0].get("status") != "completed":
+            raise ValueError("Completed research is required.")
         return {"arguments": self._order_arguments(proposal), "account_id": run["account_id"],
                 "run_id": run["id"], "created_at": proposal["created_at"], "trade_date": run["trade_date"],
                 "proposal_fields": {key: copy.deepcopy(proposal.get(key)) for key in (

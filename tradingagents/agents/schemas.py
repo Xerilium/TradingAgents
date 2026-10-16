@@ -143,6 +143,12 @@ def render_research_plan(plan: ResearchPlan) -> str:
 # ---------------------------------------------------------------------------
 
 
+class DeskResearchPlan(ResearchPlan):
+    """Desk research opinion; configured policy owns order quantities."""
+    recommendation: PortfolioRating = Field(description="Research rating: Buy / Overweight / Hold / Underweight / Sell. Weigh evidence without inventing order quantities.")
+    strategic_actions: str = Field(description="Advisory thesis and conditions for human review. Configured desk policy computes order quantities; do not invent a standard allocation or numerical starter size.")
+
+
 class TraderProposal(BaseModel):
     """Structured transaction proposal produced by the Trader.
 
@@ -186,6 +192,11 @@ class TraderProposal(BaseModel):
     @classmethod
     def _nullish_float_to_none(cls, v):
         return _coerce_optional_float(v)
+
+
+class DeskTraderProposal(TraderProposal):
+    """Desk trading opinion with policy-owned sizing."""
+    position_sizing: None = Field(default=None, description="Leave null. The desk's deterministic configured policy calculates proposal quantities; research does not prescribe numerical sizing.")
 
 
 def render_trader_proposal(proposal: TraderProposal) -> str:
@@ -263,6 +274,12 @@ class PortfolioDecision(BaseModel):
     @classmethod
     def _nullish_float_to_none(cls, v):
         return _coerce_optional_float(v)
+
+
+class DeskPortfolioDecision(PortfolioDecision):
+    """Desk final research rating, separate from the deterministic order plan."""
+    rating: PortfolioRating = Field(description="Final research rating: Buy / Overweight / Hold / Underweight / Sell. Choose from evidence, not an invented size multiplier.")
+    executive_summary: str = Field(description="Summarize the thesis, conditional risk levels and time horizon. Explain that configured desk policy computes proposal quantities and manual submission is required. Do not prescribe a numerical allocation, starter multiplier or share quantity.")
 
 
 def render_pm_decision(decision: PortfolioDecision) -> str:

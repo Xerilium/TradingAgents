@@ -1,0 +1,51 @@
+{
+  "synthetic": true,
+  "purpose": "Labelled research-gate controls, not investment recommendations. Offline structure is not semantic validation.",
+  "reversal": {"criteria_order": ["B", "A"], "preserve_label_meanings": true, "expected": "Same answers as each forward control. Reverse insertion order only; preserve descriptions and labels."},
+  "controls": [
+    {"id": "complete_conditional", "expected": {"evidence_complete": "A", "decision_consistent": "A"}, "state": {
+      "symbol": "SYNTH", "trade_date": "2026-10-15", "rating": "Hold",
+      "evidence_basis": "Synthetic six-field summary for domain calibration only.",
+      "summary": {
+        "recommendation": "Hold",
+        "supporting_evidence": "fundamentals_report: Verified company filing reports revenue 100 and profit 10 for this quarter. The cited filing was retrieved successfully and these values were reconciled. Hold is supported by stable revenue and profit.",
+        "counterarguments": "Future growth is uncertain; no forecast is presented as fact.",
+        "unresolved_gaps": "No material source contradiction or essential missing fact remains.",
+        "execution_conditions": "No purchase is recommended. Market is closed; closing price is a research reference and any future order requires a fresh quote.",
+        "source_references": "fundamentals_report: synthetic filing https://example.test/filing"
+      }}},
+    {"id": "essential_source_missing", "expected": {"evidence_complete": "B", "decision_consistent": "B"}, "state": {
+      "symbol": "SYNTH", "trade_date": "2026-10-15", "rating": "Buy",
+      "evidence_basis": "Synthetic six-field summary for domain calibration only.",
+      "summary": {
+        "recommendation": "Buy",
+        "supporting_evidence": "The thesis depends entirely on a claimed doubling of current quarterly profit. Nevertheless the final rating says Buy because the missing report proves profit doubled.",
+        "counterarguments": "No alternative source supports the profit claim, which is unknown.",
+        "unresolved_gaps": "fundamentals_report: The only essential earnings report failed to load.",
+        "execution_conditions": "No authorization to trade; independent paper account and quote checks remain required.",
+        "source_references": "fundamentals_report: synthetic filing https://example.test/filing FAILED"
+      }}},
+    {"id": "contradiction_deferred", "expected": {"evidence_complete": "B", "decision_consistent": "A"}, "state": {
+      "symbol": "SYNTH", "trade_date": "2026-10-15", "rating": "Hold pending reconciliation",
+      "evidence_basis": "Synthetic six-field summary for domain calibration only.",
+      "summary": {
+        "recommendation": "Hold pending reconciliation",
+        "supporting_evidence": "fundamentals_report: The two retrieved versions of the same filing give profit 10 and profit -10 for the same quarter.",
+        "counterarguments": "Both are claimed authoritative; the discrepancy prevents assessing profitability.",
+        "unresolved_gaps": "The discrepancy remains unresolved.",
+        "execution_conditions": "The final rating explicitly defers a directional conclusion until reconciliation and does not claim positive profit is verified. No trade is authorized.",
+        "source_references": "fundamentals_report: synthetic conflicting filing https://example.test/filing-v1 and https://example.test/filing-v2"
+      }}},
+    {"id": "complete_but_inconsistent", "expected": {"evidence_complete": "A", "decision_consistent": "B"}, "state": {
+      "symbol": "SYNTH", "trade_date": "2026-10-15", "rating": "Buy immediately without conditions",
+      "evidence_basis": "Synthetic six-field summary for domain calibration only.",
+      "summary": {
+        "recommendation": "Buy immediately without conditions",
+        "supporting_evidence": "fundamentals_report: Verified complete source evidence establishes declining revenue and a loss, with no offsetting positive evidence.",
+        "counterarguments": "The final recommendation asserts verified profitable growth as its sole reason for immediate Buy, contradicting the verified source facts.",
+        "unresolved_gaps": "No essential source is missing and no source contradiction remains. The final conclusion, not the source evidence, is inconsistent.",
+        "execution_conditions": "The report explicitly forbids buying until profitability recovers. The final recommendation ignores this condition.",
+        "source_references": "fundamentals_report: synthetic verified filing https://example.test/filing"
+      }}}
+  ]
+}

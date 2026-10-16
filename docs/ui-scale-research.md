@@ -5,6 +5,10 @@ Scope: polish and harden the existing local paper desk for a stock universe of
 and deterministic paper-order policy. This is an operating interface, with
 explicit research selection and individually reviewed orders.
 
+T-1.10 supersedes the earlier Laya review UI: social classifications are source
+evidence, never research or order clearance. Older screenshots and verification
+observations in this document remain historical evidence of their tested revision.
+
 ## Peer evidence
 
 Primary sources reviewed on 2026-10-13:
@@ -35,7 +39,7 @@ model accuracy, or a performance claim for this application.
 | Find and prioritize stocks | Every row and symbol chip is rendered | Search, filters, sorting, bounded pages, explicit selection and empty states |
 | Keep linked context | Charts for all symbols fetched at refresh | Only the selected chart loads, including loading/error/retry and selection-race handling |
 | Monitor research at scale | Full reports copied and polled repeatedly | Compact state plus requested report detail, queue counts and observed duration estimates |
-| Review decisions honestly | Rating obscures Laya review status | Visible review status and freshness alongside ratings and evidence |
+| Review decisions honestly | Rating obscures research and source status | Visible research completion, social coverage and freshness alongside ratings and evidence |
 | Operate during failures | A single error can obscure missing/stale data | Source-specific errors, timeouts, stale-state labels and input-preserving recovery |
 | Keep interaction stable | Full page replaced every poll | Preserve inputs, selection, scroll, disclosures and keyboard focus |
 | Handle large order/position lists | Unbounded tables | Search/filter/page counts and every existing order action remains reachable |
@@ -66,7 +70,7 @@ The first implementation stage is verified:
 - Before list changes, the 500-stock render fixture produced 249,855 HTML bytes,
   500 watchlist rows and 500 linked symbol buttons (31.8 ms in the Node harness).
 - Live polling changed from 122,295 bytes to 12,033 bytes for the same saved
-  research run. Reports and raw Laya output are omitted from compact polls;
+research run. Reports and raw per-post Laya output are omitted from compact polls;
   the requested AAPL detail still returns all nine report artifacts.
 - The server accepts up to 1,000 symbols, fetches snapshots in batches of 100,
   and loads one chart on demand. The 500-stock batch, partial failure,
@@ -96,10 +100,10 @@ The collection implementation was verified on 2026-10-14:
   was submitted. The 500-stock workload review shows the captured selection,
   models, trade date and an estimate derived only from matching completed runs.
   A changed configuration revision rejects the reviewed workload on the server.
-- Ratings, research failure and Laya review status are separate. Missing and
+- Ratings, research failure and social classification coverage are separate. Missing and
   stale quote filters use the execution policy's 15-minute / 60-second bounds,
   including the quote timestamp when available. Failed research never reads as
-  Laya cleared.
+  completed. Laya sentiment never provides trade clearance.
 - Active search nodes, caret, selection, table scrolling, report disclosures
   and settings drafts survive polling. Import freezes the settings form before
   opening the file picker so polling cannot detach that input.

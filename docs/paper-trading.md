@@ -57,16 +57,36 @@ deployments. An API key alone or an image-only deployment is insufficient.
    and any source errors. Prices and candles use Alpaca's IEX feed.
 2. Select a stock or run the configured universe. The existing TradingAgents
    analyst, debate, trader, and risk graph receives actual portfolio context plus
-   an audited set of Maenifold memory, Laya, and Alpaca read tools.
-3. Inspect the reports and recorded tool activity in Agent research. Laya checks
-   evidence completeness and consistency. A failed run or a Laya result requiring
-   human review cannot produce an executable order proposal.
+   an audited set of Maenifold memory and Alpaca read tools. The social analyst
+   sends individual posts through Maenifold to Laya for relevance and stance.
+3. Inspect reports, social classifications and recorded tool activity in Agent
+   research. Laya is sentiment evidence, not research approval. Failed research
+   cannot produce an executable proposal; uncertain or unavailable social
+   screening remains visible without pretending those posts are neutral.
 4. Build the paper order plan. Deterministic Python code calculates share counts,
    price limits, cash reservations, and allocation limits from the rating and
    current broker book. Review each proposed order and explicitly submit it.
 5. Refresh Trade & orders to reconcile broker status and fills. Cancel an order
    created by this workspace from the blotter. Pause prevents new submissions;
    it does not cancel existing orders or stop analysis.
+
+Desk research receives the actual configured allocation policy, using the whole
+configured stock universe even when only a few stocks are selected for research.
+Reports supply ratings, reasoning, risks, and conditions; the order planner owns
+share quantities. Buy targets the smaller of the per-stock allocation and the
+position cap, and Overweight targets 75% of that amount. Current holdings, cash
+reserve, order limits, and other safeguards can reduce or block a proposal.
+The proposal review opens the research run associated with that proposal.
+
+Closed-market observations are labeled as reference prices, not official closing
+prices. Their timestamps remain visible; an IEX last trade is not an official
+closing auction price. A closed-market reference does not become a fresh,
+executable quote. Older observations remain identified separately.
+
+New social screening counts a stance only when Laya's per-answer grade permits
+using it. Uncertain posts show the raw predicted stance and grade but count as
+unclear. Historical screening counts and retired Laya approval blockers remain
+unchanged and are labeled historical rather than silently recomputed.
 
 The workspace preserves its configuration, reports, run history, and order
 journal in `.paper-desk/` (gitignored). Interrupted runs are marked interrupted.
@@ -79,7 +99,7 @@ Order recovery uses the saved reviewed order and account-bound submission intent
 After Gateway schema validation and SDK initialization, a local dispatch callback
 rechecks pause, unresolved submissions/cancellations, proposal eligibility and age,
 New York trade date, pinned account, configuration, frozen order fields, completed
-research/Laya approval, and the complete fresh book and quotes with the unchanged
+research and its evidence hash, and the complete fresh book and quotes with the unchanged
 execution validator. It performs no provider call or repricing. The exact intent
 is saved before the single mutation; failed persistence or freshness expiring
 during that save prevents dispatch. Legacy proposals without this reviewed binding
@@ -172,7 +192,7 @@ future dates fail before account/provider access. For example:
 `{"symbols":["META"],"analysis_date":"2020-01-02"}`.
 
 Historical research retains that date through the integrated graph, MCP tools,
-reports and Laya check. It still uses current account cash and holdings captured
+reports and date-filtered social inputs. It still uses current account cash and holdings captured
 at run creation, explicitly labeled in the run's `account_context` and the
 graph's portfolio context. This is not a historical portfolio simulation.
 Historical runs cannot produce paper order proposals; existing current-date,
@@ -206,7 +226,8 @@ have their own request evidence without creating an accepted run. Artifact publi
 reference save are outside the reported interval.
 
 Stage durations cover preflight, worker queue, per-symbol setup, graph analysis,
-decision persistence and the direct Laya check. They are observed boundary times,
+decision persistence. Per-post Laya screening runs inside the social analysis
+stage. These are observed boundary times,
 not a decomposition of every internal provider operation. Analysis includes its
 existing source acquisition and memory work. Success, failure and cancellation
 retain measurements; an interrupted process exports the last available journal
@@ -216,7 +237,7 @@ The existing statistics callback counts logical LLM/tool starts, normal ends and
 errors. Matching callback IDs prevent double counting when the same handler is
 bound to both model and graph. Callback durations sum completed matched calls
 and can overlap during parallel analysis; they are not wall-clock stage totals.
-Direct source-prefetch calls and the direct Laya check do not emit these tool
+Direct source-prefetch calls and social Laya screening do not emit these tool
 callbacks. Provider-internal requests/retries are unavailable, not inferred from
 logical counts. Token usage is labeled complete, partial or unavailable according
 to exposed response usage; missing usage is null rather than zero. Existing CLI
@@ -309,7 +330,7 @@ cross-application evidence snapshot.
 
 ### Run-scoped Gateway evidence
 
-`gateway_evidence` records analyst-tool and final-Laya invocation parents, logical
+`gateway_evidence` records analyst-tool and social-classification invocation parents, logical
 executions, discovery scopes, and actual `transport.call_tool` attempts separately.
 Each scope has an ID/parent, UTC start/end and monotonic elapsed time. Transport
 ordinals and retry/defer decisions record observed attempts only; an existing
@@ -338,8 +359,15 @@ requests. Timeout/cancellation retains unknown outcomes; restart marks unfinishe
 scopes unknown without inventing an end time. Compact state omits full receipts
 and snapshot history. Full run detail and the report directory retain them.
 
-The final Laya guard's exact questions, criteria, high threshold and strict
-grade-plus-two-boolean predicate are unchanged. `use_cache` remains omitted;
+Laya receives one source post at a time with instrument identity and typed
+relevance/stance questions. Exact multilingual token preflight prevents silent
+input clipping. Source callbacks share a bounded post/time budget and serialize
+inference. Uncertain relevance retains the post; budget-deferred screening
+preserves fetched posts and explicitly marks the unclassified remainder.
+Classifier coverage and user-provided StockTwits tags have different denominators
+and must not be treated as inconsistent merely because their counts differ.
+Historical final-Laya research assessments remain readable but no longer gate
+research completion, proposals or submission. `use_cache` remains omitted;
 capture does not override the server default. Returned cache/usage metadata is
 retained when safe, but a Gateway call is not proof of a model execution. This
 coverage starts inside accepted run workers. Rejected preflight ownership and
