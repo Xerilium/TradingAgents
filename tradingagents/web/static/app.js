@@ -401,8 +401,16 @@ function reportSocial(value){
   const labels={bullish:'Bullish',bearish:'Bearish',neutral:'Neutral',unclear:'Unclear',off_topic:'Off topic',unscreened:'Unscreened'};
   return `${historical?'<p class="error-detail">Historical screening: saved counts may include predictions the current uncertainty rules would mark unclear. Original evidence is preserved.</p>':''}<p>Laya classifies individual social posts for relevance and sentiment. It does not approve trades.</p><p>Screening: ${esc(value.status||'not recorded')} · Model: ${esc(value.model||'not recorded')}</p>${Object.entries(value.sources||{}).map(([source,evidence])=>`<section class="report-answer"><h3>${esc(reportLabel(source))}</h3><p>${esc(evidence.status||'not recorded')}${evidence.note?' · '+esc(evidence.note):''}</p><dl class="report-grade">${Object.entries(labels).map(([key,label])=>`<dt>${label}</dt><dd>${esc(evidence.counts?.[key]??'Not recorded')}</dd>`).join('')}</dl><p class="muted">Unclear means the classification was uncertain. Unscreened means no usable classification was obtained; neither means neutral.</p>${(evidence.posts||[]).map(post=>`<section class="report-answer"><h4>${esc(['unscreened','off_topic'].includes(post.status)?reportLabel(post.status):reportLabel(post.stance||post.status||'unclear'))}</h4><p>${esc(post.text||'Post text not recorded')}</p>${reportStructured({provenance:post.provenance,text_sha256:post.text_sha256,status:post.status,relevance_probability:post.about_probability,stance_probability:post.stance_probability,raw_prediction:post.raw_prediction??post.result?.answers?.stance?.value,stance_grade:post.stance_grade??post.result?.answers?.stance?.grade,model:post.model})}</section>`).join('')}</section>`).join('')}`;
 }
+function portfolioDisplay(value){
+  if(typeof value!=='string')return value;
+  // Only remove the observed redundant field prefixes, never narrative headings
+  // or a conflicting rating. The original artifact remains untouched below.
+  return value.replace(/^(\*\*Rating\*\*:[ \t]*([^\r\n]+)\r?\n\r?\n\*\*Executive Summary\*\*:[ \t]*)\*\*Rating\*\*\r?\n([^\r\n]+)\r?\n\r?\n\*\*Executive Summary\*\*[ \t]*\r?\n/,
+    (full,prefix,rating,repeated)=>rating.trim()===repeated.trim()?prefix:full)
+    .replace(/(^|\n)(\*\*(Executive Summary|Investment Thesis|Price Target|Time Horizon)\*\*:[ \t]*)\*\*\3\*\*[ \t]*\r?\n/g,'$1$2');
+}
 function renderReportArtifact(name,content,reports={}){
-  const body=name==='social_sentiment'?reportSocial(content):name==='laya_review'?reportLayaReview(content):name==='laya'?reportLaya(content):name.endsWith('_debate_state')?reportDebate(content,name==='investment_debate_state'?reports.investment_plan:reports.final_trade_decision):reportStructured(content);
+  const body=name==='social_sentiment'?reportSocial(content):name==='laya_review'?reportLayaReview(content):name==='laya'?reportLaya(content):name.endsWith('_debate_state')?reportDebate(content,name==='investment_debate_state'?reports.investment_plan:reports.final_trade_decision):reportStructured(name==='final_trade_decision'?portfolioDisplay(content):content);
   return `<div class="report-content">${body}</div><details class="report-raw" data-view="${esc(reportViewKey)}" data-report="${esc(name)}:raw" ${openReportNames.has(name+':raw')?'open':''}><summary id="report-raw-${esc(name)}">Full source artifact</summary><pre>${esc(text(content))}</pre></details>`;
 }
 function renderReports(result){

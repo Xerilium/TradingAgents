@@ -1,6 +1,10 @@
 # Feature-freeze acceptance
 
-Current verdict: incomplete. This checklist does not replace Gate stage evidence.
+Current verdict: accepted. Functional acceptance and final display UAT passed; T-1.10, T-1.11 and T-1.12 are done. This checklist does not replace Gate stage evidence.
+
+Final functional evidence: source `0287be2`, actual completed run `3f948cc2-5589-41fb-b691-33695ac18e8a`, independent `FINAL_PRODUCT_ACCEPTANCE.md`, and coordinator `LAYA_T110_UI_UAT.md`. T-1.10 and T-1.11 are done. The final run demonstrates actual feed/model/research consumption with uncertainty and deferred coverage disclosed. Paper submission safeguards were exercised with fake brokers; the live blotter is empty and no verification orders were submitted or canceled. This does not certify upstream financial accuracy, general sentiment accuracy, or actual fills.
+
+T-1.12 final evidence: independent `HEADINGS_T112_RED.md` reports 28/28 UI regressions passed. The actual completed report renders one label per field, preserves the original full source and scrolls inside its fixed panel. Final screenshot: `.impeccable/review/social-final-clean-research.png`. No additional inference or broker action was performed for this display correction.
 
 ## Corrected product scope: T-1.10
 

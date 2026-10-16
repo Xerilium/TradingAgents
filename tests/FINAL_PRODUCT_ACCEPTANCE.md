@@ -2,7 +2,7 @@
 
 Audit date: 2026-10-15. HSM: `session-1792116422951-27833`.
 Scope: TradingAgents Laya, feeds, analysis, recommendations and guarded paper trading.
-Verdict at this checkpoint: **not yet complete**. This is an evidence audit, not a broker fill test.
+Latest independent verdict: **accepted for integrated research and guarded paper proposals**, recorded in the final corrected-runtime section below. The earlier checkpoints remain historical failure evidence. Coordinator UI/Gate closure is recorded separately. This is not a broker fill test.
 
 ## Acceptance matrix
 
@@ -70,3 +70,25 @@ Minimal correction:
 - Verify actual prompt/context consumption and invariance of deterministic sizing with offline tests. No replacement approval model, prose parser or broker transaction is necessary.
 
 A separate terminology defect remains in research quote context: `fresh=false` means not fresh enough for execution but the prompt says to distinguish available "stale" prices, so reports call valid market-close references stale despite market-aware workspace labels. Use separate reference/session labels and execution freshness rather than weakening execution checks. The saved report remains historical evidence of that wording.
+
+## Final corrected-runtime acceptance, 2026-10-15
+
+Reviewed source commit `0287be2581170a70201b0f9fec47ca4b36ae9baf` and the final local journal run `3f948cc2-5589-41fb-b691-33695ac18e8a`. **Accepted for the scoped integrated research and guarded paper-proposal behavior.** This supersedes the earlier incomplete checkpoint for the corrected run only. It is not a claim of general classifier accuracy, investment performance, live broker fills, or completed Gate transitions.
+
+The same run reached `completed` at `2026-10-16T02:27:29.440542+00:00`, with measured request-to-terminal duration 302.953 seconds. META completed with Overweight, all nine report/debate fields, and `laya: null`. The reviewer used bounded local journal reads, not backend/provider requests, and did not start, cancel or restart the run.
+
+| Acceptance boundary | Final independent observation |
+|---|---|
+| Per-answer social admission | StockTwits has 15 classified responses: 14 retained unclear and one off-topic. All 15 stance answers are recorded as reconsider; none is promoted into a directional count. Two retained posts have uncertain relevance. Raw predictions, probabilities, typed responses, token counts and sequence hashes remain present. Production admission requires the individual stance grade auto_execute and the unchanged probability threshold. |
+| Coverage and timeout disclosure | Reddit has 13 fetched/retained posts, zero classified and 13 unscreened. Status is deferred, stop reason time_budget_exhausted, error_class TimeoutError, with a nonempty explanation and no ambiguous replay. Aggregate partial status does not disguise that source's missing classification. |
+| Consumption by actual reports | The completed sentiment report explicitly separates 14 unclear classifications from seven bullish user tags, explains Reddit's 0/13 coverage, distinguishes screening deferral from source outage, notes excerpt and engagement limits, and does not turn unscreened into neutral. The final decision says small inconclusive social samples and unscreened Reddit do not decide the call. |
+| Policy and recommendation alignment | Persisted policy uses the full seven-stock universe: 70% allocation, Buy target 10% equity, Overweight target 7.5%, 15% position cap, 20% reserve and $5,000 order cap. Final recommendation explicitly assigns quantity to configured policy/current broker book, makes advisory levels nonbinding, requires completed research/fresh executable quote/verified paper account/manual submission, and authorizes no order. No invented starter multiplier or undefined standard allocation remains in the final decision. |
+| Quote semantics | Final report identifies the IEX last trade as a market-closed reference, not an official close or absent observation. It distinguishes the separate OHLCV close and explicitly states fresh_for_execution=false and invalid two-sided quote. |
+| Preserved failure history | Original run 56938b20-afd1-4696-9a0a-a13d48e460d0 remains completed and unchanged across this audit's observations. Its canonical JSON SHA256 before and after final completion is `4c7a452c1b7ba1a658e99d8e8361678d02f9839ae3fe998f3c481b97d8427559`. This is a within-audit preservation check, not proof against an unavailable earlier baseline. |
+| Local proposal guards | After the coordinator built proposals, the journal contains seven blocked rows for this run. META is blocked by stale/future-dated executable quote; six other universe symbols require current completed analysis. None was submitted. No retired Laya clearance requirement appears. |
+
+Independent source inspection confirms the social factory remains injected into the desk graph, the policy is passed into initial state and persisted in results, and `_review`/`_submission_guard` retain completed research, evidence, date/config/account, freshness and manual-submission constraints without a Laya approval predicate. Scoped regression evidence is attributed to `LAYA_T110_RED.md` (157 stance/social/Reddit/Gateway tests) and `ALLOCATION_T111_RED.md` (314 policy/paper tests), rather than claimed as rerun here. Coordinator reports 25 UI tests and visible current-live social and fake order-preview UAT; final rendered terminal report/proposal UAT and Gate evidence remain coordinator responsibilities.
+
+One nonblocking presentation defect remains: the final structured report repeats Rating, Executive Summary and Investment Thesis headings inside the corresponding rendered fields. This does not change the rating, quantity policy, disclosure or execution guards. No further model tuning or broader feature work is required by this audit. The final report still asks the human to reconcile anomalous financial data before action; research is advisory and this audit does not independently validate upstream financial figures.
+
+Reviewer confession: only this acceptance report was edited. No new tests, provider calls, broker calls, orders, installs, configuration changes or process changes were performed. Brokerage regression evidence uses fakes; actual fills were deliberately not tested. A first journal read used the Windows default encoding and failed; it was corrected to UTF-8. A search named a nonexistent social directory, and an optional file-list command used an invalid PowerShell filter; neither changed state. The lightweight memory search found older research-paper notes, which were not used as evidence for this acceptance.

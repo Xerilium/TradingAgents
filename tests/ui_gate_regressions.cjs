@@ -45,6 +45,43 @@ function fixture() {
   return {run,main,fields,context, async event(scope,name,target={}){for(const fn of handlers[scope][name]||[])await fn({target,preventDefault(){}});}};
 }
 const opened = html => [...html.matchAll(/<details\b([^>]*)>/g)].filter(m=>/class="report-section"/.test(m[1])&&/\sopen(?:\s|$|=)/.test(m[1])).map(m=>/data-report="([^"]+)"/.exec(m[1])[1]);
+// Frozen prefix shape from completed META run 3f948cc2 (2026-10-16).
+// Narrative is shortened; repeated labels and their line boundaries are exact.
+const duplicatedPortfolio = '**Rating**: Overweight\n\n**Executive Summary**: **Rating**\nOverweight\n\n**Executive Summary**\nFavor gradual exposure only after fresh execution checks; this authorizes no order.\n\n**Investment Thesis**: **Investment Thesis**\nPositive cash generation does not prove incremental AI returns.\n\n**Price Target**: Not provided';
+function artifactParts(f,name,content){
+  f.context.portfolioInput=content;
+  const html=f.run(`renderReportArtifact(${JSON.stringify(name)},portfolioInput)`);
+  return {html,body:html.split('<details class="report-raw"')[0],raw:html.match(/<pre>([\s\S]*)<\/pre><\/details>$/)?.[1]};
+}
+test('T-1.12 repeated portfolio prefixes appear once without changing source artifact',()=>{
+  const f=fixture();const {body,raw}=artifactParts(f,'final_trade_decision',duplicatedPortfolio);
+  for(const label of ['Rating','Executive Summary','Investment Thesis']){
+    assert.equal((body.match(new RegExp(`<strong>${label}</strong>`,'g'))||[]).length,1,`${label} displayed once`);
+  }
+  assert.match(body,/Favor gradual exposure only after fresh execution checks; this authorizes no order\./);
+  assert.match(body,/Positive cash generation does not prove incremental AI returns\./);
+  assert.match(body,/Not provided/);
+  assert.equal(raw,f.run('esc(portfolioInput)'),'raw artifact retains original repeated labels and bytes after HTML escaping');
+  assert.equal(f.context.portfolioInput,duplicatedPortfolio,'caller input must not change');
+});
+test('T-1.12 conflicting inner rating and substantive repeated words are never hidden',()=>{
+  const f=fixture();const source=duplicatedPortfolio.replace('**Rating**\nOverweight','**Rating**\nSell')+'\n\n**Investment Thesis**\nThis later heading introduces a counterargument. Rating changes require evidence.';
+  const {body,raw}=artifactParts(f,'final_trade_decision',source);
+  assert.match(body,/Sell/,'conflicting inner rating remains visible');
+  assert.match(body,/This later heading introduces a counterargument\. Rating changes require evidence\./);
+  assert.ok(body.includes('<strong>Investment Thesis</strong>'),'later thesis heading survives');
+  assert.equal(raw,f.run('esc(portfolioInput)'));
+});
+test('T-1.12 normalization is restricted to portfolio decision and leaves ordinary reports alone',()=>{
+  const f=fixture();const {body,raw}=artifactParts(f,'market_report',duplicatedPortfolio);
+  assert.equal((body.match(/<strong>Executive Summary<\/strong>/g)||[]).length,2);
+  assert.equal((body.match(/<strong>Rating<\/strong>/g)||[]).length,2);
+  assert.equal(raw,f.run('esc(portfolioInput)'));
+  const ordinary='**Rating**: Overweight\n\n**Executive Summary**: Rating confidence is limited.\n\n**Investment Thesis**: Investment Thesis is a named research document.';
+  const rendered=artifactParts(f,'final_trade_decision',ordinary).body;
+  assert.match(rendered,/Rating confidence is limited\./);
+  assert.match(rendered,/Investment Thesis is a named research document\./);
+});
 test('historical choice assessments retain meanings, version, and original labels',()=>{
   const f=fixture();const html=f.run(`reportLaya({question_contract_version:'research-choice-v1',contract:{grade:'auto_execute'},answers:{evidence_complete:{value:'A'},decision_consistent:{value:'B'}}})`);
   assert.match(html,/research-choice-v1/);assert.match(html,/Essential evidence supports assessment/);
