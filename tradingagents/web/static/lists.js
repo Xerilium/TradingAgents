@@ -32,7 +32,7 @@ const DeskLists = (() => {
     return rows;
   }
 
-  function parseSymbols(input,{file=false}={}) {
+  function parseSymbols(input,{file=false,preview=false}={}) {
     input=String(input||'').replace(/^\uFEFF/,'');
     if(input.length>1048576)throw new Error('Use a CSV or text file smaller than 1 MB.');
     const rows=csvRows(input);
@@ -40,22 +40,24 @@ const DeskLists = (() => {
     let values;
     if(header>=0){
       values=rows.slice(1).map((row,index)=>{
-        const symbol=row[header]?.trim();
-        if(!symbol)throw new Error(`CSV row ${index+2} has no stock symbol.`);
-        return symbol;
+        return {value:row[header]?.trim()||'',row:index+2};
       });
     }else{
       if(file&&rows.some(r=>r.length>1)&&rows.length>1)
         throw new Error('Add a Symbol or Ticker header to a multi-column CSV. A one-column list also works.');
-      values=file&&rows.every(row=>row.length===1)?rows.flatMap(row=>row[0].split(/[\s;]+/).filter(Boolean)):input.split(/[\s,;]+/).filter(Boolean);
+      values=file&&rows.every(row=>row.length===1)?rows.flatMap((row,index)=>row[0].split(/[\s;]+/).filter(Boolean).map(value=>({value,row:index+1}))):input.split(/[\s,;]+/).filter(Boolean).map((value,index)=>({value,row:index+1}));
     }
-    values=values.map(v=>v.trim().toUpperCase());
-    const invalid=values.filter(v=>!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(v));
-    if(invalid.length)throw new Error(`Invalid stock symbol${invalid.length===1?'':'s'}: ${invalid.slice(0,5).join(', ')}. Use US equity symbols such as AAPL or BRK.B.`);
-    const symbols=[...new Set(values)];
-    if(!symbols.length)throw new Error('Enter at least one stock symbol.');
+    const seen=new Set(),dispositions=values.map(item=>{
+      const symbol=item.value.trim().toUpperCase();
+      const status=!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)?'rejected':seen.has(symbol)?'duplicate':'accepted';
+      if(status==='accepted')seen.add(symbol);
+      return {...item,symbol,status,reason:status==='accepted'?'Valid syntax; broker support is checked separately':status==='duplicate'?'Already accepted earlier in this file':symbol?'Unsupported US equity symbol syntax':'Symbol field is empty'};
+    });
+    const invalid=dispositions.filter(item=>item.status==='rejected'),symbols=[...seen];
+    if(!preview&&invalid.length)throw new Error('Rejected symbol rows: '+invalid.slice(0,5).map(item=>item.row+' ('+(item.value||'empty')+')').join(', ')+'. Correct them or use the file import preview.');
+    if(!preview&&!symbols.length)throw new Error('Enter at least one stock symbol.');
     if(symbols.length>1000)throw new Error('This workspace supports up to 1,000 stock symbols.');
-    return {symbols,duplicates:values.length-symbols.length,column:header>=0};
+    return {symbols,duplicates:dispositions.filter(item=>item.status==='duplicate').length,rejected:invalid.length,rows:dispositions,column:header>=0};
   }
 
   function dateNY(value=new Date()) {

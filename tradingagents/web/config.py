@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -28,6 +29,8 @@ class DeskConfig(BaseModel):
     max_debate_rounds: int = Field(default=1, ge=1, le=3)
     max_risk_discuss_rounds: int = Field(default=1, ge=1, le=3)
     max_tool_rounds: int = Field(default=8, ge=1, le=20)
+    selected_analysts: list[Literal["market", "social", "news", "fundamentals"]] = Field(
+        default_factory=lambda: ["market", "social", "news", "fundamentals"], min_length=1, max_length=4)
 
     @field_validator("universe")
     @classmethod

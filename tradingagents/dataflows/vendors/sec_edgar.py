@@ -104,11 +104,14 @@ def _user_agent() -> str:
 
 
 
-def _fetch_json(url: str) -> dict:
+def _fetch_json(url: str, *, receipt=False) -> dict:
     """Read a public EDGAR document, respecting SEC's identification rule."""
     try:
         response = requests.get(url, headers={"User-Agent": _user_agent()}, timeout=30)
         response.raise_for_status()
+        if receipt:
+            return {"raw": response.content, "data": json.loads(response.content, parse_float=str),
+                    "source_date": response.headers.get("Date")}
         return response.json()
     except requests.RequestException as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)

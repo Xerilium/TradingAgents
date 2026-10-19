@@ -1,9 +1,10 @@
-"""The desk's application boundary: evidence, portfolio state, and paper execution."""
+"""The application boundary for evidence, portfolio state and configured Alpaca execution."""
 
 from __future__ import annotations
 
 import asyncio
 import copy
+import csv
 import hashlib
 import json
 import math
@@ -17,6 +18,7 @@ from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -29,12 +31,12 @@ from tradingagents.integrations.maenifold import (
     GatewayRateLimited,
     MaenifoldGateway,
     build_langchain_tools,
-    verify_paper_configuration,
 )
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
-from tradingagents.paper.engine import plan_orders, validate_proposal
 
 from .config import DeskConfig
+from .alpaca_readonly import DEFAULT_CREDENTIALS
+from .nautilus_runtime import NautilusRuntime
 from .store import DeskStore
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
@@ -125,94 +127,67 @@ def normalize_quotes(raw):
 
 
 def desk_execution_policy(config):
-    """Explain the existing engine policy from this run's saved configuration."""
-    allocation = Decimal(str(config["allocation_pct"]))
-    cap = Decimal(str(config["max_position_pct"]))
-    total = len(config["universe"])
-    target = min(allocation / total, cap)
-    overweight = target * Decimal("0.75")
-    return (
-        "Paper desk execution policy (research is advisory; deterministic Python owns order sizing):\n"
-        f"Maximum invested allocation {allocation}% of equity across the full configured universe of {total} stocks, "
-        f"not just this run's selected stocks. Single-position cap {cap}%; cash reserve {config['reserve_pct']}%. "
-        f"Buy target = min({allocation}% / {total}, {cap}%) = {target}% of equity; "
-        f"Overweight target = 75% of that Buy target = {overweight}% of equity. "
-        "Existing holdings reduce the shortfall. Underweight sells half the available held whole shares; "
-        "Sell sells available held whole shares. Hold/REVIEW produces no order. "
-        f"Per-order maximum USD {config['max_order_notional']}; limit-price buffer {config['price_buffer_bps']} basis points. "
-        "Cash reserve, invested allocation, concentration, open-order reservations and order caps can reduce "
-        "the policy target; buys round down to whole shares. No shorting, leverage or fractional orders; "
-        "sales do not fund buys in the same batch. A separate fresh executable two-sided quote, current "
-        "completed research, verified paper account and explicit manual submission are required. "
-        "Your job is thesis, rating, evidence and conditional risk discussion, not order authorization. "
-        "Do not invent a standard allocation, starter multiplier, percentage allocation or share quantity. "
-        "State that proposal quantity is calculated from configured policy and the current broker book; "
-        "research prose and advisory price levels do not override these rules. Distinguish current "
-        "observations from conditions that must be checked at execution."
-    )
+    return ("Research is advisory. NautilusTrader owns account and order lifecycle. "
+            "The investor chooses the quantity, reviews configured rules, approves exact terms "
+            "and explicitly submits any order. Ratings and price levels do not grant order authority.")
 
 
 def research_quote_context(symbol, trade_date, market):
-    """Keep observed broker prices separate from historical analysis and execution."""
-    if trade_date != datetime.now(ZoneInfo("America/New_York")).date().isoformat():
-        return "Broker quote context: omitted for historical analysis to prevent future-data leakage."
-    quote = copy.deepcopy(market.get("quotes", {}).get(symbol, {}))
-    observed = datetime.now(UTC)
-    def age(stamp):
-        try:
-            return (observed - datetime.fromisoformat(stamp.replace("Z", "+00:00"))).total_seconds()
-        except (AttributeError, TypeError, ValueError):
-            return None
-    trade_age = age(quote.get("timestamp"))
-    quote_age = age(quote.get("quote_timestamp"))
-    fresh = all(value is not None and -60 <= value <= 900 for value in (trade_age, quote_age))
-    usable = fresh and not quote.get("invalid_quote", True) and all(
-        _number(quote.get(key)) is not None and _number(quote[key]) > 0 for key in ("price", "bid", "ask")
-    )
-    clock = market.get("clock") or {}
-    reference_label = "current reference" if fresh else "execution-stale reference"
-    try:
-        clock_time = datetime.fromisoformat(clock["timestamp"].replace("Z", "+00:00"))
-        next_open = datetime.fromisoformat(clock["next_open"].replace("Z", "+00:00"))
-        if clock.get("is_open") is False and clock_time <= observed < next_open:
-            stamps = [datetime.fromisoformat(quote[key].replace("Z", "+00:00")) for key in ("timestamp", "quote_timestamp")]
-            if all(stamp <= observed + timedelta(seconds=60) and stamp.astimezone(ZoneInfo("America/New_York")).date()
-                   == clock_time.astimezone(ZoneInfo("America/New_York")).date() for stamp in stamps):
-                reference_label = "market-closed reference"
-            else:
-                reference_label = "older reference; session unverified"
-    except (KeyError, AttributeError, TypeError, ValueError):
-        pass
-    evidence = {"symbol": symbol, "captured_at": market.get("quotes_updated_at", market.get("updated_at")),
-                "evaluated_at": observed.isoformat(), "market_open": (market.get("clock") or {}).get("is_open"),
-                "fresh": fresh, "fresh_for_execution": fresh, "reference_label": reference_label,
-                "valid_two_sided_quote": usable, "quote": quote}
+    if trade_date != today():
+        return "Nautilus quote omitted for historical analysis."
+    quote = market.get("quotes", {}).get(symbol)
     return (
-        "Broker quote context (Alpaca via Maenifold): " + json.dumps(evidence, allow_nan=False)
-        + "\nThese are observed prices, not a streaming quote. State the feed, timestamps and freshness. "
-        "Use reference_label to describe the observation separately from fresh_for_execution. A market-closed "
-        "reference is not missing or stale merely because trading is closed; it is an observed IEX last trade, "
-        "not an official closing-auction price. Older session-unverified references must not be described as "
-        "the latest close. A missing, invalid or execution-stale quote is not an execution price. "
-        "Ground conditional risk levels in verified technical evidence; do not invent support, resistance "
-        "or a stop merely because a quote exists. Execution requires a separate fresh quote check."
+        "Nautilus / Alpaca IEX quote observation: "
+        + json.dumps({"symbol": symbol, "quote": quote, "market_open": (market.get("clock") or {}).get("is_open"),
+                      "account_observed_at": market.get("updated_at")}, allow_nan=False)
+        + "\nPrice follows the reported basis: last_trade or bid/ask quote_midpoint; it is not an official close. "
+        "Missing quotes are unavailable, not zero. Respect the source timestamp and stale flag. "
+        "This research observation grants no order authority; execution requires separate exact human approval and submission."
     )
 
 
 class DeskService:
-    def __init__(self, directory: Path, gateway=None, graph_factory=None):
+    def __init__(self, directory: Path, gateway=None, graph_factory=None, runtime=None,
+                 browse_only=False, history_dir=None, migrate_legacy=False):
         defaults = build_default_config()
         defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "chatgpt")
         settings = DeskConfig(**{k: defaults[k] for k in DeskConfig.model_fields if k in defaults})
-        self.store = DeskStore(directory, settings.model_dump())
+        from .recovery import active_paths, writer_lease
+        self.application_root = Path(directory).resolve()
+        self.writer_lease = writer_lease(self.application_root)
+        active_directory, active_history = active_paths(self.application_root, history_dir)
+        self.store = DeskStore(active_directory, settings.model_dump(), migrate_legacy=migrate_legacy)
+        self.maintenance = threading.RLock()
+        self.restore_candidates = {}
+        self.research_futures = set()
+        self.instance_id, self.state_sequence = str(uuid4()), 0
+        self.company_names = {}
+        for filename in ("constituents.csv", "sp500-constituents.csv"):
+            try:
+                with (self.store.directory / filename).open(encoding="utf-8-sig", newline="") as source:
+                    self.company_names.update({r["Symbol"]: r["Company"] for r in csv.DictReader(source)})
+            except (OSError, KeyError, csv.Error):
+                continue
+        self.browse_only = browse_only
+        self.history = {"runs": [], "drafts": []}
+        self.history_error = None
+        self.history_directory = active_history
+        history_path = active_history / "desk.json" if active_history else None
+        if history_path and history_path.resolve() != self.store.path.resolve() and (history_path.is_file() or history_path.with_name("desk.sqlite3").is_file()):
+            try:
+                self.history = DeskStore.read_existing(history_path.parent)
+            except (OSError, ValueError) as exc:
+                self.history_error = f"Saved history unavailable ({type(exc).__name__})"
+        self.runtime = runtime or NautilusRuntime(
+            Path(directory) / "nautilus", r"C:\src\printerv2\.venv-nautilus-v1\Scripts\python.exe", DEFAULT_CREDENTIALS)
         DeskConfig.model_validate(self.store.data["config"])
+        self.runtime.configure(self.store.data["config"]["universe"])
         self.gateway = gateway or MaenifoldGateway(timeout=90)
         self.graph_factory = graph_factory
         self.lock = threading.RLock()
         self.execution_lock = threading.Lock()
         self.refresh_lock = threading.Lock()
         self.quotes_next_refresh = 0.0
-        self.quotes_refresh_failed = False
         self.account_lock = threading.Lock()
         self.account_status = None
         self.chart_lock = threading.Lock()
@@ -238,47 +213,677 @@ class DeskService:
             "errors": [],
             "updated_at": None,
         }
+        from .admission import CommandAdmission
+        self.admission = CommandAdmission(self.store.database, self.runtime.state,
+            review_enabled=not browse_only, admission_enabled=not browse_only, execution_enabled=not browse_only)
+        self.runtime.authority_database = self.store.database.path.resolve()
+        self.admission.recover()
+        self.runtime.observers.append(self._observe_runtime)
+        from .market_history import MarketDataJobs
+        self.data_jobs = MarketDataJobs(self)
+        from .attention import AttentionMonitor
+        self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance)
+        self.attention_monitor.start()
+
+    def _observe_runtime(self, observation):
+        from .admission import DEFAULT
+        with self.maintenance:
+            if self.store.database.read("commands", DEFAULT)["data"]["recovery_required"]:
+                self.admission.reconcile()
+            else:
+                self.admission.observe_current(self.runtime.state())
+
+    def attention_context(self):
+        runtime = self.runtime.state()
+        market = self._runtime_market()
+        saved = self._saved_research_index()
+        symbols = set(self.store.data["config"]["universe"]) | {p["symbol"] for p in runtime.get("positions", [])}
+        sources = {scope: {} for scope in ("quote", "account", "research", "history", "news", "earnings", "fundamentals", "corporate_actions", "classification")}
+        for symbol in symbols:
+            for scope in ("history", "news", "earnings", "fundamentals", "corporate_actions", "classification"):
+                sources[scope][symbol] = {"status": "missing", "observed_at": None,
+                    "reason": "No saved " + scope + " observation; provider coverage is not established"}
+            quote = market["quotes"].get(symbol, {})
+            sources["quote"][symbol] = {"status": "available" if quote.get("price") is not None and market["connection"]["connected"] else "unavailable",
+                "price": quote.get("price"), "change_pct": quote.get("change_pct"), "observed_at": quote.get("timestamp"),
+                "reason": quote.get("error"), "checked_at": quote.get("checked_at")}
+            result = saved.get(symbol)
+            sources["research"][symbol] = {"status": "available" if result and result.get("status") == "completed" else "missing",
+                "observed_at": result.get("observed_at") if result else None, "run_id": result.get("run_id") if result else None,
+                "time_basis": result.get("time_basis") if result else None, "trade_date": result.get("trade_date") if result else None,
+                "revision": result.get("revision") if result else None, "reason": (None if result.get("observed_at") else
+                    "Saved research has only an analysis date; completion age is unavailable") if result else "No saved research for this stock"}
+        sources["account"]["account"] = {"status": "available" if market["connection"]["connected"] and market.get("reconciliation", {}).get("status") == "reconciled" else "unavailable",
+            "observed_at": runtime.get("account_at"), "account_id": (runtime.get("account") or {}).get("id"),
+            "reason": market["connection"].get("message")}
+        if getattr(self, "data_jobs", None):
+            for scope, values in self.data_jobs.sources().items():
+                sources[scope].update(values)
+        proposals = self.investor()["data"]["proposals"]
+        for proposal in proposals:
+            if (proposal["impact"].get("account_at") != runtime.get("account_at") or runtime.get("status") != "connected"
+                    or runtime.get("reconciliation", {}).get("status") != "reconciled"):
+                proposal["conditions_stale"] = True
+        return {"sources": sources, "research": saved, "universe_count": len(self.store.data["config"]["universe"]),
+                "symbols": symbols, "proposals": {p["id"]: p for p in proposals}}
+
+    def attention(self):
+        from .attention import DEFAULT, OBSERVATIONS
+        from .investor import digest
+        record = self.store.database.read("attention", DEFAULT)
+        bindings = self.review_source_bindings()
+        for review in record["data"]["reviews"].values():
+            current = bindings.get(review["symbol"], {})
+            prior = review.get("source_bindings")
+            changed = [scope for scope in ("history", "corporate_actions")
+                       if prior is None or digest(prior.get(scope)) != digest(current.get(scope))]
+            review["review_required"] = bool(changed)
+            review["review_reasons"] = [scope + " source revision changed or was not bound when reviewed" for scope in changed]
+            review["current_source_bindings"] = current
+        return {**record, "observations": self.store.database.read("attention_observations", OBSERVATIONS)}
+
+    def review_source_bindings(self):
+        sources = self.data_jobs.sources()
+        symbols = set(sources.get("history", {})) | set(sources.get("corporate_actions", {}))
+        return {symbol: {scope: {key: value for key, value in sources.get(scope, {}).get(symbol, {}).items()
+                    if key in {"input_identity", "artifact", "required_coverage", "effective_dates", "content_sha256"}}
+                for scope in ("history", "corporate_actions")} for symbol in symbols}
+
+    def save_attention(self, request):
+        from .attention import DEFAULT, OBSERVATIONS, change
+        if request.get("action") == "acknowledge":
+            def acknowledge(saved):
+                occurrence = saved["occurrences"][request["id"]]
+                if type(request.get("occurrence_revision")) is not int or occurrence["revision"] != request["occurrence_revision"]:
+                    from .app_database import StoreConflict
+                    raise StoreConflict(occurrence["revision"])
+                occurrence.update(unread=False, acknowledged_at=now(), revision=occurrence["revision"] + 1)
+            def update(records):
+                acknowledge(records["attention_observations"])
+            self.store.database.transact({"attention_observations": OBSERVATIONS}, update)
+        else:
+            context = self.attention_context()
+            if request.get("action") == "review":
+                source = self.run_detail(request["run_id"], request["symbol"])
+                if source.get("status") != "completed" or source.get("revision", 0) != request.get("research_revision"):
+                    raise ValueError("Review disposition must match the exact saved stock/run/revision")
+                context["research"][request["symbol"]] = {**source, "run_id": request["run_id"]}
+            self.store.database.update("attention", request.get("expected_revision"),
+                lambda saved: change(saved, request, context["symbols"], context["research"], self.review_source_bindings()), DEFAULT)
+        return self.attention()
+
+    def reconcile_commands(self):
+        from .admission import DEFAULT as COMMAND_DEFAULT, TERMINAL
+        self.runtime.request("refresh")
+        errors = {}
+        for identity, command in self.store.database.read("commands", COMMAND_DEFAULT)["data"]["commands"].items():
+            if command["state"] in {"not_sent", "admitted_not_dispatched"} or command["state"] in TERMINAL and not command.get("native_pending_commitment"):
+                continue
+            try:
+                self.runtime.request("reconcile_identity", command_id=identity)
+            except ValueError as exc:
+                errors[identity] = str(exc)
+        return {**self.admission.reconcile(), "identity_errors": errors}
 
     def state(self, *, compact=False, run_id=None):
         with self.lock:
-            market = {key: value for key, value in self.market.items() if not compact or key != "bars"}
+            market = self._runtime_market()
             data = {**copy.deepcopy(market), **self.store.snapshot(compact=compact, run_id=run_id)}
         data.pop("paper_account_id", None)
-        data["trading_paused"] = data["paused"]
+        data["workspace"] = self.workspace()
+        data["saved_research"] = self._saved_research_index()
+        data["investor"] = self.investor()
+        data["health"] = self.health()
+        data["reporting"] = self.reporting(compact=True)
+        data["commands"] = self.admission.snapshot()
+        data["attention"] = self.attention()
+        data["market_history"] = self.data_jobs.state()
+        from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT, configuration
+        data["stock_evidence"] = {**self.store.database.read("stock_evidence", EVIDENCE_DEFAULT), "configuration": configuration()}
+        data["historical_proposals"] = data.pop("proposals", [])
+        data["proposals"] = []
+        data["trading_paused"] = data["commands"]["data"].get("new_orders_blocked", False)
         data["readiness"] = self.readiness(data["config"], probe=False)
+        data["nautilus"] = self.runtime.state()
+        data["broker_mutations_enabled"] = self.admission.execution_enabled
+        data["browse_only"] = self.browse_only
+        data["company_names"] = {s: self.company_names[s] for s in set(data["config"]["universe"]) | {p["symbol"] for p in data.get("positions", [])} if s in self.company_names}
+        data["history_error"] = self.history_error
+        data["saved_account_contexts"] = [{"run_id": r["id"], **copy.deepcopy(r["portfolio_evidence"]["context"])}
+            for r in self.store.data["runs"] + self.history.get("runs", [])
+            if r.get("portfolio_evidence", {}).get("context")]
+        for r in self.store.data["runs"] + self.history.get("runs", []):
+            for result in r.get("results", []):
+                data.setdefault("research", {}).setdefault(result["symbol"], {
+                    "run_id": r["id"], **{key: result.get(key) for key in
+                        ("symbol", "status", "rating", "trade_date", "revision")}})
+        current_ids = {run["id"] for run in data["runs"]}
+        for saved in self.history.get("runs", []):
+            if saved["id"] in current_ids:
+                continue
+            summary = {key: copy.deepcopy(saved.get(key)) for key in (
+                "id", "created_at", "completed_at", "trade_date", "symbols", "status", "config", "account_id")}
+            results = saved.get("results", [])
+            summary.update(history_source="Saved .paper-desk history (read-only)",
+                results=[self.store.result_summary(r) for r in results],
+                events=copy.deepcopy(saved.get("events", [])[-40:]), event_count=len(saved.get("events", [])),
+                counts={status: sum(r.get("status") == status for r in results)
+                        for status in ("completed", "failed", "cancelled", "running")})
+            summary["counts"]["queued"] = max(0, len(saved["symbols"]) - len(results))
+            data["runs"].append(summary)
+        draft_ids = {d["order"]["client_order_id"] for d in data.get("drafts", [])}
+        data["drafts"] = data.get("drafts", []) + [copy.deepcopy(d) for d in self.history.get("drafts", [])
+            if d["order"]["client_order_id"] not in draft_ids]
+        with self.lock:
+            self.state_sequence += 1
+            data.update(server_instance_id=self.instance_id, snapshot_sequence=self.state_sequence,
+                        store_generation=self.store.directory.resolve().as_posix())
         return data
+
+    def _saved_research_index(self):
+        saved = {}
+        current = self.store.snapshot()["runs"]
+        for run in sorted(current + self.history.get("runs", []), key=lambda item: item.get("created_at") or "", reverse=True):
+            for result in run.get("results", []):
+                if result.get("status") == "completed":
+                    completion = next((e.get("time") for e in reversed(run.get("events", []))
+                                       if e.get("kind") == "complete" and e.get("symbol") == result["symbol"]), None)
+                    observed = result.get("completed_at") or completion or run.get("completed_at")
+                    basis = "stock_completion" if result.get("completed_at") or completion else "run_completion" if observed else "analysis_date_only"
+                    saved.setdefault(result["symbol"], {"run_id": run["id"], "observed_at": observed, "time_basis": basis,
+                        **{key: result.get(key) for key in ("symbol", "status", "rating", "trade_date", "revision")}})
+        return saved
+
+    def workspace(self):
+        from .workspace import DEFAULT
+        return self.store.database.read("workspace", DEFAULT)
+
+    def save_workspace(self, request):
+        from .workspace import DEFAULT, change
+        return self.store.database.update("workspace", request.get("expected_revision"),
+                                          lambda saved: change(saved, request), DEFAULT)
+
+    def investor(self):
+        from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version
+        from .approval_review import evaluate
+        from .admission import DEFAULT as COMMANDS
+        from .market_history import DEFAULT as HISTORY
+        from .stock_evidence import DEFAULT as EVIDENCE
+        record = self.store.database.read("investor", DEFAULT)
+        runtime = self.runtime.state()
+        commands = self.store.database.read("commands", COMMANDS)["data"]
+        history = self.store.database.read("market_history", HISTORY)["data"]
+        evidence = self.store.database.read("stock_evidence", EVIDENCE)["data"]
+        checks = {p["id"]: evaluate(p, record["data"]["policy"], runtime, evidence, history, commands,
+                  p.get("review_constraints", {}), self.store.directory) for p in record["data"]["proposals"] if p["status"] == "draft"}
+        broker_actions = {}
+        for order in runtime.get("orders", []):
+            try:
+                broker_action_order(runtime, order["id"])
+                broker_actions[order["id"]] = {"supported": True, "order_version": order_version(order)}
+            except (ValueError, KeyError, TypeError) as exc:
+                broker_actions[order.get("id")] = {"supported": False, "reason": str(exc)}
+        return {**record, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
+                "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
+                "current_checks": checks, "broker_order_actions": broker_actions,
+                "instruments": instruments(runtime, self.store.data["config"]["universe"])}
+
+    def health(self):
+        import sqlite3
+        runtime = self.runtime.state()
+        try:
+            journal = self.store.database.read("journal")
+            store = {"status": "available", "schema": self.store.database.VERSION,
+                     "journal_revision": journal["revision"], "sqlite_version": sqlite3.sqlite_version}
+        except (OSError, ValueError, sqlite3.Error):
+            store = {"status": "unavailable", "message": "Local records could not be read; preserve the data directory and recovery files"}
+        account = runtime.get("account") or {}
+        from .admission import DEFAULT as COMMAND_DEFAULT
+        commands = self.store.database.read("commands", COMMAND_DEFAULT)["data"]
+        return {"product": "TradingAgents", "application_identity": hashlib.sha256(str(getattr(self, "launch_root", self.application_root)).casefold().encode()).hexdigest(),
+                "browse_only": self.browse_only, "service": "running", "account_mode": str(runtime.get("endpoint") or "Configured Alpaca origin / not connected") + " / observed currency " + str(account.get("currency", "unknown"))
+                    + " / multiplier " + str(account.get("multiplier", "unknown")) + " / shorting " + str(account.get("shorting_enabled", "unknown")) + "; native mapping supports CASH only",
+                "engine": runtime.get("status", "unknown"), "engine_version": runtime.get("version"),
+                "provider": "Alpaca", "feed": "IEX", "account_observed_at": runtime.get("account_at"),
+                "prices_checked_at": runtime.get("prices_checked_at"), "runtime_heartbeat_at": runtime.get("updated_at"),
+                "reconciliation": copy.deepcopy(runtime.get("reconciliation", {"status": "unknown"})),
+                "store": store, "execution_enabled": self.admission.execution_enabled, "new_orders_blocked": commands.get("new_orders_blocked", False),
+                "native_cache_mode": "memory",
+                "native_durability": {"state": "in_memory", "durable_writes_confirmed": False,
+                    "reason": "Native cache runs in memory. SQLite application records remain saved."},
+                "capabilities": {"saved_research": True, "workspace_records": True, "human_proposals": True,
+                    "allocation_previews": True, "broker_submission": self.admission.execution_enabled, "fractional_short_management": False,
+                    "history_coverage": self.data_jobs.state()["coverage_counts"]},
+                "research_provider": self.store.data["config"].get("llm_provider"),
+                "research_enabled": not self.browse_only, "history_status": "unavailable" if self.history_error else "available"}
+
+    def start_native(self):
+        return self.runtime.start()
+
+    def recovery_action(self, request):
+        from .recovery import backup, restore, stage
+        if any(not future.done() for future in self.research_futures | self.data_jobs.futures):
+            raise ValueError("Research/data writers are active. Wait for them to finish or stop their jobs before backup/restore")
+        with self.store.lock:
+            if request.get("action") == "backup":
+                return backup(self)
+            if request.get("action") == "preview":
+                return stage(self, request.get("archive"))
+            if request.get("action") == "restore":
+                return restore(self, request.get("token"), request.get("confirmation"))
+        raise ValueError("Choose backup, preview or restore")
+
+    def backup_download(self, identity):
+        from uuid import UUID
+        if str(UUID(identity)) != identity:
+            raise ValueError("Invalid backup identity")
+        return (self.application_root / "recovery" / "backups" / (identity + ".zip")).read_bytes()
+
+    def reporting(self, *, compact=False):
+        from .decision_journal import DEFAULT, decisions
+        from .investor import DEFAULT as INVESTOR_DEFAULT
+        record = self.store.database.read("reporting", DEFAULT)
+        if compact:
+            return {"revision": record["revision"], "collection_count": len(record["data"]["collections"]),
+                    "benchmark": record["data"]["benchmark"], "horizon_days": record["data"]["horizon_days"]}
+        investor = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]
+        return {**record, "decisions": decisions(investor, self.store.snapshot(), self.history, self.admission.snapshot()["data"])}
+
+    def reporting_detail(self, identity, receipt=None):
+        record = self.reporting()
+        collection = next(c for c in record["data"]["collections"] if c["id"] == identity)
+        def read(reference):
+            from .recovery import references
+            relative, expected = next(references(reference))
+            path = (self.store.directory / relative).resolve()
+            if not path.is_relative_to(self.store.directory.resolve()):
+                raise ValueError("Saved account-history source escapes the application boundary")
+            payload = path.read_bytes()
+            if hashlib.sha256(payload).hexdigest() != expected:
+                raise ValueError("Saved account-history source hash differs")
+            return payload
+        result = json.loads(read(collection["artifact"]))
+        if receipt is not None:
+            return read(result["receipts"][receipt]["artifact"])
+        from .performance import report_methods
+        benchmark = record["data"]["benchmark"]
+        current = None
+        if benchmark:
+            saved = self.data_jobs.state()["data"]["entries"]
+            matching = [entry for entry in saved.values() if entry["symbol"] == benchmark["symbol"]
+                        and entry["start"] == result["requested_start"] and entry["end"] == result["requested_end"]
+                        and entry["adjustment"] == "split"]
+            if matching:
+                current = self.data_jobs.detail(benchmark["symbol"], max(matching, key=lambda item: item["captured_at"])["key"])
+        return report_methods(result, benchmark=benchmark, history=current)
+
+    def save_reporting(self, request):
+        from .decision_journal import DEFAULT, change
+        from .app_database import StoreConflict
+        with self.maintenance:
+            record = self.reporting()
+            collection_store = self.store
+            collection_runtime = self.runtime.state() if request.get("action") == "collect" else None
+            collection_credentials = self.runtime.credentials_file if request.get("action") == "collect" else None
+        if request.get("expected_revision") != record["revision"] or type(request.get("expected_revision")) is not int:
+            raise StoreConflict(record["revision"])
+        if request.get("action") == "export":
+            identities = request.get("ids")
+            if not isinstance(identities, list) or not identities:
+                raise ValueError("Select decision records to export")
+            available = {d["id"]: d for d in record["decisions"]}
+            if any(identity not in available for identity in identities):
+                raise ValueError("An export selection no longer exists; reload the journal")
+            exported = {"format": "tradingagents-decision-journal-v1", "exported_at": now(),
+                        "scope": "Selected saved local decisions and investor notes; absent executions and outcomes are not inferred",
+                        "reporting_revision": record["revision"], "decisions": [available[i] for i in identities],
+                        "notes": {i: record["data"]["entries"].get(i) for i in identities}, "execution_enabled": self.admission.execution_enabled}
+            from .report_exports import guard
+            guard(exported)
+            return {"export": exported}
+        if request.get("action") == "export_csv":
+            return self.reporting_csv(request)
+        if request.get("action") == "benchmark_history":
+            benchmark = record["data"]["benchmark"]
+            if not benchmark:
+                raise ValueError("Choose your benchmark first")
+            collection = self.reporting_detail(request["collection_id"])
+            if benchmark["treatment"] != "price":
+                raise ValueError("No supported reinvested-dividend benchmark source is configured; total-return comparison remains unavailable")
+            self.data_jobs.request({"symbols": [benchmark["symbol"]], "start": collection["requested_start"],
+                "end": collection["requested_end"], "asof": request["asof"], "adjustment": "split", "purpose": "benchmark"})
+            return self.reporting()
+        if request.get("action") == "refresh_methods":
+            result = self.reporting_detail(request["collection_id"])
+            result["method_reported_at"] = now()
+            result["benchmark_choice"] = record["data"]["benchmark"]
+            reference = self.store._write_json_artifact(result["id"], "performance-methods", result)
+            def amend(saved):
+                collection = next(c for c in saved["collections"] if c["id"] == result["id"])
+                collection["artifact"] = reference
+                collection["method_reported_at"] = result["method_reported_at"]
+            self.store.database.update("reporting", record["revision"], amend, DEFAULT)
+            return self.reporting()
+        if request.get("action") == "collect":
+            from .account_history import collect
+            from .alpaca_readonly import AlpacaREST
+            runtime = collection_runtime
+            result = collect(AlpacaREST(collection_credentials), collection_store, request["start"], request["end"],
+                             (runtime.get("account") or {}).get("id"))
+            result["allocation_observation"] = {"account_at": runtime.get("account_at"),
+                "reconciliation": runtime.get("reconciliation"), "positions": runtime.get("positions"),
+                "account": runtime.get("account"), "historical_allocation": False}
+            # Persist source observation beside the immutable collection, not as a holdings ledger.
+            result["artifact"] = collection_store._write_json_artifact(result["id"], "account-history-with-allocation", result)
+            def append(saved):
+                saved["collections"].insert(0, {key: result[key] for key in
+                    ("id", "account_id", "requested_start", "requested_end", "collected_at", "pagination_complete", "interval_complete", "artifact")})
+                return saved
+            with self.maintenance:
+                if self.store is not collection_store:
+                    raise ValueError("Application generation changed during collection; retained receipts were not attached to the restored store")
+                if (self.runtime.state().get("account") or {}).get("id") != result["account_id"]:
+                    raise ValueError("Observed account changed during collection; retained receipts were not attached")
+                collection_store.database.update("reporting", record["revision"], append, DEFAULT)
+                return self.reporting()
+        else:
+            self.store.database.update("reporting", record["revision"],
+                lambda saved: change(saved, request, record["decisions"]), DEFAULT)
+        return self.reporting()
+
+    def reporting_csv(self, request):
+        from .report_exports import csv_export
+        runtime = self.runtime.state()
+        kind = request.get("kind")
+        symbols = request.get("symbols")
+        if symbols is not None and (not isinstance(symbols, list) or any(not isinstance(s, str) for s in symbols)):
+            raise ValueError("Filtered exports need an explicit symbol list")
+        scope = "filtered subset" if symbols is not None else "full account"
+        account = runtime.get("account") or {}
+        context = {"scope": scope, "account_id": account.get("id"), "source_at": runtime.get("account_at"),
+                   "period_start": None, "period_end": None, "currency": "USD"}
+        if kind == "holdings":
+            positions = runtime.get("positions", [])
+            rows = [{key: p.get(key) for key in ("symbol", "qty", "side", "avg_entry_price", "cost_basis", "market_value",
+                "unrealized_pl", "unrealized_plpc", "reconciliation_status", "import_error")}
+                for p in positions if symbols is None or p["symbol"] in symbols]
+            context.update(account_equity_source=account.get("equity"), account_long_market_value_source=account.get("long_market_value"),
+                totals_basis="Full-account broker totals remain separate from the selected rows", values_basis="Broker reported cost/P&L and exact quantities; discrepancies retained",
+                account_reconciliation=runtime.get("reconciliation", {}).get("status"), engine_state=runtime.get("status"))
+            if not rows:
+                rows = [{"symbol": None, "qty": None, "import_error": "No rows selected" if symbols is not None else
+                    "Confirmed zero positions" if runtime.get("status") == "connected" and runtime.get("reconciliation", {}).get("positions_reconciled") else "Holdings unavailable"}]
+        elif kind in {"activity", "performance"}:
+            collection = self.reporting_detail(request["collection_id"])
+            context.update(account_id=collection["account_id"], source_at=collection["collected_at"],
+                period_start=collection["requested_start"], period_end=collection["requested_end"],
+                interval_complete=collection["interval_complete"], source="Alpaca paper Trading API")
+            if kind == "activity":
+                rows = [copy.deepcopy(a) for a in collection["activities"] if symbols is None or a.get("symbol") in symbols]
+                context["totals_basis"] = "Selected source activities only; no holdings or account totals reconstructed"
+            else:
+                if symbols is not None:
+                    raise ValueError("Portfolio performance is full-account; it cannot be relabelled as a stock subset")
+                rows = [copy.deepcopy(p) for p in collection["points"]]
+                context.update(percent_basis="Broker P&L fraction = equity/base - 1; not verified adjusted return",
+                    time_weighted=collection["time_weighted"], modified_dietz=collection["dietz"],
+                    benchmark_comparison=collection["benchmark_comparison"], drawdown=collection["drawdown"],
+                    technical_method_assessment=collection["technical_method_assessment"],
+                    calculation_coverage_complete=collection.get("calculation_coverage_complete", False),
+                    technical_method_accepted=collection["technical_method_assessment"]["accepted"],
+                    accepted_metric_ready={key: collection[key]["accepted_metric_ready"] for key in
+                        ("time_weighted", "dietz", "benchmark_comparison", "drawdown")},
+                    rounding=collection["broker_rounding"])
+            if not rows:
+                rows = [{"notice": "Selected source rows unavailable; no zeros inferred"}]
+        else:
+            raise ValueError("Choose holdings, activity or performance CSV")
+        return csv_export(kind, rows, context)
+
+    def _proposal_research(self, reference):
+        from .investor import digest
+        from .evidence_requirements import research_dependencies
+        result = self.run_detail(reference["run_id"], reference["symbol"])
+        key = reference["report_key"]
+        if (result.get("status") != "completed" or result.get("revision", 0) != reference["revision"]
+                or key not in result.get("reports", {})):
+            raise ValueError("Saved research revision or report differs; reload the source before linking it")
+        return {**{k: reference[k] for k in ("run_id", "symbol", "revision", "report_key")},
+                "research_date": result.get("trade_date"), "result_sha256": digest(result),
+                "report_sha256": digest(result["reports"][key]), "evidence_dependencies": research_dependencies(result, key)}
+
+    def assess_basket(self, records, basket, runtime):
+        from .approval_review import read_artifact
+        from .investor import decimal, price_evidence
+        from .policy_evaluation import evaluate
+        fee, slip = decimal(basket.get("fee_per_leg")), decimal(basket.get("slippage_bps"))
+        legs = []
+        for leg in basket["legs"]:
+            terms = leg["terms"]
+            price = price_evidence(terms, runtime)["price"]
+            charge = (fee if fee is not None else decimal("0")) + (decimal(terms["quantity"]) * price * slip / 10000 if slip is not None else decimal("0")) if price is not None and (fee is not None or slip is not None) else None
+            legs.append({"terms": terms, "price_cap": price, "fee": charge})
+        results = {}
+        linked_ids = set(basket.get("linked_proposal_ids", [])) | {leg.get("proposal_id") for leg in basket["legs"]}
+        for label, scenario in (("complete", basket["complete_scenario"]), ("partial", basket["partial_scenario"])):
+            selected = [leg for leg in legs if leg["terms"]["symbol"] in scenario["assumed_filled"]]
+            checks = []
+            for primary in selected or legs[:1]:
+                terms = primary["terms"]
+                linked = next((p for p in records["investor"]["proposals"] if p["id"] in linked_ids and p["terms"]["symbol"] == terms["symbol"]), {})
+                constraints = {**linked.get("review_constraints", {}), "max_execution_price": primary["price_cap"], "max_fees": primary["fee"]}
+                checks.append({"symbol": terms["symbol"], "evaluation": evaluate(terms, records["investor"]["policy"], runtime,
+                    records["commands"], records["market_history"], records["stock_evidence"], constraints,
+                    lambda reference: read_artifact(self.store.directory, reference), proposed_legs=selected)})
+            results[label] = {"assumed_filled": scenario["assumed_filled"], "per_symbol_checks": checks,
+                              "account_observed_at": runtime.get("account_at"), "policy_revision": records["investor"]["policy"]["revision"],
+                              "basis": "Aggregate hypothetical legs; entered fee/slippage estimates and observed quote or exact human limit. Unknown costs are disclosed; missing required economics or failed configured checks block the affected operation. No approval or execution authority."}
+        basket["policy_scenarios"] = results
+
+    def save_investor(self, request):
+        from .investor import DEFAULT, save
+        from .admission import DEFAULT as COMMAND_DEFAULT, invalidate
+        if request.get("action") == "review":
+            constraints = self.review_constraints(request.get("constraints"))
+            self.admission.evaluate_review(request["id"], proposal_revision=request.get("proposal_revision"),
+                policy_revision=request.get("policy_revision"), constraints=constraints,
+                expected={"investor": request.get("expected_revision"), "commands": request.get("commands_revision")})
+            return self.investor()
+        def update(change):
+            def apply(records):
+                records["investor"] = change(records)
+                for proposal in records["investor"]["proposals"]:
+                    self.admission.assess(records, proposal, runtime, proposal.get("review_constraints", {}))
+                if request.get("action") == "basket_draft":
+                    baskets = records["investor"].get("baskets", [])
+                    basket = next(b for b in baskets if b["id"] == request["id"]) if request.get("id") else baskets[0]
+                    self.assess_basket(records, basket["preview"], runtime)
+                return invalidate(records)
+            from .market_history import DEFAULT as HISTORY_DEFAULT
+            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+            return self.store.database.transact({"investor": DEFAULT, "commands": COMMAND_DEFAULT,
+                "market_history": HISTORY_DEFAULT, "stock_evidence": EVIDENCE_DEFAULT}, apply,
+                expected={"investor": request.get("expected_revision")})
+        runtime = self.runtime.state()
+        universe = self.store.data["config"]["universe"]
+        if request.get("action") == "preview":
+            record = self.store.database.read("investor", DEFAULT)
+            updated = save(copy.deepcopy(record["data"]), {**request, "action": "draft"}, runtime,
+                           universe, self._proposal_research)
+            proposal = next(p for p in updated["proposals"] if p["id"] == request.get("id")) if request.get("id") else updated["proposals"][0]
+            from .market_history import DEFAULT as HISTORY_DEFAULT
+            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+            records = {"investor": updated, "commands": self.store.database.read("commands", COMMAND_DEFAULT)["data"],
+                       "market_history": self.store.database.read("market_history", HISTORY_DEFAULT)["data"],
+                       "stock_evidence": self.store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]}
+            self.admission.assess(records, proposal, runtime, proposal.get("review_constraints", {}))
+            return {"preview": proposal, "revision": record["revision"]}
+        if request.get("action") == "basket_preview":
+            from .baskets import preview
+            record = self.store.database.read("investor", DEFAULT)
+            prior = next((b for b in record["data"].get("baskets", []) if b["id"] == request.get("id")), None)
+            commands = self.store.database.read("commands", COMMAND_DEFAULT)["data"]
+            result = preview(record["data"], {**request, "linked_proposal_ids": prior["linked_proposal_ids"] if prior else []}, runtime, universe, commands=commands)
+            result["linked_proposal_ids"] = prior["linked_proposal_ids"] if prior else []
+            from .market_history import DEFAULT as HISTORY_DEFAULT
+            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+            records = {"investor": record["data"], "commands": commands,
+                       "market_history": self.store.database.read("market_history", HISTORY_DEFAULT)["data"],
+                       "stock_evidence": self.store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]}
+            self.assess_basket(records, result, runtime)
+            return {"preview": result, "revision": record["revision"]}
+        if str(request.get("action", "")).startswith("basket_"):
+            from .baskets import save as save_basket
+            update(lambda records: save_basket(records["investor"], request, runtime, universe, self._proposal_research, commands=records["commands"]))
+            return self.investor()
+        update(lambda records: save(records["investor"], request, runtime, universe, self._proposal_research))
+        return self.investor()
+
+    @staticmethod
+    def review_constraints(value):
+        from .investor import decimal
+        allowed = {"account_max_age_seconds", "quote_max_age_seconds", "evidence_max_age_seconds",
+                   "approval_max_age_seconds", "max_execution_price", "max_fees", "working_order_fee_caps"}
+        if not isinstance(value, dict) or set(value) - allowed:
+            raise ValueError("Only explicit review tolerances and price/fee ceilings may be supplied")
+        result = {}
+        for key, item in value.items():
+            if key == "working_order_fee_caps":
+                if not isinstance(item, dict) or len(item) > 1000:
+                    raise ValueError("Working-order fee ceilings must be an object keyed by broker order identity")
+                result[key] = {}
+                for identity, amount in item.items():
+                    parsed = decimal(amount)
+                    if parsed is None or parsed < 0:
+                        raise ValueError("Working-order fee ceilings must be finite and nonnegative")
+                    result[key][identity] = str(parsed)
+            elif item not in (None, ""):
+                parsed = decimal(item)
+                if parsed is None or parsed < 0:
+                    raise ValueError("Review bounds must be finite and nonnegative")
+                result[key] = str(parsed)
+        return result
+
+    def command_receipt(self, identity, checksum):
+        from uuid import UUID
+        from .recovery import references
+        if str(UUID(identity)) != identity or not re.fullmatch(r"[0-9a-f]{64}", checksum):
+            raise ValueError("Choose a recorded command receipt identity")
+        command = self.admission.snapshot()["data"]["commands"][identity]
+        matching = [relative for relative, digest in references(command) if digest == checksum]
+        if not matching:
+            raise ValueError("Receipt is not referenced by this durable command")
+        path = (self.store.directory / matching[0]).resolve()
+        if not path.is_relative_to(self.store.directory.resolve()) or path.stat().st_size > 16 * 1024 * 1024:
+            raise ValueError("Command receipt exceeds the saved source boundary")
+        payload = path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != checksum:
+            raise ValueError("Command receipt checksum differs")
+        return payload
+
+    def command_action(self, request):
+        action = request.get("action")
+        expected = {"commands": request.get("commands_revision"), "investor": request.get("investor_revision")}
+        if any(type(value) is not int for value in expected.values()):
+            raise ValueError("Reload current command and investor revisions before this action")
+        from .workspace import text
+        actor = "local-session:" + self.instance_id
+        reason = text(request.get("note", request.get("reason", "")), 20000, "optional action note")
+        if action == "block":
+            self.admission.control(request.get("blocked"), actor=actor, reason=reason, expected=expected)
+        elif self.browse_only:
+            raise PermissionError("Browse-only mode does not permit command authorizations or dispatch")
+        elif action == "exercise":
+            self.admission.exercise({**request, "action": request.get("exercise_action", "authorize")}, expected=expected)
+        elif action == "basket_admit":
+            self.admission.basket_admit({**request, "actor": actor, "reason": reason}, expected=expected)
+        elif action == "basket_control":
+            self.admission.basket_control(request["id"], paused=request.get("paused"), actor=actor, reason=reason, expected=expected)
+        elif action == "resolve_never_dispatched":
+            self.admission.resolve_never_dispatched(request["id"], request.get("operation", "submit"), expected=expected)
+        elif action == "basket_dispatch_next":
+            self.admission.enabled()
+            if request.get("basket_id"):
+                result = self.admission.basket_admit({**request, "actor": actor, "reason": reason}, expected=expected, dispatch=True)
+                group = next(item for item in result["commands"]["data"]["basket_executions"].values()
+                             if item["basket_id"] == request["basket_id"] and item["basket_revision"] == request.get("basket_revision"))
+                command_id = group["command_ids"][0]
+            else:
+                state = self.admission.snapshot()["data"]
+                group = state["basket_executions"][request["id"]]
+                if group["state"] not in {"ready", "running"}:
+                    raise ValueError("Review and resume the basket before dispatch")
+                command_id = next(key for key in group["command_ids"] if state["commands"][key]["state"] == "admitted_not_dispatched")
+                self.admission.dispatch_intent(command_id, expected=expected)
+            self.runtime.request("dispatch", command_id=command_id, action="submit")
+        elif action in {"submit", "cancel", "replace"}:
+            self.admission.enabled()
+            command_id = request.get("id")
+            if action == "submit":
+                if request.get("approval_id"):
+                    command_id = self.admission.submit_approved(request["approval_id"], expected=expected)
+                else:
+                    self.admission.dispatch_intent(command_id, expected=expected)
+            else:
+                command_id = self.admission.authorize_action(command_id, kind=action, actor=actor, reason=reason,
+                    broker_order_id=request["broker_order_id"], replacement_command_id=request.get("replacement_command_id"),
+                    replacement_approval_id=request.get("replacement_approval_id"), expected=expected,
+                    broker_order_version=request.get("broker_order_version"))
+            # Request failure is ambiguous: only the adapter's durable transport boundary can resolve no-send.
+            self.runtime.request("dispatch", command_id=command_id, action=action)
+        else:
+            raise ValueError("Choose an explicit command, exercise, basket or order-block action")
+        return self.admission.snapshot()
+
+    def approval_action(self, request, *, admission=False):
+        self.admission.review_allowed()
+        expected = {"investor": request.get("expected_revision"), "commands": request.get("commands_revision")}
+        if any(type(revision) is not int for revision in expected.values()):
+            raise ValueError("Reload current investor and command revisions before review")
+        from .workspace import text
+        actor = "local-session:" + self.instance_id
+        reason = text(request.get("note", request.get("reason", "")), 20000, "optional review note")
+        if admission or request.get("action") == "admit":
+            self.admission.admit(request["approval_id"], expected=expected)
+        elif request.get("action") == "approve":
+            proposal = next(p for p in self.investor()["data"]["proposals"] if p["id"] == request.get("id"))
+            if request.get("terms_sha256") != proposal["terms_sha256"]:
+                raise ValueError("Approval terms changed; reload and inspect the exact saved revision")
+            self.admission.approve(proposal["id"], actor=actor, reason=reason or proposal["terms"]["rationale"],
+                constraints=self.review_constraints(request.get("constraints")), proposal_revision=request.get("proposal_revision"),
+                policy_revision=request.get("policy_revision"), evaluation_binding_sha256=request.get("evaluation_binding_sha256"),
+                expected=expected)
+        elif request.get("action") == "revoke":
+            self.admission.revoke(request["approval_id"], actor=actor, reason=reason, expected=expected)
+        else:
+            raise ValueError("Choose an explicit approval, revocation or admission")
+        return {"investor": self.investor(), "commands": self.admission.snapshot()}
 
     def run_detail(self, run_id, symbol=None):
         with self.store.lock:
-            run = self._find_run(run_id)
+            run = next((r for r in self.store.data["runs"] if r["id"] == run_id), None)
+            if run is None:
+                run = next(r for r in self.history.get("runs", []) if r["id"] == run_id)
             if symbol is None:
                 return copy.deepcopy(run)
             result = copy.deepcopy(next(r for r in run["results"] if r["symbol"] == symbol))
             result.setdefault("revision", 0)
             return result
 
-    def chart(self, symbol, *, force=False):
-        with self.store.lock:
-            permitted = set(self.store.data["config"]["universe"])
-        with self.lock:
-            permitted.update(p.get("symbol") for p in self.market["positions"] if isinstance(p, dict))
-        if symbol not in permitted:
-            raise ValueError("Choose a stock in the universe or current positions.")
+    def chart(self, symbol, *, force=False, run_id=None):
+        from .market_evidence import recorded_market
+        all_runs = self.store.data["runs"] + self.history.get("runs", [])
+        run = next((r for r in all_runs if symbol in r.get("symbols", []) and
+                    (r["id"] == run_id if run_id else r["status"] == "completed")), None)
+        if run is None:
+            raise ValueError("Select an existing research run containing this stock.")
+        root = self.store.directory if any(r["id"] == run["id"] for r in self.store.data["runs"]) else self.history_directory
+        key = (run["id"], symbol)
         with self.chart_lock:
-            cached = self.chart_cache.get(symbol)
-            if not force and cached and time.monotonic() - cached[0] < 300:
-                return copy.deepcopy(cached[1])
-            value = _payload(self.gateway.execute("alpaca", "get_stock_bars", {
-                "symbols": symbol, "days": 45, "timeframe": "1Day", "limit": 1000, "feed": "iex"
-            }))
-            bars = value.get("bars", value) if isinstance(value, dict) else None
-            if not isinstance(bars, dict) or not isinstance(bars.get(symbol, []), list):
-                raise ValueError("Chart history is not a valid broker response.")
-            result = {"symbol": symbol, "bars": copy.deepcopy(bars.get(symbol, [])),
-                      "updated_at": now(), "feed": "iex"}
-            self.chart_cache[symbol] = (time.monotonic(), result)
-            while len(self.chart_cache) > 32:
-                del self.chart_cache[next(iter(self.chart_cache))]
+            if not force and key in self.chart_cache:
+                return copy.deepcopy(self.chart_cache[key])
+            result = recorded_market(root, run, symbol)
+            self.chart_cache[key] = result
             return copy.deepcopy(result)
 
     def readiness(self, config, *, refresh=False, probe=True):
@@ -343,6 +948,8 @@ class DeskService:
         }
 
     def save_config(self, changes):
+        if self.browse_only and set(changes) - {"name", "universe"}:
+            raise ValueError("Read-only review allows only index name and symbols to change")
         with self.execution_lock, self.store.lock:
             if any(
                 run["status"] in {"queued", "running", "cancelling"}
@@ -352,300 +959,76 @@ class DeskService:
             config = DeskConfig.model_validate({**self.store.data["config"], **changes})
             self.store.data["config"] = config.model_dump()
             self.store.data["config_revision"] += 1
-            for proposal in self.store.data["proposals"]:
-                if proposal["status"] == "proposed":
-                    proposal.update(
-                        status="expired", reason="Settings changed. Run fresh analysis."
-                    )
             self.store.save()
+            self.runtime.configure(config.universe)
         return self.state()
+
+    def _runtime_market(self):
+        runtime = self.runtime.state()
+        available = runtime["status"] == "connected"
+        from .investor import DEFAULT as INVESTOR_DEFAULT
+        rule = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["policy"]["rules"].get("session_freshness", {})
+        opened = runtime.get("market_open")
+        maximum = _number(rule.get("value") if opened is True else rule.get("closed_max_age_seconds"))
+        configured = (rule.get("state") == "enabled" and type(opened) is bool and maximum is not None and maximum > 0
+                      and rule.get("session") in {"regular_session_required", "allow_closed_session_review"})
+        quotes = {}
+        for symbol in dict.fromkeys(self.store.data["config"]["universe"] + [p["symbol"] for p in runtime.get("positions", [])]):
+            observation = runtime.get("market_data", {}).get(symbol, {}) if available else {}
+            trade, quote = observation.get("trade"), observation.get("quote")
+            price = float(trade["price"]) if trade else (
+                (float(quote["bid_price"]) + float(quote["ask_price"])) / 2 if quote else None)
+            timestamp = (trade or quote or {}).get("ts_event")
+            stamp = datetime.fromtimestamp(int(timestamp) / 1e9, UTC) if timestamp else None
+            age = (datetime.now(UTC) - stamp).total_seconds() if stamp else None
+            previous = observation.get("previous_close")
+            quotes[symbol] = {"price": price, "basis": "last_trade" if trade else "quote_midpoint" if quote else None,
+                "timestamp": stamp.isoformat() if stamp else None, "feed": "Nautilus / Alpaca IEX",
+                "stale": (age is None or not 0 <= age <= maximum) if configured else None,
+                "max_age_seconds": maximum if configured else None, "age_seconds": age,
+                "session": "open" if opened is True else "closed" if opened is False else None,
+                "freshness_configured": configured,
+                "change_pct": (price / float(previous) - 1) * 100 if price and previous else None,
+                "error": observation.get("error") or (None if price else "Latest price unavailable"),
+                "checked_at": runtime.get("prices_checked_at")}
+        errors = [] if available else [
+            {"source": source, "message": runtime.get("error") or "Start Nautilus to load engine state."}
+            for source in ("connection", "account", "positions", "orders", "quotes")]
+        reconciliation = runtime.get("reconciliation", {})
+        if reconciliation.get("status") == "incomplete":
+            errors.append({"source": "reconciliation", "message": "; ".join(reconciliation.get("gaps", []))})
+        return {
+            "connection": {"connected": available, "account_verified": available and bool((runtime.get("account") or {}).get("id")),
+                "paper_verified": available and urlsplit(runtime.get("endpoint") or "").hostname == "paper-api.alpaca.markets",
+                "endpoint": runtime.get("endpoint"),
+                "domains": ["NautilusTrader"] if available else [],
+                "message": "Configured Alpaca account through Nautilus; reconciliation and user command authority are reported separately." if available else
+                    runtime.get("error") or "Nautilus is stopped. Current cash and holdings are unavailable; saved research remains readable."},
+            "account": runtime.get("account") if available else None,
+            "positions": runtime.get("positions") or [],
+            "orders": runtime.get("orders") or [],
+            "open_orders": runtime.get("orders") or [],
+            "fills": runtime.get("fills") or [], "reconciliation": reconciliation,
+            "broker_observation": runtime.get("broker_observation", {}),
+            "quotes": quotes, "history": {}, "bars": {},
+            "clock": {"is_open": runtime.get("market_open")} if available else None,
+            "errors": errors, "updated_at": runtime.get("account_at") if available else None,
+            "quotes_updated_at": runtime.get("prices_checked_at") if available else None,
+        }
 
     def refresh_quotes(self):
-        """Single-flight quote-only refresh, shared across tabs, with a 45s deadline."""
-        if not self.refresh_lock.acquire(blocking=False):
-            return self.state()
-        try:
-            if time.monotonic() < self.quotes_next_refresh:
-                if self.quotes_refresh_failed:
-                    raise GatewayRateLimited(self.quotes_next_refresh - time.monotonic())
-                return self.state()
-            if not self._book()["connection"].get("connected"):
-                raise ValueError("Connect the paper account before refreshing quotes.")
-            self.quotes_next_refresh = time.monotonic() + 60
-            symbols = self.store.snapshot()["config"]["universe"]
-
-            async def fetch():
-                quotes = {}
-                clock = await self.gateway.aexecute("alpaca", "get_clock", {})
-                for offset in range(0, len(symbols), 100):
-                    raw = await self.gateway.aexecute("alpaca", "get_stock_snapshot", {
-                        "symbols": ",".join(symbols[offset:offset + 100]), "feed": "iex",
-                    })
-                    batch = normalize_quotes(raw)
-                    if any(not batch.get(symbol, {}).get("timestamp") for symbol in symbols[offset:offset + 100]):
-                        raise ValueError("The quote response is incomplete; the previous snapshot is retained.")
-                    quotes.update(batch)
-                return quotes, _payload(clock)
-
-            async def bounded():
-                return await asyncio.wait_for(fetch(), timeout=45)
-
-            try:
-                quotes, clock = asyncio.run(bounded())
-            except Exception as exc:
-                self.quotes_refresh_failed = True
-                self.quotes_next_refresh = time.monotonic() + max(300, getattr(exc, "retry_after", 0))
-                if isinstance(exc, TimeoutError):
-                    raise ValueError("Quote refresh exceeded 45 seconds. The previous snapshot is retained.") from exc
-                raise
-            with self.lock:
-                self.quotes_refresh_failed = False
-                self.market.update(quotes=quotes, clock=clock, quotes_updated_at=now())
-                self.market["errors"] = [e for e in self.market["errors"] if e.get("source") != "quotes"]
-            return self.state()
-        finally:
-            self.refresh_lock.release()
-
-    def refresh(self):
-        with self.refresh_lock:
-            paper_check_started = False
-            config = self.store.snapshot()["config"]
-            market = {
-                "connection": {
-                    "connected": False,
-                    "paper_verified": False,
-                    "endpoint": getattr(self.gateway, "endpoint", "http://localhost:8080/mcp"),
-                    "domains": [],
-                    "message": "Connecting",
-                },
-                "account": None,
-                "positions": [],
-                "orders": [],
-                "quotes": {},
-                "history": {},
-                "bars": {},
-                "clock": None,
-                "errors": [],
-                "updated_at": now(),
-            }
-            try:
-                for domain in ("alpaca", "maenifold.memory", "laya"):
-                    self.gateway.discover(domain)
-                    market["connection"]["domains"].append(domain)
-                market["connection"]["connected"] = True
-                paper_check_started = True
-                proof = verify_paper_configuration(self.gateway)
-                market["connection"]["paper_verified"] = proof.get("paper") is True
-                market["connection"]["message"] = (
-                    "Alpaca paper mode verified from Maenifold configuration."
-                )
-            except Exception as exc:
-                if isinstance(exc, GatewayRateLimited):
-                    raise
-                market["connection"]["message"] = str(exc)
-                market["errors"].append({"source": "connection", "message": str(exc)})
-            if market["connection"]["connected"]:
-                calls = {
-                    "account": ("get_account_info", {}),
-                    "positions": ("get_all_positions", {}),
-                    "orders": ("get_orders", {"status": "all", "limit": 100, "direction": "desc"}),
-                    "open_orders": ("get_orders", {"status": "open", "limit": 500}),
-                    "history": ("get_portfolio_history", {"period": "1M", "timeframe": "1D"}),
-                    "clock": ("get_clock", {}),
-                }
-                for offset in range(0, len(config["universe"]), 100):
-                    calls[f"quotes:{offset}"] = ("get_stock_snapshot", {
-                        "symbols": ",".join(config["universe"][offset:offset + 100]), "feed": "iex"
-                    })
-                with ThreadPoolExecutor(max_workers=4) as pool:
-                    futures = {
-                        key: pool.submit(copy_context().run, self.gateway.execute, "alpaca", command, args)
-                        for key, (command, args) in calls.items()
-                    }
-                    for key, future in futures.items():
-                        try:
-                            value = _payload(future.result())
-                            if key in {"positions", "orders", "open_orders"}:
-                                value = _as_list(value, "orders" if key == "open_orders" else key)
-                            elif key.startswith("quotes:"):
-                                value = normalize_quotes(value)
-                            elif not isinstance(value, dict):
-                                raise ValueError(f"Broker {key} response is not an object.")
-                            if key.startswith("quotes:"):
-                                market["quotes"].update(value)
-                            else:
-                                market[key] = value
-                        except Exception as exc:
-                            if isinstance(exc, GatewayRateLimited):
-                                # Keep the last verified snapshot; stop queued source work.
-                                for pending in futures.values():
-                                    pending.cancel()
-                                raise
-                            error = {"source": "quotes" if key.startswith("quotes:") else key,
-                                     "message": str(exc)}
-                            if key.startswith("quotes:"):
-                                error["symbols"] = calls[key][1]["symbols"].split(",")
-                            market["errors"].append(error)
-                if len(market.get("open_orders", [])) >= 500:
-                    market["errors"].append(
-                        {
-                            "source": "open_orders",
-                            "message": "Open-order limit reached; execution blocked until the full book is available.",
-                        }
-                    )
-                account = market["account"]
-                if account and market["connection"]["paper_verified"]:
-                    with self.store.lock:
-                        pinned = self.store.data["paper_account_id"]
-                        if pinned and account.get("id") != pinned:
-                            market["connection"].update(
-                                paper_verified=False,
-                                message="Broker account changed. Restart with a separate data directory for the new account.",
-                            )
-                        elif not pinned and account.get("id"):
-                            self.store.data["paper_account_id"] = account["id"]
-                        if market["connection"]["paper_verified"] and account.get("id") == self.store.data["paper_account_id"]:
-                            self._reconcile(market.get("orders", []) + market.get("open_orders", []), account["id"])
-                        self.store.save()
-            with self.lock:
-                if paper_check_started:
-                    self._account_observation = {
-                        "paper_verified": market["connection"]["paper_verified"],
-                        "account_id": (market.get("account") or {}).get("id"),
-                    }
-                self.market = market
-                self.market["quotes_updated_at"] = market["updated_at"]
-                self.quotes_next_refresh = time.monotonic() + 60
-                self.quotes_refresh_failed = False
+        self.runtime.request("refresh")
         return self.state()
 
-    @staticmethod
-    def _order_arguments(proposal):
-        return {**{key: str(proposal[key]) for key in ("symbol", "side", "qty", "limit_price", "client_order_id")},
-                "type": "limit", "time_in_force": "day", "extended_hours": False}
-
-    @staticmethod
-    def _order_decimal(value):
-        try:
-            number = Decimal(str(value)) if not isinstance(value, bool) else Decimal("NaN")
-        except (InvalidOperation, ValueError):
-            raise ValueError("Broker order has an invalid numeric field.") from None
-        if not number.is_finite():
-            raise ValueError("Broker order has an invalid numeric field.")
-        return number
-
-    def _owned_receipt(self, proposal, order):
-        intent = proposal.get("submission_intent") or {}
-        if (not isinstance(order, dict) or not intent.get("arguments")
-                or intent.get("account_id") != self.store.data["paper_account_id"]):
-            raise ValueError("Broker receipt has no matching owned account and intent.")
-        expected = intent["arguments"]
-        reviewed = proposal.get("reviewed") or {}
-        if (expected != reviewed.get("arguments") or intent["account_id"] != reviewed.get("account_id")
-                or expected.get("client_order_id") != proposal.get("client_order_id")):
-            raise ValueError("Saved intent differs from the reviewed owned order.")
-        if (not isinstance(order.get("id"), str) or not order["id"]
-                or (proposal.get("broker_order_id") and order["id"] != proposal["broker_order_id"])
-                or (order.get("account_id") is not None and order["account_id"] != intent["account_id"])
-                or order.get("replaces") or order.get("replaced_by")):
-            raise ValueError("Broker order identity or replacement chain does not match.")
-        for field in ("client_order_id", "symbol", "side", "type", "time_in_force"):
-            if order.get(field) != expected[field]:
-                raise ValueError("Broker order fields do not match the saved intent.")
-        if order.get("extended_hours") is not False:
-            raise ValueError("Broker order session does not match the saved intent.")
-        quantity, price = (self._order_decimal(order.get(key)) for key in ("qty", "limit_price"))
-        if (quantity <= 0 or quantity != quantity.to_integral_value() or price <= 0
-                or quantity != self._order_decimal(expected["qty"])
-                or price != self._order_decimal(expected["limit_price"])):
-            raise ValueError("Broker order values do not match the saved intent.")
-        status = order.get("status")
-        status = "canceled" if status == "cancelled" else status
-        if not isinstance(status, str) or status not in OWNED_ACTIVE | OWNED_TERMINAL:
-            raise ValueError("Broker order status is missing or unsupported.")
-        filled = self._order_decimal(order.get("filled_qty"))
-        average = self._order_decimal(order["filled_avg_price"]) if order.get("filled_avg_price") is not None else None
-        if (filled < 0 or filled > quantity or (average is not None and average <= 0)
-                or (filled > 0 and average is None)
-                or (status == "filled" and filled != quantity)
-                or (status == "partially_filled" and not 0 < filled < quantity)
-                or (status in {"new", "accepted", "pending_new", "held", "rejected"} and filled != 0)):
-            raise ValueError("Broker fill details are inconsistent.")
-        def decimal_text(value):
-            # Remove scale differences without Decimal.normalize's context rounding.
-            if value == 0:
-                return "0"
-            text = format(value, "f")
-            return text.rstrip("0").rstrip(".") if "." in text else text
-
-        receipt = {"id": order["id"], **expected, "qty": decimal_text(quantity),
-                   "limit_price": decimal_text(price), "status": status, "filled_qty": decimal_text(filled),
-                   "filled_avg_price": decimal_text(average) if average is not None else None}
-        previous = proposal.get("broker_receipt")
-        if previous:
-            old_filled = self._order_decimal(previous["filled_qty"])
-            if (order["id"] != previous["id"] or filled < old_filled
-                    or (previous["status"] in OWNED_TERMINAL and status != previous["status"])
-                    or (filled == old_filled and average != (self._order_decimal(previous["filled_avg_price"])
-                                                           if previous["filled_avg_price"] is not None else None))):
-                raise ValueError("Broker receipt conflicts with prior authoritative order evidence.")
-        return receipt
-
-    @staticmethod
-    def _accept_receipt(proposal, receipt):
-        proposal.update(status=receipt["status"], broker_order_id=receipt["id"],
-                        filled_qty=receipt["filled_qty"], filled_avg_price=receipt["filled_avg_price"],
-                        broker_receipt=copy.deepcopy(receipt))
-        proposal.pop("reconciliation_error", None)
-        if proposal.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN and receipt["status"] in OWNED_TERMINAL:
-            proposal["cancellation"].update(status="resolved", resolved_at=now(), order_status=receipt["status"])
-
-    def _reconcile(self, orders, account_id):
-        if not account_id or account_id != self.store.data["paper_account_id"]:
-            return
-        for proposal in self.store.data["proposals"]:
-            if not proposal.get("submission_intent"):
-                continue
-            matching = [o for o in orders if isinstance(o, dict) and o.get("client_order_id") == proposal.get("client_order_id")]
-            if not matching and (proposal.get("status") in {"unknown", "submitting"}
-                                 or proposal.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN):
-                try:
-                    matching = [_payload(self.gateway.execute(
-                        "alpaca",
-                        "get_order_by_client_id",
-                        {"client_order_id": proposal["client_order_id"]},
-                    ))]
-                except Exception:
-                    # A missing/failed lookup never proves that submission failed.
-                    continue
-            if matching:
-                try:
-                    receipts = [self._owned_receipt(proposal, order) for order in matching]
-                    if any(receipt != receipts[0] for receipt in receipts[1:]):
-                        raise ValueError("Conflicting duplicate broker receipts; prior evidence retained.")
-                    self._accept_receipt(proposal, receipts[0])
-                except ValueError as exc:
-                    proposal["reconciliation_error"] = str(exc)
+    def refresh(self):
+        # Connecting is explicit; page loads and research never start an execution strategy.
+        self.runtime.start()
+        return self.state()
 
     def _book(self):
-        with self.lock:
-            market = copy.deepcopy(self.market)
-        critical = {"connection", "account", "positions", "orders", "open_orders", "quotes"}
-        errors = [e for e in market["errors"] if e["source"] in critical]
-        if not market["connection"]["paper_verified"] or market["account"] is None or errors:
-            raise ValueError(
-                "A verified paper account and complete broker data are required. Refresh the connection."
-            )
-        account = market["account"]
-        if not account.get("id") or any(
-            _number(account.get(k)) is None for k in ("cash", "equity")
-        ):
-            raise ValueError("Broker account identity, cash, or equity is missing or invalid.")
-        if any(
-            not isinstance(p, dict) or not p.get("symbol") or _number(p.get("qty")) is None
-            for p in market["positions"]
-        ):
-            raise ValueError("Broker positions are incomplete; analysis and execution are blocked.")
+        market = self._runtime_market()
+        if not market["connection"]["connected"] or not market["account"]:
+            raise ValueError("A connected, current Nautilus account is required. Start Nautilus and wait for connection.")
         return market
 
     def start_run(self, symbols=None, expected_revision=None, analysis_date=None):
@@ -770,7 +1153,7 @@ class DeskService:
                 "account_context": {
                     "basis": "current",
                     "captured_at": market["updated_at"],
-                    "description": "Current account cash and holdings captured at run creation; "
+                    "description": "Nautilus account cash and holdings captured at run creation; "
                     "not a historical portfolio snapshot for the analysis date.",
                 },
                 "symbols": symbols,
@@ -814,7 +1197,9 @@ class DeskService:
         queued_at = time.monotonic()
         try:
             with self._request_stage(request, "scheduling"):
-                self.executor.submit(self._run, run["id"], market, request_started, queued_at)
+                future = self.executor.submit(self._run, run["id"], market, request_started, queued_at)
+                self.research_futures.add(future)
+                future.add_done_callback(self.research_futures.discard)
         except Exception:
             with self.store.lock:
                 run.update(status="failed", error="Analysis worker could not be scheduled.")
@@ -950,7 +1335,7 @@ class DeskService:
                         checkpoint_enabled=False,
                     )
                     tools = build_langchain_tools(
-                        self.gateway, domains=("alpaca", "maenifold.memory"),
+                        self.gateway, domains=("maenifold.memory",),
                         symbol=symbol, trade_date=run["trade_date"]
                     )
                     social_budget = {"remaining": 30, "deadline": None}
@@ -977,6 +1362,7 @@ class DeskService:
                                            source=source, on_evidence=record,
                                            cancelled=lambda: run_id in self.cancelled)
                     graph = (self.graph_factory or TradingAgentsGraph)(
+                        selected_analysts=config.get("selected_analysts", ["market", "social", "news", "fundamentals"]),
                         config=graph_config, supplemental_tools=tools, callbacks=[stats],
                         social_screen_factory=screen_factory,
                     )
@@ -1053,7 +1439,7 @@ class DeskService:
                         raise InterruptedError("Analysis stopped by operator.")
                     with self.store.lock:
                         result.update(
-                            status="completed",
+                            status="completed", completed_at=now(),
                             rating=rating,
                             elapsed_seconds=round((datetime.now(UTC) - started).total_seconds(), 1),
                             revision=result["revision"] + 1,
@@ -1121,245 +1507,12 @@ class DeskService:
         }
 
     def propose(self, run_id):
-        with self.execution_lock:
-            self.refresh()
-            market = self._book()
-            with self.store.lock:
-                self._require_known_submissions()
-                run = self._find_run(run_id)
-                if run["status"] != "completed" or run["config"] != self.store.data["config"]:
-                    raise ValueError("Complete a fresh analysis with the current settings first.")
-                if run["trade_date"] != today() or run["account_id"] != market["account"]["id"]:
-                    raise ValueError("Analysis date or paper account changed. Run fresh analysis.")
-                if any(p["run_id"] == run_id for p in self.store.data["proposals"]):
-                    raise ValueError(
-                        "This run already has an order plan. Start a new run for a new plan."
-                    )
-                proposals = plan_orders(
-                    run["config"],
-                    market["account"],
-                    market["positions"],
-                    market.get("open_orders", []),
-                    market["quotes"],
-                    run["results"],
-                    run_id,
-                )
-                for p in proposals:
-                    p["client_order_id"] = "ta-" + p["id"]
-                    p["created_at"] = now()
-                    if p["status"] == "proposed":
-                        p["reviewed"] = self._review(p, run)
-                self.store.data["proposals"] = proposals + self.store.data["proposals"]
-                self.store.save()
-                return {"proposals": copy.deepcopy(proposals)}
-
-    def _review(self, proposal, run):
-        results = [r for r in run["results"] if r.get("symbol") == proposal["symbol"]]
-        if len(results) != 1 or results[0].get("status") != "completed":
-            raise ValueError("Completed research is required.")
-        return {"arguments": self._order_arguments(proposal), "account_id": run["account_id"],
-                "run_id": run["id"], "created_at": proposal["created_at"], "trade_date": run["trade_date"],
-                "proposal_fields": {key: copy.deepcopy(proposal.get(key)) for key in (
-                    "id", "run_id", "symbol", "side", "qty", "limit_price", "notional", "rating", "reason", "client_order_id")},
-                "config": copy.deepcopy(run["config"]),
-                "evidence_sha256": hashlib.sha256(json.dumps(results[0], sort_keys=True, allow_nan=False).encode()).hexdigest()}
-
-    @staticmethod
-    def _fresh(timestamp):
-        try:
-            age = (datetime.now(UTC) - datetime.fromisoformat(timestamp)).total_seconds()
-        except (TypeError, ValueError):
-            raise ValueError("A valid freshness timestamp is required.") from None
-        if not 0 <= age <= 900:
-            raise ValueError("This proposal or account snapshot is older than 15 minutes. Run fresh analysis.")
-
-    def _submission_guard(self, proposal, reviewed, market, args, *, persisted=False):
-        self._require_known_submissions(proposal["id"] if persisted else None)
-        if self.store.data["paused"]:
-            raise ValueError("New paper orders are paused.")
-        if proposal["status"] != ("submitting" if persisted else "proposed"):
-            raise ValueError("Only a proposed order can be submitted. Refresh to reconcile existing orders.")
-        self._fresh(proposal["created_at"])
-        run = self._find_run(proposal["run_id"])
-        if (not reviewed or run["status"] != "completed" or run["trade_date"] != today()
-                or run["config"] != self.store.data["config"]
-                or run["account_id"] != self.store.data["paper_account_id"]
-                or proposal.get("reviewed") != reviewed or self._review(proposal, run) != reviewed
-                or args != reviewed["arguments"]):
-            raise ValueError("Reviewed proposal, research, date, account or configuration changed. Run fresh analysis.")
-        current = self._book()
-        self._fresh(current["updated_at"])
-        if current != market or current["account"]["id"] != reviewed["account_id"]:
-            raise ValueError("The verified account book changed during preparation. Refresh and review again.")
-        if persisted and proposal.get("submission_intent") != {
-                "account_id": reviewed["account_id"], "arguments": args}:
-            raise ValueError("Saved submission intent changed.")
-        validate_proposal({**proposal, "status": "proposed"}, run["config"], current["account"],
-                          current["positions"], current.get("open_orders", []), current["quotes"])
-
-    def submit(self, proposal_id):
-        with self.execution_lock:
-            self.refresh()
-            market = self._book()
-            with self.lock, self.store.lock:
-                proposal = next(p for p in self.store.data["proposals"] if p["id"] == proposal_id)
-                reviewed = copy.deepcopy(proposal.get("reviewed"))
-                args = self._order_arguments(proposal)
-                self._submission_guard(proposal, reviewed, market, args)
-                asset = self.gateway.execute(
-                    "alpaca", "get_asset", {"symbol_or_asset_id": proposal["symbol"]}
-                )
-                if (
-                    asset.get("tradable") is not True
-                    or asset.get("class", asset.get("asset_class")) != "us_equity"
-                ):
-                    raise ValueError("Only tradable US equities can be submitted.")
-                verify_paper_configuration(self.gateway)
-            intent_started = ready = False
-
-            def dispatch():
-                nonlocal intent_started, ready
-                with self.lock, self.store.lock:
-                    self._submission_guard(proposal, reviewed, market, args)
-                    intent_started = True
-                    proposal.update(status="submitting", submission_intent={
-                        "account_id": reviewed["account_id"], "arguments": copy.deepcopy(args)})
-                    self.store.save()
-                    self._submission_guard(proposal, reviewed, market, args, persisted=True)
-                    ready = True
-
-            try:
-                order = self.gateway.execute("alpaca", "place_stock_order", args, on_dispatch=dispatch)
-                if not ready:
-                    raise ValueError("Transport did not verify the dispatch boundary.")
-                with self.store.lock:
-                    self._accept_receipt(proposal, self._owned_receipt(proposal, _payload(order)))
-                    proposal["submitted_at"] = now()
-                    self.store.save()
-                return {"order": order}
-            except Exception as exc:
-                if not intent_started:
-                    raise
-                with self.store.lock:
-                    proposal.update(
-                        status="unknown" if ready else "blocked",
-                        reason=("Submission outcome unknown. Refresh to reconcile by client order ID; never retry blindly."
-                                if ready else "Submission was not dispatched: local validation or intent persistence failed."),
-                    )
-                    self.store.save()
-                raise ValueError(proposal["reason"]) from exc
-
-    def _require_known_submissions(self, own_submission_id=None):
-        if any((p["status"] in {"unknown", "submitting"} and p["id"] != own_submission_id)
-               or p.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN
-               or p.get("reconciliation_error") for p in self.store.data["proposals"]):
-            raise ValueError(
-                "An earlier submission or cancellation has an unknown outcome or conflicting receipt. Refresh to reconcile it before creating or submitting another order."
-            )
-
-    def cancel_order(self, order_id):
-        with self.execution_lock:
-            with self.store.lock:
-                owned = next((p for p in self.store.data["proposals"] if p.get("broker_order_id") == order_id), None)
-            if not owned:
-                raise ValueError(
-                    "Only paper orders created by this workspace can be cancelled here."
-                )
-            if owned.get("cancellation", {}).get("status") in CANCEL_UNCERTAIN:
-                raise ValueError("Cancellation outcome is pending or unknown. Refresh to reconcile; do not resend.")
-            with self.lock:
-                account_observation = self._account_observation
-            try:
-                verify_paper_configuration(self.gateway)
-                account = _payload(self.gateway.execute("alpaca", "get_account_info", {}))
-                if (
-                    not isinstance(account, dict)
-                    or not account.get("id")
-                    or account["id"] != self.store.snapshot()["paper_account_id"]
-                ):
-                    raise ValueError("Broker account identity changed or is missing.")
-            except Exception as exc:
-                raise ValueError(
-                    "A verified current paper account is required to cancel an order."
-                ) from exc
-            verified_at = now()
-            order = _payload(self.gateway.execute("alpaca", "get_order_by_client_id", {
-                "client_order_id": owned["client_order_id"]}))
-            with self.store.lock:
-                try:
-                    receipt = self._owned_receipt(owned, order)
-                except ValueError as exc:
-                    owned["reconciliation_error"] = str(exc)
-                    self.store.save()
-                    raise
-                self._accept_receipt(owned, receipt)
-                self.store.save()
-                if receipt["status"] in OWNED_TERMINAL:
-                    return {"status": receipt["status"]}
-                intent = copy.deepcopy(owned["submission_intent"])
-                prior_cancellation = copy.deepcopy(owned.get("cancellation"))
-            args = {"order_id": order_id}
-            cancellation = {"status": "intent", "account_id": account["id"],
-                            "client_order_id": owned["client_order_id"], "order_id": order_id,
-                            "arguments": copy.deepcopy(args), "created_at": verified_at}
-            intent_started = ready = False
-
-            def guard(persisted=False):
-                self._fresh(verified_at)
-                with self.lock:
-                    current = self._account_observation
-                    if current is not account_observation and (
-                            current is None or current["paper_verified"] is not True
-                            or current["account_id"] != account["id"]):
-                        raise ValueError("Newer account or paper-mode evidence contradicts cancellation verification.")
-                if (account["id"] != self.store.data["paper_account_id"]
-                        or owned.get("broker_order_id") != order_id
-                        or owned.get("submission_intent") != intent
-                        or owned.get("broker_receipt") != receipt
-                        or owned.get("status") != receipt["status"]
-                        or owned.get("reconciliation_error")
-                        or args != {"order_id": order_id}
-                        or owned.get("cancellation") != (cancellation if persisted else prior_cancellation)):
-                    raise ValueError("Owned order or verified account changed before cancellation.")
-                self._owned_receipt(owned, receipt)
-
-            def dispatch():
-                nonlocal intent_started, ready
-                with self.lock, self.store.lock:
-                    guard()
-                    intent_started = True
-                    owned["cancellation"] = copy.deepcopy(cancellation)
-                    self.store.save()
-                    guard(persisted=True)
-                    ready = True
-
-            try:
-                self.gateway.execute("alpaca", "cancel_order_by_id", args, on_dispatch=dispatch)
-                if not ready:
-                    raise ValueError("Transport did not verify the cancellation dispatch boundary.")
-                with self.store.lock:
-                    owned["cancellation"].update(status="requested", requested_at=now())
-                    self.store.save()
-            except Exception as exc:
-                if not intent_started:
-                    raise
-                with self.store.lock:
-                    owned["cancellation"].update(
-                        status="unknown", reason=("Cancellation outcome unknown. Refresh to reconcile; do not resend."
-                                                  if ready else "Cancellation was not dispatched; local persistence or validation failed."))
-                    self.store.save()
-                raise ValueError(owned["cancellation"]["reason"]) from exc
-        return {"status": "cancel_requested"}
-
-    def pause(self, paused):
-        if not isinstance(paused, bool):
-            raise ValueError("paused must be true or false.")
-        with self.execution_lock, self.store.lock:
-            self.store.data["paused"] = paused
-            self.store.save()
-        return {"paused": paused}
+        raise ValueError("Order creation unavailable: no Nautilus sizing policy is configured.")
 
     def close(self):
+        self.attention_monitor.close()
+        self.data_jobs.close()
+        self.runtime.stop()
         with self.store.lock:
             self.cancelled.update(
                 r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running"}

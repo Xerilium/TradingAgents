@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/lists.js" defer></script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/command-controls.js" defer></script>
+  <script src="/static/nautilus.js" defer></script>
 </head>
 <body>
   <a href="#main" class="skip-link">Skip to workspace</a>
@@ -32,7 +34,19 @@
         <div class="breadcrumb"><span id="universe-name">FANGMAN</span><span class="breadcrumb-slash">/</span><span id="page-label">Portfolio</span></div>
         <div class="topbar-actions"><span id="last-updated" class="muted">Waiting for connection</span><button id="refresh" class="button button-quiet button-small" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 8a7 7 0 0 1 11.6-3L20 8M4 16l2.3 3A7 7 0 0 0 18 16"/></svg><span>Refresh</span></button></div>
       </header>
+      <div id="order-status" class="notice" role="status">Checking order readiness…</div>
       <div id="notice" class="notice" role="status" hidden></div>
+      <details class="panel" aria-label="Nautilus runtime">
+        <summary>Nautilus connection · <span id="nautilus-status" role="status">Checking runtime</span></summary>
+        <div class="panel-header"><div><h2>TradingAgents research · NautilusTrader</h2>
+          <p>Nautilus connects account and order activity to Alpaca. Orders require explicit human approval and submission; cancellation and replacement require explicit human authorization.</p>
+          <p id="nautilus-account"></p><p id="nautilus-quote"></p>
+          <p>Nautilus owns current account state and configured index prices · Import coverage and discrepancies remain explicit · Research is advisory.</p>
+        </div><div class="button-group">
+          <button id="nautilus-start" class="button button-small" type="button">Start Nautilus</button>
+          <button id="nautilus-stop" class="button button-small" type="button">Stop Nautilus</button>
+        </div></div>
+      </details>
       <main id="main" tabindex="-1"><div class="initial-state"><div class="loading-bar"></div><h1>Opening your paper desk</h1><p>Connecting to your local TradingAgents service.</p></div></main>
       <footer class="workspace-footer"><span>Local workspace · maenifold MCP · Alpaca paper</span><span>Snapshot market data · USD</span></footer>
     </div>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from contextlib import closing
 import hashlib
 import html
 import json
@@ -15,9 +16,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from .app_database import ApplicationDatabase, StoreConflict
+
+
+class SourceEvidenceError(ValueError):
+    """A bounded, safe-to-display receipt-capture failure."""
+
 
 class DeskStore:
-    def __init__(self, directory: Path, defaults: dict):
+    def __init__(self, directory: Path, defaults: dict, *, migrate_legacy=False):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.path = self.directory / "desk.json"
@@ -31,13 +38,9 @@ class DeskStore:
             "paper_account_id": None,
             "config_revision": 0,
         }
-        if self.path.exists():
-            saved = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(saved, dict):
-                raise ValueError(
-                    "Paper journal is not an object; preserve it and restore a valid journal."
-                )
-            self.data.update(saved)
+        self.database = ApplicationDatabase(self.directory, self.data, migrate_legacy=migrate_legacy)
+        saved = self.database.read("journal")
+        self.data, self.revision = saved["data"], saved["revision"]
         for request in self.data["research_requests"]:
             interrupted = request["status"] == "preflight"
             if interrupted:
@@ -89,15 +92,6 @@ class DeskStore:
                                 attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
                         self._snapshot_call_evidence(run, "recovery_unknown", origin)
                     self.finalize_call_evidence(run, origin)
-        for proposal in self.data["proposals"]:
-            cancellation = proposal.get("cancellation", {})
-            if cancellation.get("status") == "intent":
-                cancellation.update(status="unknown", reason="Cancellation interrupted. Refresh to reconcile; do not resend.")
-            if proposal["status"] == "submitting":
-                proposal["status"] = "unknown"
-                proposal["reason"] = (
-                    "Submission interrupted. Refresh broker orders to reconcile; do not resubmit."
-                )
         self.save()
 
     def _recover_measurements(self, run):
@@ -169,6 +163,9 @@ class DeskStore:
 
     def snapshot(self, *, compact=False, run_id=None):
         with self.lock:
+            saved = self.database.read("journal")
+            if saved["revision"] != self.revision:
+                self.data, self.revision = saved["data"], saved["revision"]
             if compact:
                 data = copy.deepcopy({key: value for key, value in self.data.items() if key not in {"runs", "research_requests"}})
                 data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
@@ -227,21 +224,26 @@ class DeskStore:
 
     def save(self):
         with self.lock:
-            temporary = self.path.with_suffix(".tmp")
-            with temporary.open("w", encoding="utf-8") as stream:
-                json.dump(self.data, stream, ensure_ascii=False, indent=2, allow_nan=False)
-                stream.flush()
-                os.fsync(stream.fileno())
-            # Windows indexers can briefly hold the destination open. Retry
-            # only this local atomic rename; never repeat broker operations.
-            for attempt in range(3):
-                try:
-                    os.replace(temporary, self.path)
-                    break
-                except PermissionError:
-                    if attempt == 2:
-                        raise
-                    time.sleep(0.05 * (attempt + 1))
+            try:
+                saved = self.database.update("journal", self.revision, lambda _: self.data)
+                self.revision = saved["revision"]
+            except StoreConflict:
+                saved = self.database.read("journal")
+                self.data, self.revision = saved["data"], saved["revision"]
+                raise
+
+    @staticmethod
+    def read_existing(directory):
+        directory = Path(directory).resolve()
+        database = directory / "desk.sqlite3"
+        if database.exists():
+            import sqlite3
+            with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+                row = connection.execute("SELECT payload FROM app_records WHERE name='journal'").fetchone()
+                if row is None:
+                    raise ValueError("Saved database journal is missing")
+                return json.loads(row[0])
+        return json.loads((directory / "desk.json").read_text(encoding="utf-8"))
 
     def write_measurements(self, run_id, measurements):
         """Write once under the existing run report path; never replace prior evidence."""
@@ -440,7 +442,7 @@ class DeskStore:
                 evidence["terminal_observed_at"] = datetime.now(UTC).isoformat()
                 self._snapshot_call_evidence(run, "run_terminal", origin)
 
-    def _write_source_result(self, run_id, attempt_id, output, prefix="source"):
+    def _write_source_result(self, run_id, attempt_id, output, prefix="source", *, allow_pagination_cursor=False):
         import pandas as pd
 
         if str(UUID(run_id)) != run_id or str(UUID(attempt_id)) != attempt_id:
@@ -458,22 +460,24 @@ class DeskStore:
         else:
             raise TypeError("Unsupported source response type.")
         if len(payload) > 8 * 1024 * 1024:
-            raise ValueError("Source response exceeds evidence size limit.")
+            raise SourceEvidenceError("Provider receipt exceeds the 8 MiB evidence limit; reduce the requested page size.")
         # Screen bounded textual views only; successful artifacts keep the original bytes.
         # RSS can entity-escape JSON, which can itself contain escaped key delimiters.
         view = payload.decode("utf-8")  # Non-UTF-8 bodies are an explicit unsupported capture.
         marker = (r'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
-                  r'''["'\s]*[:=]|bearer\s+\S+|sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY''')
+                  r'''["'\s]*[:=]|bearer\s+\S+|(?<![\w-])sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY''')
         for _ in range(4):
-            if re.search(marker, view):
-                raise ValueError("Source response may contain credentials.")
+            # Only the known pagination field name is exempted, never its value or other token fields.
+            screened = re.sub(r'''(["'])next_page_token\1(?=\s*:)''', r'\1pagination_cursor\1', view) if allow_pagination_cursor else view
+            if re.search(marker, screened):
+                raise SourceEvidenceError("Secret screening withheld the provider receipt; inspect provider configuration without sharing credentials.")
             decoded = re.sub(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})',
                              lambda match: json.loads('"' + match.group() + '"'), html.unescape(view))
             if decoded == view:
                 break
             view = decoded
         else:
-            raise ValueError("Source response encoding exceeds screening depth.")
+            raise SourceEvidenceError("Provider receipt encoding exceeds the supported screening depth; report the source format without pasting its body.")
         relative = Path("reports") / run_id / f"{prefix}-{attempt_id}-{uuid4()}.bin"
         destination = self.directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)

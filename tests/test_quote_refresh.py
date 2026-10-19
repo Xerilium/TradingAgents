@@ -72,16 +72,16 @@ def test_research_context_has_observed_quote_and_excludes_historical_future_data
     market = {'quotes': normalize_quotes(raw), 'clock': {'is_open': True}, 'updated_at': 'captured'}
     today = datetime.now(ZoneInfo('America/New_York')).date().isoformat()
     context = research_quote_context('META', today, market)
-    assert '"price": 100' in context and '"valid_two_sided_quote": true' in context
+    assert '"price": 100' in context and '"invalid_quote": false' in context
     raw['META']['latestQuote']['ap'] = 0
     market['quotes'] = normalize_quotes(raw)
     assert market['quotes']['META']['invalid_quote']
-    assert '"valid_two_sided_quote": false' in research_quote_context('META', today, market)
+    assert '"invalid_quote": true' in research_quote_context('META', today, market)
     historical = research_quote_context('META', '2020-01-01', market)
     assert 'omitted for historical analysis' in historical and '100' not in historical
 
 
-def test_closed_session_reference_is_separate_from_execution_freshness(monkeypatch):
+def test_closed_session_context_preserves_source_time_and_disables_execution(monkeypatch):
     from tradingagents.web import service as service_module
     fixed = datetime.fromisoformat('2026-10-16T02:00:00+00:00')
     class Clock(datetime):
@@ -94,12 +94,12 @@ def test_closed_session_reference_is_separate_from_execution_freshness(monkeypat
     market = {'quotes': {'META': quote}, 'clock': {'is_open': False,
               'timestamp': '2026-10-15T22:00:00Z', 'next_open': '2026-10-16T13:30:00Z'}}
     context = service_module.research_quote_context('META', '2026-10-15', market)
-    assert '"reference_label": "market-closed reference"' in context
-    assert '"fresh_for_execution": false' in context
-    assert '"valid_two_sided_quote": false' in context
+    assert '"market_open": false' in context
+    assert '"timestamp": "2026-10-15T20:00:00Z"' in context and '"quote_timestamp": "2026-10-15T20:00:00Z"' in context
+    assert '"invalid_quote": false' in context and 'order creation and broker writes are disabled' in context and 'fresh_for_execution' not in context
     quote['timestamp'] = quote['quote_timestamp'] = '2026-10-14T20:00:00Z'
     context = service_module.research_quote_context('META', '2026-10-15', market)
-    assert '"reference_label": "older reference; session unverified"' in context
+    assert '"timestamp": "2026-10-14T20:00:00Z"' in context and '"quote_timestamp": "2026-10-14T20:00:00Z"' in context and '2026-10-15T20:00:00Z' not in context
 
 
 def test_research_worker_passes_and_persists_quote_context(desk):  # noqa: F811 - imported pytest fixture

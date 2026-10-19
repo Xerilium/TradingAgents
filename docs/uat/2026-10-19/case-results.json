@@ -1,0 +1,670 @@
+{
+  "phase": "Completed all feasible checks; independent scoped sign-off",
+  "counts": {
+    "PASS": 41,
+    "FAIL": 0,
+    "PARTIAL": 2,
+    "NOT EXERCISED": 6
+  },
+  "cases": [
+    {
+      "id": "U01",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "All five routes rendered again. Existing server was down; restarted saved configuration and used normal HTTP tab. No security bypass.",
+      "evidence": [
+        "../uat-remediation-20261018/overview.txt",
+        "../uat-remediation-20261018/historical-research.txt",
+        "../uat-remediation-20261018/orders-final.txt",
+        "../uat-remediation-20261018/settings-reloaded.txt",
+        "../uat-remediation-20261018/journal-note-reloaded.txt",
+        "final-overview.txt",
+        "orders-final.txt",
+        "aapl-review-final.txt",
+        "existing-failed-research.txt",
+        "keyboard-proposal-rejected.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U02",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Current market-open Alpaca paper account is connected through Nautilus 1.231.0, in sync, with $100,000 cash/equity/buying power and zero positions/open orders.",
+      "evidence": [
+        "../uat-remediation-20261018/overview.txt",
+        "final-overview.txt",
+        "orders-final.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U03",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "All 503 configured rows have numeric latest IEX prices with event ages. Market is open, with zero missing prices. Optional age policy remains unset, so zero policy-stale does not mean all ticks are contemporaneous.",
+      "evidence": [
+        "../uat-remediation-20261018/price-coverage.json",
+        "../uat-remediation-20261018/overview.txt",
+        "final-price-coverage.json",
+        "final-overview.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U04",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Adobe/MSFT searches match correct stocks; no-match text and clear return503 rows.",
+      "evidence": [
+        "../uat-remediation-20261018/search.json"
+      ],
+      "at": "2026-10-18T20:47:18.624Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U05",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "All503numeric Price/Change% rows ascend correctly; saved-research plus minimum2%movement returnsMETA.",
+      "evidence": [
+        "../uat-remediation-20261018/sort-filter.json"
+      ],
+      "at": "2026-10-18T20:47:18.624Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U06",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Created labelled2-member list, removed/readded MSFT, verified persistence, then emptied list; named emptyUAT list retained.",
+      "evidence": [
+        "../uat-remediation-20261018/list-columns-reloaded.txt",
+        "../uat-remediation-20261018/list-member-removed.txt",
+        "../uat-remediation-20261018/list-empty.txt"
+      ],
+      "at": "2026-10-18T20:48:09.997Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U07",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Hide age/reorder Change% persisted on reload and second tab. Defaults restored.",
+      "evidence": [
+        "../uat-remediation-20261018/list-columns-reloaded.txt",
+        "../uat-remediation-20261018/second-tab.txt",
+        "../uat-remediation-20261018/columns-restored.txt"
+      ],
+      "at": "2026-10-18T20:48:09.998Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U08",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Merge of accepted mixed-file rows into the draft was exercised: 503 unique symbols and exact membership unchanged; draft discarded. Prior Replace/import validation retained.",
+      "evidence": [
+        "../uat-remediation-20261018/mixed-import.txt",
+        "../uat-remediation-20261018/full-import-preview.txt",
+        "merge-import.json",
+        "merge-import.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U09",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Full503 index imported, saved, reloaded and exported through UI; configured models retained.",
+      "evidence": [
+        "../uat-remediation-20261018/settings-reloaded.txt",
+        "../uat-remediation-20261018/config-reloaded.json",
+        "C:/Users/brett/Downloads/stock-index (3).csv"
+      ],
+      "at": "2026-10-18T20:58:56.701Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U10",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Second actual tab read the saved2-member watchlist and changed columns; no concurrent approval attempted.",
+      "evidence": [
+        "../uat-remediation-20261018/second-tab.txt"
+      ],
+      "at": "2026-10-18T20:47:52.404Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U11",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Full-account holdings and outside-universe filter show honest zero positions and explicit funds/totals. Export coveredU34.",
+      "evidence": [
+        "../uat-remediation-20261018/holdings.txt",
+        "../uat-remediation-20261018/holdings-outside.txt"
+      ],
+      "at": "2026-10-18T20:48:21.131Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U12",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Latest/older reports readable; older AAPL run61072a19revision17 retained through human-proposal transition.",
+      "evidence": [
+        "../uat-remediation-20261018/historical-research.txt",
+        "../uat-remediation-20261018/aapl-saved-chart.txt"
+      ],
+      "at": "2026-10-18T20:53:03.544Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U13",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Enter on the actual October 15 SVG bar changed the selected session from October 16 and displayed exact OHLCV. Saved range/date/indicator source is visible; unknown adjustment is explicit. Native mouse hover was not exercised; keyboard/title access was established.",
+      "evidence": [
+        "../uat-remediation-20261018/aapl-saved-chart.txt",
+        "chart-keyboard.json",
+        "chart-keyboard.txt",
+        "aapl-review-final.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U14",
+      "status": "PASS",
+      "previous": "PARTIAL",
+      "observation": "Thesis/opposing views, explicit unknowns and dated agent claims are visible. September 16/October 16 SMA and October 16 close matched immutable inputs independently; 86 MSFT news provenance records were verified. No blanket claim that all narrative numbers are mapped or all supplementary categories exist.",
+      "evidence": [
+        "../uat-remediation-20261018/historical-research.txt",
+        "../uat-remediation-20261018/aapl-saved-chart.txt",
+        "../uat-remediation-20261018/existing-msft-news.txt",
+        "aapl-review-final.txt",
+        "aapl-sma-september.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh browser plus independent saved-artifact comparison"
+    },
+    {
+      "id": "U15",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Investor note persisted then restored blank. Historical AAPL run61072a19 revision17 now saves needs_review plus labelled note and persists after full browser reload and explicit re-selection; advisory source-review gap remains explicit, does not reject saving.",
+      "evidence": [
+        "../uat-remediation-20261018/note-review-reloaded.txt",
+        "../uat-remediation-20261018/historical-review-fixed-reloaded.txt",
+        "../uat-remediation-20261018/historical-review-persisted.json"
+      ],
+      "at": "2026-10-18T21:02:41.133Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U16",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "MSFT and ADBE legacy caches expose501actual daily bars, dated OHLCV and sufficient current coverage; ADBE range/date controls work. No new agent or history job required.",
+      "evidence": [
+        "../uat-remediation-20261018/msft-legacy-history.txt",
+        "../uat-remediation-20261018/adbe-legacy-history.txt",
+        "../uat-remediation-20261018/adbe-dated-chart.txt"
+      ],
+      "at": "2026-10-18T20:52:09.471Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U17",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Configured capabilities now reports503/503 complete histories and0missing using retained authoritative calendar, without another503-stock data job. Per-stock detail checked below.",
+      "evidence": [
+        "../uat-remediation-20261018/capabilities.txt"
+      ],
+      "at": "2026-10-18T20:46:20.667Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U18",
+      "status": "PASS",
+      "previous": "PARTIAL",
+      "observation": "Reproduced 1456-to-0 scroll regression. After the five-line fix, 1244 was retained across Refresh and later polling. Filtered Adobe return retained context; filter change resets scroll to zero. Selected run/range/date and unsaved note were preserved. Text highlighting is not an added requirement.",
+      "evidence": [
+        "../uat-remediation-20261018/review-refresh-settled.txt",
+        "table-scroll-refresh.json",
+        "scroll-fix.diff",
+        "table-scroll-fixed.json",
+        "table-scroll-fixed.png",
+        "table-passive-poll.json",
+        "filter-return-fixed.json",
+        "review-context.json",
+        "review-context.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U19",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Shared selection gives exact AAPL/MSFT two-stock preflight; clear disables Run; singleAAPL preflight also opened and dismissed with models/date/usage disclosure. No Start action.",
+      "evidence": [
+        "../uat-remediation-20261018/research-selection-fixed.txt",
+        "../uat-remediation-20261018/research-selection-cleared.txt",
+        "../uat-remediation-20261018/single-research-preflight.txt"
+      ],
+      "at": "2026-10-18T21:03:32.107Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U20",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Explicit AAPL60second quote-age rule triggered from real retained quote timestamp, acknowledged0unread, paused and persisted through app restart. Existing monitor timestamps/gap disclosure visible; continuous downtime coverage not claimed.",
+      "evidence": [
+        "../uat-remediation-20261018/alert-triggered.txt",
+        "../uat-remediation-20261018/alert-paused.txt"
+      ],
+      "at": "2026-10-18T21:03:02.851Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U21",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Blank optional rationale/unlinked BUY1MSFT LIMIT100 preview shows principal100/cash99900; quantity2 matching preview also verified.",
+      "evidence": [
+        "../uat-remediation-20261018/limit-preview.txt",
+        "../uat-remediation-20261018/preview-matched.json"
+      ],
+      "at": "2026-10-18T20:49:23.424Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U22",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "MARKET preview uses dated IEX last trade528.99, estimated cash99471.01 and unknown execution price/fees.",
+      "evidence": [
+        "../uat-remediation-20261018/market-preview.txt"
+      ],
+      "at": "2026-10-18T20:50:59.884Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U23",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Blank/zero/negative/fractional quantities and negative limit rejected with settled explicit messages; no invalid drafts saved.",
+      "evidence": [
+        "../uat-remediation-20261018/quantity-validation.json",
+        "../uat-remediation-20261018/invalid-limit.txt"
+      ],
+      "at": "2026-10-18T20:50:39.353Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U24",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Million-share buy reports negative cash/affordability condition; SELL1against0holdings reports shorting unsupported and excludes sale proceeds from cash.",
+      "evidence": [
+        "../uat-remediation-20261018/unaffordable-preview.txt",
+        "../uat-remediation-20261018/sell-without-holdings.txt"
+      ],
+      "at": "2026-10-18T20:51:12.379Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U25",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Existing proposal lifecycle results retained. New labelled ADBE keyboard draft was saved and rejected at revision 2; no approval/order.",
+      "evidence": [
+        "../uat-remediation-20261018/proposal-saved.txt",
+        "../uat-remediation-20261018/proposal-deferred.txt",
+        "../uat-remediation-20261018/journal-note-reloaded.txt",
+        "../uat-remediation-20261018/proposal-history.txt",
+        "keyboard-proposal-rejected.txt",
+        "order-check-passed.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U26",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "All policy states initially unset; temporary99.95%cash rule flagged100buy, then was restored unset. Matching basket at policyrevision4 no longer shows reserve violation.",
+      "evidence": [
+        "../uat-remediation-20261018/cash-rule-active.txt",
+        "../uat-remediation-20261018/policy-restored.json",
+        "../uat-remediation-20261018/basket-preview.txt"
+      ],
+      "at": "2026-10-18T20:54:47.972Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U27",
+      "status": "PARTIAL",
+      "previous": "PARTIAL",
+      "observation": "Exact quantity/weight/partial-completion previews retained. Real working-order conflicts and sale-funded-buy branches lack authentic holdings/orders; source inspection is not an executed pass.",
+      "evidence": [
+        "../uat-remediation-20261018/basket-preview.txt",
+        "../uat-remediation-20261018/basket-partial.txt",
+        "../uat-remediation-20261018/weight-preview.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Retained browser previews plus fresh evidence inventory"
+    },
+    {
+      "id": "U28",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Labelled basket and linked proposals saved/deferred/rejected through revisions1–3 without approval/submission.",
+      "evidence": [
+        "../uat-remediation-20261018/basket-saved.txt",
+        "../uat-remediation-20261018/basket-deferred.txt",
+        "../uat-remediation-20261018/weight-preview.txt"
+      ],
+      "at": "2026-10-18T20:55:57.149Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U29",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Market-open account is connected, Nautilus is in sync, and orders are not paused. Exact BUY 1 ADBE LIMIT 100 saved revision showed server checks pass before approval. No approved order exists because the operator did not approve; no invented block.",
+      "evidence": [
+        "../uat-remediation-20261018/orders-ready.txt",
+        "orders-final.txt",
+        "order-check-passed.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U30",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Explicit Pause persisted after browser reload; Resume restored unpaused state and survived final app restart; no orders cancelled.",
+      "evidence": [
+        "../uat-remediation-20261018/orders-paused.txt",
+        "../uat-remediation-20261018/orders-final.txt"
+      ],
+      "at": "2026-10-18T21:03:03.063Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U31",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Stopped account values became unavailable while saved AAPL report remained readable; Start reconnected same account and503prices.",
+      "evidence": [
+        "../uat-remediation-20261018/stopped-account.txt",
+        "../uat-remediation-20261018/stopped-research.txt",
+        "../uat-remediation-20261018/overview.txt"
+      ],
+      "at": "2026-10-18T20:46:31.063Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U32",
+      "status": "PARTIAL",
+      "previous": "PARTIAL",
+      "observation": "Retained flat $100,000 interval reports zero returns. Older actual +$100,000 JNLC is unclassified and unsupported interval returns/drawdown are withheld. This corrects the prior no-activity claim. Full cashflow/fill accounting remains unestablished; benchmark is optional.",
+      "evidence": [
+        "../uat-remediation-20261018/performance-existing.txt",
+        "historical-activity.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh browser and retained flat-account results; independent artifact comparison"
+    },
+    {
+      "id": "U33",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Journal shows labelled ADBE rejected revision 2 with no approval, broker order or fills; existing history preserved.",
+      "evidence": [
+        "../uat-remediation-20261018/journal-note-reloaded.txt",
+        "../uat-remediation-20261018/journal-list.txt",
+        "keyboard-proposal-rejected.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U34",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Fresh UI downloads for holdings/activity/performance/selected decision and503index parsed and independently matched source records; known-empty holdings/activity rows retain conservative unavailable wording.",
+      "evidence": [
+        "../uat-remediation-20261018/downloads.json",
+        "../uat-remediation-20261018/artifact-validation.md"
+      ],
+      "at": "2026-10-18T21:03:03.069Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U35",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Created and downloaded consistent backup, then inspected exact archive in restore preview (3610files and savedhistory). No restore applied. Temporary account-observation OperationalError during backup recovered to connected/reconciled without restart; recorded as operational observation. Artifact integrity reviewed separately.",
+      "evidence": [
+        "../uat-remediation-20261018/launch-diagnostics.txt",
+        "../uat-remediation-20261018/valid-backup-preview.txt",
+        "../uat-remediation-20261018/downloads.json",
+        "../uat-remediation-20261018/orders-ready.txt"
+      ],
+      "at": "2026-10-18T21:01:06.033Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U36",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Malformed ZIP rejected with actionable invalid/damaged backup archive message; active workspace unchanged.",
+      "evidence": [
+        "../uat-remediation-20261018/invalid-archive-fixed.txt"
+      ],
+      "at": "2026-10-18T20:46:05.233Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U37",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Diagnostics downloaded and independently checked for credential values; connected/reconciled100k0positions0orders,503history coverage and existing launch guidance inspectable.",
+      "evidence": [
+        "../uat-remediation-20261018/launch-diagnostics.txt",
+        "../uat-remediation-20261018/capabilities.txt",
+        "../uat-remediation-20261018/artifact-validation.md"
+      ],
+      "at": "2026-10-18T21:03:03.069Z",
+      "coverage": "Retained 18 October result"
+    },
+    {
+      "id": "U38",
+      "status": "PASS",
+      "previous": "PARTIAL",
+      "observation": "Keyboard search/select/open/preview/save/reject completed with visible focus. 1024×768 and 768×800 layouts were readable without page horizontal overflow. No accessibility certification or actual broker action is claimed.",
+      "evidence": [
+        "../uat-remediation-20261018/orders-final.txt",
+        "../uat-remediation-20261018/preview-fixed.png",
+        "keyboard-review.txt",
+        "keyboard-review.png",
+        "desktop-1024.png",
+        "orders-1024.png",
+        "orders-1024.txt",
+        "layout-768.json",
+        "orders-768.png",
+        "order-check-passed.txt",
+        "keyboard-proposal-rejected.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U39",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Routes and refresh worked; final production console has no warnings/errors. Isolated restore maintenance caused a temporary snapshot GET timeout, resolved to success; this is not continuous availability proof.",
+      "evidence": [
+        "../uat-remediation-20261018/browser-console.json",
+        "../uat-remediation-20261018/orders-final.txt",
+        "../uat-remediation-20261018/valid-backup-preview.txt",
+        "browser-console.json",
+        "isolated-ui-restore.txt",
+        "restore-security.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh October19 actual browser evidence"
+    },
+    {
+      "id": "U40",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "503-stock index/config retained; filters clear, selection zero, viewport reset. All ten research run contents are unchanged; all ten optional policies match revision 4 exactly and remain unset. One labelled ADBE rejected record retained. No approvals, commands, trades or research. Only five product lines authored and one removed in app.js; no new tests. Isolated port 8099 stopped; production connected.",
+      "evidence": [
+        "../uat-remediation-20261018/final-overview.txt",
+        "../uat-remediation-20261018/changed-source-hashes.json",
+        "../uat-remediation-20261018/config-reloaded.json",
+        "../uat-remediation-20261018/policy-restored.json",
+        "../uat-remediation-20261018/alert-paused.txt",
+        "../uat-remediation-20261018/orders-final.txt",
+        "final-overview.txt",
+        "final-overview.png",
+        "final-price-coverage.json",
+        "remaining-evidence.md",
+        "restore-security.md",
+        "scroll-fix.diff"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh browser plus independent preservation comparison"
+    },
+    {
+      "id": "U41",
+      "status": "NOT EXERCISED",
+      "previous": "NOT EXERCISED",
+      "observation": "Actual and retained account has no positions or fills. Populated holdings, reductions and closing were not manufactured.",
+      "evidence": [
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh read-only evidence inventory; actual event branch not executed"
+    },
+    {
+      "id": "U42",
+      "status": "NOT EXERCISED",
+      "previous": "NOT EXERCISED",
+      "observation": "Exact approval, invalidation and concurrency execution were not performed under the no-approval boundary. Visible exact-order review and successful pre-approval checks do not pass approval execution.",
+      "evidence": [
+        "order-check-passed.txt",
+        "keyboard-proposal-rejected.txt"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh visible controls; executed approval excluded"
+    },
+    {
+      "id": "U43",
+      "status": "NOT EXERCISED",
+      "previous": "NOT EXERCISED",
+      "observation": "Submit, Cancel, Replace, fills, duplicates and the full paper cycle require prohibited broker mutations. Existing connection/pre-approval passes do not establish broker writes.",
+      "evidence": [
+        "orders-final.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Broker mutation excluded"
+    },
+    {
+      "id": "U44",
+      "status": "NOT EXERCISED",
+      "previous": "NOT EXERCISED",
+      "observation": "No genuine unknown-order, halt or corporate-action event; no new fault framework. Genuine JNLC was separately inspected and is not an unknown-execution event.",
+      "evidence": [
+        "historical-activity.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh evidence inventory; exceptional execution absent"
+    },
+    {
+      "id": "U45",
+      "status": "NOT EXERCISED",
+      "previous": "NOT EXERCISED",
+      "observation": "Actual +$100,000 JNLC exists but is unclassified; its handling was displayed. Verified deposit/dividend/filled-order accounting is not established. No actual fills/dividends exist in the retained records.",
+      "evidence": [
+        "historical-activity.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh real-activity display branch only; accounting acceptance not executed"
+    },
+    {
+      "id": "U46",
+      "status": "PASS",
+      "previous": "NOT EXERCISED",
+      "observation": "Actual browser upload, inspection, confirmation and restore in an isolated copy succeeded. Independent comparison recovered the 503-stock configuration, saved records and 3,608 exact immutable hashes. Production was never restored, the isolated broker was never started, and the owned server was stopped.",
+      "evidence": [
+        "isolated-ui-restore.txt",
+        "isolated-ui-restore.png",
+        "restore-security.md",
+        "isolated-restore-security/ui-after.json"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh actual browser isolated restore plus independent artifact comparison"
+    },
+    {
+      "id": "U47",
+      "status": "NOT EXERCISED",
+      "previous": "NOT EXERCISED",
+      "observation": "Existing genuine failed and completed runs were inspected; no new queued/running/cancelled transitions. Two existing isolated cancellation tests failed in obsolete Nautilus account fixture setup before queueing. They establish neither product failure nor pass; no new tests were written.",
+      "evidence": [
+        "existing-failed-research.txt",
+        "remaining-evidence.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh existing-history UI; new job lifecycle excluded"
+    },
+    {
+      "id": "U48",
+      "status": "PASS",
+      "previous": "NOT EXERCISED",
+      "observation": "All 19 isolated local request-protection checks passed. Credential ACL permits user/SYSTEM/Administrators. Five known secret values were absent from 3,611 archive entries and six exports. Bounded engineering evidence, not UI-only or comprehensive security certification.",
+      "evidence": [
+        "restore-security.md"
+      ],
+      "at": "2026-10-19T15:26:09.356Z",
+      "coverage": "Fresh isolated engineering checks and permission inspection"
+    },
+    {
+      "id": "U49",
+      "status": "PASS",
+      "previous": "PASS",
+      "observation": "Quantity and price edits discard obsolete previews; fresh previews match BUY2MSFT/200 and BUY1ADBE LIMIT101/101. Switching to AAPL leaves its blank independent form without ADBE impact.",
+      "evidence": [
+        "../uat-remediation-20261018/preview-race-discarded.json",
+        "../uat-remediation-20261018/preview-matched.json",
+        "../uat-remediation-20261018/price-edit-discarded.json",
+        "../uat-remediation-20261018/price-edit-matched.json",
+        "../uat-remediation-20261018/preview-stock-switch.json"
+      ],
+      "at": "2026-10-18T20:52:23.584Z",
+      "coverage": "Retained 18 October result"
+    }
+  ],
+  "baseline": "C:/src/printerv2/evidence/uat-remediation-20261018/case-results.json",
+  "scope": "Consolidated retained October18 results plus explicitly identified fresh October19 evidence. Not full broker-cycle acceptance.",
+  "independentReview": "independent-review.md"
+}

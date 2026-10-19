@@ -1,10 +1,38 @@
 # Paper trading desk
 
-The desk is a local workspace for researching a stock universe and placing
-reviewed Alpaca paper orders through Maenifold. It starts with FANGMAN: META,
-AAPL, NVDA, GOOGL, MSFT, AMZN, and NFLX. There is no frontend build step.
+## Current assembly: Nautilus paper desk
 
-## Start
+Open Start-TradingDesk.cmd from this project. It uses Launch-TradingDesk.py and
+tradingdesk.launch.json with the existing approved Python environments and
+explicit application/history directories. It requires an already migrated SQLite
+store; it does not install dependencies, migrate data, change PowerShell policy
+or take over a mismatched running service.
+
+Keep tradingdesk.launch.json local. Its fields are application, history,
+native_python, credentials_file and port; the four path values identify existing
+local directories/files. Credentials and runtime records are not repository assets.
+
+The configured browser address is http://127.0.0.1:8098. Start/stop the native
+worker through the browser. The official Nautilus v1 cache runs in memory.
+SQLite application-only backup/restore remains available in Health.
+
+The normal desk supports explicit per-order approval and submission through
+Nautilus to Alpaca, plus authorized cancellation and replacement. Approval alone
+does not submit an order. The operator's pause choice is separate from approval.
+The optional --browse-only flag selects restricted review mode, disabling new
+research and order authority; the normal launcher does not set that flag.
+Current account observations, local human proposals, saved research, journal
+and stock evidence remain available. Saved
+research inputs never fall back to a live fetch; current history uses the separate
+current-market data workflow.
+
+See [the signed-off UAT record](uat/2026-10-19/README.md) for exercised behavior
+and the approval, broker-event and new-research paths that were not executed.
+
+## Legacy setup (superseded for this assembly)
+
+The execution and installation instructions below describe the previous desk.
+They are not the launch procedure or execution authority for this assembly.
 
 Use the project's Python environment. Install the optional dependencies when
 setting up a new checkout:

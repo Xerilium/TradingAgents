@@ -32,6 +32,7 @@ dependencies = [
 paper = [
     "mcp>=1.26,<2",
     "jsonschema>=4.23,<5",
+    "websockets==15.0.1",
 ]
 dev = [
     "ruff>=0.16",
