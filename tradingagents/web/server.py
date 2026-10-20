@@ -373,7 +373,7 @@ def main():
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--data-dir", type=Path, default=Path.cwd() / ".paper-desk")
     parser.add_argument("--mcp-endpoint", default="http://localhost:8080/mcp")
-    parser.add_argument("--nautilus-python", type=Path, default=Path(r"C:\src\printerv2\.venv-nautilus-v1\Scripts\python.exe"))
+    parser.add_argument("--nautilus-python", type=Path, default=Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe")
     parser.add_argument("--alpaca-credentials-file", type=Path,
                         default=Path(r"C:\src\printer\apps\tradingagents\.env"))
     parser.add_argument("--browse-only", action="store_true", help="Browse saved runs and prepare local human proposals; disable research, native order drafts, approval and admission")

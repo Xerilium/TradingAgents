@@ -224,3 +224,9 @@ reports/
 .paper-desk/
 
 .gate/
+
+# Local runtime and preserved workspace data
+.local-workspace/
+.venv-nautilus-v1/
+tradingdesk.launch.json
+.runtime-stage/

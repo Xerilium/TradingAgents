@@ -179,7 +179,7 @@ class DeskService:
             except (OSError, ValueError) as exc:
                 self.history_error = f"Saved history unavailable ({type(exc).__name__})"
         self.runtime = runtime or NautilusRuntime(
-            Path(directory) / "nautilus", r"C:\src\printerv2\.venv-nautilus-v1\Scripts\python.exe", DEFAULT_CREDENTIALS)
+            Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe", DEFAULT_CREDENTIALS)
         DeskConfig.model_validate(self.store.data["config"])
         self.runtime.configure(self.store.data["config"]["universe"])
         self.gateway = gateway or MaenifoldGateway(timeout=90)
