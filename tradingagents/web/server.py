@@ -260,7 +260,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be a JSON object.")
             service = self.server.service
             path = urlsplit(self.path).path
-            if not (path == "/api/reporting" and data.get("action") == "collect"):
+            if not (path == "/api/reporting" and data.get("action") == "collect" or
+                    path == "/api/recovery" and data.get("action") in {"preview", "backup"}):
                 service.maintenance.acquire()
                 maintenance_guard = service.maintenance
             if getattr(service, "recovery_only", False) and path != "/api/recovery":

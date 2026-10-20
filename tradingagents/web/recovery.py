@@ -170,8 +170,10 @@ def backup(service):
     staged_database = directory / (identity + ".sqlite3")
     try:
         files = {}
-        # The writer reservation spans the snapshot and reference collection.
-        with service.store.database.transaction():
+        # Capture one generation; immutable artifact reads and compression need no writer lock.
+        with service.maintenance, service.store.lock, service.store.database.transaction():
+            if any(not future.done() for future in service.research_futures | service.data_jobs.futures):
+                raise ValueError("Research/data writers are active. Wait for them to finish before backup")
             with closing(sqlite3.connect(service.store.database.path)) as source, closing(sqlite3.connect(staged_database)) as target:
                 source.backup(target)
                 target.commit()
@@ -193,35 +195,36 @@ def backup(service):
                 validate_journal(history)
                 files["history/desk.json"] = history_raw
                 scopes.append(("history", service.history_directory, history))
-            for scope, root, value in scopes:
-                for relative, payload in artifacts(root, value):
-                    files[scope + "/" + relative] = payload
-            for name in ("constituents.csv", "sp500-constituents.csv"):
-                path = service.store.directory / name
-                if path.is_file() and not path.is_symlink():
-                    files["application/" + name] = path.read_bytes()
-            if history_json_source and history_path.read_bytes() != history_raw:
-                raise ValueError("External history changed during backup; stop its writers before retrying")
-            if len(files) > MAX_FILES - 1 or sum(map(len, files.values())) > MAX_EXPANDED:
-                raise ValueError("Application backup exceeds the supported size/count boundary")
-            manifest = {"format": "tradingagents-application-backup", "version": 1,
-                        "database_version": ApplicationDatabase.VERSION, "created_at": datetime.now(UTC).isoformat(),
-                        "records": sorted(journal_records), "history_included": history_raw is not None,
-                        "credentials_included": False, "broker_history_restorable": False,
-                         "native_cache_included": False, "native_durability": "in_memory",
-                        "files": {name: {"sha256": sha(payload), "bytes": len(payload)} for name, payload in files.items()}}
-            buffer = io.BytesIO()
-            with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-                archive.writestr("manifest.json", json.dumps(manifest, allow_nan=False))
-                for name, payload in files.items():
-                    archive.writestr(name, payload)
-            payload = buffer.getvalue()
-            if len(payload) > MAX_ARCHIVE:
-                raise ValueError("Compressed application backup exceeds 64 MiB")
-            with destination.open("xb") as stream:
-                stream.write(payload)
-                stream.flush()
-                os.fsync(stream.fileno())
+            application_directory = service.store.directory
+        for scope, root, value in scopes:
+            for relative, payload in artifacts(root, value):
+                files[scope + "/" + relative] = payload
+        for name in ("constituents.csv", "sp500-constituents.csv"):
+            path = application_directory / name
+            if path.is_file() and not path.is_symlink():
+                files["application/" + name] = path.read_bytes()
+        if history_json_source and history_path.read_bytes() != history_raw:
+            raise ValueError("External history changed during backup; stop its writers before retrying")
+        if len(files) > MAX_FILES - 1 or sum(map(len, files.values())) > MAX_EXPANDED:
+            raise ValueError("Application backup exceeds the supported size/count boundary")
+        manifest = {"format": "tradingagents-application-backup", "version": 1,
+                    "database_version": ApplicationDatabase.VERSION, "created_at": datetime.now(UTC).isoformat(),
+                    "records": sorted(journal_records), "history_included": history_raw is not None,
+                    "credentials_included": False, "broker_history_restorable": False,
+                     "native_cache_included": False, "native_durability": "in_memory",
+                    "files": {name: {"sha256": sha(payload), "bytes": len(payload)} for name, payload in files.items()}}
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, allow_nan=False))
+            for name, payload in files.items():
+                archive.writestr(name, payload)
+        payload = buffer.getvalue()
+        if len(payload) > MAX_ARCHIVE:
+            raise ValueError("Compressed application backup exceeds 64 MiB")
+        with destination.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
     finally:
         for suffix in ("", "-wal", "-shm"):
             staged_database.with_name(staged_database.name + suffix).unlink(missing_ok=True)
@@ -288,8 +291,9 @@ def stage(service, encoded):
     # Preserve the uploaded authority exactly; sanitization affects only a later staged copy.
     (root / "original.zip").write_bytes(payload)
     token = str(uuid4())
-    service.restore_candidates[token] = {"id": identity, "archive_sha256": sha(payload),
-                                         "store_revision": service.store.revision, "manifest": manifest}
+    with service.store.lock:
+        service.restore_candidates[token] = {"id": identity, "archive_sha256": sha(payload),
+                                             "store_revision": service.store.revision, "manifest": manifest}
     return {"token": token, "archive_sha256": sha(payload), "manifest": manifest,
             "warning": "Restores local records only. Broker history is unchanged; approvals will be invalidated and fresh reconciliation is required."}
 

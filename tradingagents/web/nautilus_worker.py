@@ -913,7 +913,7 @@ def main():
                 await asyncio.sleep(1)
 
         publisher = asyncio.create_task(publish())
-        publisher.add_done_callback(lambda _: handle.stop())
+        publisher.add_done_callback(lambda task: None if task.cancelled() else handle.stop())
         try:
             await node.run_async()
         finally:

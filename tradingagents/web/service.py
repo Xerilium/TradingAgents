@@ -464,11 +464,11 @@ class DeskService:
         from .recovery import backup, restore, stage
         if any(not future.done() for future in self.research_futures | self.data_jobs.futures):
             raise ValueError("Research/data writers are active. Wait for them to finish or stop their jobs before backup/restore")
+        if request.get("action") == "preview":
+            return stage(self, request.get("archive"))
+        if request.get("action") == "backup":
+            return backup(self)
         with self.store.lock:
-            if request.get("action") == "backup":
-                return backup(self)
-            if request.get("action") == "preview":
-                return stage(self, request.get("archive"))
             if request.get("action") == "restore":
                 return restore(self, request.get("token"), request.get("confirmation"))
         raise ValueError("Choose backup, preview or restore")
