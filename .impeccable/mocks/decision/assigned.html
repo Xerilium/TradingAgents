@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Committee Minutes — first viewport</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1440px; height: 900px; overflow: hidden; background: #f7f5f0; color: #16181d; font-family: "Segoe UI", system-ui, sans-serif; }
+  .topbar { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #d8d4ca; background: #f7f5f0; }
+  .brand { font-size: 13px; letter-spacing: .18em; font-weight: 600; }
+  .brand small { color: #8a8f98; letter-spacing: .12em; margin-left: 12px; font-weight: 400; }
+  .chip { font-size: 12px; letter-spacing: .12em; border: 1px solid #16181d; padding: 5px 12px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; background: #c2402a; border-radius: 50%; }
+  .phaseband { height: 52px; display: flex; align-items: center; gap: 24px; padding: 0 24px; border-bottom: 1px solid #d8d4ca; background: #efece4; }
+  .phase { font-size: 13px; letter-spacing: .1em; font-weight: 600; }
+  .phase b { color: #c2402a; }
+  .ticks { display: flex; gap: 3px; margin-left: auto; }
+  .tick { width: 26px; height: 18px; border: 1px solid #b9b4a6; font-size: 9px; display: flex; align-items: center; justify-content: center; color: #8a8f98; }
+  .tick.done { background: #16181d; color: #f7f5f0; border-color: #16181d; }
+  .tick.live { border: 2px solid #c2402a; color: #c2402a; font-weight: 700; }
+  .body { display: flex; height: 792px; }
+  .rail { width: 236px; border-right: 1px solid #d8d4ca; padding: 18px 16px; }
+  .rail h3 { font-size: 10px; letter-spacing: .2em; color: #8a8f98; margin-bottom: 12px; }
+  .agent { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 4px; border-bottom: 1px dotted #d8d4ca; }
+  .st { width: 7px; height: 7px; border-radius: 50%; background: #b9b4a6; flex: none; }
+  .st.done { background: #2e7d4f; }
+  .st.speaking { background: #c2402a; }
+  .agent.speaking { font-weight: 700; }
+  .minute { flex: 1; padding: 22px 28px; overflow: hidden; }
+  .minute h2 { font-size: 11px; letter-spacing: .2em; color: #8a8f98; margin-bottom: 16px; }
+  .entry { font-family: "Courier Prime", monospace; font-size: 13.5px; line-height: 1.5; padding: 9px 0; border-bottom: 1px solid #d8d4ca; display: grid; grid-template-columns: 74px 118px 1fr; gap: 12px; }
+  .entry .t { color: #8a8f98; font-size: 12px; }
+  .entry .who { font-weight: 700; letter-spacing: .04em; }
+  .entry.faint { opacity: .38; }
+  .entry.open { border-bottom: none; padding-bottom: 0; }
+  .entry.open .who { color: #c2402a; }
+  .caret { display: inline-block; width: 8px; height: 15px; background: #c2402a; vertical-align: -2px; }
+  .dur { color: #8a8f98; font-size: 11px; margin-left: 8px; }
+  .side { width: 300px; border-left: 1px solid #d8d4ca; padding: 20px; }
+  .cat { font-family: "Courier Prime", monospace; font-size: 11px; letter-spacing: .14em; color: #8a8f98; }
+  .sym { font-size: 30px; font-weight: 700; margin-top: 2px; }
+  .last { font-size: 15px; margin-top: 6px; }
+  .last b { color: #2e7d4f; }
+  .spark { margin: 14px 0; border: 1px solid #d8d4ca; background: #fff; padding: 8px; }
+  .rating { border: 2px dashed #b9b4a6; text-align: center; padding: 14px; margin-top: 14px; font-size: 12px; letter-spacing: .18em; color: #8a8f98; }
+  .tally { display: flex; border: 1px solid #16181d; margin-top: 14px; font-size: 12px; }
+  .tally div { flex: 1; text-align: center; padding: 8px; letter-spacing: .1em; }
+  .tally div + div { border-left: 1px solid #16181d; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">TRADINGAGENTS <small>COMMITTEE RECORD</small></div>
+    <div class="chip"><span class="dot"></span>RUN-0147 — LIVE</div>
+  </div>
+  <div class="phaseband">
+    <div class="phase">TICKER <b>7/16</b> · NVDA · DEBATE ROUND 1 OF 1 · ~4 MIN REMAINING</div>
+    <div class="ticks">
+      <div class="tick done">✓</div><div class="tick done">✓</div><div class="tick done">✓</div><div class="tick done">✓</div><div class="tick done">✓</div><div class="tick done">✓</div>
+      <div class="tick live">07</div><div class="tick">08</div><div class="tick">09</div><div class="tick">10</div><div class="tick">11</div><div class="tick">12</div>
+      <div class="tick">13</div><div class="tick">14</div><div class="tick">15</div><div class="tick">16</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="rail">
+      <h3>ATTENDEES — 12 AGENTS</h3>
+      <div class="agent"><span class="st done"></span>Market Analyst</div>
+      <div class="agent"><span class="st done"></span>Social Analyst</div>
+      <div class="agent"><span class="st done"></span>News Analyst</div>
+      <div class="agent"><span class="st done"></span>Fundamentals Analyst</div>
+      <div class="agent speaking"><span class="st speaking"></span>Bull Researcher</div>
+      <div class="agent"><span class="st"></span>Bear Researcher</div>
+      <div class="agent"><span class="st"></span>Research Manager</div>
+      <div class="agent"><span class="st"></span>Trader</div>
+      <div class="agent"><span class="st"></span>Risk — Aggressive</div>
+      <div class="agent"><span class="st"></span>Risk — Conservative</div>
+      <div class="agent"><span class="st"></span>Risk — Neutral</div>
+      <div class="agent"><span class="st"></span>Portfolio Manager</div>
+    </div>
+    <div class="minute">
+      <h2>MINUTE — NVDA · ROUND 1</h2>
+      <div class="entry faint"><span class="t">09:38:41</span><span class="who">MARKET</span><span>NVDA closes 168.30, +2.1% on the session; volume 312M vs 289M 20-day average.<span class="dur">47s</span></span></div>
+      <div class="entry faint"><span class="t">09:39:58</span><span class="who">FUNDAMENTALS</span><span>Data-center revenue guidance raised; gross margin 75.2%, up 140bps q/q.<span class="dur">63s</span></span></div>
+      <div class="entry faint"><span class="t">09:40:44</span><span class="who">NEWS</span><span>Hyperscaler capex letters lean into FY26; no supply constraint reported.<span class="dur">38s</span></span></div>
+      <div class="entry"><span class="t">09:41:30</span><span class="who">BULL</span><span>Motion: the AI capex cycle extends into FY26 — second-order demand is not priced in.<span class="dur">52s</span></span></div>
+      <div class="entry"><span class="t">09:42:22</span><span class="who">BEAR</span><span>Reply: multiple at 34x forward; any guidance slip is a 12% drawdown by construction.<span class="dur">41s</span></span></div>
+      <div class="entry open"><span class="t">09:43:12</span><span class="who">RESEARCH MGR</span><span>The bull case rests on capex durability; I put the motion to vote at round close<span class="caret"></span></span></div>
+    </div>
+    <div class="side">
+      <div class="cat">NVDA · FANGMAN · SEMIS</div>
+      <div class="sym">NVDA</div>
+      <div class="last">LAST 168.30 <b>+2.1%</b></div>
+      <div class="spark">
+        <svg width="252" height="72" viewBox="0 0 252 72">
+          <polyline fill="none" stroke="#16181d" stroke-width="1.5"
+            points="0,54 20,50 40,52 60,44 80,46 100,38 120,40 140,30 160,34 180,24 200,26 220,16 252,12"/>
+          <line x1="0" y1="46" x2="252" y2="46" stroke="#d8d4ca" stroke-dasharray="3 4"/>
+        </svg>
+      </div>
+      <div class="rating">RATING — PENDING AT RUN CLOSE</div>
+      <div class="tally"><div>BULL 1</div><div>BEAR 1</div></div>
+    </div>
+  </div>
+</body>
+</html>

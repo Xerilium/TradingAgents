@@ -1,0 +1,84 @@
+{
+  "observed_at": "2026-10-16",
+  "python": "3.13.7 (main, Sep  2 2025, 14:16:00) [MSC v.1944 64 bit (AMD64)]",
+  "executable": "C:\\src\\printerv2\\.venv\\Scripts\\python.exe",
+  "base_executable": "C:\\Users\\brett\\AppData\\Roaming\\uv\\python\\cpython-3.13.7-windows-x86_64-none\\python.exe",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "nautilus_version": "2.0.0rc7",
+  "distribution_origin": "Official PyPI v2.0.0rc7 wheel; reviewed installed native binary, client wrapper and model/live bindings match archive members by SHA-256",
+  "wheel_metadata": "Wheel-Version: 1.0\nGenerator: maturin (1.15.0)\nRoot-Is-Purelib: false\nTag: cp313-cp313-win_amd64\n",
+  "requires_dist": [
+    "pandas>=2.3.3,<4.0.0 ; extra == 'visualization'",
+    "plotly>=7.0.0,<8.0.0 ; extra == 'visualization'",
+    "kaleido>=1.4.0,<2.0.0 ; extra == 'visualization'",
+    "simplejson>=4.2.0,<5.0.0 ; extra == 'visualization'"
+  ],
+  "installed_files": {
+    "_libnautilus.cp313-win_amd64.pyd": {
+      "bytes": 170160640,
+      "sha256": "566965ee606ababdb0708844d143780616855e2daa67de1e74f580660444efdd"
+    },
+    "live/clients.py": {
+      "bytes": 25292,
+      "sha256": "debeafe570031a144d1ac4265d1d506b518d16fe71ee5cefa4553cdca10d88a7"
+    },
+    "model/__init__.pyi": {
+      "bytes": 268321,
+      "sha256": "bc788f56a0f16c49206f09522579b65d9282052de452d8fa14c1bd18467564f4"
+    },
+    "live/__init__.pyi": {
+      "bytes": 66877,
+      "sha256": "72950b9a5532b4cd6dd807bd9c545804ad6ee1c1b6b7e6aec3ffa47a90dbe0a9"
+    }
+  },
+  "python_base_executable_sha256": "bc8d93239b6770fea5fcf465bf7cc4d6f122b2e00ecf5b3b2ba10a1f95750743",
+  "adapter_dependencies": "Python standard library, the pinned installed Nautilus package, and websockets==15.0.1 for the disabled paper stream path.",
+  "reproduction": "Retain the SHA-256-verified official wheel for CPython 3.13 x64 and compare the reviewed installed members listed here. Runtime startup enforces those hashes and the exact package version. No package was installed or upgraded. Source-to-tag blob equality is recorded for reviewed native paths; a deterministic rebuild of the full environment is not claimed.",
+  "stream_dependency": {
+    "package": "websockets",
+    "version": "15.0.1",
+    "declaration": "pyproject.toml paper extra",
+    "installation": "Lead reported successful installation after direct user authorization; no import/runtime verification performed in this development phase."
+  },
+  "provenance_updated_at": "2026-10-17",
+  "source_commit": "55c0e82053142bce3a5cba4de4221d3929c2d3bc",
+  "source_tag": "v2.0.0rc7",
+  "official_wheel": {
+    "filename": "nautilus_trader-2.0.0rc7-cp313-cp313-win_amd64.whl",
+    "url": "https://files.pythonhosted.org/packages/58/b9/95a7fdf90097a3e53d24992310a9cb9846ba38661725661b0fa5d4d47b22/nautilus_trader-2.0.0rc7-cp313-cp313-win_amd64.whl",
+    "sha256": "f12dc54e9bb760bcc6f20d1780582a02664ae539b9f12337ddc444c0547d9aeb",
+    "bytes": 66484614
+  },
+  "official_source": {
+    "url": "https://files.pythonhosted.org/packages/ba/4c/6f9ff98720a68bbbb8cae9be320477cd7a5ecf8fea33319183c8e79d7da1/nautilus_trader-2.0.0rc7.tar.gz",
+    "sha256": "4e4ec408fb4860d75685e6d071cdf27aed3c5a22ca303110872b764a8a3e768c",
+    "bytes": 12602736,
+    "tag_relationship": "Seven reviewed model/binding/manager/reconciliation/config source files match git blob IDs in the exact release-commit tree"
+  },
+  "contract_evidence_directory": "C:/src/TradingAgents/.runtime-cutover-backups/native-contract-source-20261017",
+  "recovery_contract": {
+    "historical_fill_commission": "Required Money in Rust model and Python constructor; None cannot enter typed FillReport",
+    "live_fill_commission": "Option<Money>; not a historical mass-status replay interface",
+    "synthetic_position_recovery": "Disabled with official LiveExecutionEngineConfig(generate_missing_orders=False)",
+    "residual_order_inference": "Refused by adapter commission hook; all real-fill quantities must cover each reported cumulative order quantity before reports are released",
+    "native_application_proof": "Actual worker/native-node process UUID plus matching native order/fill identity and economics; prior process proof does not prove current-cache state",
+    "absent_fee_history_supported": false,
+    "absent_fee_history_scope": "Current adapter cold historical FillReport import; this does not disprove restoration of previously persisted optional-fee native events",
+    "official_persistence_factories_exposed": [
+      "RedisCacheConfig",
+      "PostgresCacheConfig"
+    ],
+    "native_persistence_configured": true,
+    "python_clients_with_cache_database_supported": false,
+    "persistence_boundary": "Redis is deployed and the staged server is configured, but Nautilus rc7 rejects a cache database with custom Python clients. run_async rejects pending cache backings; run with Python clients routes through run_async. Native connection is blocked; no retained-state or crash-durability claim is made. Failed first initialization is retained without reset.",
+    "persistence_setup_source": "C:/src/printerv2/native-cache-setup",
+    "persistence_image": "redis:7.4.11-alpine3.21@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+    "persistence_context": "desktop-linux; npipe:////./pipe/dockerDesktopLinuxEngine; observed Linux/amd64",
+    "persistence_source_only": false,
+    "persistence_runtime_state": "blocked_by_pinned_python_client_cache_contract",
+    "persistence_observed_at": "2026-10-17",
+    "persistence_config": "C:/src/printerv2/.native-cache/native-cache.json",
+    "persistence_blocker_source": "crates/live/src/python/node.rs:1017-1025 and 1097-1144 at source_commit"
+  },
+  "active_runtime_manifest": "docs/nautilus-v1-runtime-manifest.json"
+}

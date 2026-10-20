@@ -1,0 +1,67 @@
+--- Trending Sans (15) ---
+    92 | VAR | Geist
+    36 | VAR | Plus Jakarta Sans
+    71 | VAR | Inter Tight
+    64 | VAR | Bricolage Grotesque
+    40 | VAR | Figtree
+   102 | VAR | Schibsted Grotesk
+   118 | VAR | Instrument Sans
+   141 | VAR | Hanken Grotesk
+   175 | VAR | Albert Sans
+   179 | VAR | Onest
+   186 | VAR | Unbounded
+   200 | VAR | Geologica
+   231 | VAR | Rethink Sans
+   237 |     | LINE Seed JP
+   259 | VAR | Golos Text
+
+--- Trending Serif (12) ---
+   111 | VAR | Source Serif 4
+   122 | VAR | Newsreader
+   108 |     | DM Serif Display
+    81 |     | Instrument Serif
+    86 | VAR | Fraunces
+   185 |     | IBM Plex Serif
+   223 | VAR | Crimson Pro
+   230 | VAR | Playfair
+   235 | VAR | Literata
+   243 | VAR | Baskervville
+   252 | VAR | Andada Pro
+   253 |     | Tinos
+
+--- Monospace (8) ---
+   151 |     | DM Mono
+   134 | VAR | Geist Mono
+    42 | VAR | JetBrains Mono
+    70 |     | IBM Plex Mono
+   207 | VAR | Fira Code
+   214 |     | Courier Prime
+   414 | VAR | Red Hat Mono
+   540 | VAR | Azeret Mono
+
+--- Impact & Condensed (12) ---
+    29 | VAR | Manrope
+    21 | VAR | DM Sans
+     7 | VAR | Montserrat
+    27 | VAR | Nunito Sans
+    23 | VAR | Raleway
+    30 | VAR | Rubik
+    35 |     | Kanit
+    37 | VAR | Work Sans
+    47 | VAR | Archivo
+    48 | VAR | Mulish
+    49 |     | Barlow
+    52 | VAR | Jost
+
+--- Script & Handwriting (10) ---
+   158 |     | Shadows Into Light
+   138 |     | Zeyada
+    83 | VAR | Dancing Script
+   131 |     | Pacifico
+   101 | VAR | Caveat
+   169 |     | Great Vibes
+   170 |     | Satisfy
+   188 |     | Permanent Marker
+   199 |     | Indie Flower
+   204 |     | Kalam
+

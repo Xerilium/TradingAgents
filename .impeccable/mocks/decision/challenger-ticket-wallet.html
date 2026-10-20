@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jet-Age Ticket Wallet — first viewport</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1440px; height: 900px; overflow: hidden; background: #efe7d8; color: #26221c; font-family: "Space Mono", monospace; }
+  .head { display: flex; align-items: baseline; gap: 18px; padding: 22px 34px 10px; }
+  .head h1 { font-size: 26px; letter-spacing: .06em; text-transform: uppercase; }
+  .head .sub { font-size: 12px; color: #7a7263; }
+  .head .stamp { margin-left: auto; border: 2.5px solid #b3402e; color: #b3402e; font-weight: 700; font-size: 13px; letter-spacing: .18em; padding: 6px 14px; transform: rotate(-2deg); }
+  .wallet { display: flex; gap: 10px; padding: 16px 34px; overflow: hidden; }
+  .stub { width: 128px; flex: none; background: #fff; border: 1.5px solid #26221c; box-shadow: 3px 3px 0 rgba(38,34,28,.18); padding: 9px 10px; position: relative; }
+  .stub:nth-child(odd) { transform: rotate(-1.2deg); }
+  .stub:nth-child(even) { transform: rotate(.8deg); }
+  .stub .t { font-size: 15px; font-weight: 700; letter-spacing: .04em; }
+  .stub .d { font-size: 9.5px; color: #7a7263; margin-top: 2px; }
+  .stub .s { margin-top: 12px; font-size: 9px; letter-spacing: .14em; border: 1.5px solid #26221c; display: inline-block; padding: 2px 6px; }
+  .stub.done .s { background: #dfe8d3; }
+  .stub.wait .s { background: #efe7d8; color: #7a7263; }
+  .stub.live { background: #fffdf5; border-width: 2.5px; transform: rotate(0); box-shadow: 4px 4px 0 rgba(179,64,46,.35); }
+  .stub.live .s { background: #b3402e; color: #fff; border-color: #b3402e; animation: none; }
+  .main { display: grid; grid-template-columns: 1fr 360px; gap: 26px; padding: 8px 34px 30px; }
+  .coupon { background: #fffdf5; border: 2.5px solid #26221c; box-shadow: 5px 5px 0 rgba(38,34,28,.2); position: relative; padding: 22px 26px; }
+  .coupon::before { content: ""; position: absolute; left: -12px; top: 14px; width: 20px; height: 20px; border-radius: 50%; background: #efe7d8; border: 2.5px solid #26221c; }
+  .coupon::after { content: ""; position: absolute; right: -12px; top: 14px; width: 20px; height: 20px; border-radius: 50%; background: #efe7d8; border: 2.5px solid #26221c; }
+  .coupon .route { display: flex; align-items: center; gap: 0; margin-top: 14px; }
+  .stop { text-align: center; }
+  .stop b { font-size: 13px; letter-spacing: .1em; display: block; }
+  .stop span { font-size: 9.5px; color: #7a7263; display: block; margin-top: 4px; }
+  .stop i { width: 13px; height: 13px; border-radius: 50%; background: #fffdf5; border: 3px solid #b3402e; display: inline-block; }
+  .stop.go i { background: #b3402e; }
+  .leg { flex: 1; height: 3px; background: #26221c; margin: 0 -6px; position: relative; top: -7px; }
+  .leg.half { background: repeating-linear-gradient(90deg, #b3402e 0 8px, transparent 8px 15px); }
+  .coupon h2 { font-size: 30px; letter-spacing: .05em; }
+  .coupon .meta { display: flex; gap: 26px; margin-top: 16px; font-size: 11px; color: #5c5548; }
+  .coupon .meta b { color: #26221c; font-size: 13px; }
+  .side { display: flex; flex-direction: column; gap: 18px; }
+  .note { background: #fffdf5; border: 1.5px solid #26221c; padding: 14px 18px; box-shadow: 3px 3px 0 rgba(38,34,28,.15); }
+  .note h3 { font-size: 11px; letter-spacing: .18em; color: #b3402e; margin-bottom: 8px; }
+  .note p { font-size: 12px; line-height: 1.65; }
+  .note .hand { font-family: "Caveat", cursive; font-size: 21px; color: #3a56a5; margin-top: 8px; transform: rotate(-1deg); display: inline-block; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Run-0147 · Ticker Wallet</h1>
+    <span class="sub">FANGMAN + semis — 16 tickets, sequential boarding</span>
+    <span class="stamp">IN FLIGHT</span>
+  </div>
+  <div class="wallet">
+    <div class="stub done"><div class="t">META</div><div class="d">07 Jul</div><span class="s">OVERWEIGHT ✓</span></div>
+    <div class="stub done"><div class="t">AAPL</div><div class="d">07 Jul</div><span class="s">HOLD ✓</span></div>
+    <div class="stub live"><div class="t">NVDA</div><div class="d">07 Jul</div><span class="s">BOARDING · 62%</span></div>
+    <div class="stub wait"><div class="t">GOOGL</div><div class="d">—</div><span class="s">GATE 08</span></div>
+    <div class="stub wait"><div class="t">AMZN</div><div class="d">—</div><span class="s">GATE 09</span></div>
+    <div class="stub wait"><div class="t">NFLX</div><div class="d">—</div><span class="s">GATE 10</span></div>
+    <div class="stub wait"><div class="t">AMD</div><div class="d">—</div><span class="s">GATE 11</span></div>
+    <div class="stub wait"><div class="t">AVGO</div><div class="d">—</div><span class="s">GATE 12</span></div>
+    <div class="stub wait"><div class="t">INTC</div><div class="d">—</div><span class="s">GATE 13</span></div>
+    <div class="stub wait"><div class="t">QCOM</div><div class="d">—</div><span class="s">GATE 14</span></div>
+    <div class="stub wait"><div class="t">TSM</div><div class="d">—</div><span class="s">GATE 15</span></div>
+    <div class="stub wait"><div class="t">MU</div><div class="d">—</div><span class="s">GATE 16</span></div>
+  </div>
+  <div class="main">
+    <div class="coupon">
+      <h2>NVDA — COMMITTEE ROUTE</h2>
+      <div class="route">
+        <div class="stop go"><i></i><b>ANALYSES</b><span>4 of 4 done</span></div><div class="leg"></div>
+        <div class="stop go"><i></i><b>DEBATE</b><span>round 1 live</span></div><div class="leg half"></div>
+        <div class="stop"><i></i><b>RISK COMMITTEE</b><span>3 debaters</span></div><div class="leg half"></div>
+        <div class="stop"><i></i><b>VERDICT</b><span>rating + price target</span></div>
+      </div>
+      <div class="meta">
+        <span>RUN-0147 · 07 JUL 2026 · <b>09:38 UTC</b></span>
+        <span>PROVIDER <b>openai / deep</b></span>
+        <span>TICKER <b>7 of 16</b></span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="note"><h3>LATEST ENTRY — NVDA</h3><p>09:42 BEAR: “34x forward; a slip is −12% by construction.” 09:43 RESEARCH MGR: motion to vote at round close.</p></div>
+      <div class="note"><h3>CABIN MANIFEST</h3><p>META · OVERWEIGHT ✓ &nbsp; AAPL · HOLD ✓ &nbsp; NVDA · in flight …</p><span class="hand">two landed, one airborne, thirteen at the gate</span></div>
+    </div>
+  </div>
+</body>
+</html>

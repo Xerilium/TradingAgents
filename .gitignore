@@ -230,3 +230,6 @@ reports/
 .venv-nautilus-v1/
 tradingdesk.launch.json
 .runtime-stage/
+.runtime-cutover-backups/
+.tmp-nautilus-desk/
+.tmp-nautilus-task2/
