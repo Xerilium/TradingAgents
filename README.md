@@ -31,28 +31,31 @@
 
 ## Paper trading desk
 
-A local Active Trader-style workspace connects TradingAgents to Maenifold, Laya,
-and Alpaca paper trading through the official MCP SDK. Start with FANGMAN, edit
-the stock universe and risk limits, inspect agent research, and review each paper
-order before submitting it. See [setup and operation](docs/paper-trading.md).
-Laya classifies individual social posts for relevance and sentiment through
-Maenifold; it does not approve research or authorize orders. Manual submission
-and deterministic paper-trading safeguards remain required.
+This checkout contains our local browser app: TradingAgents research, NautilusTrader
+as the trading engine, and an Alpaca paper adapter. The current saved universe is
+503 S&P 500 stocks. Account, prices, watchlists, reports, order preparation and
+the decision journal are available in one browser workspace.
+
+**Start here: [launch and user guide](docs/local-desk-guide.md).**
+For agent handoffs, read [AGENTS.md](AGENTS.md). For acceptance evidence, see
+[UAT coverage and limitations](docs/local-desk-guide.md#acceptance-evidence).
+
+On the existing Windows installation, open `Start-TradingDesk.cmd` from this
+folder, or run the launcher below. It uses the saved local configuration and
+existing data; do not start a default server against a new empty directory.
 
 ```powershell
-rtk proxy .venv\Scripts\python.exe -m tradingagents.web.server
+rtk proxy C:\src\TradingAgents\.venv\Scripts\python.exe C:\src\TradingAgents\Launch-TradingDesk.py
 ```
 
-The workspace supports up to 1,000 symbols, including a 500-stock index. Import
-a CSV with a `Symbol` or `Ticker` column in Settings, review the draft, then save.
-Search and filters narrow the candidate list without changing your research
-selection. Large research selections show a workload review before launch;
-duration estimates use completed runs with the same model configuration.
-Watchlists, research, positions, proposals and orders use bounded pages.
+Open <http://127.0.0.1:8098>. Expand **Nautilus connection** and choose
+**Start Nautilus** if stopped. Every order requires approval of its exact terms
+and a separate Submit action. The app remains capable of paper trading;
+the current agent-work restriction is no trades, approvals or new research runs.
 
-Open <http://127.0.0.1:8088>. The default Maenifold endpoint is
-<http://localhost:8080/mcp>. Research defaults to your existing Codex ChatGPT
-sign-in (`chatgpt` provider); no API key or Azure endpoint is required.
+The upstream research framework documentation continues below. Older desk setup
+instructions in [paper-trading.md](docs/paper-trading.md) are explicitly marked
+as superseded; use the linked local guide for this installation.
 
 ## News
 

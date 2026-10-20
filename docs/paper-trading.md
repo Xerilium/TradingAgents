@@ -1,5 +1,8 @@
 # Paper trading desk
 
+For the current relocated installation, use the [local launch and user guide](local-desk-guide.md).
+It includes file locations, the five-page workflow and dated UAT coverage.
+
 ## Current assembly: Nautilus paper desk
 
 Open Start-TradingDesk.cmd from this project. It uses Launch-TradingDesk.py and
