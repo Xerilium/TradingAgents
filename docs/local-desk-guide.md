@@ -89,6 +89,38 @@ mean the account is globally disabled. **Pause new orders** is an explicit
 operator choice and does not cancel working orders. Cancel and Replace are
 broker actions, not harmless smoke-test buttons. Unknown fees remain unknown.
 
+## Research agents and Maenifold
+
+The market, news, and fundamentals analysts receive the eight commands in
+`maenifold.memory`, the six commands in `maenifold.graph`, and
+`maenifold.thinking.SequentialThinking` through the existing MCP Gateway.
+This includes memory creation, editing, moving, and deletion, and graph
+synchronization and repair. Command schemas retain confirmation, checksum,
+and preview parameters. Tool guidance requires explicit user confirmation
+before deletion and a preview before repairs.
+
+Use `FindSimilarConcepts` to resolve names, `BuildContext` to explore related
+knowledge, and `ReadMemory` to inspect sources. Research notes should cite
+sources and dates. `SequentialThinking` records concise decisions, evidence,
+and unresolved questions. Retrieved knowledge must be checked against the
+analysis date; current graph contents are not a historical snapshot.
+
+The desk selects only these three domains for analyst tools. Broker actions,
+shell tools, configuration, and other thinking commands are not exposed.
+The sentiment analyst retains its direct collection and Laya classification
+flow. Gateway evidence records research calls; state-changing commands are
+not automatically retried. These source changes take effect after the desk
+reloads the updated code; an already running process is not updated in place.
+
+Review on 21 October 2026 confirmed the 15-command allowlist, unchanged schema
+binding, exclusion of all seven state-changing commands from transport retries,
+and the absence of broker/shell/configuration tools in the desk analyst binding.
+The delegated verification reported 42 passing focused cases and three analyst
+fixture subtest failures; a broader fixture timed out on native refresh. These
+are not a passing full-suite or live research result. No checks were rerun during
+this source review, and no code correction was necessary. Activation requires a
+later authorized desk restart; this review did not restart or launch research.
+
 ## Read-only smoke test
 
 Open all five pages in the actual browser. Confirm connected Nautilus/account

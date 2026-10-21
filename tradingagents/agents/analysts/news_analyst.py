@@ -31,7 +31,8 @@ def create_news_analyst(llm, tools=None):
             (get_global_news.name, {"curr_date": current_date}),
             (get_prediction_markets.name, {"topic": state["company_of_interest"]}),
             *[(get_macro_indicators.name, {"indicator": indicator, "curr_date": current_date})
-              for indicator in ("cpi", "core_pce", "unemployment", "fed_funds_rate", "10y_treasury", "yield_curve", "real_gdp", "vix")],
+              for indicator in ("cpi", "core_pce", "unemployment", "fed_funds_rate", "10y_treasury", "yield_curve", "real_gdp", "vix")
+              if any(tool.name == get_macro_indicators.name for tool in tools)],
         ])
         if required:
             return required

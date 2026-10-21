@@ -47,7 +47,7 @@ class BrokerFake:
         self.asset_tradable = True
 
     def discover(self, domain):
-        assert domain in {"alpaca", "maenifold.memory", "laya", "maenifold.system"}
+        assert domain in {"alpaca", "maenifold.memory", "maenifold.graph", "maenifold.thinking", "laya", "maenifold.system"}
         return {}
 
     def execute(self, domain, command, parameters, *, on_dispatch=None):

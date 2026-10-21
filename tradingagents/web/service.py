@@ -1033,7 +1033,9 @@ class DeskService:
             raise ValueError("A connected, current Nautilus account is required. Start Nautilus and wait for connection.")
         return market
 
-    def start_run(self, symbols=None, expected_revision=None, analysis_date=None):
+    def start_run(self, symbols=None, expected_revision=None, analysis_date=None, exclude_fred=False):
+        if not isinstance(exclude_fred, bool):
+            raise ValueError("exclude_fred must be a boolean")
         request_started = time.monotonic()
         requested_at = now()
         request = {
@@ -1056,7 +1058,7 @@ class DeskService:
         terminal = {"status": "accepted"}
         try:
             with capture_vendor_evidence(self._evidence_recorder(request["id"])):
-                result = self._start_run(symbols, expected_revision, analysis_date, request, request_started)
+                result = self._start_run(symbols, expected_revision, analysis_date, request, request_started, exclude_fred)
             return result
         except BaseException as exc:
             terminal = {"status": "interrupted" if not isinstance(exc, Exception) else
@@ -1105,7 +1107,7 @@ class DeskService:
             stage.update(ended_at=now(), elapsed_seconds=time.monotonic() - started)
             self._request_checkpoint(request, "stage_finished")
 
-    def _start_run(self, symbols, expected_revision, analysis_date, request, request_started):
+    def _start_run(self, symbols, expected_revision, analysis_date, request, request_started, exclude_fred=False):
         requested_at = request["started_at"]
         with self._request_stage(request, "validation"):
             trade_date = today() if analysis_date is None else analysis_date
@@ -1135,6 +1137,7 @@ class DeskService:
             ):
                 raise ValueError("Workspace settings changed. Refresh and review the research selection again.")
             config = copy.deepcopy(self.store.data["config"])
+            config["exclude_fred"] = exclude_fred
             config["selected_analysts"] = list(DESK_ANALYSTS)
             symbols = symbols or config["universe"]
             if (
@@ -1341,7 +1344,7 @@ class DeskService:
                         checkpoint_enabled=False,
                     )
                     tools = build_langchain_tools(
-                        self.gateway, domains=("maenifold.memory",),
+                        self.gateway, domains=("maenifold.memory", "maenifold.graph", "maenifold.thinking"),
                         symbol=symbol, trade_date=run["trade_date"]
                     )
                     social_budget = {"remaining": config.get("social_screen_max_posts", 100), "deadline": None,
@@ -1382,6 +1385,8 @@ class DeskService:
                     initial["desk_execution_policy"] = desk_execution_policy(config)
                     quote_context = research_quote_context(symbol, run["trade_date"], market)
                     initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote_context
+                    if config.get("exclude_fred"):
+                        initial["instrument_context"] += "\nFRED macro data excluded by operator for this run during provider maintenance. Macro coverage is unverified; do not claim complete macro coverage."
                     with self.store.lock:
                         result["quote_context"] = quote_context
                         result["desk_execution_policy"] = initial["desk_execution_policy"]
@@ -1446,9 +1451,9 @@ class DeskService:
                     if missing:
                         raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
                     failures = [a["operation"] for a in run["source_evidence"]["attempts"]
-                                if a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"}]
+                                if a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"} or a.get("capture_error")]
                     if failures or not run["source_evidence"].get("capture_complete"):
-                        raise ValueError(f"Research incomplete: source collection failed or incomplete: {', '.join(sorted(set(failures)))}")
+                        raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
                     social = result["social_sentiment"]
                     if (set(social["sources"]) != {"stocktwits", "reddit"}
                             or any(s.get("status") not in {"completed", "empty"}

@@ -107,6 +107,7 @@ class TradingAgentsGraph:
             max_tool_rounds,
             supplemental_tools=self.supplemental_tools,
             social_screen_factory=social_screen_factory,
+            exclude_fred=self.config.get("exclude_fred", False),
         )
 
         self.propagator = Propagator(

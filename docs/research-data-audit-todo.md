@@ -369,3 +369,31 @@ This objective is not achieved by the completed-social-only pass above.
 - All remaining end-to-end acceptance requires usable FRED data. The same
   external blocker has recurred for three consecutive goal turns; mark the goal
   blocked pending provider recovery. Score remains -630.
+
+### Operator-authorized run without FRED — 21 October 2026
+
+- Run `88eb16c7-4b92-48c8-aed7-b6d52dc4a042` explicitly excluded FRED;
+  default runs still request it. All four analysts ran and all nine reports
+  were saved and read, including the unique bull/bear and risk discussions.
+- All 55 source attempts returned successfully: fundamentals, quarterly/annual
+  filings, insiders, company/global news, prediction markets, OHLCV, all thirteen
+  indicators, verified market snapshot and both social feeds. No FRED calls.
+- StockTwits 96/96 and Reddit 4/4 screened, zero unscreened; all original post
+  texts were read. Processing completion does not establish label accuracy.
+  Several accepted labels contradict the author's view or refer to other content;
+  87 labels were unclear. This run's sentiment report used original text and user
+  tags rather than treating classifier counts as directional evidence.
+- Report findings: market report's "two-session uptick" is unsupported by the
+  October 19–21 closes (92.03, 91.69, 92.96); this wording propagated into debate
+  and final assessment. Sentiment report attaches Reddit's bearish label to the
+  wrong post. Some news remains headline-only or lacks primary confirmation.
+  These are observations about this run, not deterministic agent guarantees.
+- Committee Underweight, trader Hold/no initiation, final Sell/avoid entry:
+  different investment ratings, same proposed behavior for a flat account.
+  Price observations and FRED exclusion are explicitly distinguished throughout.
+- Run correctly remains FAILED: one public news article receipt was withheld by
+  secret screening. A read-only diagnosis reproduced a false API-key match on an
+  SK Hynix URL slug. Narrowed the key pattern to credential formats and included
+  failed capture operations in completion errors. Original evidence is preserved;
+  no retrospective success claim. Full workflow not rerun after this correction.
+- No tests created. Code score -650. Macro coverage remains unverified.

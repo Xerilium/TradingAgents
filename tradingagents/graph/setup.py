@@ -104,6 +104,7 @@ class GraphSetup:
         max_tool_rounds: int,
         supplemental_tools: Iterable[BaseTool] | None = None,
         social_screen_factory=None,
+        exclude_fred=False,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
@@ -112,6 +113,7 @@ class GraphSetup:
         self.max_tool_rounds = max_tool_rounds
         self.supplemental_tools = tuple(supplemental_tools or ())
         self.social_screen_factory = social_screen_factory
+        self.exclude_fred = exclude_fred
 
     def setup_graph(
         self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None
@@ -128,6 +130,9 @@ class GraphSetup:
                 ``past_context``. It runs alongside the analysts.
         """
         plan = build_analyst_execution_plan(selected_analysts, self.supplemental_tools)
+        if self.exclude_fred:
+            from dataclasses import replace
+            plan = replace(plan, specs=[replace(spec, tools=tuple(t for t in spec.tools if t.name != "get_macro_indicators")) for spec in plan.specs])
 
         analyst_factories = {
             "market": lambda tools: create_market_analyst(self.quick_thinking_llm, tools=tools),

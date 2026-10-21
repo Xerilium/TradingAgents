@@ -477,7 +477,7 @@ class DeskStore:
         # RSS can entity-escape JSON, which can itself contain escaped key delimiters.
         view = payload.decode("utf-8")  # Non-UTF-8 bodies are an explicit unsupported capture.
         marker = (r'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
-                  r'''["'\s]*[:=]|bearer\s+\S+|(?<![\w-])sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY''')
+                  r'''["'\s]*[:=]|bearer\s+\S+|(?<![\w-])sk-(?:(?:proj|svcacct)-[a-zA-Z0-9_-]{16,}|[a-zA-Z0-9]{32,})(?![\w-])|-----BEGIN [A-Z ]*PRIVATE KEY''')
         for _ in range(4):
             # Only the known pagination field name is exempted, never its value or other token fields.
             screened = re.sub(r'''(["'])next_page_token\1(?=\s*:)''', r'\1pagination_cursor\1', view) if allow_pagination_cursor else view

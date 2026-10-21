@@ -25,13 +25,23 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 DEFAULT_ENDPOINT = "http://localhost:8080/mcp"
+RESEARCH_COMMANDS = {
+    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory", "WriteMemory", "EditMemory",
+                                  "MoveMemory", "ListMemories", "DeleteMemory", "ExtractConceptsFromFile"}),
+    "maenifold.graph": frozenset({"BuildContext", "FindSimilarConcepts", "Visualize", "Sync",
+                                 "AnalyzeConceptCorruption", "RepairConcepts"}),
+    "maenifold.thinking": frozenset({"SequentialThinking"}),
+}
+_STATEFUL_RESEARCH_COMMANDS = frozenset({
+    "WriteMemory", "EditMemory", "MoveMemory", "DeleteMemory", "Sync", "RepairConcepts", "SequentialThinking",
+})
 # Capture policy is narrower than model-call permission. Account/configuration,
 # order and unknown commands are metadata-only, even if their results look safe.
 _EVIDENCE_COMMANDS = {
     "alpaca": frozenset({"get_asset", "get_clock", "get_calendar", "get_portfolio_history",
                          "get_stock_bars", "get_stock_latest_quote", "get_stock_latest_trade",
                          "get_stock_snapshot", "get_news"}),
-    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory"}),
+    **RESEARCH_COMMANDS,
     "laya": frozenset({"decide"}),
 }
 
@@ -369,7 +379,8 @@ class MaenifoldGateway:
             raise GatewayRateLimited(remaining)
         safe = name == "GatewayIndex" or (
             name == "GatewayExecute" and (
-                arguments.get("command") in ANALYSIS_COMMANDS.get(arguments.get("domain"), ())
+                (arguments.get("command") in ANALYSIS_COMMANDS.get(arguments.get("domain"), ())
+                 and arguments.get("command") not in _STATEFUL_RESEARCH_COMMANDS)
                 or (arguments.get("domain"), arguments.get("command")) == ("maenifold.system", "GetConfig")
             )
         )
@@ -523,7 +534,7 @@ ANALYSIS_COMMANDS: Mapping[str, frozenset[str]] = {
             "get_news",
         }
     ),
-    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory"}),
+    **RESEARCH_COMMANDS,
     "laya": frozenset({"decide"}),
 }
 
@@ -688,6 +699,32 @@ def build_langchain_tools(
 
             description = command.description
             schema = copy.deepcopy(command.schema)
+            if domain in RESEARCH_COMMANDS:
+                description += (
+                    " Research only; never authorizes trading. Cite source memory:// identifiers "
+                    f"and check source dates against analysis date {trade_date or 'the current run'}. "
+                    "Graph links and similarity are retrieval hints, not verified financial evidence."
+                )
+            if domain == "maenifold.graph":
+                description += (
+                    " Resolve uncertain names with FindSimilarConcepts; start BuildContext at "
+                    "depth=1, maxEntities=5, includeContent=true, then ReadMemory for sources. "
+                    "Preview RepairConcepts with dryRun=true before applying repairs."
+                )
+            if domain == "maenifold.memory":
+                description += (
+                    " Reuse existing notes and concepts. Knowledge notes need a ## Source section "
+                    "with source URLs and dates, and [[WikiLinks]]. Read before editing and supply "
+                    "the returned checksum. Do not overwrite to bypass a stale edit. "
+                    "DeleteMemory requires explicit user confirmation."
+                )
+            if domain == "maenifold.thinking":
+                description += (
+                    " Record concise research decisions, evidence, and open questions. Start at "
+                    "thoughtNumber=0 without sessionId; continue with the returned sessionId and "
+                    "incremented thoughtNumber. Complete with nextThoughtNeeded=false and a "
+                    "structured conclusion/ConfessionReport covering outcomes and gaps."
+                )
             if symbol and domain == "alpaca":
                 for key in ("symbols", "symbol", "symbol_or_asset_id"):
                     if key in schema.get("properties", {}):

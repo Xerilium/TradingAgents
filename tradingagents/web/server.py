@@ -326,6 +326,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.start_run(
                     data.get("symbols"), expected_revision=data.get("config_revision"),
                     analysis_date=data.get("analysis_date"),
+                    exclude_fred=data.get("exclude_fred", False),
                 )
             elif path == "/api/runs/cancel":
                 result = service.cancel_run(data["run_id"])
