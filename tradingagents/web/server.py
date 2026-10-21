@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 from zipfile import BadZipFile, LargeZipFile
 
+from dotenv import load_dotenv
+
 from tradingagents.integrations.maenifold import GatewayRateLimited
 
 from .service import DeskService
@@ -392,6 +394,7 @@ def main():
         protected_roots.append(args.history_dir)
     if any(credential_path.is_relative_to(root.resolve()) for root in protected_roots):
         parser.error("Credentials must remain outside served assets and account/history backup directories")
+    load_dotenv(credential_path, override=False)
     from tradingagents.integrations.maenifold import MaenifoldGateway
 
     from .nautilus_runtime import NautilusRuntime

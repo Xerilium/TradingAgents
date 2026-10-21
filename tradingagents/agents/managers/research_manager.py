@@ -6,6 +6,7 @@ from tradingagents.agents.context import (
     get_desk_execution_policy,
     get_instrument_context_from_state,
     get_language_instruction,
+    get_portfolio_context_from_state,
 )
 from tradingagents.agents.schemas import DeskResearchPlan, ResearchPlan, render_research_plan
 from tradingagents.agents.structured import (
@@ -29,6 +30,8 @@ def create_research_manager(llm):
 
 {instrument_context}
 
+{get_portfolio_context_from_state(state)}
+
 {policy}
 
 ---
@@ -41,6 +44,7 @@ def create_research_manager(llm):
 - **Sell**: Strong conviction in the bear thesis; recommend exiting or avoiding the position
 
 The debate always contains conflicting arguments; deciding which side is stronger is the job, so conflict alone is not a reason to Hold. Commit to the side with the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not manufacture a direction to appear decisive. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.
+Strategic actions must respect the supplied holdings and shorting policy. Do not trim or exit a zero position or imply an unpermitted short. Keep the relative investment rating distinct from the feasible transaction.
 
 ---
 

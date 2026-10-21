@@ -17,14 +17,11 @@ from stockstats import wrap
 
 from tradingagents.dataflows.errors import NoMarketDataError
 from tradingagents.dataflows.symbols import normalize_symbol
+from tradingagents.dataflows.vendors.yahoo.market import INDICATOR_DESCRIPTIONS
 from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
-DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = (
-    "close_10_ema", "close_50_sma", "close_200_sma",
-    "rsi", "boll", "boll_ub", "boll_lb",
-    "macd", "macds", "macdh", "atr",
-)
+DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = tuple(INDICATOR_DESCRIPTIONS)
 
 
 def _verified_rows(symbol: str, as_of_date: str) -> pd.DataFrame:
@@ -82,12 +79,14 @@ def build_verified_market_snapshot(
         try:
             stock_df[name]  # triggers stockstats calculation
             indicator_values[name] = _fmt(stock_df.iloc[-1][name])
-        except Exception as exc:  # noqa: BLE001 — one bad indicator shouldn't sink the snapshot
-            indicator_values[name] = f"N/A ({type(exc).__name__})"
+        except Exception as exc:
+            raise NoMarketDataError(symbol, normalize_symbol(symbol), f"required indicator {name} unavailable") from exc
+        if indicator_values[name] == "N/A":
+            raise NoMarketDataError(symbol, normalize_symbol(symbol), f"required indicator {name} has no value")
 
     latest = df.iloc[-1]
     latest_date = _fmt(latest["Date"])
-    window = max(1, min(int(look_back_days), 30))
+    window = max(1, int(look_back_days))
     recent = df.tail(window)
 
     lines = [
@@ -96,6 +95,8 @@ def build_verified_market_snapshot(
         f"- Requested analysis date: {as_of_date}",
         f"- Latest trading row used: {latest_date}",
         "- Rows after the requested analysis date are excluded before verification.",
+        "- Price basis: vendor-reported OHLCV, without dividend adjustment or gap filling.",
+        f"- Incomplete observed bars excluded without filling: {', '.join(df.attrs.get('incomplete_ohlcv_dates', [])) or 'none'}",
         "",
         "### Latest verified OHLCV row",
         "",
@@ -109,6 +110,7 @@ def build_verified_market_snapshot(
               "| Indicator | Value |", "|---|---:|"]
     for name, value in indicator_values.items():
         lines.append(f"| {name} | {value} |")
+    lines.append("MFI is a Stockstats fraction on 0–1 (multiply by 100 for conventional MFI); RSI is on 0–100.")
 
     lines += ["", f"### Recent verified closes (last {len(recent)} rows)", "",
               "| Date | Close |", "|---|---:|"]

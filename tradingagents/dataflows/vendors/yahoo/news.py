@@ -2,6 +2,7 @@
 
 import contextlib
 from datetime import UTC, datetime
+from itertools import zip_longest
 
 import yfinance as yf
 from dateutil.relativedelta import relativedelta
@@ -76,8 +77,13 @@ def _format_articles(articles: list[dict]) -> str:
     out = ""
     for data in articles:
         out += f"### {data['title']} (source: {data['publisher']})\n"
+        out += f"Published: {data['pub_date'].isoformat() if data['pub_date'] else 'unknown'}\n"
+        if data.get("query"):
+            out += f"Search query: {data['query']}\n"
         if data["summary"]:
             out += f"{data['summary']}\n"
+        else:
+            out += "Headline only: article content was not supplied by this feed.\n"
         if data["link"]:
             out += f"Link: {data['link']}\n"
         out += "\n"
@@ -163,16 +169,18 @@ def get_global_news_yfinance(
     start_dt = curr_dt - relativedelta(days=look_back_days)
     start_date = start_dt.strftime("%Y-%m-%d")
 
-    in_window_news = []
+    query_results = []
     seen_titles = set()
+    failures = []
 
     for query in search_queries:
-        found = yf_retry(lambda q=query: yf.Search(
-            query=q,
-            news_count=limit,
-            enable_fuzzy_query=True,
-        ).news)
+        try:
+            found = yf_retry(lambda q=query: yf.Search(query=q, news_count=limit, enable_fuzzy_query=False).news)
+        except Exception as exc:
+            failures.append(f"{query}: {type(exc).__name__}")
+            continue
 
+        articles = []
         for article in found or []:
             # Window first: the limit counts what the run may read, so an
             # out-of-window article must not spend the budget or cut the
@@ -183,12 +191,13 @@ def get_global_news_yfinance(
                 continue
             if data["title"] and data["title"] not in seen_titles:
                 seen_titles.add(data["title"])
-                in_window_news.append(data)
+                data["query"] = query
+                articles.append(data)
+        query_results.append(articles)
 
-        if len(in_window_news) >= limit:
-            break
-
-    news_str = _format_articles(in_window_news[:limit])
+    # Give every configured query a turn before taking another from one topic.
+    merged = [article for group in zip_longest(*query_results) for article in group if article]
+    news_str = _format_articles(merged[:limit])
 
     # Nothing fell inside the window -> say so rather than return an
     # empty-bodied report (#993).
@@ -196,6 +205,10 @@ def get_global_news_yfinance(
         # Results merge several fuzzy searches, so their timestamps prove no
         # continuous coverage; judge the window against the present only.
         gap = coverage_gap((), start_date, as_of_date, "Yahoo Finance global news", "market news")
-        return gap or f"No global news found between {start_date} and {as_of_date}"
+        return (gap or f"No global news found between {start_date} and {as_of_date}") + ("\nFailed queries: " + "; ".join(failures) if failures else "")
 
-    return f"## Global Market News, from {start_date} to {as_of_date}:\n\n{news_str}"
+    return (f"## Global news search sample, from {start_date} to {as_of_date}:\n"
+            f"Queried all {len(search_queries)} configured topics; {len(merged)} unique in-window matches, "
+            f"{min(limit, len(merged))} returned under the requested article limit. "
+            "Search matches may be irrelevant; verify article substance before making macro claims.\n"
+            + ("DATA_PARTIAL: failed queries: " + "; ".join(failures) + "\n" if failures else "") + "\n" + news_str)

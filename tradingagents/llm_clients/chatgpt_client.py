@@ -7,12 +7,13 @@ Protocol reference: https://learn.chatgpt.com/docs/app-server
 
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 import os
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
@@ -55,6 +56,7 @@ class _AppServer:
         self._closed = False
         config = {
             "project_doc_max_bytes": 0,
+            "developer_instructions": "",
             "web_search": "disabled",
             "mcp_servers": {},
             "features.shell_tool": False,
@@ -79,13 +81,16 @@ class _AppServer:
             "CODEX_API_KEY", "CODEX_THREAD_ID", "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
         }
         child_env = {key: value for key, value in os.environ.items() if key.upper() not in excluded_env}
+        self.workspace = tempfile.TemporaryDirectory(prefix="tradingagents-research-")
         try:
             self.process = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
-                env=child_env, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=child_env, cwd=self.workspace.name,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
         except OSError as exc:
+            self.workspace.cleanup()
             raise RuntimeError("Codex app-server could not start. Check the Codex CLI and its permissions.") from exc
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
@@ -179,6 +184,7 @@ class _AppServer:
             if not self.reader.is_alive():
                 with suppress(OSError, ValueError):
                     self.process.stdout.close()
+            self.workspace.cleanup()
 
 
 def _initialize_chatgpt(server: _AppServer) -> None:
@@ -345,8 +351,10 @@ class ChatGPTChatModel(BaseChatModel):
             started = server.rpc("thread/start", {
                 "model": self.model_name, "modelProvider": "openai", "allowProviderModelFallback": False,
                 "ephemeral": True, "environments": [], "runtimeWorkspaceRoots": [],
+                "cwd": server.workspace.name,
                 "sandbox": "read-only", "approvalPolicy": "never", "dynamicTools": dynamic,
-                "baseInstructions": instructions or "Answer the user's request.", "developerInstructions": "",
+                "baseInstructions": instructions or "Answer the user's request.",
+                "developerInstructions": "This session performs financial research only. Repository and personal coding-workflow instructions, code scores, test policies and task bookkeeping do not apply to research reports. Return only the requested financial analysis or bound research tool call.",
                 "config": {**disabled_mcp, "model_reasoning_effort": self.reasoning_effort},
                 "serviceTier": "default",
             })

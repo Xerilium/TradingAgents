@@ -21,7 +21,8 @@ actual installation, saved data and permitted smoke test.
 ## Local operation and preservation
 
 - Work in `C:\src\TradingAgents`; current application branch is `nautilus`.
-- Launch with `Start-TradingDesk.cmd` or the guide's explicit Python launcher.
+- The single canonical startup command is `rtk proxy .\Start-TradingDesk.cmd`.
+  Use it unchanged; do not wrap or patch the launcher or start the server directly.
   Read `tradingdesk.launch.json` for current paths; never substitute an empty
   data directory or run a migration merely to get the server started.
 - Preserve `.local-workspace`, both Python environments, saved research,
@@ -35,6 +36,12 @@ actual installation, saved data and permitted smoke test.
 - Use KISS/YAGNI. Prefer an available LSP for code navigation. Track the user's
   score: each code line written costs 1, each test costs 2, a missed scope
   requirement costs 10,000; disclose code/test changes.
+- Do not create tests unless the user specifically asks to create tests.
+- For efficiency, batch all known fixes before running one verification/test
+  cycle for that batch. If that cycle finds more problems, collect and fix them
+  as the next batch, then run one cycle for that batch. Do not run a full cycle
+  after each individual fix or spend more time running tests than producing
+  useful code. Keep progress comments concise and avoid redundant updates.
 - Prefix shell commands with `rtk`; verify availability with `rtk --version`.
   Use `rtk proxy` when no dedicated wrapper fits. Do not change PowerShell policy.
 

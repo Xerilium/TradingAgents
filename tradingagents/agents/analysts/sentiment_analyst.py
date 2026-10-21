@@ -32,6 +32,7 @@ from tradingagents.agents.structured import (
     invoke_structured_or_freetext,
 )
 from tradingagents.agents.tools import get_news
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.vendors.reddit import (
     CRYPTO_SUBREDDITS,
     DEFAULT_SUBREDDITS,
@@ -65,17 +66,30 @@ def create_sentiment_analyst(llm, *, screen_factory=None):
         # returns a string (no exceptions surface from here), so the LLM
         # always sees something — either real data or a clear placeholder.
         news_block = get_news.func(ticker, start_date, end_date)
+        # Acquire the smaller Reddit sample first, then use the remaining shared
+        # post allowance for StockTwits. Both feeds remain represented.
+        post_limit = get_config().get("social_screen_max_posts", 100)
+        reddit_posts = []
+
+        def collect_reddit(posts):
+            reddit_posts.extend(posts)
+            return [True] * len(posts), ""
+
+        subreddits = subreddits_for(ticker)
+        reddit_block = fetch_reddit_posts(
+            ticker, subreddits, start_date=start_date, end_date=end_date,
+            screen=collect_reddit, limit=max(1, post_limit - 1),
+        )
         # Pass the analysis window so a historical run trims social posts to it
         # instead of leaking today's chatter into a backtest (#1220).
         screen = screen_factory(ticker, "stocktwits", instrument_context=instrument_context) if screen_factory else jev_screen(ticker)
         stocktwits_block = fetch_stocktwits_messages(
-            ticker, limit=30, start_date=start_date, end_date=end_date, screen=screen
+            ticker, limit=max(1, post_limit - len(reddit_posts)), start_date=start_date, end_date=end_date, screen=screen
         )
-        subreddits = subreddits_for(ticker)
         screen = screen_factory(ticker, "reddit", instrument_context=instrument_context) if screen_factory else screen
-        reddit_block = fetch_reddit_posts(
-            ticker, subreddits, start_date=start_date, end_date=end_date, screen=screen
-        )
+        if screen:
+            _, note = screen(reddit_posts)
+            reddit_block = note + "\n\n" + reddit_block
 
         system_message = _build_system_message(
             ticker=ticker,
@@ -177,7 +191,7 @@ Community discussion, without vote or comment counts. Subreddit character matter
 
 2. **Look for cross-source divergences.** If news framing is bearish but StockTwits is overwhelmingly bullish, that mismatch is itself a signal — it can mean retail is leaning into a thesis the news flow hasn't caught up to (or vice versa, that retail is chasing while institutions are cautious).
 
-3. **Read Reddit posts for substance.** The feed carries no vote or comment counts, so judge a post by its body excerpt, not its title alone, and do not infer engagement.
+3. **Read every supplied post for substance.** Classifier labels are fallible annotations, including confident predictions. Their counts measure model output, not market sentiment; never use those counts as directional evidence. Derive the sentiment assessment from the original authors' text and user tags, separate quoted opponents from the author's own opinion, and explicitly correct misclassified examples. Do not infer engagement absent vote or comment counts.
 
 4. **Distinguish opinion from event.** A news headline ("Nvidia announces $500M Corning deal") is an event; a StockTwits post ("buying NVDA, this is going to moon") is opinion. Both are inputs but should be weighted differently in your conclusions.
 
@@ -195,6 +209,7 @@ Fill the following fields:
 
 - **overall_band**: Exactly one of Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish. Use Mixed when sources point in clearly different directions; Neutral only when all sources are genuinely silent.
 - **overall_score**: A number from 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral. Keep it consistent with overall_band.
+- Explain the score's evidence and weighting. It is an analyst judgment, not a calibrated probability. When classifier stances are mostly unclear, read the full posts, state any corrected interpretations, and avoid unsupported decimal precision.
 - **confidence**: low / medium / high, based on data quality and sample size.
 - **narrative**: Full source-by-source breakdown, divergences, dominant narrative themes, catalysts and risks, and a markdown summary table of key sentiment signals (direction, source, supporting evidence).
 

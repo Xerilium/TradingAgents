@@ -73,7 +73,8 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
         return [call["name"] for m in messages for call in (getattr(m, "tool_calls", None) or [])]
 
     def rounds(messages) -> int:
-        return sum(1 for m in messages if getattr(m, "tool_calls", None))
+        return sum(1 for m in messages if getattr(m, "tool_calls", None)
+                   and not str(getattr(m, "id", "")).startswith("required-"))
 
     def more_or_wrap_up(state) -> str:
         return "wrap_up" if rounds(state["messages"]) >= max_tool_rounds else "agent"
@@ -84,7 +85,7 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
                        spec.agent_node, max_tool_rounds, repeated)
         return agent({**state, "messages": [*state["messages"], HumanMessage(WRAP_UP)]})
 
-    graph.add_node("tools", ToolNode(list(spec.tools)))
+    graph.add_node("tools", ToolNode(list(spec.tools), handle_tool_errors=True))
     graph.add_node("wrap_up", wrap_up)
     graph.add_conditional_edges("agent", _tools_or_done, ["tools", END])
     graph.add_conditional_edges("tools", more_or_wrap_up, ["agent", "wrap_up"])

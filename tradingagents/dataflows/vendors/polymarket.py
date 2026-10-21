@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 import requests
 
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.date_window import is_historical
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,6 @@ GAMMA_BASE = "https://gamma-api.polymarket.com"
 REQUEST_TIMEOUT = 30
 
 # Default number of markets to return, ranked by traded volume.
-DEFAULT_LIMIT = 6
 
 
 def _request(path: str, params: dict) -> dict:
@@ -90,10 +90,10 @@ def get_prediction_markets(topic: str, limit: int | None = None, as_of_date: str
             f"them would put post-decision information into a {as_of_date} analysis."
         )
     if limit is None:
-        limit = DEFAULT_LIMIT
+        limit = get_config().get("prediction_market_limit")
 
     try:
-        data = _request("public-search", {"q": topic, "limit_per_type": 20})
+        data = _request("public-search", {"q": topic, "limit_per_type": get_config().get("prediction_search_limit", 100)})
     except requests.RequestException as e:
         logger.warning("Polymarket search failed for %r: %s", topic, e)
         return (
@@ -112,9 +112,11 @@ def get_prediction_markets(topic: str, limit: int | None = None, as_of_date: str
 
     header = (
         f'## Polymarket prediction markets: "{topic}"\n'
-        f"Live, market-implied probabilities (higher traded volume = deeper, "
-        f"more reliable). A probability is the crowd's priced odds of the event, "
-        f"not a forecast you should take as certain.\n\n"
+        "Live market-implied probabilities, ranked by traded volume. Volume alone "
+        "does not establish reliability. Resolution dates are not verified corporate-event dates.\n"
+        f"Search sample: {len(data.get('events', []))} events, {len(candidates)} eligible markets; "
+        f"returning {len(candidates[:limit]) if limit is not None else len(candidates)}. "
+        "Upstream search coverage is not exhaustive.\n\n"
     )
 
     if not candidates:
@@ -125,14 +127,14 @@ def get_prediction_markets(topic: str, limit: int | None = None, as_of_date: str
         )
 
     lines = []
-    for m in candidates[:limit]:
+    for m in candidates[:limit] if limit is not None else candidates:
         prices = _parse_json_list(m.get("outcomePrices"))
         outcomes = _parse_json_list(m.get("outcomes"))
         try:
-            prob = float(prices[0])
-        except (ValueError, IndexError):
+            probabilities = ", ".join(f"{label}: {float(price):.2%}" for label, price in zip(outcomes, prices, strict=True))
+        except (ValueError, TypeError):
+            lines.append(f"- {m.get('question')}: outcome probabilities were malformed; not analyzed.")
             continue
-        label = outcomes[0] if outcomes else "Yes"
         volume = m.get("volumeNum") or 0
         end_date = (m.get("endDate") or "")[:10]
         wk = m.get("oneWeekPriceChange")
@@ -142,8 +144,10 @@ def get_prediction_markets(topic: str, limit: int | None = None, as_of_date: str
             else ""
         )
         lines.append(
-            f"- **{m.get('question')}** — {label} {prob:.0%} "
-            f"(${volume:,.0f} volume, resolves {end_date}{wk_str})"
+            f"- **{m.get('question')}** — {probabilities} "
+            f"(${volume:,.0f} volume, resolves {end_date}{wk_str})\n"
+            f"  Source: https://polymarket.com/market/{m.get('slug', '')}\n"
+            f"  Resolution rules: {m.get('description') or 'not supplied'}"
         )
 
     return header + "\n".join(lines) + "\n"

@@ -63,6 +63,15 @@ class DeskStore:
             if interrupted or recovered_calls:
                 self.checkpoint_request(request, "recovery_unknown")
         for run in self.data["runs"]:
+            source_incomplete = any(a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"}
+                                    for a in run.get("source_evidence", {}).get("attempts", []))
+            for result in run.get("results", []):
+                if (result.get("status") == "completed"
+                        and (source_incomplete or result.get("social_sentiment", {}).get("status") in {"partial", "unavailable"})):
+                    result.update(status="failed", error="Research incomplete: source collection or social screening failed. Saved reports are retained.")
+                    result["revision"] = result.get("revision", 0) + 1
+                    if run["status"] == "completed":
+                        run["status"] = "failed"
             run.setdefault("portfolio_evidence", {
                 "status": "unavailable",
                 "reason": "Legacy run did not record its consumed portfolio context; cash and holdings are unknown.",
@@ -344,6 +353,9 @@ class DeskStore:
         if origin == "source":
             evidence["counts"] = {kind: sum(a["origin"] == kind for a in attempts)
                                   for kind in {a["origin"] for a in attempts}}
+            evidence["unavailable_data_count"] = sum(a.get("data_status") == "unavailable" for a in attempts)
+            evidence["partial_data_count"] = sum(a.get("data_status") == "partial" for a in attempts)
+            evidence["data_validation"] = "Request capture does not verify source relevance, factual accuracy, or complete requested coverage."
         elif origin == "gateway":
             evidence["counts"] = {
                 kind: {category: sum(a["boundary_kind"] == kind and a["category"] == category for a in attempts)

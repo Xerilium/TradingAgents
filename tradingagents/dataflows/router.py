@@ -167,7 +167,7 @@ def _source_arguments(function, args, kwargs):
         bound = inspect.signature(function).bind_partial(*args, **kwargs).arguments
     except (ValueError, TypeError):
         return {}, "unavailable"
-    return _safe_source_arguments(bound), "ticker_date_allowlist_only"
+    return _safe_source_arguments(bound), "bounded_research_arguments"
 
 
 def _safe_source_arguments(bound):
@@ -175,6 +175,7 @@ def _safe_source_arguments(bound):
     for key, value in bound.items():
         if isinstance(value, str) and (
             (key in {"symbol", "ticker"} and re.fullmatch(r"[A-Za-z0-9.^=+_-]{1,32}", value))
+            or (key in {"indicator", "freq"} and re.fullmatch(r"[A-Za-z0-9_,-]{1,256}", value))
             or (key in {"start_date", "end_date", "curr_date", "current_date", "as_of_date", "trade_date"}
                 and re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T[0-9:.+Z-]+)?", value))
         ):
@@ -223,6 +224,10 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
     try:
         output = function(*args, **kwargs)
         receipt["outcome"] = "success"
+        if isinstance(output, str):
+            receipt["data_status"] = ("unavailable" if re.match(
+                r"(?is)\s*(?:DATA_UNAVAILABLE|NO_DATA_AVAILABLE|<[^>]*unavailable|Polymarket data is currently unavailable|.*?are withheld for)", output)
+                else "partial" if "DATA_PARTIAL:" in output else "returned_unvalidated")
         return output
     except Exception as exc:
         receipt.update(outcome="error", error_class=_error_class(exc))

@@ -52,6 +52,8 @@ REPORT_KEYS = (
     "trader_investment_plan",
     "final_trade_decision",
 )
+DESK_ANALYSTS = ("market", "social", "news", "fundamentals")
+ANALYST_REPORTS = ("market_report", "sentiment_report", "news_report", "fundamentals_report")
 
 
 def now():
@@ -1124,6 +1126,7 @@ class DeskService:
                 raise ValueError(ready["message"])
         with self._request_stage(request, "refresh"):
             self.refresh()
+            self.runtime.request("refresh")
             market = self._book()
         with self._request_stage(request, "admission"), self.execution_lock, self.store.lock:
             if expected_revision is not None and (
@@ -1132,6 +1135,7 @@ class DeskService:
             ):
                 raise ValueError("Workspace settings changed. Refresh and review the research selection again.")
             config = copy.deepcopy(self.store.data["config"])
+            config["selected_analysts"] = list(DESK_ANALYSTS)
             symbols = symbols or config["universe"]
             if (
                 not isinstance(symbols, list)
@@ -1140,6 +1144,8 @@ class DeskService:
             ):
                 raise ValueError("Choose symbols from the configured universe.")
             symbols = list(dict.fromkeys(symbols))
+            if trade_date == today() and any(market["quotes"].get(symbol, {}).get("price") is None for symbol in symbols):
+                raise ValueError("Research inputs incomplete: wait for the selected symbols' Nautilus price snapshots.")
             if any(
                 r["status"] in {"queued", "running", "cancelling"} for r in self.store.data["runs"]
             ):
@@ -1338,8 +1344,11 @@ class DeskService:
                         self.gateway, domains=("maenifold.memory",),
                         symbol=symbol, trade_date=run["trade_date"]
                     )
-                    social_budget = {"remaining": 30, "deadline": None}
-                    def screen_factory(ticker, source, current=result, budget=social_budget, *, instrument_context=""):
+                    social_budget = {"remaining": config.get("social_screen_max_posts", 100), "deadline": None,
+                                     "max_seconds": config.get("social_screen_timeout_seconds", 600)}
+                    social_gateway = (MaenifoldGateway(self.gateway.endpoint, timeout=social_budget["max_seconds"])
+                                      if isinstance(self.gateway, MaenifoldGateway) else self.gateway)
+                    def screen_factory(ticker, source, current=result, budget=social_budget, gateway=social_gateway, *, instrument_context=""):
                         def record(evidence):
                             with self.store.lock:
                                 social = current["social_sentiment"]
@@ -1358,11 +1367,11 @@ class DeskService:
                             self.store.save()
                         company = re.search(r"(?:Company|Name): ([^\n;]+)", instrument_context)
                         instrument = f"{company.group(1)} ({ticker})" if company else ticker
-                        return laya_screen(ticker, self.gateway, budget=budget, instrument=instrument,
+                        return laya_screen(ticker, gateway, budget=budget, instrument=instrument,
                                            source=source, on_evidence=record,
                                            cancelled=lambda: run_id in self.cancelled)
                     graph = (self.graph_factory or TradingAgentsGraph)(
-                        selected_analysts=config.get("selected_analysts", ["market", "social", "news", "fundamentals"]),
+                        selected_analysts=config["selected_analysts"],
                         config=graph_config, supplemental_tools=tools, callbacks=[stats],
                         social_screen_factory=screen_factory,
                     )
@@ -1433,6 +1442,19 @@ class DeskService:
                                             result["reports"][key] = content
                                             result["revision"] += 1
                     next_stage("decision_persistence")
+                    missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
+                    if missing:
+                        raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
+                    failures = [a["operation"] for a in run["source_evidence"]["attempts"]
+                                if a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"}]
+                    if failures or not run["source_evidence"].get("capture_complete"):
+                        raise ValueError(f"Research incomplete: source collection failed or incomplete: {', '.join(sorted(set(failures)))}")
+                    social = result["social_sentiment"]
+                    if (set(social["sources"]) != {"stocktwits", "reddit"}
+                            or any(s.get("status") not in {"completed", "empty"}
+                                   or s.get("classified_count") != s.get("total_count")
+                                   for s in social["sources"].values())):
+                        raise ValueError("Research incomplete: not all fetched social posts were screened; inspect social coverage and errors.")
                     graph.record_decision(symbol, run["trade_date"], final)
                     rating = run_rating(final)
                     if run_id in self.cancelled:

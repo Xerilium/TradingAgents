@@ -256,8 +256,8 @@ class SdkMcpTransport:
             raise ValueError("MCP endpoint must be an absolute HTTP or HTTPS URL.")
         if parsed.username or parsed.password or parsed.fragment:
             raise ValueError("MCP endpoint must not embed credentials or a URL fragment.")
-        if not math.isfinite(timeout) or timeout <= 0 or timeout > 300:
-            raise ValueError("MCP timeout must be greater than zero and at most 300 seconds.")
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("MCP timeout must be a positive finite number of seconds.")
         self.endpoint = endpoint
         self.timeout = timeout
 

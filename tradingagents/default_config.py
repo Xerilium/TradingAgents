@@ -141,14 +141,19 @@ def build_default_config() -> dict:
         "news_article_limit": 20,             # max articles per ticker (ticker-news)
         "global_news_article_limit": 10,      # max articles for global/macro news
         "global_news_lookback_days": 7,       # macro news lookback window
+        "prediction_market_limit": None,     # all matching markets returned by search
+        "prediction_search_limit": 100,      # upstream event search page size
         # Search queries used by get_global_news for macro headlines. Extend or
         # replace to broaden geographic / sector coverage.
         "global_news_queries": [
-            "Federal Reserve interest rates inflation",
-            "S&P 500 earnings GDP economic outlook",
-            "geopolitical risk trade war sanctions",
-            "ECB Bank of England BOJ central bank policy",
-            "oil commodities supply chain energy",
+            "Federal Reserve",
+            "inflation",
+            "GDP",
+            "ECB",
+            "Bank of England",
+            "Bank of Japan",
+            "oil",
+            "tariffs",
         ],
         # Data vendor configuration
         # Category-level configuration (default for all tools in category).

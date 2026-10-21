@@ -1,7 +1,7 @@
 """Per-post social screening: Maenifold Laya for the desk, optional Jev for CLI.
 
-``laya_screen`` uses the injected MCP SDK gateway, a shared bounded serial
-sample, and exact multilingual token preflight. Its labels are sentiment
+``laya_screen`` uses the injected MCP SDK gateway, a shared timed serial
+screen, and exact multilingual token receipts. Its labels are sentiment
 evidence, never research approval or trading authority.
 
 Jev answers typed questions with calibrated probabilities. Each StockTwits or
@@ -39,18 +39,17 @@ logger = logging.getLogger(__name__)
 
 # Social classification is evidence, never permission to place an order.
 _LAYA_LOCK = threading.Lock()
-_LAYA_UNCERTAIN_UNTIL = 0.0
-SOCIAL_ADMISSION_VERSION = "stance-contract-v1"
+SOCIAL_ADMISSION_VERSION = "stance-contract-v2"
 LAYA_QUESTIONS = {
-    "about": {"kind": "yes_no", "instructions": "Is `post` about `instrument`: the company, its stock, products or outlook?",
+    "about": {"kind": "yes_no", "instructions": "Is this post about {instrument}: the company, its stock, products or outlook?",
               "criteria": {
-                  "true": "`post` discusses `instrument` itself: the company, its stock, products or outlook.",
-                  "false": "`post` names `instrument` only in passing or in a list of tickers, is spam or promotion, or is about a different company.",
+                  "true": "Discusses the named company itself: its stock, products or outlook.",
+                  "false": "Names the company only in passing or in a list of tickers, is spam or promotion, or discusses a different company.",
               }},
-    "stance": {"kind": "choice", "instructions": "What does the author of `post` expect for the stock price of `instrument`?",
-               "criteria": {"bullish": "The author expects `instrument`'s stock to rise, or is buying or holding it long.",
-                            "bearish": "The author expects `instrument`'s stock to fall, or is selling or shorting it.",
-                            "neutral": "The author gives no view of their own on `instrument`'s stock: a question, news without opinion or someone else's view quoted."}},
+    "stance": {"kind": "choice", "instructions": "What sentiment does the author express about {instrument} stock? Judge the author, not an opponent quoted in the post.",
+               "criteria": {"bullish": "Positive: expects the share price to rise, buys shares, or holds them long.",
+                            "bearish": "Negative: expects the share price to fall, sells shares, or shorts them.",
+                            "neutral": "No directional opinion about the stock: a question, factual news, or someone else's view quoted."}},
 }
 
 
@@ -69,17 +68,21 @@ def _distribution(answer, labels):
     return values
 
 
-def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
+def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=None,
                 source="social", cancelled=lambda: False, instrument=None):
     """Existing fetcher hook, with serial SDK calls and an honest unclassified remainder.
 
-    One symbol shares a 30-post / 120-second budget across its source callbacks.
-    Every call has a 60-second outer deadline. Unknown outcomes stop further work
-    and impose a process-wide cooldown; there is no replay after dispatch.
+    One symbol shares a configurable 100-post / 600-second budget across sources.
+    Calls share that configured deadline, including model loading and transport.
+    Unknown outcomes remain unscreened and prevent research completion.
     """
-    if type(max_posts) is not int or not 0 <= max_posts <= 30:
-        raise ValueError("max_posts must be between 0 and 30")
-    budget = budget if budget is not None else {"remaining": max_posts, "deadline": None}
+    if max_posts is not None and (type(max_posts) is not int or max_posts < 0):
+        raise ValueError("max_posts must be a nonnegative integer or None")
+    budget = budget if budget is not None else {"remaining": 100 if max_posts is None else max_posts,
+                                                 "deadline": None}
+    max_seconds = budget.get("max_seconds", 600)
+    if type(max_seconds) not in (int, float) or not math.isfinite(max_seconds) or max_seconds <= 0:
+        raise ValueError("max_seconds must be a positive finite number")
     instrument = instrument or ticker
 
     def execute(command, parameters):
@@ -92,14 +95,14 @@ def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
             if hasattr(gateway, "aexecute"):
                 async def run():
                     remaining = budget["deadline"] - time.monotonic()
-                    deadline = asyncio.timeout(max(.01, min(60, remaining)))
+                    deadline = asyncio.timeout(max(.01, remaining))
                     try:
                         async with deadline:
                             return await gateway.aexecute("laya", command, parameters, on_dispatch=dispatch)
                     except TimeoutError as exc:
                         # Event-loop timers may fire a clock tick before monotonic
                         # reaches the deadline. Record which limit actually fired.
-                        if deadline.expired() and remaining <= 60:
+                        if deadline.expired():
                             exc.social_budget_expired = True
                         raise
                 result = asyncio.run(run())
@@ -109,7 +112,6 @@ def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
             return _laya_payload(result)
 
     def screen(posts):
-        global _LAYA_UNCERTAIN_UNTIL
         keep = [True] * len(posts)
         evidence = {"status": "empty" if not posts else "unavailable", "source": source,
                     "admission_version": SOCIAL_ADMISSION_VERSION,
@@ -119,39 +121,41 @@ def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
         rows = evidence["posts"]
         for post in posts:
             rows.append({"text": post, "text_sha256": hashlib.sha256(post.encode()).hexdigest(),
-                         "provenance": "Reddit title/body excerpt (body at most 1000 characters)" if source == "reddit" else "source message body",
+                         "provenance": "complete fetched Reddit title/body" if source == "reddit" else "source message body",
                          "status": "unscreened", "model": "multilingual"})
         acquired = bool(posts) and _LAYA_LOCK.acquire(blocking=False)
         try:
             if posts and not acquired:
                 raise ValueError("another social classification is active")
-            if posts and time.monotonic() < _LAYA_UNCERTAIN_UNTIL:
-                raise ValueError("previous inference outcome unknown; cooldown active")
             if budget["deadline"] is None:
-                budget["deadline"] = time.monotonic() + 120
+                budget["deadline"] = time.monotonic() + max_seconds
             for index, post in enumerate(posts):
                 if cancelled():
                     evidence["stop_reason"] = "operator_cancelled"
                     break
-                if index >= max_posts or budget["remaining"] <= 0:
+                if ((max_posts is not None and index >= max_posts)
+                        or (budget["remaining"] is not None and budget["remaining"] <= 0)):
                     evidence["stop_reason"] = "post_budget_exhausted"
                     break
                 if time.monotonic() >= budget["deadline"]:
                     evidence["stop_reason"] = "time_budget_exhausted"
                     break
-                parameters = {"state": {"instrument": instrument, "post": post},
+                parameters = {"state": post,
                               "questions": copy.deepcopy(LAYA_QUESTIONS), "model": "multilingual"}
-                budget["remaining"] -= 1
-                counts = execute("count_context", parameters)
+                for question in parameters["questions"].values():
+                    question["instructions"] = question["instructions"].format(instrument=instrument)
+                if budget["remaining"] is not None:
+                    budget["remaining"] -= 1
+                response = execute("decide", parameters)
+                counts = response.get("usage", {}).get("context_budget", {}) if isinstance(response, dict) else {}
                 tokens = counts.get("sequence_tokens", {}) if isinstance(counts, dict) else {}
                 if (not isinstance(counts, dict) or counts.get("model") != "multilingual"
-                        or counts.get("max_tokens") != 8192 or counts.get("effective_max_tokens") != 8192
+                        or type(counts.get("effective_max_tokens")) is not int or counts["effective_max_tokens"] <= 0
                         or counts.get("questions_complete") is not True or counts.get("state_complete") is not True
                         or set(tokens) != set(LAYA_QUESTIONS)
-                        or any(type(n) is not int or not 0 < n <= 7936 for n in tokens.values())):
-                    rows[index]["error"] = "Input exceeds verified token budget; original post retained"
+                        or any(type(n) is not int or not 0 < n <= counts["effective_max_tokens"] for n in tokens.values())):
+                    rows[index].update(error="Full input could not be verified; original post retained", result=response)
                     continue
-                response = execute("decide", parameters)
                 rows[index].update(token_budget=counts, result=response)
                 answers = response.get("answers", {}) if isinstance(response, dict) else {}
                 if (not isinstance(answers, dict) or not isinstance(answers.get("about"), dict)
@@ -169,11 +173,12 @@ def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
                 # own confident contract may exclude it. Reconsider/absent
                 # contracts keep the post, even if P(about) is below .3.
                 relevance_certain = about_answer.get("grade") == "auto_execute"
-                keep[index] = not (about < _OFF_TOPIC_BELOW and relevance_certain)
+                # Classifier mistakes must not remove source evidence from the analyst.
+                keep[index] = True
                 stance_grade = stance.get("grade", "unknown")
                 label = (choice if stance_grade == "auto_execute" and probabilities[choice] >= _STANCE_CONFIDENCE
                          else "unclear")
-                rows[index].update(status="classified" if keep[index] else "off_topic",
+                rows[index].update(status="classified", relevance_prediction="off_topic" if about < _OFF_TOPIC_BELOW and relevance_certain else "retained",
                                    about_probability=about, relevance_uncertain=not relevance_certain,
                                    relevance_grade=about_answer.get("grade", "unknown"),
                                    stance=label, raw_prediction=choice, stance_grade=stance_grade,
@@ -182,7 +187,6 @@ def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
             from tradingagents.integrations.maenifold import GatewayTimeout
             evidence["error_class"] = type(exc).__name__
             if isinstance(exc, (TimeoutError, GatewayTimeout)):
-                _LAYA_UNCERTAIN_UNTIL = time.monotonic() + 60
                 expired = (getattr(exc, "social_budget_expired", False)
                            or budget.get("deadline") is not None and time.monotonic() >= budget["deadline"])
                 evidence["stop_reason"] = "time_budget_exhausted" if expired else "inference_timeout"
@@ -211,7 +215,7 @@ def laya_screen(ticker, gateway, *, max_posts=30, budget=None, on_evidence=None,
         note = ("Laya social sentiment: " + ", ".join(f"{n} {key}" for key, n in counts.items())
                 + f". Coverage: {classified} of {len(posts)} fetched posts classified; {sum(keep)} retained. "
                 + f"{uncertain_relevance} retained posts have uncertain relevance. "
-                + "Classifier stance counts cover only classified retained posts. Uncertain or missing stance contracts count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a different signal and may cover a different displayed sample; different counts are not a data-quality inconsistency. "
+                + "All fetched posts are retained for analyst review, including classifier off-topic predictions. Classifier relevance and stance are fallible annotations; correct them from the original text. Uncertain or missing stance contracts count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a separate signal. "
                 + (f"Screening deferred: {evidence['stop_reason']}; fetched posts remain available, not a source failure. " if evidence.get("stop_reason") else "")
                 + "Unscreened is not neutral. Classification is evidence, not trade approval.")
         evidence.update(note=note, completed_at=datetime.now(UTC).isoformat())
@@ -380,7 +384,7 @@ def jev_screen(ticker: str):
     def apply_screen(posts: list[str]) -> tuple[list[bool], str]:
         try:
             answers = _ask_each(instrument, posts)
-            keep = [a["about"]["noul"] >= _OFF_TOPIC_BELOW for a in answers]
+            keep = [True] * len(posts)
             stances = [_stance(a["stance"]) for a, kept in zip(answers, keep, strict=True) if kept]
         except (KeyError, TypeError):
             return _unscreened(instrument, posts, "malformed response")
@@ -388,8 +392,8 @@ def jev_screen(ticker: str):
             return _unscreened(instrument, posts, str(exc))
         counts = ", ".join(f"{stances.count(s)} {s}" for s in ("bullish", "bearish", "neutral", "unclear"))
         return keep, (
-            f"Screened by Jev: {len(stances)} of the {len(posts)} posts fetched are about "
-            f"{instrument}; their stance on its stock: {counts}."
+            f"Screened by Jev: all {len(posts)} fetched posts retained for analyst review. "
+            f"Classifier stance on {instrument}: {counts}. Classifier labels may be wrong; read the original text."
         )
 
     def screen(posts: list[str]) -> tuple[list[bool], str]:

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 import pytz
 
-from tradingagents.dataflows.errors import VendorNotConfiguredError
+from tradingagents.dataflows.errors import NoMarketDataError, VendorNotConfiguredError, VendorUnavailableError
 from tradingagents.dataflows.net import get_scrubbed
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,6 @@ REQUEST_TIMEOUT = 30
 # the trend and the year-over-year base for most monthly/quarterly series.
 DEFAULT_LOOKBACK_DAYS = 365
 
-# Rows cap for the rendered table: recent values matter most for a decision, and
-# daily series (yields, VIX) over a long window would otherwise flood context.
-MAX_ROWS = 40
 
 # Curated human-friendly aliases -> FRED series IDs. Anything not listed is used
 # verbatim as a raw FRED series ID, so power users are never limited to this set.
@@ -161,7 +158,11 @@ def _request(path: str, params: dict) -> dict:
         except ValueError:
             message = response.text
         raise ValueError(f"FRED request failed: {message}")
-    return response.json()
+    try:
+        return response.json()
+    except ValueError:
+        reason = "provider maintenance" if "maintenance" in response.text.lower() else "a non-JSON response"
+        raise VendorUnavailableError(f"FRED returned {reason}; no macro observations were received") from None
 
 
 def get_macro_data(
@@ -213,10 +214,7 @@ def get_macro_data(
 
     meta = _request("series", {"series_id": series_id, **realtime}).get("seriess") or []
     if not meta:
-        return (
-            f"FRED series '{series_id}' not found. Pass a known alias "
-            f"(e.g. 'cpi', 'unemployment') or a valid FRED series ID."
-        )
+        raise NoMarketDataError(series_id, series_id, "FRED returned no series metadata")
     info = meta[0]
     title = info.get("title", series_id)
     units = info.get("units_short") or info.get("units", "")
@@ -250,12 +248,7 @@ def get_macro_data(
     )
 
     if not points:
-        return header + (
-            f"\nNo observations for {series_id} in this window at the {pit} "
-            f"vintage. The series may report less frequently than the window "
-            f"(try a longer look_back_days), or have no vintage published by "
-            f"then (unpublished as of {pit}, or before ALFRED coverage begins)."
-        )
+        raise NoMarketDataError(series_id, series_id, f"no observations in {start_date} to {as_of_date} at vintage {pit}")
 
     first_date, first_val = points[0]
     last_date, last_val = points[-1]
@@ -271,16 +264,10 @@ def get_macro_data(
     except ValueError:
         summary = f"\n**Latest:** {last_val} ({last_date})\n"
 
-    shown = points
-    note = ""
-    if len(points) > MAX_ROWS:
-        shown = points[-MAX_ROWS:]
-        note = f"\n_(showing the most recent {MAX_ROWS} of {len(points)} observations)_\n"
-
     table = (
         "\n| Date | Value |\n| --- | --- |\n"
-        + "\n".join(f"| {d} | {v} |" for d, v in shown)
+        + "\n".join(f"| {o['date']} | {o.get('value') if o.get('value') not in ('.', None, '') else 'missing'} |" for o in observations)
         + "\n"
     )
 
-    return header + summary + note + table
+    return header + summary + table

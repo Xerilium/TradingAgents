@@ -1,12 +1,15 @@
+from datetime import date, timedelta
+
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from tradingagents.agents.analysts.turn import take_turn
+from tradingagents.agents.analysts.turn import request_inputs, take_turn
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
 from tradingagents.agents.tools import (
     get_global_news,
     get_macro_indicators,
     get_news,
     get_prediction_markets,
+    read_research_source,
 )
 
 # The tools this analyst is offered; its tool node is built from the same tuple.
@@ -15,6 +18,7 @@ TOOLS = (
     get_global_news,
     get_macro_indicators,
     get_prediction_markets,
+    read_research_source,
 )
 
 
@@ -22,6 +26,15 @@ def create_news_analyst(llm, tools=None):
     tools = TOOLS if tools is None else tuple(tools)
     def news_analyst_node(state):
         current_date = state["trade_date"]
+        required = request_inputs(state, "news_report", [
+            (get_news.name, {"start_date": (date.fromisoformat(current_date) - timedelta(days=7)).isoformat(), "end_date": current_date}),
+            (get_global_news.name, {"curr_date": current_date}),
+            (get_prediction_markets.name, {"topic": state["company_of_interest"]}),
+            *[(get_macro_indicators.name, {"indicator": indicator, "curr_date": current_date})
+              for indicator in ("cpi", "core_pce", "unemployment", "fed_funds_rate", "10y_treasury", "yield_curve", "real_gdp", "vix")],
+        ])
+        if required:
+            return required
         asset_type = state.get("asset_type", "stock")
         asset_label = "company" if asset_type == "stock" else "asset"
         instrument_context = get_instrument_context_from_state(state)
@@ -29,6 +42,9 @@ def create_news_analyst(llm, tools=None):
         system_message = (
             f"You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Use the available tools: get_news(start_date, end_date) for news about the {asset_label} under analysis, get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news, get_macro_indicators(indicator, curr_date, look_back_days) to ground macro commentary in actual data from FRED (e.g. 'cpi', 'core_pce', 'unemployment', 'fed_funds_rate', '10y_treasury', 'yield_curve'), and get_prediction_markets(topic, limit) for live market-implied probabilities of forward-looking events (e.g. 'Fed rate cut', 'recession 2026', geopolitical or sector events). Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
             + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
+            + " Use read_research_source for primary confirmation of material headlines and catalysts. Search matches are not verified news; do not infer earnings dates from prediction-market resolution dates. State publication dates and distinguish full article evidence from headline-only evidence."
+            + " If a syndicated article is blocked, follow the issuer's own investor-relations/news pages or the original regulator statement; one blocked URL does not establish that primary evidence is unavailable."
+            + " Before discussing an upcoming earnings event in the final report, retrieve its official issuer calendar or reporting-date announcement. Resolve material primary-source checks while tools remain available; distinguish a failed request from a check you did not perform."
             + get_language_instruction()
         )
 

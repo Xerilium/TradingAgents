@@ -76,8 +76,10 @@ def create_trader(llm):
                     "Write these sections, in this order, starting with the action "
                     "on its own line:\n\n"
                     "- **Action**: exactly one of Buy / Hold / Sell. A research "
-                    "recommendation of Overweight is a Buy and Underweight is a Sell, "
-                    "sized by how strong the case is; conflict alone is not a Hold.\n"
+                    "rating describes desired exposure relative to a benchmark; it is not "
+                    "automatically an order. Preserve the committee's reasoning. With no "
+                    "holding to reduce and no permitted shorting, avoiding a purchase is Hold. "
+                    "Do not invent a short entry or stop for an unavailable action.\n"
                     "- **Reasoning**: why, against the plan and the price structure\n"
                     "- **Entry Price**, **Stop Loss**, **Position Sizing**: when you can state them"
                 ),

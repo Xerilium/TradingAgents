@@ -80,13 +80,13 @@ def _clean_dataframe(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fill_price_gaps(data: pd.DataFrame) -> pd.DataFrame:
-    """Drop rows with no close and forward/back-fill remaining price gaps so
-    indicators compute on a continuous series."""
+    """Keep complete reported bars; never manufacture prices or volume."""
     price_cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in data.columns]
     # copy() so a filtered (sliced) input is written to safely, not via a view.
-    data = data.dropna(subset=["Close"]).copy()
-    data[price_cols] = data[price_cols].ffill().bfill()
-    return data
+    missing = data.loc[data[price_cols].isna().any(axis=1), "Date"]
+    complete = data.dropna(subset=price_cols).copy()
+    complete.attrs["incomplete_ohlcv_dates"] = [str(value.date()) for value in missing]
+    return complete
 
 
 def _coerce_ohlcv_dates(data: pd.DataFrame) -> pd.Series:
@@ -165,9 +165,8 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     subsequent calls the cache is reused. Rows after as_of_date are
     filtered out so backtests never see future prices.
 
-    ``fill_gaps`` carries prices forward over gaps so indicators compute on a
-    continuous series. Pass ``False`` to read the values as the vendor reported
-    them, leaving a cell that was never reported empty.
+    ``fill_gaps`` is retained for caller compatibility. Both modes use complete
+    reported bars without filling cells; excluded dates remain in frame metadata.
     """
     from tradingagents.dataflows.router import observe_source_call
 
@@ -192,7 +191,7 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     os.makedirs(config["data_cache_dir"], exist_ok=True)
     data_file = os.path.join(
         config["data_cache_dir"],
-        f"{safe_symbol}-YFin-data.csv",
+        f"{safe_symbol}-YFin-data-reported.csv",
     )
 
     # A cached file may be empty if a prior fetch failed (unknown symbol,
@@ -220,7 +219,7 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
             lambda: yf_retry(lambda: yf.Ticker(canonical).history(
                 start=start_str,
                 end=end_str,
-                auto_adjust=True,
+                auto_adjust=False,
                 actions=False,
             )),
             symbol=canonical, as_of_date=as_of_date, start_date=start_str, end_date=end_str,
@@ -255,10 +254,9 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
             data["Date"].iloc[-1].date(), data["Date"].iloc[settled[-1]].date(),
         )
 
-    # Indicators need a continuous series, so gaps are carried forward. A caller
-    # that reports the numbers themselves asks for the frame as it was reported:
-    # a filled cell is the previous session's price under this session's date.
-    data = _fill_price_gaps(data) if fill_gaps else data.dropna(subset=["Close"]).copy()
+    # Never carry a price or volume into another session. Preserve excluded dates
+    # for the verification snapshot; raw vendor receipts retain the missing cells.
+    data = _fill_price_gaps(data)
 
     # Reject a stale frame (latest row far older than as_of_date) rather than
     # feeding year-old prices into indicators (#1021).

@@ -29,6 +29,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.date_window import coverage_gap, in_window
 from tradingagents.dataflows.symbols import crypto_base
 
@@ -96,7 +97,6 @@ def subreddits_for(ticker: str) -> tuple[str, ...]:
 # subreddits fits well inside one page, which keeps a high-volume subreddit from
 # crowding the others out of a combined search.
 _FEED_PAGE = 100
-_SCREEN_CHARS = 1000   # of a post's title and body sent for screening
 
 
 _SEARCH_LOOKBACK = timedelta(days=7)  # matches t=week below
@@ -238,6 +238,7 @@ def _fetch_subreddit_rss(
         content_el = entry.find("atom:content", _ATOM_NS)
         category_el = entry.find("atom:category", _ATOM_NS)
         posts.append({
+            "url": entry.find("atom:link", _ATOM_NS).get("href", "") if entry.find("atom:link", _ATOM_NS) is not None else "",
             "title": (title_el.text if title_el is not None else "") or "",
             "created_utc": _iso_to_timestamp(
                 published_el.text if published_el is not None else None
@@ -255,11 +256,12 @@ def fetch_reddit_posts(
     ticker: str,
     subreddits: Iterable[str] | None = None,
     *,
-    limit_per_sub: int = 5,
+    limit_per_sub: int | None = None,
     timeout: float = 10.0,
     start_date: str | None = None,
     end_date: str | None = None,
     screen=None,
+    limit: int | None = None,
 ) -> str:
     """Fetch recent Reddit posts mentioning ``ticker`` across finance
     subreddits (by default ``subreddits_for(ticker)``) and return them as a
@@ -283,7 +285,8 @@ def fetch_reddit_posts(
     # ("BTC") so the query actually matches discussion instead of near-nothing.
     ticker = crypto_base(ticker) or ticker
     label = ", ".join(f"r/{s}" for s in subreddits)
-    fetched = _fetch_subreddit_rss(ticker, "+".join(subreddits), _FEED_PAGE, timeout)
+    requested = limit if limit is not None else get_config().get("social_screen_max_posts", 100)
+    fetched = _fetch_subreddit_rss(ticker, "+".join(subreddits), min(requested, _FEED_PAGE), timeout)
     if fetched is None:
         return f"<Reddit unavailable: fetch failed ({label}); this is not an absence of discussion>"
 
@@ -300,10 +303,11 @@ def fetch_reddit_posts(
     def sub_of(p):
         return p.get("subreddit") or (subreddits[0] if len(subreddits) == 1 else "unknown")
 
-    note, screened_out = "", set()
+    note, screened_out = f"Reddit acquisition: requested up to {requested} posts; public RSS serves at most {_FEED_PAGE} matches from the past week. Older or additional matches are not verified.", set()
     if screen:
-        keep, note = screen([f"{p.get('title') or ''}\n{p.get('selftext') or ''}"[:_SCREEN_CHARS]
+        keep, screening_note = screen([f"{p.get('title') or ''}\n{p.get('selftext') or ''}"
                              for p in posts])
+        note += "\n" + screening_note
         screened_out = {sub_of(p).lower() for p, kept in zip(posts, keep, strict=True) if not kept}
         posts = [p for p, kept in zip(posts, keep, strict=True) if kept]
 
@@ -326,18 +330,17 @@ def fetch_reddit_posts(
                     if page_full else f"r/{sub}: <no posts found mentioning {ticker.upper()}>"
                 )
             continue
-        sub_posts = sub_posts[:limit_per_sub]  # the feed is newest-first
+        sub_posts = sub_posts[:limit_per_sub] if limit_per_sub is not None else sub_posts
         lines = [f"r/{sub} — {len(sub_posts)} recent posts mentioning {ticker.upper()}:"]
         for p in sub_posts:
             title = (p.get("title") or "").replace("\n", " ").strip()
             created = p.get("created_utc")
             created_str = time.strftime("%Y-%m-%d", time.gmtime(created)) if created else "?"
             selftext = (p.get("selftext") or "").replace("\n", " ").strip()
-            if len(selftext) > 240:
-                selftext = selftext[:240] + "…"
             lines.append(
                 f"  [{created_str}] {title}"
-                + (f"\n    body excerpt: {selftext}" if selftext else "")
+                + (f"\n    body: {selftext}" if selftext else "")
+                + (f"\n    Source: {p['url']}" if p.get("url") else "")
             )
         blocks.append("\n".join(lines))
     return "\n\n".join(([note] if note else []) + blocks)
