@@ -23,6 +23,9 @@
 .research-workspace #research-review{border-top:1px solid var(--line);margin-top:16px;padding-top:8px}
 .research-workspace #research-review textarea{width:100%}
 .workspace-reading{min-height:0;flex:1;overflow:auto}
+.experiment-curve-scroll{max-width:100%;min-width:0;overflow:auto}
+.experiment-curve-scroll>.experiment-equity-curve{display:block;width:100%;height:auto;min-width:640px;max-height:360px}
+.experiment-equity-curve text{font-size:14px}
 .strategy-workspace .journal-workspace{margin:0}
 .strategy-workspace [data-strategy-panel][hidden]{display:none}
 .strategy-workspace .strategy-status{flex:none;min-height:24px;color:var(--muted)}
