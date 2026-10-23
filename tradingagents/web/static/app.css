@@ -117,13 +117,49 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 .context-search { display:flex; align-items:center; gap:8px; font-size:11px; }
 .context-search input { width:110px; min-width:0; }
 .dashboard-attention { flex:none; display:flex; flex-wrap:wrap; gap:8px; font-size:11px; }
-.settings-workspace { display:flex; flex:1; min-height:0; overflow:hidden; gap:12px; }
+.settings-workspace { display:flex; flex:1; min-height:0; overflow:hidden; gap:16px; }
 .settings-workspace > .view-tabs { display:flex; flex-direction:column; flex:none; width:160px; margin:0; overflow:auto; }
-.settings-workspace > .view-tabs button { text-align:left; }
-.settings-content { flex:1; min-width:0; overflow:auto; }
+.settings-workspace > .view-tabs button { text-align:left; min-height:36px; font-size:13px; }
+.settings-content { flex:1; min-width:0; min-height:0; max-width:1180px; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; font-size:14px; line-height:1.5; }
+.settings-content > .panel,.settings-content > .settings-note,.settings-content > .settings-section { margin:0 0 16px; padding:20px; }
+.settings-content .settings-section { padding:20px; }
+.settings-content h2 { font-size:18px; margin:0 0 12px; }
+.settings-content h3 { font-size:15px; margin:20px 0 8px; }
+.settings-content p { max-width:75ch; overflow-wrap:anywhere; }
+.settings-content .settings-section > p,.settings-content .settings-note p,.settings-content .field label,.settings-content .field small { font-size:13px; }
+.settings-content .field-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.settings-content .form-control { font-size:14px; }
 .settings-content .settings-category-form { display:flex; flex-direction:column; }
-.settings-content .form-actions { position:sticky; bottom:0; background:var(--paper); border-top:1px solid var(--line); padding:12px; z-index:2; }
-.settings-content .settings-note { max-width:none; }
+.settings-content .form-actions,.settings-content .settings-policy-actions { position:sticky; bottom:0; display:flex; flex-wrap:wrap; align-items:center; gap:8px; background:var(--paper); border-top:1px solid var(--line); padding:12px; z-index:2; }
+.settings-content .form-actions p { flex:1 1 180px; max-width:none; margin:0; font-size:13px; }
+.settings-content .settings-note { max-width:none; display:block; }
+.settings-content dl { display:grid; grid-template-columns:minmax(130px,180px) minmax(0,1fr); gap:8px 16px; margin:16px 0; }
+.settings-content dt { color:var(--muted); }
+.settings-content dd { min-width:0; margin:0; overflow-wrap:anywhere; }
+.settings-content summary { cursor:pointer; padding-block:8px; font-size:14px; }
+.settings-content pre { font:inherit; white-space:pre-wrap; overflow-wrap:anywhere; }
+.settings-content .health-panel { margin-top:16px; font-size:14px; }
+.settings-content .settings-diagnostics-details { border-top:1px solid var(--line); margin-top:16px; padding-top:8px; }
+.settings-runtime-slot { margin-block:16px; }
+.settings-runtime-slot .runtime-panel { margin:0; max-height:none; height:auto; overflow:visible; }
+.settings-runtime-slot .runtime-panel > summary { padding:12px 16px; }
+.settings-runtime-slot .panel-header { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:16px; padding:16px; }
+.settings-runtime-slot .panel-header > div { min-width:0; max-width:none; }
+.settings-runtime-slot .panel-header p { font-size:13px; line-height:1.5; }
+.settings-runtime-slot .panel-header .button-group { display:flex; flex-wrap:wrap; gap:8px; }
+.settings-runtime-slot #native-execution-profile { border-top:1px solid var(--line); margin-top:16px; padding-top:12px; }
+.settings-runtime-slot #native-execution-profile label { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; font-size:13px; }
+.settings-runtime-slot select { max-width:100%; min-height:36px; font:inherit; }
+.settings-content #universe-review.settings-policy { padding:0; }
+.settings-content #universe-review #investor-policy { margin:0; padding:16px; }
+.settings-content #universe-review .policy-rules { grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:16px; margin-block:16px; }
+.settings-content #universe-review .policy-rules fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:8px 12px; min-width:0; margin:0; padding:12px; border:1px solid var(--line); }
+.settings-content #universe-review .policy-rules legend { padding-inline:4px; font-weight:600; }
+.settings-content #universe-review .policy-rules fieldset > p,.settings-content #universe-review .policy-rules fieldset > label:nth-of-type(n+3) { grid-column:1/-1; }
+.settings-content #universe-review .policy-rules p { margin:0 0 4px; font-size:13px; }
+.settings-content #universe-review .policy-rules label { min-width:0; font-size:13px; }
+.settings-content #universe-review .policy-rules input,.settings-content #universe-review .policy-rules select { width:100%; min-width:0; }
+.settings-content #universe-review .settings-policy-actions button { margin:0; }
 .app-shell > .workspace > #main[data-page="settings"],.app-shell > .workspace > #main[data-page="alerts"],.app-shell > .workspace > #main[data-page="portfolio"],.app-shell > .workspace > #main[data-page="markets"] { display:flex; flex-direction:column; overflow:hidden; }
 #universe-review.settings-policy { background:transparent; font:inherit; }
 #universe-review.alerts-workspace { display:flex; flex:1; min-height:0; overflow:hidden; font:inherit; }
@@ -138,7 +174,22 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 #universe-review.alerts-workspace [data-alert-pane].has-alert-evidence:not([hidden]) { display:flex; flex-direction:column; overflow:hidden; }
 #universe-review.alerts-workspace .has-alert-evidence .alert-inspector { flex:1; min-height:0; max-height:none; margin:0; }
 #universe-review.alerts-workspace .alert-inspector-body { flex:1; }
-@media(max-width:790px),(max-height:650px) { .settings-workspace { flex-direction:column; }.settings-workspace > .view-tabs { flex-direction:row; width:auto; }.settings-workspace > .view-tabs button { white-space:nowrap; }.settings-content { min-height:0; } }
+@media(max-width:790px),(max-height:650px) {
+ .settings-workspace { flex-direction:column; gap:8px; }
+ .settings-workspace > .view-tabs { flex-direction:row; width:auto; }
+ .settings-workspace > .view-tabs button { white-space:nowrap; }
+ .settings-content { max-width:none; }
+ .settings-content > .panel,.settings-content > .settings-note,.settings-content > .settings-section,.settings-content .settings-section { padding:16px; }
+ .settings-runtime-slot .panel-header { grid-template-columns:minmax(0,1fr); gap:12px; }
+}
+@media(max-width:600px) {
+ .settings-content .field-grid { grid-template-columns:minmax(0,1fr); }
+ .settings-content dl { grid-template-columns:minmax(95px,120px) minmax(0,1fr); gap:8px; }
+ .settings-content .form-actions,.settings-content .settings-policy-actions { padding:8px; }
+ .settings-content .form-actions p { flex-basis:100%; }
+ .settings-content .form-control { font-size:16px; }
+ .settings-content #universe-review .policy-rules fieldset { grid-template-columns:minmax(0,1fr); }
+}
 html,body { height:100%; overflow:hidden; }
 body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); height:100dvh; min-height:0; overflow:hidden; }
 .app-shell > .sidebar { position:static; display:flex; flex-direction:column; width:auto; height:100%; min-width:0; min-height:0; padding:12px 8px; overflow-x:hidden; overflow-y:auto; }
