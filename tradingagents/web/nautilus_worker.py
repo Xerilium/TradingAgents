@@ -212,7 +212,10 @@ def main():
                         if not 0 <= Decimal(str(quote["bp"])) <= Decimal(str(quote["ap"])) or Decimal(str(quote["ap"])) <= 0:
                             raise ValueError("Option bid/ask is unavailable or crossed")
                         stage = "construct_native_tick"
-                        tick = QuoteTick(instrument_id(symbol), Price.from_str(str(quote["bp"])), Price.from_str(str(quote["ap"])),
+                        bid, ask = Price.from_str(str(quote["bp"])), Price.from_str(str(quote["ap"]))
+                        precision = max(bid.precision, ask.precision)
+                        tick = QuoteTick(instrument_id(symbol), Price.from_str(format(bid.as_decimal(), f".{precision}f")),
+                            Price.from_str(format(ask.as_decimal(), f".{precision}f")),
                             Quantity.from_str(str(quote["bs"])), Quantity.from_str(str(quote["as"])), timestamp(quote["t"]), self.clock.timestamp_ns())
                         stage = "verify_native_precision"
                         if any(getattr(tick, field).as_decimal() != Decimal(str(quote[key])) for field, key in
