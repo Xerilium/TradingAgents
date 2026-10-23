@@ -138,7 +138,11 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 @media(max-width:790px),(max-height:650px) { .settings-workspace { flex-direction:column; }.settings-workspace > .view-tabs { flex-direction:row; width:auto; }.settings-workspace > .view-tabs button { white-space:nowrap; }.settings-content { min-height:0; } }
 html,body { height:100%; overflow:hidden; }
 body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); height:100dvh; min-height:0; overflow:hidden; }
-.app-shell > .sidebar { position:static; display:flex; flex-direction:column; width:auto; height:100%; min-height:0; padding:12px 8px; overflow:auto; }
+.app-shell > .sidebar { position:static; display:flex; flex-direction:column; width:auto; height:100%; min-width:0; min-height:0; padding:12px 8px; overflow-x:hidden; overflow-y:auto; }
+.app-shell > .sidebar .sidebar-button { width:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; height:auto; }
+.app-shell > .sidebar .sidebar-bottom > * { min-width:0; max-width:100%; }
+.view-tabs { display:flex; flex:0 0 auto; gap:4px; overflow:auto; }
+.view-tabs > button { flex:0 0 auto; width:auto; min-height:32px; padding:7px 10px; color:var(--ink); background:var(--control,var(--paper)); border:1px solid var(--line); border-radius:3px; }
 .app-shell > .sidebar .brand { padding:8px; margin:0 0 16px; }
 .app-shell > .sidebar #navigation { display:flex; flex-direction:column; gap:4px; width:100%; overflow:visible; }
 .app-shell > .sidebar .nav-link { min-height:36px; padding:8px; border:1px solid transparent; white-space:normal; }

@@ -264,6 +264,10 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/vendor/lightweight-charts/5.2.1/SOURCE.txt": "vendor/lightweight-charts/5.2.1/SOURCE.txt",
             "/static/styles.css": "styles.css",
             "/static/app.css": "app.css",
+            "/static/ui-markets.css": "ui-markets.css",
+            "/static/ui-instrument.css": "ui-instrument.css",
+            "/static/ui-orders.css": "ui-orders.css",
+            "/static/ui-research-journal.css": "ui-research-journal.css",
             "/static/recovery.js": "recovery.js",
         }
         if getattr(self.server.service, "recovery_only", False):

@@ -29,7 +29,13 @@
 #universe-review.markets-workspace #stock-detail,#universe-review.portfolio-workspace #stock-detail,#universe-review.orders-workspace #stock-detail{display:flex;flex-direction:column;position:static;min-width:0;min-height:0;height:100%;max-height:none;overflow:hidden;inset:auto}
 #universe-review.markets-workspace #detail-content,#universe-review.portfolio-workspace #detail-content,#universe-review.orders-workspace #detail-content{display:flex;flex:1;height:auto;min-height:0;overflow:hidden}
 #universe-review.portfolio-workspace>#investor-policy,#universe-review.portfolio-workspace>#investor-proposals,#universe-review.portfolio-workspace>#allocation-workspace,#universe-review.portfolio-workspace>#attention-workspace{display:none}
-#universe-review.portfolio-workspace>.workspace{flex:1;min-height:0;overflow:auto}
+#main[data-page=portfolio]{display:flex;flex-direction:column;overflow:hidden}
+#universe-review.portfolio-workspace{flex:1;height:auto;min-height:0}
+#universe-review.portfolio-workspace>.workspace{display:flex;flex:1;gap:12px;align-items:stretch;min-height:0;overflow:hidden;padding:0}
+#universe-review.portfolio-workspace #holdings-view{flex:1;min-width:0;min-height:0;overflow:auto}
+#universe-review.portfolio-workspace #stock-detail{flex:1;max-width:50%}
+.portfolio-performance{flex:1;min-height:0;overflow:auto}
+@media(max-width:800px){#universe-review.portfolio-workspace #workspace.detail-open #holdings-view{display:none}#universe-review.portfolio-workspace #stock-detail{max-width:none}}
 #universe-review.markets-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:800px){#universe-review.markets-workspace #market-discovery{grid-template-columns:minmax(220px,.8fr) minmax(280px,1fr);overflow:auto}#universe-review.markets-workspace #workspace.detail-open{display:flex}#universe-review.markets-workspace #workspace.detail-open #universe-view{display:none}#universe-review.markets-workspace #stock-detail{flex:1}#universe-review.markets-workspace .bulk-toolbar{flex-wrap:wrap}}
 @media(max-width:560px){#universe-review.markets-workspace #market-discovery{display:block;overflow:auto}#universe-review.markets-workspace .markets-criteria,#universe-review.markets-workspace .markets-results{overflow:visible;margin-bottom:8px}}
