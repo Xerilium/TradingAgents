@@ -25,6 +25,8 @@
 #universe-review #derived-market-chart figure{margin:0 0 12px}
 #universe-review #derived-market-chart svg{display:block;width:100%;min-width:640px;max-width:none;height:auto}
 #universe-review #derived-market-chart svg text{font-size:14px}
+#universe-review #derived-market-chart svg text{stroke:none}
+#universe-review #derived-market-chart [data-analysis-event-ordinal] rect[fill="transparent"]{stroke:none}
 #universe-review #derived-market-chart .table-scroll{height:auto;min-height:0;overflow:auto}
 .chart-inspectors fieldset,.chart-inspectors label{min-width:0;overflow-wrap:anywhere}
 .chart-inspectors .proposal-fields{grid-template-columns:minmax(0,1fr)}
