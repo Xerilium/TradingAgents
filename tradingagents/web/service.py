@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -588,14 +588,15 @@ class DeskService:
             return {**self.admission.reconcile(), "identity_errors": errors}
 
     def state(self, *, compact=False, run_id=None):
+        journal = self.store.database.read("journal")
         with self.lock:
             market = self._runtime_market()
-            data = {**copy.deepcopy(market), **self.store.snapshot(compact=compact, run_id=run_id)}
+            data = {**copy.deepcopy(market), **self.store.snapshot(compact=compact, run_id=run_id, journal=journal["data"])}
         data.pop("paper_account_id", None)
         data["workspace"] = self.workspace()
-        data["saved_research"] = self._saved_research_index()
+        data["saved_research"] = self._saved_research_index(current=journal["data"]["runs"])
         data["investor"] = self.investor()
-        data["health"] = self.health()
+        data["health"] = self.health(journal_revision=journal["revision"])
         data["reporting"] = self.reporting(compact=True)
         data["commands"] = self.admission.snapshot()
         data["attention"] = self.attention()
@@ -612,9 +613,9 @@ class DeskService:
         data["company_names"] = {s: self.company_names[s] for s in set(data["config"]["universe"]) | {p["symbol"] for p in data.get("positions", [])} if s in self.company_names}
         data["history_error"] = self.history_error
         data["saved_account_contexts"] = [{"run_id": r["id"], **copy.deepcopy(r["portfolio_evidence"]["context"])}
-            for r in self.store.data["runs"] + self.history.get("runs", [])
+            for r in journal["data"]["runs"] + self.history.get("runs", [])
             if r.get("portfolio_evidence", {}).get("context")]
-        for r in self.store.data["runs"] + self.history.get("runs", []):
+        for r in journal["data"]["runs"] + self.history.get("runs", []):
             for result in r.get("results", []):
                 data.setdefault("research", {}).setdefault(result["symbol"], {
                     "run_id": r["id"], **{key: result.get(key) for key in
@@ -653,11 +654,12 @@ class DeskService:
             if attempt.get("arguments", {}).get("symbol", attempt.get("arguments", {}).get("ticker")) == symbol
             and attempt.get("operation") in {"get_stock_data", "get_indicators", "ohlcv_history", "ohlcv_cache_read"}]})
 
-    def _saved_research_index(self, *, bind_attention=False):
+    def _saved_research_index(self, *, bind_attention=False, current=None):
         saved = {}
-        with self.store.lock:
-            self.store._refresh()
-            current = self.store.data["runs"]
+        with self.store.lock if current is None else nullcontext():
+            if current is None:
+                self.store._refresh()
+                current = self.store.data["runs"]
             for run in sorted(current + self.history.get("runs", []), key=lambda item: item.get("created_at") or "", reverse=True):
                 for result in run.get("results", []):
                     if result.get("status") == "completed" and result["symbol"] not in saved:
@@ -1125,13 +1127,11 @@ class DeskService:
                 "instruments": available_instruments, "option_package_profiles": copy.deepcopy(PACKAGE_PROFILES),
                 "option_execution_profiles": copy.deepcopy(EXECUTION_PROFILES)}
 
-    def health(self):
+    def health(self, *, journal_revision=None):
         import sqlite3
         runtime = self.runtime.state()
         try:
-            with self.store.lock:
-                self.store._refresh()
-                revision = self.store.revision
+            revision = self.store.database.read_revision("journal") if journal_revision is None else journal_revision
             store = {"status": "available", "schema": self.store.database.VERSION,
                      "journal_revision": revision, "sqlite_version": sqlite3.sqlite_version}
         except (OSError, ValueError, sqlite3.Error):

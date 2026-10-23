@@ -83,6 +83,13 @@ class ApplicationDatabase:
             row = connection.execute("SELECT revision,payload FROM app_records WHERE name=?", (name,)).fetchone()
         return {"revision": row[0], "data": json.loads(row[1])} if row else {"revision": 0, "data": copy.deepcopy(default)}
 
+    def read_revision(self, name):
+        with closing(sqlite3.connect(self.path, timeout=5)) as connection:
+            row = connection.execute("SELECT revision FROM app_records WHERE name=?", (name,)).fetchone()
+        if row is None:
+            raise ValueError("Saved application record is missing")
+        return row[0]
+
     def update(self, name, expected_revision, change, default=None):
         with self.transaction() as connection:
             row = connection.execute("SELECT revision,payload FROM app_records WHERE name=?", (name,)).fetchone()

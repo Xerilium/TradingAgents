@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from contextlib import closing
+from contextlib import closing, nullcontext
 import hashlib
 import html
 import json
@@ -230,18 +230,21 @@ class DeskStore:
             saved = self.database.read("journal")
             self.data, self.revision = saved["data"], saved["revision"]
 
-    def snapshot(self, *, compact=False, run_id=None):
-        with self.lock:
-            self._refresh()
+    def snapshot(self, *, compact=False, run_id=None, journal=None):
+        # A caller-owned committed read must not queue behind research artifact writers.
+        with self.lock if journal is None else nullcontext():
+            if journal is None:
+                self._refresh()
+                journal = self.data
             if compact:
-                data = copy.deepcopy({key: value for key, value in self.data.items() if key not in {"runs", "research_requests"}})
+                data = copy.deepcopy({key: value for key, value in journal.items() if key not in {"runs", "research_requests"}})
                 data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
                     ("id", "run_id", "status", "started_at", "ended_at", "elapsed_seconds", "capture_complete")}
-                    for r in self.data["research_requests"]]
-                selected = run_id if any(r["id"] == run_id for r in self.data["runs"]) else next((r["id"] for r in self.data["runs"]), None)
+                    for r in journal["research_requests"]]
+                selected = run_id if any(r["id"] == run_id for r in journal["runs"]) else next((r["id"] for r in journal["runs"]), None)
                 data["runs"] = []
                 data["research"] = {}
-                for run in self.data["runs"]:
+                for run in journal["runs"]:
                     results = run.get("results", [])
                     counts = {status: sum(r.get("status") == status for r in results)
                               for status in ("completed", "failed", "cancelled", "running")}
@@ -290,7 +293,7 @@ class DeskStore:
                                          ("grade", "auto_execute", "question_contract_version")} if status["laya"] else None,
                             }
                 return data
-            return copy.deepcopy(self.data)
+            return copy.deepcopy(journal)
 
     def save(self):
         with self.lock:
