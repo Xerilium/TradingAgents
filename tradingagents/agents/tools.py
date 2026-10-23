@@ -37,9 +37,10 @@ def read_research_source(
         return observe_source_call("read_research_source", "public_source", "source_document_text",
                                    lambda: read_source_document(url, trade_date), requirement="supplemental")
     except HTTPError as exc:
-        if exc.response is None or exc.response.status_code != 403:
+        status = exc.response.status_code if exc.response is not None else None
+        if type(status) is not int or not 400 <= status <= 599:
             raise
-        return (f"SOURCE_UNAVAILABLE: HTTP 403 Forbidden for {exc.response.url}. "
+        return (f"SOURCE_UNAVAILABLE: HTTP {status} for {exc.response.url}. "
                 "Document was not retrieved or analyzed; its claims remain unverified. "
                 "Use other retained evidence and disclose this source gap.")
 

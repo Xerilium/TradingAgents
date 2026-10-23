@@ -2575,7 +2575,8 @@ class DeskService:
                                         a.get("requirement") == "supplemental" and a.get("operation") == "read_research_source"
                                         and a.get("vendor") == "public_source" and a.get("origin") == "source_document_text"
                                         and a.get("outcome") == "error" and a.get("error_class") == "HTTPError"
-                                        and a.get("http_status") == 403 and a.get("capture") == "error_class_only"))]
+                                        and type(a.get("http_status")) is int and 400 <= a["http_status"] <= 599
+                                        and a.get("capture") == "error_class_only"))]
                     if failures or not run["source_evidence"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
                     if any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False) for origin in ("gateway", "jev")):
