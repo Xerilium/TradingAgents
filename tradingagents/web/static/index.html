@@ -44,17 +44,18 @@
       </header>
       <div id="order-status" class="notice" role="status">Checking order readiness…</div>
       <div id="notice" class="notice" role="status" hidden></div>
-      <details class="panel runtime-panel" aria-label="Nautilus runtime" hidden>
-        <summary>Nautilus connection · <span id="nautilus-status" role="status">Checking runtime</span></summary>
-        <div class="panel-header"><div><h2>TradingAgents research · NautilusTrader</h2>
-          <p>Nautilus connects account and order activity to Alpaca. Orders require explicit human approval and submission; cancellation and replacement require explicit human authorization.</p>
-          <p id="nautilus-account"></p><p id="nautilus-quote"></p>
-          <p>Nautilus owns current account state and configured index prices · Import coverage and discrepancies remain explicit · Research is advisory.</p>
+      <div id="settings-runtime-parking" hidden>
+      <section class="panel runtime-panel settings-section" aria-label="Nautilus connection">
+        <div class="panel-header"><div><h2>Nautilus connection</h2>
+          <p id="nautilus-status" role="status">Checking runtime</p>
         </div><div class="button-group">
           <button id="nautilus-start" class="button button-small" type="button">Start Nautilus</button>
           <button id="nautilus-stop" class="button button-small" type="button">Stop Nautilus</button>
         </div></div>
-      </details>
+        <p id="settings-profile-status"></p>
+        <details class="settings-diagnostics-details" id="settings-runtime-evidence"><summary>Account and price observations</summary><p id="nautilus-account"></p><p id="nautilus-quote"></p><p>Nautilus connects account and order activity to Alpaca. Research is advisory. Import coverage and discrepancies remain explicit.</p></details>
+      </section>
+      </div>
       <main id="main" tabindex="-1"><div class="initial-state"><div class="loading-bar"></div><h1>Opening your trading desk</h1><p>Connecting to your local TradingAgents service.</p></div></main>
       <footer class="workspace-footer"><span>Local workspace · maenifold MCP · Configured Alpaca account</span><span>Snapshot market data · USD</span></footer>
     </div>
