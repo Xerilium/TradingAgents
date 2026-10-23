@@ -74,6 +74,7 @@ actual installation, saved data and permitted smoke test.
 
 - Work in `C:\src\TradingAgents`; current application branch is `nautilus`.
 - The single canonical startup command is `rtk proxy .\Start-TradingDesk.cmd`.
+  The only TradingAgents UI port is 8098 (`http://127.0.0.1:8098/`); do not start alternate-port UI instances.
   Use it unchanged; do not wrap or patch the launcher or start the server directly.
   Read `tradingdesk.launch.json` for current paths; never substitute an empty
   data directory or run a migration merely to get the server started.

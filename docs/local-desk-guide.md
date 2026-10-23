@@ -163,7 +163,8 @@ verification does not establish a live connection or live execution acceptance.
    rtk proxy .\Start-TradingDesk.cmd
    ```
 
-2. Open <http://127.0.0.1:8098>. The launcher reuses a matching running service
+2. Open <http://127.0.0.1:8098>. Port **8098** is the only TradingAgents UI port;
+   do not start an alternate-port instance. The launcher reuses a matching running service
    or starts it with the configured data directories. It does not install
    packages, migrate records or stop another service occupying the port.
 3. Expand **Nautilus connection**. If stopped, choose **Start Nautilus**. Wait for

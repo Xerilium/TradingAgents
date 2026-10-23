@@ -48,6 +48,7 @@ existing data; do not start a default server against a new empty directory.
 rtk proxy C:\src\TradingAgents\.venv\Scripts\python.exe C:\src\TradingAgents\Launch-TradingDesk.py
 ```
 
+The only TradingAgents UI port is **8098**; do not launch an alternate-port instance.
 Open <http://127.0.0.1:8098>. Expand **Nautilus connection** and choose
 **Start Nautilus** if stopped. Every order requires approval of its exact terms
 and a separate Submit action. The app remains capable of paper trading;
