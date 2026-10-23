@@ -690,7 +690,12 @@ def build_langchain_tools(
                         try:
                             bounded = _bound_parameters(selected, parameters, symbol, trade_date)
                             observed["parameters"] = bounded
-                            dispatch = lambda: gateway.execute(selected.domain, selected.name, bounded)
+                            live = gateway.discover(selected.domain)
+                            if selected.name not in live:
+                                raise GatewayError(f"Gateway command is unavailable: {selected.domain}.{selected.name}.")
+                            validate_parameters(bounded, live[selected.name].schema)
+                            dispatch = lambda on_dispatch=None: gateway.execute(
+                                selected.domain, selected.name, bounded, on_dispatch=on_dispatch)
                             if research_effect is not None:
                                 if runtime is None:
                                     raise ValueError("Checkpointed research requires the native tool-call identity.")
@@ -701,7 +706,9 @@ def build_langchain_tools(
                             else:
                                 value = dispatch()
                         except GatewayError as exc:
-                            raise ToolException(str(exc)) from exc
+                            rule = getattr(exc.__cause__, "validator", None)
+                            guidance = f" Correct the advertised schema rule {rule}; use only supported fields and include required completion fields." if rule else ""
+                            raise ToolException(str(exc) + guidance) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 

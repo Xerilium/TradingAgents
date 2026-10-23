@@ -2287,7 +2287,16 @@ class DeskService:
             if reason:
                 run["continuation"]["blocked_reason"] = reason
                 self.store.save()
-            else:
+        if reason:
+            if interruptible:
+                from langgraph.types import interrupt
+                interrupt(reason)
+            raise ValueError(reason)
+        attempt = None
+
+        def on_dispatch():
+            nonlocal attempt
+            with self.store.lock:
                 attempt = {"id": str(uuid4()), "parent_id": prior["id"] if prior else None,
                     "domain": domain, "command": command, "tool_call_id": call_id, "arguments_sha256": arguments,
                     "stateful": stateful, "outcome": "intent", "started_at": now(),
@@ -2295,19 +2304,20 @@ class DeskService:
                 attempt["arguments"] = self.store._write_source_result(run["id"], attempt["id"], parameters, prefix="continuation-arguments")
                 effects[identity] = attempt
                 self.store.save()
-        if reason:
-            if interruptible:
-                from langgraph.types import interrupt
-                interrupt(reason)
-            raise ValueError(reason)
         try:
-            value = dispatch()
+            if domain == "local":
+                on_dispatch()
+                value = dispatch()
+            else:
+                value = dispatch(on_dispatch=on_dispatch)
             with self.store.lock:
                 attempt["result"] = self.store._write_source_result(run["id"], attempt["id"], {"value": value}, prefix="continuation-result")
                 attempt.update(outcome="confirmed", ended_at=now())
                 self.store.save()
             return value
         except BaseException:
+            if attempt is None:
+                raise
             with self.store.lock:
                 attempt.update(outcome="unknown" if stateful else "error", ended_at=now())
                 if stateful:
