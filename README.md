@@ -51,7 +51,8 @@ rtk proxy C:\src\TradingAgents\.venv\Scripts\python.exe C:\src\TradingAgents\Lau
 Open <http://127.0.0.1:8098>. Expand **Nautilus connection** and choose
 **Start Nautilus** if stopped. Every order requires approval of its exact terms
 and a separate Submit action. The app remains capable of paper trading;
-the current agent-work restriction is no trades, approvals or new research runs.
+research runs needed for authorized development and UAT do not require another
+permission request. Broker trades and approvals remain separately controlled.
 
 The upstream research framework documentation continues below. Older desk setup
 instructions in [paper-trading.md](docs/paper-trading.md) are explicitly marked

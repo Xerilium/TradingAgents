@@ -59,8 +59,13 @@ actual installation, saved data and permitted smoke test.
   the UI issues and verify their integrated criteria and changed workflows.
 - The user's restriction on agents placing trades is not permission to disable
   the integration. Preserve per-order approval and separate submission.
-- Until explicitly authorized otherwise: no trades, order approvals, broker
-  cancel/replace actions or new research runs. Read existing research.
+- Authorized development and UAT include research runs and existing local
+  simulations needed to exercise in-scope features. Do not ask for separate
+  permission or block delivery for these routine dev/test actions.
+- If the current task is an operating-rule correction, finish that documentation
+  task first. Do not start a run merely because its permission gate was removed.
+- Broker trades, order approvals and cancel/replace actions remain separate
+  and require explicit authorization; dev/test permission grants none of these.
 - Use the actual visible browser for requested visual UAT. Batch fixes and
   verification; do not treat unexecuted cases as passes. Follow the user's
   current instruction on when verification may run.
@@ -93,8 +98,9 @@ actual installation, saved data and permitted smoke test.
   or fake services. Existing mock results are not product acceptance
   evidence; preserve existing tests unless their removal is explicitly authorized.
 - Validate behavior with actual installed components, real retained inputs and
-  observed results. Static checks remain appropriate. This does not authorize
-  broker actions, research runs or runtime activation. Preserve production data.
+  observed results. Static checks remain appropriate. In-scope research and
+  local simulations are part of authorized dev/test work, not a separate gate.
+  Broker actions remain separately controlled. Preserve production data.
   Running-app UAT uses the built-in browser only; browser verification does not
   permit backend/API scripting against the running app or financial actions.
 - For efficiency, batch all known fixes before one affected browser verification
