@@ -21,7 +21,7 @@ from tradingagents.memory import TradingMemoryLog, settlement
 from tradingagents.memory.reflection import Reflector
 from tradingagents.reporting import write_report_tree
 
-from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
+from .checkpointer import clear_checkpoint, get_checkpointer, thread_id
 from .conditional_logic import ConditionalLogic
 from .propagation import Propagator
 from .setup import GraphSetup
@@ -61,6 +61,7 @@ class TradingAgentsGraph:
         callbacks: list | None = None,
         supplemental_tools: list[BaseTool] | None = None,
         social_screen_factory=None,
+        research_effect=None,
     ):
         """Initialize the trading agents graph and components.
 
@@ -76,6 +77,7 @@ class TradingAgentsGraph:
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
         self.supplemental_tools = tuple(supplemental_tools or ())
+        self.research_effect = research_effect
 
         set_config(self.config)
 
@@ -207,7 +209,7 @@ class TradingAgentsGraph:
                 checkpoint_thread_id=thread_id_value, portfolio=portfolio,
             )
 
-    def begin_checkpoint(self, company_name, trade_date, asset_type: str = "stock", portfolio=None) -> str | None:
+    def begin_checkpoint(self, company_name, trade_date, asset_type: str = "stock", portfolio=None, *, identity=None) -> str | None:
         """Recompile the graph with a per-ticker checkpointer and return the
         ``thread_id`` to inject into the stream/invoke ``config`` (or ``None``
         when checkpointing is disabled).
@@ -226,15 +228,15 @@ class TradingAgentsGraph:
         saver = self._checkpointer_ctx.__enter__()
         self.graph = self.workflow.compile(checkpointer=saver)
 
-        step = checkpoint_step(
-            self.config["data_cache_dir"], company_name, str(trade_date), signature
-        )
+        checkpoint_id = identity or thread_id(company_name, str(trade_date), signature)
+        saved = saver.get_tuple({"configurable": {"thread_id": checkpoint_id}})
+        step = saved.metadata.get("step") if saved is not None else None
         self._resuming = step is not None
         if step is not None:
             logger.info("Resuming from step %d for %s on %s", step, company_name, trade_date)
         else:
             logger.info("Starting fresh for %s on %s", company_name, trade_date)
-        return thread_id(company_name, str(trade_date), signature)
+        return checkpoint_id
 
     def checkpoint_input(self, init_state):
         """The value to stream/invoke: ``None`` to resume an existing checkpoint,
@@ -324,6 +326,12 @@ class TradingAgentsGraph:
         )
 
     def _memory_step(self, state):
+        if self.research_effect is not None:
+            return self.research_effect("local", "Memory Log", "memory-context", {},
+                                        lambda: self._load_memory_step(state))
+        return self._load_memory_step(state)
+
+    def _load_memory_step(self, state):
         """The graph's Memory Log step, alongside the analysts (#1428): settle every
         ticker's due decisions (#1445), then return the lessons known by the
         trade date for the Portfolio Manager (#1251).

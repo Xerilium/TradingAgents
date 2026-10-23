@@ -8,12 +8,39 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
+from importlib.metadata import version
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from tradingagents.dataflows.symbols import safe_ticker_component
+
+
+def desk_checkpoint_signature():
+    """Reject continuation across changed execution code or persistence versions."""
+    root = Path(__file__).resolve().parents[1]
+    paths = [*root.glob("agents/**/*.py"), *root.glob("graph/*.py"),
+             root / "integrations/maenifold.py", root / "web/service.py", root / "web/store.py"]
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        digest.update(str(path.relative_to(root)).encode())
+        digest.update(path.read_bytes())
+    for name in ("langgraph", "langgraph-checkpoint", "langgraph-checkpoint-sqlite"):
+        digest.update(f"{name}={version(name)}".encode())
+    return digest.hexdigest()
+
+
+def desk_checkpoint_exists(data_dir, ticker, identity):
+    """Inspect an existing saver without creating or migrating a database."""
+    path = Path(data_dir) / "checkpoints" / f"{safe_ticker_component(ticker).upper()}.db"
+    if not path.is_file():
+        return False
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+            return connection.execute("SELECT 1 FROM checkpoints WHERE thread_id=? LIMIT 1", (identity,)).fetchone() is not None
+    except sqlite3.Error:
+        return False
 
 
 def _db_path(data_dir: str | Path, ticker: str) -> Path:

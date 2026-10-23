@@ -1,0 +1,15 @@
+lightweight-charts-drawing 0.6.2
+Commit/gitHead: 0291d9c7373e3795373c915a3a64f4f663b5a0db
+Tag: v0.6.2
+Registry: https://registry.npmjs.org/lightweight-charts-drawing/0.6.2
+Archive: https://registry.npmjs.org/lightweight-charts-drawing/-/lightweight-charts-drawing-0.6.2.tgz
+Archive SHA256: bda484d6be87d8984ffddb3b598d9da1c1d7d28c685ef7df772ff7bdf9729eaa
+Registry integrity: sha512-KyT0vzrN52z2PvPYmpqUfYhVE80KyxtNRvlT5yb70/swQhVB/mTP8qSJiKxp/1V07Eohkl1waxHpFqOpmBTC1A==
+Original member: package/dist/lightweight-charts-drawing.umd.cjs
+Browser filename: lightweight-charts-drawing.umd.js (unchanged bytes; JavaScript MIME)
+Bundle size: 219809 bytes
+Bundle SHA256: 8e8505ce28595cebaae44e1eee2b61c932e8f373dd4341a5bcba4327e5ab1162
+License: MIT; package/LICENSE retained unchanged, 1068 bytes
+License SHA256: 5cde65930fec689a2ee5cbebdbadfb15a1692e302205e2bd7ac043a61a19f8d1
+Retrieved: 2026-10-22
+No package scripts or build executed. Source map is not vendored.

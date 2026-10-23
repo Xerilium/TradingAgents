@@ -3,19 +3,16 @@
 import asyncio
 import json
 
-from urllib.parse import urlsplit, urlunsplit
-
-from .alpaca_readonly import credentials, trading_endpoint
-
 
 class PaperStream:
-    async def connect(self, credentials_file):
+    async def connect(self, connection):
         from websockets.asyncio.client import connect
-        endpoint = urlsplit(trading_endpoint(credentials_file))
-        stream = urlunsplit(("wss" if endpoint.scheme == "https" else "ws", endpoint.netloc, endpoint.path + "/stream", "", ""))
-        self.socket = await connect(stream, open_timeout=20,
+        class FixedTradingOrigin(connect):
+            def process_redirect(self, exc):
+                return exc
+        self.socket = await FixedTradingOrigin(connection.stream_url, open_timeout=20,
                                     max_size=1024 * 1024, max_queue=16, compression=None)
-        secret = credentials(credentials_file)
+        secret = connection.headers()
         await self.send({"action": "auth", "key": secret["APCA-API-KEY-ID"], "secret": secret["APCA-API-SECRET-KEY"]})
         response = await asyncio.wait_for(self.receive(), 20)
         if response.get("stream") != "authorization" or response.get("data", {}).get("status") != "authorized":

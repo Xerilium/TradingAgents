@@ -4,11 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#182b3b">
-  <meta name="description" content="TradingAgents paper trading desk. Portfolio, agent research, and controlled paper execution.">
-  <title>TradingAgents · Paper desk</title>
+  <meta name="description" content="TradingAgents trading desk. Portfolio, agent research, and exact approved execution on the configured Alpaca account.">
+  <title>TradingAgents · Trading desk</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23182b3b'/%3E%3Cpath d='M7 11h18M16 11v14M7 7h18' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/lists.js" defer></script>
+  <script src="/static/vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js" defer></script>
+  <script src="/static/vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js" defer></script>
+  <script src="/static/market-chart.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/command-controls.js" defer></script>
   <script src="/static/nautilus.js" defer></script>
@@ -19,11 +22,11 @@
     <aside class="sidebar" aria-label="Application navigation">
       <a class="brand" href="#overview" aria-label="TradingAgents portfolio">
         <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 8h22M5 13h22M16 13v15"/></svg>
-        <span>Trading<span class="brand-light">Agents</span><small>Paper desk</small></span>
+        <span>Trading<span class="brand-light">Agents</span><small>Trading desk</small></span>
       </a>
       <nav id="navigation" aria-label="Main"></nav>
       <div class="sidebar-bottom">
-        <div class="paper-identity"><span class="paper-dot"></span><strong>Paper trading</strong><span>Simulation environment</span></div>
+        <div class="paper-identity" id="connection-identity" style="flex-wrap:wrap"><span class="status-dot disconnected"></span><strong>Account unverified</strong><span>Configured connection not yet observed</span></div>
         <button id="pause-trading" class="sidebar-button" type="button">Pause execution</button>
         <div id="gateway-status" class="gateway-status"><span class="status-dot"></span><span>Checking gateway</span></div>
         <span class="sidebar-footer">TradingAgents + maenifold</span>
@@ -47,8 +50,8 @@
           <button id="nautilus-stop" class="button button-small" type="button">Stop Nautilus</button>
         </div></div>
       </details>
-      <main id="main" tabindex="-1"><div class="initial-state"><div class="loading-bar"></div><h1>Opening your paper desk</h1><p>Connecting to your local TradingAgents service.</p></div></main>
-      <footer class="workspace-footer"><span>Local workspace · maenifold MCP · Alpaca paper</span><span>Snapshot market data · USD</span></footer>
+      <main id="main" tabindex="-1"><div class="initial-state"><div class="loading-bar"></div><h1>Opening your trading desk</h1><p>Connecting to your local TradingAgents service.</p></div></main>
+      <footer class="workspace-footer"><span>Local workspace · maenifold MCP · Configured Alpaca account</span><span>Snapshot market data · USD</span></footer>
     </div>
   </div>
   <div id="toast" class="toast" role="status" hidden></div>

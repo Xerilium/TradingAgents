@@ -7,13 +7,16 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 from .alpaca_reports import timestamp, execution_id
+from .account_history import OPTION_ACTIVITY, activity_key
 
 
 async def collect_history(lifecycle, account, until, prior=None):
     start = (datetime.fromisoformat(prior["through"].replace("Z", "+00:00")) - timedelta(seconds=1)).isoformat() if prior else account.get("created_at")
     if not start:
         raise ValueError("Account creation time is missing; complete fill-history provenance is unavailable")
-    rows, references, token, previous = dict(prior["activities"]) if prior else {}, [], None, None
+    rows = {activity_key(row): copy.deepcopy(row) for row in prior["activities"].values()} if prior else {}
+    references, token, previous = [], None, None
+    revisions = copy.deepcopy(prior.get("activity_revisions", [])) if prior else []
     while True:
         query = dict(after=start, until=until, direction="asc", page_size=100)
         if token:
@@ -26,14 +29,22 @@ async def collect_history(lifecycle, account, until, prior=None):
             raise ValueError("Invalid account-activity page")
         for row in page:
             identity = row.get("id")
-            if not identity or identity in rows and rows[identity] != row:
+            key = activity_key(row)
+            if not identity:
                 raise ValueError("Missing or conflicting account-activity identity")
+            if key in rows and rows[key] != row:
+                if row.get("activity_type") not in OPTION_ACTIVITY:
+                    raise ValueError("Conflicting account-activity identity")
+                if not any(item["component_key"] == key and item["observed"] == row for item in revisions):
+                    revisions.append({"component_key": key, "previous": copy.deepcopy(rows[key]), "observed": copy.deepcopy(row),
+                        "receipt": references[-1], "status": "Unresolved correction; neither payload silently supersedes the other"})
+                continue
             if row.get("activity_type") == "FILL":
                 instant = timestamp(row.get("transaction_time"))
                 if not timestamp(start) <= instant <= timestamp(until) or previous is not None and instant < previous:
                     raise ValueError("Fill page ordering or requested time boundary differs")
                 previous = instant
-            rows[identity] = row
+            rows[key] = row
         if len(page) < 100:
             break
         if page[-1]["id"] == token:
@@ -50,14 +61,18 @@ async def collect_history(lifecycle, account, until, prior=None):
             if identity in fees and fees[identity] != fee:
                 raise ValueError("Conflicting explicitly linked commission sources")
             fees[identity] = fee
-    changed = prior is None or rows != prior["activities"]
+    changed = prior is None or rows != prior["activities"] or revisions != prior.get("activity_revisions", [])
     pages = (prior["pages"] if prior else []) + (references if changed else [])
     evidence = lifecycle.receipt("native-recovery", "Complete activity history provenance",
         {"from": prior["from"] if prior else start, "through": until, "pages": pages,
-         "activity_ids": sorted(rows)}) if changed else prior["evidence"]
+         "activity_ids": sorted({row["id"] for row in rows.values()}), "activity_components": sorted(rows)}) if changed else prior["evidence"]
     history = {"complete": True, "from": prior["from"] if prior else start, "through": until,
-               "records": len(rows), "pages": pages, "boundary_pages": references, "evidence": evidence, "activities": rows,
+               "records": len(rows), "pages": pages, "boundary_pages": references, "evidence": evidence, "activities": rows, "activity_revisions": revisions,
                "limits": {"page_size": 100}}
+    history["option_lifecycle"] = [{"raw": copy.deepcopy(row), "component_key": activity_key(row), "history_receipt": evidence,
+        "revisions": [item for item in revisions if item["component_key"] == activity_key(row)],
+        "reconciliation": "Broker lifecycle evidence retained; no synthetic option/share/cash fill is inferred"}
+        for row in rows.values() if row.get("activity_type") in OPTION_ACTIVITY]
     return fills, fees, history
 
 

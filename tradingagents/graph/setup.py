@@ -55,13 +55,16 @@ def _tools_or_done(state) -> str:
 def _analyst_graph(spec, agent, max_tool_rounds: int):
     """One analyst as a graph of its own: the model and its tools, on a private message history.
 
-    It returns only its report, so analysts running side by side never write the
-    same key, and its tool calls never reach the other analysts' messages. After
+    It exports its report and, for the market analyst, its verified snapshot.
+    Its tool calls never reach the other analysts' private messages. After
     ``max_tool_rounds`` rounds of tool calls it is told to write its report, and
     that turn ends it whatever it answers, so a model that keeps calling tools
     cannot run the graph into its recursion limit (#1420).
     """
-    output = TypedDict(f"{spec.key.capitalize()}Report", {spec.report_key: str})
+    outputs = {spec.report_key: str}
+    if spec.key == "market":
+        outputs["verified_market_snapshot"] = str
+    output = TypedDict(f"{spec.key.capitalize()}Report", outputs)
     graph = StateGraph(AgentState, output_schema=output)
     graph.add_node("agent", agent)
     graph.add_edge(START, "agent")
