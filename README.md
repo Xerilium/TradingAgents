@@ -1,489 +1,761 @@
-<p align="center">
-  <img src="tradingagents/assets/tauric-logo.svg" width="60%" alt="Tauric Research">
-</p>
+# TradingAgents trading desk
 
-<div align="center" style="line-height: 1;">
-  <a href="https://arxiv.org/abs/2412.20138" target="_blank"><img alt="arXiv" src="https://img.shields.io/badge/arXiv-2412.20138-B31B1B?logo=arxiv"/></a>
-  <a href="https://discord.com/invite/hk9PGKShPK" target="_blank"><img alt="Discord" src="https://img.shields.io/badge/Discord-TradingResearch-7289da?logo=discord&logoColor=white&color=7289da"/></a>
-  <a href="https://x.com/TauricResearch" target="_blank"><img alt="X Follow" src="https://img.shields.io/badge/X-TauricResearch-white?logo=x&logoColor=white"/></a>
-  <a href="https://github.com/TauricResearch/" target="_blank"><img alt="Community" src="https://img.shields.io/badge/GitHub_Community-TauricResearch-14C290?logo=discourse"/></a>
-</div>
-<br>
-<div align="center">
-  <a href="https://github.com/TauricResearch" target="_blank"><img alt="TradingAgents #1 Repository of the Day" src="https://trendshift.io/api/badge/repositories/16192" width="250" height="55"/></a>
-</div>
-<br>
-<div align="center">
-  <!-- Keep these links. Translations will automatically update with the README. -->
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=de">Deutsch</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=es">Español</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=fr">français</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=ja">日本語</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=ko">한국어</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=pt">Português</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=ru">Русский</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=zh">中文</a>
-</div>
+A local desktop trading app that combines AI research, market analysis, order
+preparation, and portfolio monitoring. This checkout extends
+[TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents);
+the browser desk, execution integration, and workflows described here are specific
+to this fork.
 
----
+**Start the existing installation:** run `rtk proxy .\Start-TradingDesk.cmd`
+from `C:\src\TradingAgents`, then open <http://127.0.0.1:8098/>.
+Use one app server on **8098**. The app targets desktop windows; phone layouts
+are out of scope.
 
-# TradingAgents: Multi-Agents LLM Financial Trading Framework
+## Read this first
 
-## Paper trading desk
+- [Components and boundaries](#components-and-boundaries): what each integration does.
+- [Daily workflow](#daily-workflow): account → markets → research → orders → portfolio.
+- [Research](#research): providers, batch selection, evidence, recommendations and failures.
+- [Orders and baskets](#orders-and-baskets): allocation, approval and execution.
+- [Operations and storage](#operations-and-storage): launch, reconnect, restart and cleanup.
+- [Source map](#source-map): where each responsibility is implemented.
+- [Contributor instructions](AGENTS.md): session startup and delivery rules.
+- [Detailed installed-environment guide](docs/local-desk-guide.md): additional implementation
+  contracts and historical observations. Its older examples are not current account state.
 
-This checkout contains our local browser app: TradingAgents research, NautilusTrader
-as the trading engine, and an Alpaca paper adapter. The stock universe is
-configurable; a fresh store starts with FANGMAN. Account, prices, watchlists, reports, order preparation and
-the decision journal are available in one browser workspace.
+This is an operating and capability guide. A feature appearing in source or in
+a menu does not establish broker acceptance or successful execution of every
+supported order type. Saved research is advisory. A research team's “trader” or
+“portfolio manager” is a model role; its conclusion does not approve or submit
+a broker order.
 
-**Start here: [launch and user guide](docs/local-desk-guide.md).**
-For agent handoffs, read [AGENTS.md](AGENTS.md). For acceptance evidence, see
-[UAT coverage and limitations](docs/local-desk-guide.md#acceptance-evidence).
+## Components and boundaries
 
-On the existing Windows installation, open `Start-TradingDesk.cmd` from this
-folder, or run the launcher below. It uses the saved local configuration and
-existing data; do not start a default server against a new empty directory.
+| Component | What it does here | What it does not establish |
+| --- | --- | --- |
+| Browser desk | Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts and Settings. Displays saved records and current observations; collects explicit user actions. | Opening a page does not start a trade. |
+| Python desk service | Coordinates settings, research, evidence, proposals, approvals, native commands, calculations and saved records. | It is not a second broker or an independent source of actual holdings. |
+| TradingAgents + LangGraph/LangChain | Runs market, social, news and fundamentals analysts, research debate, trader planning and final risk review. Routes model-requested tools through the app. | A recommendation is not an executed portfolio allocation. |
+| Codex adapter | Uses the installed Codex app-server and existing sign-in for model responses and native function calls. The adapter returns calls to LangGraph for controlled execution. | It does not give the research model unrestricted computer or broker access. |
+| OpenAI-compatible provider / Unsloth | Alternative model endpoint selected in Research settings. Requires a working compatible server and loaded model. | Installing or opening Unsloth does not load a model. It is not the active provider when Codex is selected. |
+| Maenifold Gateway | MCP transport and schema discovery for tools. Research agents receive the configured memory and graph commands plus SequentialThinking; the app also uses selected data and Laya commands. | Gateway availability is separate from model availability and the broker connection. |
+| Maenifold memory / graph / thinking | Durable notes, related-context retrieval, concept navigation and structured reasoning. Commands are discovered and validated against their schemas. | Research memory is separate from the app's saved research and SQLite records. |
+| Laya | Screens social posts for relevance and bullish/bearish/neutral sentiment through the Gateway. Retains classifications and uncertainty as research evidence. | A screening result is not a trade signal, approval or order. |
+| Jev | Optional framework/CLI social screening through TypeSafe/OpenRouter settings. The browser desk injects Laya instead. | It is not a selectable desk fallback, the same service as Laya, or implied to have run by a generic evidence message. |
+| NautilusTrader | Native trading node, instruments, orders/events, cache, risk engine, portfolio accounting and isolated historical evaluation. Runs in the separate native Python environment. | Having the engine installed does not expose every upstream feature in this app. |
+| Custom Alpaca integration | App-owned market-data and execution clients connect Nautilus interfaces to Alpaca REST and trading updates. Handles source observations, mappings and reconciliation. | This is not an assertion that Nautilus ships or configures the whole application workflow automatically. |
+| Alpaca | Configured paper/live account, broker balances, buying power, positions, orders/fills and market-data services. | The local database cannot erase or replace broker state. Market-data access depends on feed and account permissions. |
+| Market-data vendors | Alpaca observations/history; Yahoo Finance via yfinance; SEC EDGAR filings; optional Alpha Vantage, FRED, Polymarket, Reddit and StockTwits paths. | A configured adapter does not guarantee credentials, current service availability or complete coverage. |
+| Lightweight Charts + drawing plugin | Vendored chart rendering and drawing interaction, wrapped by the app's chart module. | The renderer does not fetch market prices or prove that derived calculations are valid trading signals. |
+| SQLite + report artifacts | Versioned local application records and retained source/report files; separately configured older history can also be loaded. | These records are not the broker ledger or durable native cache recovery. |
+| Evaluation workers / Optuna | Existing isolated chart, scan, strategy and simulation calculations; optional Optuna dependency supports optimization paths. | Historical results are scenarios, not broker fills or proof of future returns. |
 
-```powershell
-rtk proxy C:\src\TradingAgents\.venv\Scripts\python.exe C:\src\TradingAgents\Launch-TradingDesk.py
-```
+### Data and command paths
 
-The only TradingAgents UI port is **8098**; do not launch an alternate-port instance.
-Open <http://127.0.0.1:8098>. Go to **Settings > Account** and choose
-**Start Nautilus** if stopped. Every order requires approval of its exact terms
-and a separate Submit action. The app remains capable of paper trading;
-research runs needed for authorized development and UAT do not require another
-permission request. Broker trades and approvals remain separately controlled.
+Research: selected symbols and date → configured analysts → chosen model adapter
+→ app-controlled tools and data vendors/Gateway → saved reports, evidence,
+debate and final recommendation.
 
-The upstream research framework documentation continues below. Older desk setup
-instructions in [paper-trading.md](docs/paper-trading.md) are explicitly marked
-as superseded; use the linked local guide for this installation.
+Trading: manual terms or saved research → local proposal/basket → impact review
+and exact approval → admission checks → native Nautilus command → custom Alpaca
+execution client → broker → status/fill updates and reconciliation → Portfolio
+and Journal.
 
-### Clear local saved data
+Market display: broker/provider observations or retained history → app source
+and timestamp metadata → chart/table. A fresh account observation is not
+necessarily a fresh trade price, especially outside market hours.
 
-Saved data has two locations, both configured in `tradingdesk.launch.json`:
+## Daily workflow
 
-- `application`: current settings, lists, drafts, research and local journal.
-- `history`: additional retained research and its report files. Clearing only
-  `application` leaves these old reports visible.
+1. **Dashboard:** verify the account mode, cash, buying power, exposure and open
+   orders. Inspect quote timestamps. Select the stocks to research.
+2. **Markets:** browse the configured universe, inspect an instrument and its
+   retained chart, and use existing screens/scans as needed.
+3. **Research:** check the batch symbols, date, analysts and provider. Start a
+   batch, follow progress, and read the saved conclusion and supporting reports.
+4. **Orders:** prepare exact terms or allocation targets. Review impact and
+   conditions, save the proposal, then approve and submit through separate actions.
+5. **Portfolio:** follow broker-observed holdings and order outcomes. Inspect
+   performance only when the necessary observations have been retained.
+6. **Journal:** connect the research, rationale, saved proposal, command and
+   subsequent outcome. Use Alerts for configured conditions; Settings holds
+   connections, research configuration, rules and diagnostics.
 
-This installation keeps both folders under
+Research, preparing a draft, approving it and submitting it are different steps.
+Stopping after a preview has not exercised broker execution.
+
+## Dashboard, Markets and selection
+
+The configured universe is the stock list, not the held portfolio. Fresh default
+configuration uses **FANGMAN**: META, AAPL, NVDA, GOOGL, MSFT, AMZN and NFLX.
+Existing stores can contain a different list.
+
+The inspected ticker and research checkbox selection are independent.
+Opening META while AAPL is checked does not change the batch to META.
+Use **Clear selection**, then check the intended names, or **Select N matches**
+for the current filtered set. Research setup explicitly lists the batch.
+
+Dashboard summarizes the observed account, stock list, inspected chart, saved
+research, positions and orders. Markets provides the detailed instrument
+workspace and separate browse/screen/scan controls. Returning from an instrument
+does not silently replace the research selection.
+
+A retained chart has a symbol, timeframe, feed, adjustment and capture time.
+Use those values to understand what it represents. Retained daily bars are not
+a live consolidated quote. Derived displays and drawings remain distinct from
+their source history.
+
+### Watchlists and the Screener
+
+In **Markets → Watchlists / Universe**, expand **Filters, list management and
+batch actions** for ownership/research/priority/freshness filters, price-movement
+thresholds, sorting, batch selection and column controls. **Create from selected**
+creates a named watchlist; add/remove-selected actions edit its membership.
+Watchlist membership does not change the configured universe or create holdings.
+Outside-universe names can remain retained discovery observations without
+becoming research/trading targets.
+
+Check workspace save acknowledgment after edits. **Retry save** handles eligible
+failures; **Reload saved workspace (discard unsaved edits)** replaces local edits
+with saved state. Concurrent revision conflicts require reloading current state,
+not overwriting another session's changes. Ordinary navigation can autosave view
+preferences even when no explicit Save is clicked.
+
+In **Markets → Screener**, enter price bounds, minimum market cap, average
+three-month volume, sector and sort criteria. **Run current screen** requests
+Yahoo discovery through yfinance. **Saved criteria and provider details** lets
+you name/save criteria or load them into the draft. Running does not save the
+draft; editing criteria does not relabel an earlier result.
+
+Provider pages contain up to 25 rows. Previous/Next explicitly request pages
+using retained criteria. Capture/request times, provider query, library version,
+offset and returned observations remain attached. A provider total may be
+unavailable and pages are not a complete market inventory. Empty success differs
+from provider failure. Adding a result to a watchlist or configured universe is
+an explicit separate action. Yahoo discovery is not Alpaca tradability or an IEX
+quote.
+
+### Instrument chart workspace
+
+An instrument has **Chart, Research, Options and Position** tabs. Chart
+inspectors are **Studies and formulas, Drawings, Comparison, Saved calculations,
+Source data and Playback**.
+
+Choose between immutable saved research inputs and separately collected
+current-market IEX history. Selecting a cache reads retained data; it does not
+refresh the provider. Source collection explicitly chooses interval, dates,
+symbol-mapping as-of date and adjustment (`raw`, `split`, `dividend`, `all`).
+Intervals are 1Min, 5Min, 15Min, 30Min, 1Hour and 1Day. Actions request this
+stock's range, the 252-session daily baseline, or selected batch dates. Intraday
+bars do not prove that daily baseline.
+
+Source data exposes coverage, pagination, artifacts and data-job status.
+**Stop future requests** stops further dispatch, not already received evidence.
+Eligible incomplete jobs offer **Resume unfinished symbols**. A failed latest
+request can leave an older usable artifact visible with its original time and
+warning. Restart does not silently replay unfinished jobs.
+
+Recorded OHLCV and close-to-close movement are separate from latest trades or
+bid/ask quotes. Daily axes use business days; intraday axes use UTC with New York
+context in selectors/readouts. Comparison requires compatible context, interval,
+provider/feed, adjustment, aggregation and currency, and uses matching retained
+timestamps only. Choosing comparison does not collect data.
+
+Drawings support horizontal/trend lines and text, numerical or approximate pointer
+placement. **Use selected retained OHLC value** binds an anchor explicitly.
+Drawings retain symbol/source/timeframe/adjustment/currency and coordinate intent;
+incompatible drawings remain unresolved rather than silently rebound. Saving a
+drawing does not create an alert. An eligible numeric drawing can seed a separate
+alert draft.
+
+Playback pins retained data and historical cutoff, with stepping/speed/play
+controls. It is hindsight inspection, not a backtest. Automatic playback in
+Markets is not established: the current timer stops outside Dashboard.
+Historical-price copying requires an eligible existing manual ticket field and
+normalization review; it does not change a quote or approve/submit an order.
+
+## Research
+
+### Choose the provider
+
+In **Settings → Research**, select **Codex (existing sign-in)** or
+**OpenAI-compatible (including Unsloth)**. Codex uses the existing adapter;
+its default fast/deep choices are Luna and Sol. The compatible option keeps
+the endpoint/model workflow available. Save settings before starting a run.
+Switching options in an editing draft is not the same as saving configuration.
+
+“No model loaded” from a compatible endpoint means that endpoint cannot serve
+the selected model. It does not mean Codex is unavailable. Check the actual
+saved provider rather than configuring an unrelated service.
+
+### Run a single stock or batch
+
+1. Select the intended symbols on Dashboard or Markets.
+2. Open **Research → New research / continue**.
+3. Check **Batch stocks for new research**. The inspected stock is informational;
+   it does not replace the list.
+4. Choose **Run research (N)** and review the workload dialog.
+5. Choose **Start N-stock research**.
+
+The desk processes batch symbols sequentially. Selected analyst roles can work
+concurrently within a symbol. The workload dialog displays models and date;
+duration is an estimate from observed runs, and cost may be unavailable.
+
+**Stop run** is a research control, not an order cancellation. Completed reports
+are retained. Do not start duplicate batches because a long-running screen
+has not yet changed.
+
+The service checks the requested date/configuration revision, model readiness,
+account observation and worker ownership before admission. Current-date research
+also needs selected-stock price snapshots. The saved account context is captured
+at run creation, even if the analysis date is historical; it is not reconstructed
+historical holdings.
+
+| Stage | Actual responsibility / model tier |
+| --- | --- |
+| Market | History, indicators and deterministic symbol/date snapshot; quick model. |
+| Sentiment | Prefetched news/social text and screening annotations; quick model. |
+| News | Company/global news, macro, prediction markets and relevant documents; quick model. |
+| Fundamentals | Company context, statements, insider/filing evidence; quick model. |
+| Bull / bear researchers | Opposing investment cases after analysts; quick model. |
+| Research Manager | Weighs debate and writes investment plan; deep model. |
+| Trader | Advisory transaction proposal; quick model, despite older UI help associating it with deep reasoning. |
+| Aggressive / conservative / neutral risk analysts | Challenge the proposal; quick model. |
+| Portfolio Manager | Final research decision with risk, plans, portfolio context and lessons; deep model. |
+
+Tool-using analysts have private message histories and bounded tool rounds,
+followed by a final tool-free reporting turn. The library supports separate
+providers/endpoints per tier; the desk applies its selected provider/endpoint
+to both tiers. Future settings changes do not rewrite saved run configuration.
+
+### Read results
+
+- **Summary:** saved recommendation and conclusion.
+- **Reports:** individual analyst findings.
+- **Debate:** research and risk discussion.
+- **Sources:** retained inputs and coverage.
+- **Activity:** recorded progression and calls.
+- **Setup:** batch configuration and continuation availability.
+
+Ratings such as **Underweight** express the saved research's preferred exposure.
+They do not by themselves mean “sell shares now.” If the account holds no shares,
+there is no holding to reduce. Read the actual action, quantities, rationale and
+portfolio context; missing order terms must not be invented from the label.
+
+A final text answer can exist while a run remains interrupted. Completion
+requires the app's record/evidence requirements, not merely a model response.
+Inspect the saved run's status and errors before treating it as complete.
+
+### Tools and failures
+
+Research agents have an explicit tool allowlist. Memory/graph operations and
+SequentialThinking support the research process; broker-write tools are not
+granted merely because the Gateway exposes them.
+
+Market, News and Fundamentals receive the supplemental Maenifold tools;
+prefetched Sentiment does not receive that same tool loop. The allowlist is:
+
+| Domain | Commands |
+| --- | --- |
+| Memory | SearchMemories, ReadMemory, WriteMemory, EditMemory, MoveMemory, ListMemories, DeleteMemory, ExtractConceptsFromFile |
+| Graph | BuildContext, FindSimilarConcepts, Visualize, Sync, AnalyzeConceptCorruption, RepairConcepts |
+| Thinking | SequentialThinking |
+
+This includes durable mutations, not just read-only retrieval. Research guidance
+requires relevant citations, checksums for editing and explicit confirmation for
+deletion. A graph relationship is a retrieval aid, not verified financial evidence.
+The separate local decision/reflection log settles eligible prior outcomes and
+supplies Portfolio Manager lessons; it is distinct from Maenifold memory.
+
+Codex requests use ephemeral app-server sessions advertising only the bound
+TradingAgents functions. General shell/browser/computer/plugin/host MCP access
+is disabled. Native function calls return to LangGraph for execution; the Codex
+adapter rejects unadvertised functions or unexpected built-in tool activity.
+
+Gateway commands use discovered schemas. SequentialThinking uses `response`
+for thought content and a `conclusion` string when completing; unsupported
+top-level fields are validation errors, not evidence of a network outage.
+
+Social source retrieval, Laya classification, model inference and evidence
+persistence are separate stages. Posts can remain unclassified after failure or
+screening-budget exhaustion; unscreened fetched posts prevent desk research
+completion. The default shared serial screening budget is 100 posts / 600 seconds
+across StockTwits and Reddit. Limit exhaustion is distinct from transport or
+schema failure. A missing source is not a fabricated neutral result. Inspect the specific saved error:
+connection failure, invalid arguments and missing evidence are different faults.
+
+Laya records original post text/hashes, probabilities, contract grades and
+coverage. Classifier off-topic predictions do not discard original posts from
+analyst review. StockTwits user Bullish/Bearish tags, Laya classifications and the
+analyst's sentiment report are different signals. Unclear/unscreened does not
+mean neutral; a classification contract never supplies trading authority.
+
+Source acquisition failures, unavailable/partial source data and capture failures
+can block completion. Gateway capture completeness is different from every
+tool call succeeding: a known, fully recorded tool validation error can coexist
+with completed research. Unknown/pending outcomes are not equivalent to such
+captured errors. The guard also requires terminal graph state, analyst reports
+and completed-or-empty social feeds with full fetched-post classification.
+
+### Data sources and historical meaning
+
+| Research evidence | Default path |
+| --- | --- |
+| OHLCV, indicators, deterministic market snapshot | Yahoo Finance / yfinance |
+| Financial statements | SEC EDGAR, then configured/supported Yahoo fallback |
+| Company overview, insider context, company/global news | Yahoo by default |
+| Macro series | FRED |
+| Prediction markets | Polymarket |
+| Social discussion | StockTwits / Reddit |
+| Current account and desk quote context | Nautilus / Alpaca observations |
+
+Tool-specific vendor configuration overrides category settings. An explicit
+comma-separated vendor list defines the fallback chain; the router does not
+silently add vendors. The `default` sentinel permits available implementations.
+Alpaca desk quotes and Yahoo research bars can therefore have different feeds,
+capture times and price bases.
+
+Historical safeguards vary: SEC uses filing dates and FRED pins vintages.
+Current Yahoo profiles, undated statements and live documents can be withheld
+when historical availability is unproven. Trimming recent social feeds by date
+does not reconstruct an archived point-in-time dataset.
+
+The public document reader accepts readable public HTTPS sources with destination
+and format checks. Historical reading requires verified document vintages. Sources
+also lists URLs found in report text; that link list alone is not a verified
+acquisition ledger. Inspect acquisition receipts/capture status separately.
+
+Continuation retains the original account/configuration context, remaining
+budgets and lineage, skipping completed symbols. It does not refresh account
+context or reset allowances. Cancellation, source/tool/schema changes, missing
+checkpoints, incomplete earlier evidence, exhausted budgets or uncertain
+stateful-call outcomes can prevent continuation. Confirmed exact results can be
+reused; uncertain stateful effects are not automatically replayed.
+
+Use **Continue interrupted research** only when the app says the checkpoint is
+eligible. If prior outcomes cannot be verified, the app can reject continuation.
+A new run creates a separate record; it does not repair the old record.
+
+## Orders and baskets
+
+### Manual or research-backed order
+
+Manual tickets do not require saved research. A research-backed ticket links the
+saved rationale; it still needs explicit terms and review. Choose the instrument,
+side, quantity, order type, duration and applicable prices/session. Preview
+impact before saving. Saving creates a local record, not a broker order.
+
+Review the exact saved terms, current account/price inputs and policy conditions.
+Approval and submission are separate. A changed proposal or native session can
+require renewed review. Watch actual order status after submission.
+
+Unknown submission outcomes must be reconciled before another submission.
+Never interpret a disconnected browser or missing reply as proof that the broker
+did not receive an order.
+
+### Basket allocation
+
+Orders includes allocation targets and baskets. Add stocks, specify target
+whole-share quantities or percentages, choose order types and provide rationale.
+Preview cash, exposure, proposed legs, residuals and policy conditions.
+
+Percentage targets use **observed total account equity**. They are not
+percentages of an independently entered trading budget. For example, a $10,000
+budget inside a $100,000 paper account must be translated deliberately into
+targets; entering 100% would target the account's equity, not the smaller budget.
+
+Saving a basket creates linked local proposals. A basket is **not atomic**:
+legs can have different outcomes and require their relevant approval and command
+checks. Hypothetical proceeds or assumed fills do not change actual buying power
+or holdings. Basket allocation currently uses whole shares; manual fractional
+quantity support does not imply fractional baskets.
+
+### Specialized terms
+
+Linked profit-target/protective-stop groups, trailing terms, eligible fractional
+quantities, options and session-specific orders have explicit supported mappings
+and eligibility checks. Do not assume every combination is accepted.
+
+For linked entries, protection can depend on the entry filling completely;
+partial entry exposure must not be described as fully protected. Cancellation,
+replacement and group actions are distinct from creating a new proposal.
+See [the installed-environment guide](docs/local-desk-guide.md) and the current
+ticket's conditions for detailed supported-order contracts.
+
+| Scenario | Implemented contract and limits |
+| --- | --- |
+| Target quantity | Desired total whole-share holding, including zero to close; proposed legs reflect the difference from observed holdings. |
+| Target weight | `floor(observed equity × target percentage ÷ valuation price)`; each target and the sum must be at most 100%. Rounding residuals remain visible. |
+| Basket admission | Exact current legs need unused approvals. The execution plan can have dependencies and pause/resume controls; it is not an all-or-nothing exchange transaction. Resume does not revive invalid approvals or uncertain legs. |
+| Cancel | Authorizes one exact current broker order/version. A pending cancellation is not confirmed; fills can arrive before it completes. Cancel-all is unsupported. |
+| Replace | Requires a reviewed replacement bound to its predecessor. Changes to cumulative fills can invalidate it. Retains predecessor/successor relationships and commitment accounting until resolved. A rejected replacement leaves the original authoritative. |
+| Linked equity exits | Bracket, OTO or OCO relationships map to broker-managed groups. Actual child observations establish activation and coverage; the app does not manufacture local protective fills. |
+| Fractional shares | Exact decimal quantities up to nine places; observed fractionable eligibility, simple DAY terms and additional eligibility for extended sessions. No fractional linked groups or baskets. |
+| Extended equity sessions | Simple quantity-sized LIMIT terms; fractional terms remain DAY-only. Whole-share eligible terms can use DAY/GTC. Broker/session acceptance still applies. |
+| Trailing stop | Standalone whole-share SELL, regular-session DAY/GTC, with exactly one price or percentage trail; trailing amendments are unavailable. |
+| Single-leg options | Identified supported contracts, whole contracts, regular-session supported MARKET/LIMIT/STOP_MARKET/STOP_LIMIT DAY/GTC terms. Unknown/nonstandard deliverables remain observation-only. |
+| Long-only options | Buy-to-open and sell-to-close intents. |
+| Bounded-risk option spreads | Separately eligible account/session-bound profile; two to four legs, LIMIT terms, same-expiry protection, observed quotes and reviewed collateral/native caps. Modeled collateral is distinct from broker margin. |
+
+Approval binds exact terms, revision, policy, account/session and evaluation
+inputs. Admission reserves resources transactionally and dispatch records durable
+intent before transport. A historical native `INITIALIZED` order is a draft
+record, not evidence of approval, current-engine ownership or broker submission.
+
+### Reconciliation and uncertain commands
+
+The adapter compares account, instrument, client/venue order identities,
+quantities, fills and statuses. Unsupported observations remain explicit.
+The native cache is in memory; this app uses custom startup recovery and ongoing
+reconciliation rather than assuming generic native startup reconciliation.
+
+| Condition | What to do / what the state means |
+| --- | --- |
+| Missing funding, source prices, asset eligibility or reconciliation | Read the specific review/admission condition; do not infer readiness from Connected. |
+| Missing submit/cancel/replace reply | Treat outcome as uncertain and reconcile; a lookup returning 404 alone does not prove non-submission. |
+| Broker/native identity or cumulative-fill discrepancy | The gap remains explicit and resources may remain reserved. Do not create a compensating order by guesswork. |
+| Stream interruption or incomplete recovery history | Full current lifecycle coverage is not established. |
+| New-orders pause | Blocks new admission/dispatch and replacement; it does not itself cancel working broker orders. |
+
+## Portfolio, Journal and Alerts
+
+Portfolio presents broker-observed holdings, pending commitments and account
+history. Empty positions mean no observed holdings; a saved basket preview
+does not populate them. Unrealized results, realized outcomes and performance
+series depend on their actual retained inputs and reconciliation.
+
+Journal connects saved decisions with proposals, commands and recorded outcomes.
+A simulation result remains separate from account returns.
+
+Performance retains the distinction between broker-reported equity/P&L and
+calculated returns. Modified Dietz needs covered endpoints and timed external
+flows. Time-weighted return needs actual before/after valuations at each flow.
+Missing flow boundaries and sessions are not interpolated. Benchmark comparison
+uses matching completed sessions and split-adjusted USD price data; reinvested
+dividends and benchmark costs are excluded. An empty history cannot produce a
+meaningful performance curve.
+
+Journal position outcomes require proven native/source relationships. It does
+not arbitrarily attribute an entire position's P&L to one research decision.
+
+Alerts evaluates saved conditions against available inputs and retains events.
+Rules, Inbox and Delivery serve different purposes. A chart or indicator alert
+is not a broker-hosted protective order, and closing/stopping the app can affect
+local evaluation. Do not rely on an alert to execute an exit.
+
+### Alert rules and delivery
+
+**Inbox** retains occurrences and exact evidence; opening evidence and
+acknowledging an occurrence are separate. **Rules** supports a name, compatible
+target and up to 16 flat ALL/ANY conditions. Targets include a stock, global
+account condition, fixed proposal, watchlist snapshot or followed list.
+Conditions include price thresholds, absolute movement, missing/stale sources,
+saved policy conditions, indicators and drawings. **Keep condition in group**
+edits the draft; **Save rule** persists it with its enabled choice.
+
+The monitor evaluates available snapshots every five seconds. Missing,
+disconnected or incompatible inputs can be unavailable rather than clear.
+Triggered conditions produce deduplicated occurrences; clearing rearms them.
+Acknowledgment alone does not rearm. Pauses/restarts retain monitoring gaps;
+unobserved intervals are not retrospectively evaluated as continuously monitored.
+Missing exact evidence is not replaced by newer same-key data.
+
+**Delivery** controls browser notifications for the current browser profile.
+Enabling requires browser permission and starts from that point without replaying
+the unread backlog. The service and browser page must remain running; OS and
+background-tab behavior can delay/suppress display. Email and closed-browser
+push are not configured. “Requested” records a display attempt, not proof of
+delivery or reading. Failed attempts have an explicit retry; Inbox acknowledgment
+remains separate.
+
+## Strategy lab and historical evaluation
+
+The app includes existing retained-history calculations, saved scans,
+declarative strategy experiments and saved-plan simulations. These are optional
+analysis workflows, separate from the ordinary research-to-order journey.
+
+Choose and inspect the exact retained source and calculation inputs. Previewing
+or saving an experiment does not launch it; use its explicit Run action.
+Recorded results depend on timeframe, fees, fill assumptions, dates and available
+data. A historical plan created after its simulated decision time carries
+hindsight. Daily bars cannot establish every intraday order of events.
+
+Nautilus evaluation runs in an isolated worker. Optuna is an optional evaluation
+dependency, not the order execution engine. Missing packages, incompatible
+inputs or unsupported profiles should remain explicit; do not install or
+fabricate data merely to make a result appear successful.
+
+### Chart calculations and reusable definitions
+
+Definitions carry IDs, revisions, settings and hashes. Calculations bind exact
+source receipts, dependency revisions, coverage and implementation identity.
+Editing a definition does not rewrite an earlier result.
+
+Derived displays include Heikin-Ashi, Renko, Kagi, line break, and point and
+figure. Parameterized studies include KAMA, CCI, Donchian channels and Ichimoku.
+Derived prices, event ordinals and placement are analytical outputs, not observed
+quotes, trade times, volume or fills.
+
+Chart formulas use typed parameters and causal OHLCV series. Functions include
+`abs`, `where`, `lag`, `rolling_min`, `rolling_max`, `rolling_sum`, `rolling_mean`,
+`sma`, `ema` and `scale`, with arithmetic/comparisons and exact saved dependencies.
+Units include price, volume, scalar, percent and Boolean. A forward display offset
+does not move information availability. Arbitrary scripts, imports, attribute
+access, indexing, cycles and implicit transformed-event/raw-bar conversion are
+rejected. Budgets bound expression size, periods, input rows and output events.
+
+Seasonality supports calendar/session alignment and raw/normalized year
+comparisons. Completed-year statistics require calendar bounds, expected
+sessions and the prior December close. Incomplete years remain explicit;
+MTD/YTD are separate. Price returns do not imply reinvested-dividend returns.
+
+### Saved scans and scheduling
+
+**Markets → Saved scans** separates Definition, Runs and Matches. Targets can be
+fixed symbols, a watchlist snapshot, a following watchlist or an explicit provider
+query. Saving is separate from running; collection is explicit, distinct from
+retained-only evaluation.
+
+Multi-timeframe programs support up to 16 inputs and 16 ALL/ANY conditions.
+Inputs use OHLCV or exact saved formula/study revisions, with inequalities,
+equality and crossings. Each input declares timeframe, source/session profile,
+retained selection and maximum staleness in its own buckets. Minute axes are
+regular-session 1, 5, 15, 30 minutes or 1 hour; daily axes use provider days.
+Calculations retain original axes before backward alignment to eligible closed
+observations. Missing bars are not fabricated. An old cutoff alone is not proof
+of historical knowledge. Oversized work is rejected rather than truncated.
+
+Scheduling requires opt-in. Missed/overlapping slots are recorded, not replayed.
+Restart marks unfinished work interrupted; restored schedules lose scheduling
+authority. Inspect source coverage and status before treating Matches as a
+complete market screen.
+
+### Saved strategies and walk-forward experiments
+
+**Strategy lab** has Simulations, Experiments and Saved strategies, with Setup,
+Runs and Results / Compare views. The experiment profile uses one regular-session
+USD equity, whole-share sizing and empty initial holdings. Declarative rules
+are not arbitrary Python. Entry/exit rules combine ALL/ANY of 1–16 conditions;
+operands are OHLC prices, supported indicators, constants or finite parameters.
+Comparisons are above, below, cross above and cross below. Up to eight parameters
+can each have up to 256 unique integer/decimal values.
+
+Indicators include 50/200 SMA, 10 EMA, MACD components, RSI, Bollinger components,
+ATR, VWMA and MFI. RSI uses 0–100; MFI uses 0–1. A chart formula is not necessarily
+a strategy operand. Entries support MARKET/LIMIT/STOP_LIMIT DAY/GTC and supported
+linked protection; rule exits use MARKET terms.
+
+Experiments require complete retained raw daily history, calendar/instrument
+evidence, an explicit window, availability basis, cash, cost/fill scenarios and
+budgets. Preview freezes inputs without collecting data or evaluating. Run is
+separate. Rolling/expanding walk-forward windows separate training, validation,
+two session-count gaps and disjoint out-of-sample periods. Warmup does not trade.
+Each phase/fold resets cash, holdings and indicators; curves are independent
+scenarios, not a compounded tradable portfolio.
+
+### Optimizer and selection
+
+Evaluation pins **Optuna 5.0.0** in the service environment and **NautilusTrader
+1.231.0** in native execution. Availability, input validity and execution profile
+are separate checks. Grid search covers the finite space or rejects an inadequate
+budget. Adaptive search uses seeded `TPESampler`; both use `NopPruner`.
+Intermediate pruning and exact sampler/RNG continuation are unavailable.
+
+Selection uses net return, modeled total P&L or maximum drawdown with explicit
+directions and a secondary tie-break. Training and validation must meet minimum
+closed-trade counts. Validation ranks candidates; out-of-sample results do not
+choose the winner. No qualifier means no winner or out-of-sample run for that
+fold. Failed results are not zero returns. Scenario metrics average arithmetically;
+minimum closed-trade count governs eligibility. Reused evaluations retain
+source-trial attribution. ASK/dispatch/result/TELL/selection/out-of-sample evidence
+is retained. Cancellation, deadlines and restart can leave interrupted/unknown
+outcomes. Repeating creates a separate run, not exact optimizer continuation.
+
+### Saved-plan simulations
+
+In **Simulations**, load saved plans/data, choose the exact revision and source,
+enter window, availability, cash and cost/fill assumptions, save a preview,
+then run it separately. Supported saved plans are BUY whole-share regular-session
+USD MARKET/LIMIT/STOP_LIMIT DAY/GTC with empty starting holdings. SELL starting
+positions, replacement plans, BUY STOP_MARKET and imported initial holdings are
+unsupported.
+
+The saved-plan model submits after the first completed daily bar at/after
+decision availability using an explicit open-high-low-close path. Ending
+positions stay open. DAY cancellation is after the next sourced close and needs
+zero latency; it is not intraday broker expiry. Declarative experiments instead
+turn completed-bar signals into next modeled open-tick intents through the pinned
+native OHLC converter. Compressed timestamps and allocated volume are modeled.
+
+Fees, slippage/fill probabilities, seeds and latency are assumptions; enter zero
+fees explicitly when intended. Neither profile reconstructs historical research
+availability or proves point-in-time vintages. Separate native processes restrict
+inherited environments and use temporary directories; this is application-level
+separation, not an OS security sandbox. Results never authorize broker orders.
+
+## Settings
+
+- **Account:** connection identity and native start/stop controls.
+- **Research:** provider, models, analysts and research limits.
+- **Integrations:** configured service/data integration settings.
+- **Trading rules:** application policy and supported execution configuration.
+- **Diagnostics:** runtime, source, reconciliation and storage observations.
+
+The broker, native engine and application policy each enforce different parts
+of the workflow. Configuring one does not configure all three. A connected
+status alone does not establish order readiness or every feature's acceptance.
+
+## Operations and storage
+
+### Existing installation
+
+`tradingdesk.launch.json` supplies the application directory, history directory,
+native Python, credentials-file location and port. The normal launcher uses
+those values and checks the installation. A Git clone alone is not this working
+installation: environments, local data and private credentials are separate.
+
+The app runs in `.venv`; native Nautilus uses `.venv-nautilus-v1`.
+Maenifold Gateway defaults to `http://localhost:8080/mcp`.
+Provider endpoints and broker endpoints are separate configuration.
+
+Use **Settings → Account → Start Nautilus** to connect. Verify paper/live identity
+from the observed account, not just configured intent. **Stop Nautilus**
+disconnects the native engine; saved research and the web app remain available.
+Closing the browser does not stop the app server.
+
+Restart only the identified app/native processes and keep port 8098. A native
+restart creates a new authority session; retained broker orders are not
+automatically cancelled. Apply changed credentials or execution profiles through
+the documented stopped-session workflow.
+
+### Where records live
+
+| Location | Contents / boundary |
+| --- | --- |
+| Configured `application` directory | SQLite application records, settings, lists, proposals, approvals, journal, research and report/evidence artifacts. |
+| Configured `history` directory | Separately retained older research loaded at startup; can keep old runs visible after application reset. |
+| Browser storage | Browser preferences and editing state; clearing it alone does not clear server-side research/orders. |
+| Native worker | In-memory Nautilus cache and session state. Application SQLite is not proof of native crash/restart durability. |
+| Maenifold memory | Separate durable knowledge/graph/structured-thinking corpus. |
+| Alpaca | Broker balances, positions, orders, fills and history; outside a local reset. |
+
+Both configured local data directories currently sit under
 `C:/src/TradingAgents/.local-workspace/evidence/runtime-staging/20261017T024233Z-e3f9548d/`.
-Read the configuration before cleanup; do not assume this path on another machine.
+Read the launch configuration each time rather than assuming this path.
+Credentials are external; never print or commit them.
 
-To clear retained research while keeping current settings and drafts:
+### Existing local backup and restore controls
 
-1. Stop Nautilus in **Settings > Account**, then stop the app server owning port
-   8098. Confirm its native workers have exited. Do not stop unrelated Python processes.
-2. Resolve and verify the exact configured `history` directory. Reject junctions
-   or symbolic links. Delete that directory and recreate it empty. This permanently
-   removes its local reports, journal and legacy development artifacts.
-3. Restart the existing app with the same configured paths and port. Reload
-   **Research** and confirm no retained runs appear. Start Nautilus in
-   **Settings > Account** to reconnect.
+These are existing optional maintenance features, not prerequisites for trading.
+In **Settings → Diagnostics → Local records**, backups include application
+records and referenced evidence, configured history and eligible checkpoint
+coverage. Credentials, Python environments, unrelated files and native memory
+cache are excluded. Checkpoint bytes alone do not prove research continuation.
 
-For a full local reset, stop the app first and clear both configured directories.
-This also removes local settings, drafts, lists and current research. An empty
-`application` requires initialization: the normal launcher deliberately rejects
-a missing SQLite store. Use the existing server entry point once with all five
-configured paths/options, then return to the normal launcher:
+Restore inspects a supported application ZIP (maximum 64 MiB) before an explicit
+restore action. It retains current records before cutover, invalidates restored
+approval authority, stops native execution and requires fresh reconciliation
+and exact review. Broker records stay unchanged and saved pause choice is
+preserved. Do not use restore to conceal a source/evidence failure.
+
+### Clear retained research or reset the app
+
+Cleanup is destructive and is not a routine troubleshooting step. Use it only
+when requested, and identify exactly which records should be removed.
+
+1. Read the configured application/history paths. Verify resolved absolute
+   targets and reject junctions/symbolic links before recursive deletion.
+2. Stop Nautilus through the UI, then stop only the app server owning 8098.
+   Confirm its registered workers exited.
+3. To clear separate retained history, remove and recreate only the configured
+   `history` directory. Research held in the application store remains.
+4. For a requested full fresh local state, clear both configured directories.
+   This removes local settings, drafts, lists and research, not broker records.
+5. An empty application store needs initialization. The normal launcher rejects
+   a missing SQLite store. Use the existing server entry point once with the
+   exact configured paths, then return to the normal launcher:
 
 ```powershell
 rtk proxy .\.venv\Scripts\python.exe -m tradingagents.web.server --port 8098 --data-dir <application> --history-dir <history> --nautilus-python <native_python> --alpaca-credentials-file <credentials_file>
 ```
 
-Replace placeholders with the exact values from `tradingdesk.launch.json`.
-Do not delete credentials, environments, source code or broker records. A local
-reset does not cancel broker orders, close positions or erase broker history.
-Browser preferences are separate; do not import old browser lists/preferences
-into a fresh workspace unless wanted. Verify the empty state in the UI after
-restart; a directory deletion alone does not clear the running app's memory.
-
-## News
-
-<!-- news:start -->
-- [2026-10] **TradingAgents v0.6.0** released with reports saved as one HTML page, a provider per model tier so the managers and analysts can run on different models, past decisions settled for every ticker while the analysts work, and company news read from Yahoo search while Yahoo's news feed is down.
-- [2026-09] **TradingAgents v0.5.2** released with parallel analysts for a faster analysis, a CLI that runs without prompts from flags such as `--ticker` and `--date`, the run's settings recorded in every report, and backtests that see only data published by each analysis date.
-- [2026-09] **TradingAgents v0.5.1** released with a package layout organised by what each module holds (import paths moved), optional Jev screening of social posts, GPT-6 Sol and Luna as the default models, and fixes to run isolation and SEC EDGAR statements.
-
-Full release notes are in [CHANGELOG.md](CHANGELOG.md).
-
-<details>
-<summary>Earlier news</summary>
-
-- [2026-09] **TradingAgents v0.5.0** released with point-in-time integrity across every dated path, SEC EDGAR fundamentals served as filed, backtesting over a ticker and date grid, portfolio-aware runs, and current model lineups across every provider.
-- [2026-08] **TradingAgents v0.4.0** released with look-ahead / point-in-time fixes across FRED macro, social sentiment, and the decision-log memory; clearer decision signals; working CLI checkpoint resume; Trader price grounding; and the GPT-5.6 and GLM-5.3 models.
-- [2026-07] **TradingAgents v0.3.1** released with correctness and stability fixes: Alpha Vantage look-ahead filtering, graph-router crash-safety, graph-shape-aware checkpoint resume, working crypto sentiment sources, a configurable LLM retry budget, Bedrock API-key auth, and Claude Sonnet 5 / Fable 5 support.
-- [2026-06] **TradingAgents v0.3.0** released with a verified data-access contract, an expanded provider registry (NVIDIA, Kimi, Groq, Mistral, Bedrock, and any OpenAI-compatible endpoint), FRED and Polymarket data vendors, a current-generation model catalog, and a CI gate.
-- [2026-05] **TradingAgents v0.2.5** released with the grounded Sentiment Analyst, GPT-5.5 etc. model coverage, Qwen/GLM/MiniMax dual-region support, `TRADINGAGENTS_*` env-var configurability with API-key auto-detection, remote Ollama support, non-US alpha benchmarks, and ticker path-traversal hardening.
-- [2026-04] **TradingAgents v0.2.4** released with structured-output agents (Research Manager, Trader, Portfolio Manager), LangGraph checkpoint resume, persistent decision log, DeepSeek/Qwen/GLM/Azure provider support, Docker, and a Windows UTF-8 encoding fix.
-- [2026-03] **TradingAgents v0.2.3** released with multi-language support, GPT-5.4 family models, unified model catalog, backtesting date fidelity, and proxy support.
-- [2026-03] **TradingAgents v0.2.2** released with GPT-5.4/Gemini 3.1/Claude 4.6 model coverage, five-tier rating scale, OpenAI Responses API, Anthropic effort control, and cross-platform stability.
-- [2026-02] **TradingAgents v0.2.0** released with multi-provider LLM support (GPT-5.x, Gemini 3.x, Claude 4.x, Grok 4.x) and improved system architecture.
-- [2026-01] **Trading-R1** [Technical Report](https://arxiv.org/abs/2509.11420) released, with [Terminal](https://github.com/TauricResearch/Trading-R1) expected to land soon.
-
-</details>
-<!-- news:end -->
-
-<div align="center">
-
-🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation & CLI](#installation-and-cli) | 🎬 [Demo](https://www.youtube.com/watch?v=90gr5lwjIho) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
-
-</div>
-
-> 🎉 **TradingAgents** officially released! We have received numerous inquiries about the work, and we would like to express our thanks for the enthusiasm in our community.
->
-> So we decided to fully open-source the framework. Looking forward to building impactful projects with you!
-
-## TradingAgents Framework
-
-TradingAgents is a multi-agent trading framework that mirrors the dynamics of real-world trading firms. By deploying specialized LLM-powered agents: from fundamental analysts, sentiment experts, and technical analysts, to trader, risk management team, the platform collaboratively evaluates market conditions and informs trading decisions. Moreover, these agents engage in dynamic discussions to pinpoint the optimal strategy.
-
-<p align="center">
-  <img src="assets/schema.png" style="width: 100%; height: auto;">
-</p>
-
-> TradingAgents framework is designed for research purposes. Trading performance may vary based on many factors, including the chosen backbone language models, model temperature, trading periods, the quality of data, and other non-deterministic factors. [It is not intended as financial, investment, or trading advice.](https://tauric.ai/disclaimer/)
-
-Our framework decomposes complex trading tasks into specialized roles.
-
-### Analyst Team
-- Fundamentals Analyst: Evaluates company financials and performance metrics, identifying intrinsic values and potential red flags.
-- Sentiment Analyst: Aggregates news headlines, StockTwits, and Reddit chatter into a single sentiment read to gauge short-term market mood.
-- News Analyst: Monitors global news and macroeconomic indicators, interpreting the impact of events on market conditions.
-- Technical Analyst: Utilizes technical indicators (like MACD and RSI) to detect trading patterns and forecast price movements.
-
-The selected analysts work at the same time, each on its own tools, and the research debate starts once all of their reports are in.
-
-<p align="center">
-  <img src="assets/analyst.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Researcher Team
-- Comprises both bullish and bearish researchers who critically assess the insights provided by the Analyst Team. Through structured debates, they balance potential gains against inherent risks.
-
-<p align="center">
-  <img src="assets/researcher.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Trader Agent
-- Composes reports from the analysts and researchers to make informed trading decisions, determining the timing and magnitude of trades.
-
-<p align="center">
-  <img src="assets/trader.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Risk Management and Portfolio Manager
-- Continuously evaluates portfolio risk by assessing market volatility, liquidity, and other risk factors. The risk management team evaluates and adjusts trading strategies, providing assessment reports to the Portfolio Manager for final decision.
-- The Portfolio Manager approves/rejects the transaction proposal. If approved, the order will be sent to the simulated exchange and executed.
-
-<p align="center">
-  <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-## Installation and CLI
-
-### Installation
-
-Clone TradingAgents:
-```bash
-git clone https://github.com/TauricResearch/TradingAgents.git
-cd TradingAgents
-```
-
-TradingAgents needs Python 3.11 or later. Create a virtual environment in any of your favorite environment managers:
-```bash
-conda create -n tradingagents python=3.13
-conda activate tradingagents
-```
-
-Or with [uv](https://docs.astral.sh/uv/):
-```bash
-uv venv --python 3.13
-source .venv/bin/activate
-```
-
-Install the package and its dependencies (`uv pip install .` with uv):
-```bash
-pip install .
-```
-
-### Docker
-
-Alternatively, run with Docker:
-```bash
-cp .env.example .env  # add your API keys
-docker compose run --rm tradingagents
-```
-
-After updating the repository, rebuild the image with `docker compose build`.
-
-Results, reports, the memory log and the cache live in the `tradingagents_data` volume. To keep them in a folder on the host instead, create the folder and point `TRADINGAGENTS_DATA_DIR` at it, in `.env` or the shell: `mkdir -p data && TRADINGAGENTS_DATA_DIR=./data docker compose run --rm tradingagents`.
-
-For local models with Ollama:
-```bash
-docker compose --profile ollama run --rm tradingagents-ollama
-```
-
-### Required APIs
-
-TradingAgents supports multiple LLM providers. Set the API key for your chosen provider:
-
-```bash
-export OPENAI_API_KEY=...          # OpenAI (GPT)
-export GOOGLE_API_KEY=...          # Google (Gemini)
-export ANTHROPIC_API_KEY=...       # Anthropic (Claude)
-export XAI_API_KEY=...             # xAI (Grok)
-export DEEPSEEK_API_KEY=...        # DeepSeek
-export DASHSCOPE_API_KEY=...       # Qwen (international, dashscope-intl.aliyuncs.com)
-export DASHSCOPE_CN_API_KEY=...    # Qwen (China, dashscope.aliyuncs.com)
-export ZHIPU_API_KEY=...           # GLM via Z.AI (international)
-export ZHIPU_CN_API_KEY=...        # GLM via BigModel (China, open.bigmodel.cn)
-export MINIMAX_API_KEY=...         # MiniMax (global, api.minimax.io)
-export MINIMAX_CN_API_KEY=...      # MiniMax (China, api.minimaxi.com)
-export OPENROUTER_API_KEY=...      # OpenRouter
-export MISTRAL_API_KEY=...         # Mistral
-export MOONSHOT_API_KEY=...        # Kimi (Moonshot)
-export GROQ_API_KEY=...            # Groq
-export NVIDIA_API_KEY=...          # NVIDIA NIM
-export FRED_API_KEY=...            # FRED macro data (free, optional)
-export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
-export TYPESAFE_API_KEY=...        # Jev social-post screening (optional)
-```
-
-For Azure OpenAI, copy `.env.enterprise.example` to `.env.enterprise` and fill in your credentials.
-
-For AWS Bedrock, install the extra with `pip install ".[bedrock]"`, set `llm_provider: "bedrock"`, configure AWS credentials (environment variables, `~/.aws/credentials`, or an IAM role) and `AWS_DEFAULT_REGION`, and use a Bedrock model ID, e.g. `us.anthropic.claude-opus-5-5`.
-
-For local models, configure Ollama with `llm_provider: "ollama"`. The default endpoint is `http://localhost:11434/v1`; set `OLLAMA_BASE_URL` to point at a remote `ollama-serve`. Pull models with `ollama pull <name>`, and pick "Custom model ID" in the CLI for any model not listed by default.
-
-For any other OpenAI-compatible server (vLLM, LM Studio, llama.cpp, or a custom relay), use `llm_provider: "openai_compatible"` and set the endpoint via `backend_url` (or `TRADINGAGENTS_LLM_BACKEND_URL`), e.g. `http://localhost:8000/v1` for vLLM or `http://localhost:1234/v1` for LM Studio. The model is whatever your server serves. No key is needed for local servers; set `OPENAI_COMPATIBLE_API_KEY` when the endpoint requires one.
-
-With `TYPESAFE_API_KEY` set, the Sentiment Analyst screens StockTwits and Reddit posts with TypeSafe's Jev before reading them. Posts that are not about the company are dropped, and each source opens with a count of the remaining posts by stance: bullish, bearish, neutral, or unclear. Without the key, posts pass through unscreened. `jev-latest` moves with new releases; set `TYPESAFE_DEFAULT_MODEL` to a versioned ID such as `jev-1.13.0` to hold it fixed across runs. To reach Jev through OpenRouter, put an OpenRouter key in `TYPESAFE_API_KEY` and set `TYPESAFE_BASE_URL=https://openrouter.ai/api`.
-
-Alternatively, copy `.env.example` to `.env` and fill in your keys:
-```bash
-cp .env.example .env
-```
-
-### CLI Usage
-
-Launch the interactive CLI:
-```bash
-tradingagents          # installed command
-python -m cli.main     # alternative: run directly from source
-```
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more. Your previous run's answers come back as the defaults, so pressing Enter accepts them. The `TRADINGAGENTS_*` variables in `.env` still skip their step entirely.
-
-To run without questions, for a scheduled job or a script, answer the per-run steps with flags and the rest with `TRADINGAGENTS_*` variables:
-```bash
-export TRADINGAGENTS_LLM_PROVIDER=openai TRADINGAGENTS_QUICK_THINK_LLM=gpt-6-luna TRADINGAGENTS_DEEP_THINK_LLM=gpt-6-sol
-export TRADINGAGENTS_OUTPUT_LANGUAGE=English TRADINGAGENTS_MAX_DEBATE_ROUNDS=1 TRADINGAGENTS_MAX_RISK_ROUNDS=1
-tradingagents --ticker NVDA --date 2026-09-23 --analysts market,news,fundamentals --save --no-show
-```
-Each flag skips only its own question. Run without a terminal, a missing answer stops the run before it starts and names the flag or variable to set.
-
-A saved report also includes `complete_report.html`, the report as one page with its sections listed beside the text, for reading in a browser, on a phone or in print. Answering the save question at the prompt also asks about the page and can open it in your browser; `--no-html` skips it, and so does `ta.save_reports(state, "NVDA", html=False)` from Python.
-
-### Markets and tickers
-
-TradingAgents works with any market Yahoo Finance covers, using the exchange-suffixed ticker. Company identity and the alpha benchmark resolve automatically per market.
-
-- US: `AAPL`, `SPY`
-- Hong Kong: `0700.HK` · Tokyo: `7203.T` · London: `AZN.L`
-- India: `RELIANCE.NS`, `.BO` · Canada: `.TO` · Australia: `.AX`
-- China A-shares: Shanghai `.SS`, Shenzhen `.SZ` (e.g. `600519.SS` for Kweichow Moutai)
-- Crypto: `BTC-USD`, `ETH-USD`
-
-<p align="center">
-  <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-An interface will appear showing results as they load, letting you track the agent's progress as it runs.
-
-<p align="center">
-  <img src="assets/cli/cli_news.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-<p align="center">
-  <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-## TradingAgents Package
-
-### Implementation Details
-
-We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, DeepSeek, Qwen (Alibaba DashScope, international and China endpoints), GLM (Zhipu), MiniMax (global + China), OpenRouter, Ollama for local models, and Azure OpenAI for enterprise.
-
-### Python Usage
-
-To use TradingAgents inside your code, you can import the `tradingagents` module and initialize a `TradingAgentsGraph()` object. The `.propagate()` function will return a decision. You can run `main.py`, here's also a quick example:
-
-```python
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
-
-ta = TradingAgentsGraph(debug=True, config=DEFAULT_CONFIG.copy())
-
-# forward propagate
-state, decision = ta.propagate("NVDA", "2026-09-01")
-print(decision)
-
-# the same report tree the CLI saves, under results_dir/reports
-ta.save_reports(state, "NVDA")
-```
-
-You can also adjust the default configuration to set your own choice of LLMs, debate rounds, etc.
-
-```python
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
-
-config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # e.g. openai, google, anthropic, deepseek, groq, ollama; openai_compatible covers any OpenAI-compatible endpoint (vLLM, LM Studio, llama.cpp, ...)
-config["deep_think_llm"] = "gpt-6-sol"    # Model for complex reasoning
-config["quick_think_llm"] = "gpt-6-luna"   # Model for quick tasks
-config["max_debate_rounds"] = 2
-
-ta = TradingAgentsGraph(debug=True, config=config)
-_, decision = ta.propagate("NVDA", "2026-09-01")
-print(decision)
-```
-
-The quick model serves the analysts, researchers, debaters and trader; the deep model serves the research and portfolio managers. Each can run on its own provider, for example the managers on Claude while the rest run on OpenAI:
-
-```python
-config["deep_think_provider"] = "anthropic"
-config["deep_think_llm"] = "claude-opus-5-5"
-```
-
-A tier on its own provider uses that provider's key and default endpoint; set `quick_think_backend_url` or `deep_think_backend_url` for a local or relay endpoint. The `TRADINGAGENTS_DEEP_THINK_PROVIDER` and `TRADINGAGENTS_QUICK_THINK_PROVIDER` variables set them for the CLI, together with the tier's model variable.
-
-See `tradingagents/default_config.py` for all configuration options.
-
-### Fundamentals as filed
-
-US company statements come from SEC EDGAR, which records the date every figure was filed. A run dated in the past reads the statements exactly as they stood that day: a fiscal year that has ended but has not been filed yet is not served, and a figure restated later still reads as first reported. Apple's 2008 total assets were filed as $39.6B and restated to $36.2B in 2010, so a run dated in between reads $39.6B. EDGAR needs no account or API key.
-
-Other companies' statements come from Yahoo Finance, which dates a statement by the period it covers rather than by when it was published. A run dated today reads them; a run dated in the past is told they are withheld, since Yahoo cannot say which figures were public by then.
-
-Insider trades are dated by when they happened, not when they were filed, so a run dated in the past is told they are withheld as well.
-
-SEC asks callers to identify themselves and refuses requests that carry no contact address, so a default one is sent. Set your own so SEC can reach you rather than the project:
-
-```bash
-SEC_EDGAR_USER_AGENT="Your Name your@email.com"
-```
-
-It covers companies that file with the SEC, including foreign companies listed in the US. Anything else, such as Hong Kong or A-share listings, falls through to the next vendor in the chain. EDGAR's machine-readable filings begin in 2009, and a fourth quarter is reported as unavailable rather than derived, because filers publish it only inside the annual figure.
-
-### Current holdings
-
-By default the agents do not know what you hold, so their guidance is written for a reader who applies it to their own position. Pass a portfolio to have the trader, the risk analysts and the portfolio manager work against your actual book.
-
-```python
-from tradingagents.portfolio import PortfolioContext
-
-portfolio = PortfolioContext.model_validate({
-    "cash": 25000.0,
-    "currency": "USD",
-    "positions": [{"ticker": "NVDA", "quantity": 120, "average_price": 150.0}],
-})
-_, decision = ta.propagate("NVDA", "2026-09-01", portfolio=portfolio)
-```
-
-The CLI takes the same content as a JSON file: `tradingagents --portfolio my_book.json`.
-
-An empty `positions` list means a flat book, which is different from passing nothing. A run without a portfolio is never treated as flat.
-
-## Persistence and Recovery
-
-TradingAgents persists two kinds of state across runs.
-
-### Memory log
-
-The memory log is always on. Each completed run appends its decision to `~/.tradingagents/memory/trading_memory.md`. While the analysts of a later run work, TradingAgents settles every logged decision whose holding period has passed: it fetches the realised return (raw, and alpha against the instrument's regional benchmark) and generates a one-paragraph reflection. The Portfolio Manager then reads the most recent decisions for the same ticker plus recent lessons from other tickers, so each analysis carries forward what worked and what didn't. If settling fails, the run goes on and its report says so.
-
-Override the path with `TRADINGAGENTS_MEMORY_LOG_PATH`.
-
-To settle decisions without running an analysis, for a scheduled job, call `ta.settle_all_pending()`; it returns the decisions it settled and any it could not.
-
-### Checkpoint resume
-
-Checkpoint resume is opt-in via `--checkpoint`. When enabled, LangGraph saves state after each node so a crashed or interrupted run resumes from the last successful step instead of starting over. The run view says whether it resumed a saved run or started fresh. Checkpoints are cleared automatically on successful completion.
-
-Per-ticker SQLite databases live at `~/.tradingagents/cache/checkpoints/<TICKER>.db` (override the base with `TRADINGAGENTS_CACHE_DIR`). Use `--clear-checkpoints` to reset all of them before a run.
-
-```bash
-tradingagents --checkpoint           # enable for this run
-tradingagents --clear-checkpoints    # reset before running
-```
-
-```python
-config = DEFAULT_CONFIG.copy()
-config["checkpoint_enabled"] = True
-ta = TradingAgentsGraph(config=config)
-_, decision = ta.propagate("NVDA", "2026-09-01")
-```
-
-## Evaluating decisions over time
-
-One run gives one decision, which cannot tell you whether the system decides well. `run_backtest` runs the same pipeline over a grid of tickers and dates, writes to a memory log of its own, and scores the decisions whose holding window has since traded.
-
-```python
-from tradingagents.backtest import iter_grid, run_backtest, summarize
-
-dates = iter_grid("2026-06-01", "2026-08-01", every_n_days=7)
-result = run_backtest(["NVDA", "AAPL"], dates, config, selected_analysts=["market", "news"])
-print(summarize(result).render())
-```
-
-From the CLI:
-
-```bash
-tradingagents backtest NVDA,AAPL --start 2026-06-01 --end 2026-08-01 --every 7
-```
-
-Each cell is scored on realized alpha against the instrument's regional benchmark, grouped by rating. Your own memory log is never written to, and re-running the same grid with `run_id=result.run_id` skips the cells that already ran, so an interrupted sweep continues where it stopped.
-
-## Reproducibility
-
-TradingAgents is LLM-driven, so two runs of the same ticker and date can differ. This is expected for a research tool built on language models, not a defect. The variation comes from a few distinct sources, and it helps to separate them.
-
-Language model sampling is non-deterministic. Even at a fixed temperature, providers do not guarantee byte-identical output across calls, and reasoning models (the default GPT-6 family, and any thinking-mode model) vary the most because their internal reasoning is itself sampled.
-
-Live data moves. News, StockTwits, and Reddit return different content as time passes, so a run today sees different inputs than a run last week even for the same historical trade date. Pin the analysis date to hold the price and indicator window fixed, but the social and news sources still reflect "now".
-
-To reduce variation you can lower the sampling temperature. Set `temperature` in your config (or `TRADINGAGENTS_TEMPERATURE` in `.env`); lower values make models that honor it more repeatable. The current curated models are reasoning-first and largely ignore temperature, so for tighter reproducibility name a non-reasoning model in your config, or in `TRADINGAGENTS_DEEP_THINK_LLM` and `TRADINGAGENTS_QUICK_THINK_LLM`. Any model ID your provider serves is accepted, whether or not the picker lists it.
-
-```python
-config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"
-config["temperature"] = 0.0
-# Reasoning models ignore temperature. For tighter reproducibility, name a
-# non-reasoning model in deep_think_llm / quick_think_llm.
-```
-
-What does not vary anymore: the analyzed company identity is resolved deterministically from the ticker before any agent runs, and the market analyst grounds exact price and indicator claims in a verified data snapshot. Earlier reports of "different companies" or fabricated price levels across runs are addressed by these two mechanisms.
-
-Backtest results are not guaranteed to match any published figure. Returns depend on the model, the temperature, the date range, data quality, and the sampling above. Treat the framework as a research scaffold for studying multi-agent analysis, not as a strategy with a fixed, replicable return.
-
-## Contributing
-
-Contributions are welcome: bug fixes, documentation, and feature ideas; past contributions are credited per release in [`CHANGELOG.md`](CHANGELOG.md).
-
-## Citation
-
-Please reference our work if you find *TradingAgents* provides you with some help :)
-
-```
-@misc{xiao2025tradingagentsmultiagentsllmfinancial,
-      title={TradingAgents: Multi-Agents LLM Financial Trading Framework}, 
-      author={Yijia Xiao and Edward Sun and Di Luo and Wei Wang},
-      year={2025},
-      eprint={2412.20138},
-      archivePrefix={arXiv},
-      primaryClass={q-fin.TR},
-      url={https://arxiv.org/abs/2412.20138}, 
-}
-```
+Replace every placeholder from `tradingdesk.launch.json`. Do not delete source,
+environments, credentials or broker records. Do not import unwanted old browser
+lists into the new store. Verify the resulting empty views after restart:
+deleting a directory does not clear an already-running process's memory.
+
+### Troubleshooting by symptom
+
+| Symptom | Check and response |
+| --- | --- |
+| Page says local service unavailable / failed to fetch | Check the existing 8098 server and its logs; don't start another port or assume displayed account data is current. |
+| Nautilus stopped | Start it in Account settings; web/research availability is separate. |
+| Account unverified or reconciliation incomplete | Inspect connection/account observations and discrepancies before new order commands. |
+| Research uses the wrong model server | Inspect saved provider/model/endpoint, not just defaults. |
+| Research has reports but is interrupted | Inspect Activity and capture status; a final text report is not sufficient. |
+| Tool arguments rejected | Inspect the discovered command schema and retained validation details; don't label it a transport failure. |
+| Old research survives reset | Check both configured stores and in-memory history; browser storage is not the only location. |
+| Saved state changed in another session | Reload the current revision before editing; don't overwrite concurrent changes. |
+| No chart, scan or performance result | Check required retained source, coverage and job status; an empty result is not evidence of a calculation. |
+| Order submission reply missing | Reconcile the command/client order identity with actual broker state before retrying. |
+| Recovery-only page | Original records could not be opened; execution/native workers are unavailable. Address the actual store/permission problem without overwriting originals or inventing replacement data. |
+
+## Source map
+
+| Area | Entry points |
+| --- | --- |
+| Launcher and configuration | `Start-TradingDesk.cmd`, `Launch-TradingDesk.py`, `tradingdesk.launch.json` |
+| Web/API and orchestration | `tradingagents/web/server.py`, `service.py`, `config.py` |
+| Browser composition | `tradingagents/web/static/app.js`, `index.html`, `app.css`, `ui-*.css` |
+| Charts | `web/static/market-chart.js`, vendored `lightweight-charts/5.2.1` and drawing plugin `0.6.2` |
+| Research graph and analysts | `tradingagents/graph/`, `tradingagents/agents/` |
+| Model adapters | `tradingagents/llm_clients/factory.py`, `chatgpt_client.py`, `openai_client.py` |
+| MCP and research tools | `tradingagents/integrations/maenifold.py`, `agents/analysts/turn.py` |
+| Source routing and social screening | `tradingagents/dataflows/router.py`, `dataflows/vendors/`, `agents/post_screen.py` |
+| Native runtime and broker bridge | `web/nautilus_runtime.py`, `nautilus_worker.py`, `nautilus_v1.py`, `alpaca_readonly.py`, `alpaca_stream.py`, `alpaca_reports.py` |
+| Proposals, groups and policy | `web/investor.py`, `baskets.py`, `linked_orders.py`, `approval_review.py`, `admission.py`, `execution_lifecycle.py`, `policy_evaluation.py` |
+| Data/history/evaluation | `web/market_history.py`, `history_coverage.py`, `market_discovery.py`, `evaluation.py`, `evaluation_worker.py` |
+| Persistence and outcomes | `web/app_database.py`, `store.py`, `workspace.py`, `decision_journal.py`, `performance.py`, `attention.py` |
+
+Implementation details can be traced directly to:
+
+- [Research graph and model allocation](tradingagents/graph/setup.py): `GraphSetup.setup_graph`.
+- [Research admission, completion and continuation](tradingagents/web/service.py): `start_run`, `_run_with_evidence`, `continuation_status`, `resume_run`.
+- [Gateway tool allowlists and validation](tradingagents/integrations/maenifold.py): `RESEARCH_COMMANDS`, `build_langchain_tools`.
+- [Laya and Jev screening](tradingagents/agents/post_screen.py): `laya_screen`, `jev_screen`.
+- [Native node and custom execution bridge](tradingagents/web/nautilus_v1.py): `build_node`, `ExecutionClient`; [worker](tradingagents/web/nautilus_worker.py): `Data`, `Execution`.
+- [Basket targets](tradingagents/web/baskets.py): `preview`, `save`; [admission](tradingagents/web/admission.py): `approve`, `submit_approved`, `basket_admit`.
+- [Chart, scan and strategy validation](tradingagents/web/evaluation.py): `prepare_chart_calculation`, `validate_strategy`, `prepare_experiment`, `execute_experiment`.
+- [Scan discovery and scheduling](tradingagents/web/market_discovery.py): `discover`, `scan_definition`, `recover_scans`, `due_scans`.
+- [Alert lifecycle](tradingagents/web/attention.py): `change`, `AttentionMonitor`.
+- [SQLite records](tradingagents/web/app_database.py): `ApplicationDatabase`; [source artifacts](tradingagents/web/store.py): `DeskStore`.
+
+### Documentation coverage
+
+This guide was assembled from the primary checkout at `515ef0a` on 23 October
+2026, with four domain readers and an independent reader checking their own
+browser views and source. Inspection covered all nine workspaces, saved META
+research, provider configuration, empty account/order/performance states and
+existing analysis/maintenance controls. This establishes the documented labels
+and source contracts, not successful execution of every scenario. No new broker
+order, calculation, scan, optimization, simulation, backup or restore was run
+for documentation. Ordinary navigation can autosave view preferences.
+
+Current runtime defects belong in the existing local issues. In particular,
+having one completed META record does not erase the later interrupted FANGMAN
+batch or establish reliable execution of all research paths.
+
+## Development and upstream attribution
+
+Use the existing environments and current contributor instructions; this guide
+does not authorize dependency installation, test runs, broker actions or new
+features. The project declares Python 3.11+, LangChain/LangGraph, pandas,
+yfinance and optional paper/evaluation dependencies in [pyproject.toml](pyproject.toml).
+Nautilus is installed separately in the native environment.
+
+This fork builds on Tauric Research's TradingAgents framework. Preserve the
+[license](LICENSE) and third-party notices. See the
+[upstream project](https://github.com/TauricResearch/TradingAgents) and
+[research paper](https://arxiv.org/abs/2412.20138) for its original research
+framework. Upstream demos, release notes and model-role terminology do not
+override this desk's explicit approval and broker-submission workflow.

@@ -1,5 +1,15 @@
 # Working on this TradingAgents checkout
 
+## Cold start: understand the product before operating it
+
+Read [README.md](README.md) first. It is the component map and operating guide
+for this fork, including every workspace, research providers/tools, Nautilus,
+the custom Alpaca bridge, data sources, baskets, orders, storage and recovery.
+Follow its source map before claiming a feature is missing or supported.
+Distinguish source capability, observed UI behavior and proven broker execution.
+Read the actual saved provider/account settings; defaults are not active state.
+Keep the component documentation in README.md, not duplicated in this file.
+
 ## Primary repository and UI delivery
 
 `C:/src/TradingAgents` is the primary repository and product checkout. Temporary
@@ -13,7 +23,9 @@ Read [printerv2 operating rules](C:/src/printerv2/AGENTS.md), the
 [delivery plan](C:/src/printerv2/docs/ui/approved-20261022/delivery.md).
 Current user instructions and issue criteria supersede historical guidance.
 The latest user-supplied operating rules make the primary assistant PM only:
-never edit application code or perform UAT. Visible repository sessions own
+never edit application code. The primary leads a user-requested guided UI
+walkthrough; an independent read-only repository session validates documentation
+against its own UI view. Visible repository sessions own
 explicitly assigned implementation in worktrees, with one integration owner
 for this primary checkout. One read-only repository session performs the
 integrated UI sweep and affected-path recheck. Do not use subagents or perform

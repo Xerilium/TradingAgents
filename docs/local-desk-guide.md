@@ -1,5 +1,10 @@
 # Local TradingAgents desk: launch, use and handoff
 
+The [product README](../README.md) is the current component map and complete
+operating guide. This document retains detailed implementation contracts and
+dated observations; older installation examples are not current account state
+or blanket feature acceptance.
+
 Current installation documented on 20 October 2026. Start from the
 [README](../README.md); agents must also read [AGENTS.md](../AGENTS.md).
 
