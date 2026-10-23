@@ -34,12 +34,13 @@
     </aside>
     <div class="workspace">
       <header class="topbar">
-        <div class="breadcrumb"><span id="universe-name">FANGMAN</span><span class="breadcrumb-slash">/</span><span id="page-label">Portfolio</span></div>
+        <div class="breadcrumb"><span id="universe-name">FANGMAN</span><span class="breadcrumb-slash">/</span><span id="page-label">Dashboard</span></div>
+        <label class="context-search">Find a symbol <input id="context-symbol" list="context-symbols" placeholder="Symbol" autocomplete="off"><datalist id="context-symbols"></datalist></label>
         <div class="topbar-actions"><span id="last-updated" class="muted">Waiting for connection</span><button id="refresh" class="button button-quiet button-small" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 8a7 7 0 0 1 11.6-3L20 8M4 16l2.3 3A7 7 0 0 0 18 16"/></svg><span>Refresh</span></button></div>
       </header>
       <div id="order-status" class="notice" role="status">Checking order readiness…</div>
       <div id="notice" class="notice" role="status" hidden></div>
-      <details class="panel" aria-label="Nautilus runtime">
+      <details class="panel runtime-panel" aria-label="Nautilus runtime" hidden>
         <summary>Nautilus connection · <span id="nautilus-status" role="status">Checking runtime</span></summary>
         <div class="panel-header"><div><h2>TradingAgents research · NautilusTrader</h2>
           <p>Nautilus connects account and order activity to Alpaca. Orders require explicit human approval and submission; cancellation and replacement require explicit human authorization.</p>

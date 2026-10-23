@@ -110,3 +110,65 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 .journal-workspace{margin-block:20px}.journal-workspace label,.journal-workspace~.panel label{display:grid;gap:6px;margin:14px 0}.journal-workspace input,.journal-workspace select,.journal-workspace textarea,.journal-workspace~.panel textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:9px}.journal-workspace pre,.journal-workspace~.panel pre{white-space:pre-wrap;overflow-wrap:anywhere}.history-equity{display:block;width:100%;height:210px}.journal-workspace th,.journal-workspace td{padding:10px;text-align:left;vertical-align:top}.journal-workspace label{max-width:720px}
 
 #universe-review #attention-workspace{margin:16px 22px}#universe-review #attention-workspace article{border-bottom:1px solid var(--line);padding:14px 0}#universe-review #attention-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+
+/* Fixed trading workspace. Data panels own overflow. */
+[hidden] { display:none!important; }
+.context-search { display:flex; align-items:center; gap:8px; font-size:11px; }
+.context-search input { width:110px; min-width:0; }
+html,body { height:100%; overflow:hidden; }
+body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); height:100dvh; min-height:0; overflow:hidden; }
+.app-shell > .sidebar { position:static; display:flex; flex-direction:column; width:auto; height:100%; min-height:0; padding:12px 8px; overflow:auto; }
+.app-shell > .sidebar .brand { padding:8px; margin:0 0 16px; }
+.app-shell > .sidebar #navigation { display:flex; flex-direction:column; gap:4px; width:100%; overflow:visible; }
+.app-shell > .sidebar .nav-link { min-height:36px; padding:8px; border:1px solid transparent; white-space:normal; }
+.app-shell > .sidebar .nav-link[aria-current] { border-color:var(--accent); }
+.app-shell > .sidebar .sidebar-bottom { display:flex; flex-direction:column; gap:8px; margin-top:auto; padding-top:16px; }
+.app-shell > .sidebar .paper-identity { max-width:100%; padding:0; }
+.app-shell > .sidebar .paper-identity span:not(.status-dot),.app-shell > .sidebar .sidebar-footer { font-size:11px; overflow-wrap:anywhere; }
+.app-shell > .workspace { display:flex; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
+.app-shell > .workspace > .topbar { flex:0 0 auto; min-height:40px; padding:8px 16px; }
+.app-shell > .workspace > #main { flex:1 1 auto; min-height:0; min-width:0; padding:12px; overflow:auto; overscroll-behavior:contain; }
+.app-shell > .workspace > #main[data-page="overview"] { display:flex; flex-direction:column; overflow:hidden; gap:12px; }
+.app-shell > .workspace > .workspace-footer { flex:0 0 auto; padding:4px 12px; font-size:11px; }
+.workspace > .notice { flex:0 0 auto; max-height:20vh; overflow:auto; margin:0; }
+.runtime-panel { flex:0 0 auto; max-height:30vh; overflow:auto; }
+#main .page-heading { margin:0 0 8px; flex:0 0 auto; }
+.account-ledger { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); flex:0 0 auto; border:1px solid var(--line); background:var(--paper); }
+.account-ledger > div { padding:10px 12px; border-inline-end:1px solid var(--line); min-width:0; }
+.account-ledger span,.account-ledger strong { display:block; overflow-wrap:anywhere; }
+.account-ledger span { color:var(--muted); font-size:11px; }
+.account-ledger strong { font-size:21px; font-weight:600; font-variant-numeric:tabular-nums; }
+.dashboard-grid { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(220px,1fr) minmax(300px,1.5fr) minmax(200px,.8fr); grid-template-rows:minmax(0,1.3fr) minmax(0,1fr); gap:12px; }
+.dashboard-grid > div { min-width:0; min-height:0; overflow:hidden; }
+.dashboard-grid > [data-dashboard-pane="positions"] { grid-column:1/3; }
+.dashboard-grid .panel { display:flex; flex-direction:column; height:100%; min-height:0; margin:0; overflow:hidden; }
+.dashboard-grid .panel-header { flex:0 0 auto; min-height:40px; padding:8px 10px; }
+.dashboard-grid .panel-header p { max-height:36px; overflow:auto; }
+.dashboard-grid .table-scroll,.dashboard-grid .panel-body { flex:1 1 auto; min-height:0; overflow:auto; }
+.dashboard-grid .panel-body { padding:10px; }
+.dashboard-grid .chart-wrap { height:clamp(120px,22vh,300px); min-height:120px; }
+.dashboard-grid .selection-actions,.dashboard-grid .collection-toolbar,.dashboard-grid .collection-pager { flex:0 0 auto; padding:6px 8px; }
+.dashboard-tabs { display:none; }
+.view-tabs button[aria-pressed="true"] { color:var(--accent); border-bottom:2px solid var(--accent); }
+.data-table th { position:sticky; top:0; background:var(--paper); z-index:1; }
+@media(max-width:1100px),(max-height:650px) {
+ .dashboard-tabs { display:flex; flex:0 0 auto; overflow:auto; }
+ .dashboard-grid { display:block; overflow:hidden; }
+ .dashboard-grid > div { height:100%; display:none; }
+ .dashboard-grid[data-dashboard-active="watch"] > [data-dashboard-pane="watch"],.dashboard-grid[data-dashboard-active="chart"] > [data-dashboard-pane="chart"],.dashboard-grid[data-dashboard-active="research"] > [data-dashboard-pane="research"],.dashboard-grid[data-dashboard-active="positions"] > [data-dashboard-pane="positions"],.dashboard-grid[data-dashboard-active="orders"] > [data-dashboard-pane="orders"] { display:block; }
+ .dashboard-grid .chart-wrap { height:40vh; }
+}
+@media(max-width:790px) {
+ body > .app-shell { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+ .app-shell > .sidebar { height:auto; max-height:24vh; padding:4px 8px; overflow:auto; }
+ .app-shell > .sidebar .brand { display:none; }
+ .app-shell > .sidebar #navigation { flex-direction:row; flex-wrap:nowrap; overflow:auto; }
+ .app-shell > .sidebar .nav-link { flex:0 0 auto; white-space:nowrap; }
+ .app-shell > .sidebar .sidebar-bottom { flex-direction:row; align-items:center; margin:0; padding:4px; }
+ .sidebar-bottom .paper-identity span:not(.status-dot),.sidebar-bottom .gateway-status,.sidebar-bottom .sidebar-footer { display:none; }
+ .account-ledger { grid-template-columns:repeat(5,minmax(100px,1fr)); overflow:auto; }
+ .account-ledger strong { font-size:16px; }
+ .app-shell > .workspace > .workspace-footer { display:none; }
+ .topbar-actions #last-updated { display:none; }
+}
