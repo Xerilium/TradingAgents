@@ -8,6 +8,8 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from requests import HTTPError
+
 from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.errors import (
     NoMarketDataError,
@@ -219,17 +221,17 @@ def _safe_source_arguments(bound):
     return selected
 
 
-def observe_source_call(operation, vendor, origin, acquire, **arguments):
+def observe_source_call(operation, vendor, origin, acquire, *, requirement="required", **arguments):
     """Observe one existing acquisition, without adding calls or changing its return.
 
     These boundaries can nest inside router attempts; they are not additional
     provider requests. Origins describe the consumed representation, not HTTP
     internals hidden by a cache parser or SDK.
     """
-    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments)
+    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments, requirement=requirement)
 
 
-def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None):
+def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None, requirement="required"):
     recorder = _evidence_recorder.get()
     if recorder is None:
         return function(*args, **kwargs)
@@ -242,6 +244,7 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
         "boundary_kind": "router_function" if source_arguments is None else "acquisition",
         "function": f"{getattr(function, '__module__', '')}.{getattr(function, '__qualname__', type(function).__name__)}",
         "arguments": arguments, "argument_scope": argument_scope,
+        "requirement": requirement,
         "started_at": datetime.now(UTC).isoformat(), "ended_at": None,
         "elapsed_seconds": None, "outcome": "running",
     }
@@ -267,6 +270,12 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
         return output
     except Exception as exc:
         receipt.update(outcome="error", error_class=_error_class(exc))
+        if isinstance(exc, HTTPError) and exc.response is not None:
+            status = exc.response.status_code
+            if type(status) is int and 100 <= status <= 599:
+                receipt.update(error_class="HTTPError", http_status=status)
+                if method == "read_research_source" and vendor == "public_source" and origin == "source_document_text":
+                    receipt["source_url"] = exc.response.url
         raise
     finally:
         _evidence_parent.reset(parent_token)

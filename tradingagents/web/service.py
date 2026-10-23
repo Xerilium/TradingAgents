@@ -2570,7 +2570,12 @@ class DeskService:
                     if missing:
                         raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
                     failures = [a["operation"] for a in run["source_evidence"]["attempts"]
-                                if a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"} or a.get("capture_error")]
+                                if a.get("capture_error") or ((a.get("outcome") != "success"
+                                    or a.get("data_status") in {"unavailable", "partial"}) and not (
+                                        a.get("requirement") == "supplemental" and a.get("operation") == "read_research_source"
+                                        and a.get("vendor") == "public_source" and a.get("origin") == "source_document_text"
+                                        and a.get("outcome") == "error" and a.get("error_class") == "HTTPError"
+                                        and a.get("http_status") == 403 and a.get("capture") == "error_class_only"))]
                     if failures or not run["source_evidence"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
                     if any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False) for origin in ("gateway", "jev")):
