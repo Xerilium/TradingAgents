@@ -4,6 +4,35 @@ Read the [local desk launch and user guide](docs/local-desk-guide.md) and
 [README](README.md) first. The guide links acceptance records and describes the
 actual installation, saved data and permitted smoke test.
 
+## UI delivery: local Git issues, sprints and required skills
+
+The approved UI design and delivery plan are in
+[printerv2 UI delivery](C:/src/printerv2/docs/ui/approved-20261022/README.md).
+Local issue files in printerv2 own status, dependencies, decisions and acceptance. Work in
+the planned sprints and integrate complete batches; do not create one-control
+issues or repeat a full verification cycle after each small change.
+
+The primary assistant owns planning, documentation and issue tracking and must
+never edit application code or resolve code conflicts. Implementation and code
+integration belong to agents working from scoped local issues in isolated
+worktrees. One integration agent owns shared shell/routing/state/style changes.
+The user confirmed this direction in text; it supersedes the earlier no-agent
+hold. No remote repository or publication is authorized.
+
+Every UI implementer and reviewer must load the Impeccable skill at session
+start: C:/Users/brett/.agents/skills/impeccable/SKILL.md (or its installed location
+on another host). Run its context setup once, follow the applicable playbook,
+and read the craft floor immediately before UI edits. Use Operate mode and the
+approved design; do not restart design exploration. Use the Microsoft writing
+style guide for UI copy and reports. Record applied skill guidance in the issue
+handback. Verify the rendered integrated result at the specified sizes.
+
+Perform one integration pass per sprint, collect failures together, and make
+one coordinated correction batch. Recheck affected paths only. Any remaining
+failure stays open with impact and an explicit next decision; do not silently
+loop, reopen passing work without cause, or claim incomplete work is accepted.
+No new automated tests, mocks, backend-scripted UAT or unrelated scope.
+
 ## Product and scope
 
 - Keep TradingAgents for research, NautilusTrader as the engine, and the Alpaca
