@@ -1974,14 +1974,15 @@ function renderViews(){
 function renderSelection(rows){
  persistView();
  const visible=rows.filter(s=>selectedSymbols.has(s.symbol)).length;
- $('selection-count').textContent=selectedSymbols.size+' selected'+(selectedSymbols.size?' · '+visible+' in view':'');
+ $('selection-count').textContent='Batch selection: '+selectedSymbols.size+' stocks'+(selectedSymbols.size?' · '+visible+' in view':'');
+ if($('markets-list-tools'))$('markets-list-tools').querySelector('summary').textContent='Filters, list management and batch actions · '+selectedSymbols.size+' selected';
  const list=targetList();if($('export-selected-holdings'))$('export-selected-holdings').disabled=!selectedSymbols.size;$('clear-selection').disabled=!selectedSymbols.size;$('add-shortlist').disabled=!Array.from(selectedSymbols).some(s=>!list.symbols.has(s));$('remove-shortlist').disabled=!Array.from(selectedSymbols).some(s=>list.symbols.has(s));$('select-filtered').disabled=!rows.length;
  $('add-shortlist').textContent='Add to '+list.name;$('remove-shortlist').textContent='Remove from '+list.name;$('create-watchlist').disabled=!selectedSymbols.size||!watchlistName.trim();
  $('select-all').checked=rows.length>0&&visible===rows.length;$('select-all').indeterminate=visible>0&&visible<rows.length;$('select-all').disabled=!rows.length;
 }
 function renderTable(resetScroll=false){
  const box=$('table-scroll'),scrollTop=resetScroll?0:box.scrollTop,scrollLeft=box.scrollLeft,rows=filteredRows(),shown=columns();
- $('universe-head').innerHTML='<th class="select-cell"><input type="checkbox" id="select-all" aria-label="Select all filtered stocks"></th><th class="fixed-stock" id="head-symbol"><button data-sort="symbol">Stock / company</button></th>'+shown.map(c=>'<th id="head-'+(c.sort||c.key)+'" class="'+(['age','research'].includes(c.key)?'':'num')+'">'+(c.sort?'<button data-sort="'+c.sort+'">'+c.label+'</button>':c.label)+'</th>').join('');
+ $('universe-head').innerHTML='<th class="select-cell"><input type="checkbox" id="select-all" aria-label="Add all filtered stocks to batch selection"><span>Batch</span></th><th class="fixed-stock" id="head-symbol"><button data-sort="symbol">Stock / company</button></th>'+shown.map(c=>'<th id="head-'+(c.sort||c.key)+'" class="'+(['age','research'].includes(c.key)?'':'num')+'">'+(c.sort?'<button data-sort="'+c.sort+'">'+c.label+'</button>':c.label)+'</th>').join('');
  renderViews();renderSelection(rows);
  $('watchlist-select').innerHTML='<option value="">All configured stocks</option>'+watchlists.map(list=>'<option value="'+esc(list.id)+'">'+esc(list.name)+' ('+DATA.stocks.filter(s=>list.symbols.has(s.symbol)).length+')</option>').join('');
  $('watchlist-select').value=activeListId;$('min-move').value=String(minMove);
@@ -1991,6 +1992,7 @@ function renderTable(resetScroll=false){
   const active=detailOpen&&symbol===s.symbol;
   return '<tr'+(active?' class="row-active"':'')+' data-row="'+esc(s.symbol)+'"><td class="select-cell"><input type="checkbox" data-select="'+esc(s.symbol)+'" aria-label="Select '+esc(s.symbol)+'" '+(selectedSymbols.has(s.symbol)?'checked':'')+'></td><td class="fixed-stock"><button class="stock-button" data-stock="'+esc(s.symbol)+'" aria-pressed="'+active+'">'+esc(s.symbol)+'</button>'+(shortlist.has(s.symbol)?'<span class="shortlist-mark">Shortlisted</span>':'')+'<span class="company">'+esc(s.company)+'</span><details><summary>Why in this view / source time</summary>'+esc(reviewReason(s))+'</details></td>'+shown.map(c=>'<td class="'+(['age','research'].includes(c.key)?'':'num')+'">'+columnCell(c,s)+'</td>').join('')+'</tr>';
  }).join(''):'<tr><td colspan="'+(shown.length+2)+'" class="no-results">No stocks match this view and search. Clear filters to return to all configured stocks.</td></tr>';
+ $('stock-rows').querySelectorAll('[data-select]').forEach(input=>input.setAttribute('aria-label','Include '+input.dataset.select+' in batch selection'));
  $('universe-head').querySelectorAll('th[id]').forEach(th=>th.removeAttribute('aria-sort'));
  const head=$('head-'+sortKey);if(head)head.setAttribute('aria-sort',descending?'descending':'ascending');
  $('sort-by').value=sortKey;$('sort-direction').textContent=descending?'Descending ↓':'Ascending ↑';$('sort-direction').setAttribute('aria-label',descending?'Sort ascending':'Sort descending');
@@ -2518,7 +2520,7 @@ function rememberInstrumentScroll(){const view=instrumentView();view.scroll||={}
 function restoreInstrumentScroll(){const saved=instrumentView().scroll||{};for(const node of document.querySelectorAll(instrumentScrollSelector)){const position=saved[instrumentScrollKey(node)];if(position){node.scrollTop=position[0];node.scrollLeft=position[1];}}}
 document.addEventListener('scroll',event=>{if(event.target.matches?.(instrumentScrollSelector)&&event.target.getClientRects().length){const view=instrumentView();view.scroll||={};view.scroll[instrumentScrollKey(event.target)]=[event.target.scrollTop,event.target.scrollLeft];}},true);
 let instrumentOptionExpiry='',instrumentOptionSide='';
-function instrumentView(){if(!instrumentViews.has(symbol))instrumentViews.set(symbol,{tab:optionEnvelope()?'Options':'Chart',inspector:'Source data'});return instrumentViews.get(symbol);}
+function instrumentView(){if(!instrumentViews.has(symbol))instrumentViews.set(symbol,{tab:optionEnvelope()?'Options':'Chart',inspector:activePage==='markets'?'':'Source data'});return instrumentViews.get(symbol);}
 function instrumentMarkup(){
  const view=instrumentView(),template=document.createElement('template');if(activePage==='orders')view.tab='Position';template.innerHTML=evidence()+research();
  const equity=template.content.querySelector('.evidence'),report=template.content.querySelector('.research'),s=stock(),q=s?.quote||{},option=optionEnvelope(),market=state.nautilus?.market_data?.[symbol]||{};
@@ -2536,6 +2538,12 @@ function instrumentMarkup(){
 }
 function bindInstrument(){
  const host=$('detail-content');if(!host)return;bindSharedTicket();const view=instrumentView();
+ if(activePage==='markets'){
+  const header=$('stock-detail').querySelector('.detail-header');
+  header.querySelector('.instrument-navigation')?.remove();
+  const navigation=document.createElement('label');navigation.className='instrument-navigation';navigation.innerHTML='Viewing <select aria-label="Viewed instrument">'+[...new Set([symbol,...filteredRows().map(row=>row.symbol)])].map(ticker=>'<option '+(ticker===symbol?'selected':'')+'>'+esc(ticker)+'</option>').join('')+'</select><span>Batch selection: '+selectedSymbols.size+' stocks · unchanged by viewing</span>';
+  header.insertBefore(navigation,$('close-detail'));navigation.querySelector('select').onchange=event=>openStock(event.target.value,returnFocus);
+ }
  $('instrument-option-expiry')?.addEventListener('change',event=>{instrumentOptionExpiry=event.target.value;render();});$('instrument-option-side')?.addEventListener('change',event=>{instrumentOptionSide=event.target.value;render();});
  host.querySelectorAll('[data-instrument-tab]').forEach(button=>button.onclick=()=>{rememberInstrumentScroll();view.tab=button.dataset.instrumentTab;host.querySelectorAll('[data-instrument-pane]').forEach(pane=>pane.hidden=pane.dataset.instrumentPane!==view.tab);host.querySelectorAll('[data-instrument-tab]').forEach(tab=>tab.setAttribute('aria-pressed',String(tab===button)));restoreInstrumentScroll();window.dispatchEvent(new Event('resize'));});
  const figure=host.querySelector('.saved-evidence');if(!figure||figure.querySelector('.chart-inspectors'))return;
@@ -2546,9 +2554,10 @@ function bindInstrument(){
  const evidencePanel=figure.closest('.evidence');if(evidencePanel){evidencePanel.append(figure);for(const node of [...evidencePanel.children])if(node!==figure)groups['Source data'].append(node);}
  const comparisonSetup=groups['Source data'].querySelector('[aria-label="Retained comparison setup"]');if(comparisonSetup)groups.Comparison.prepend(comparisonSetup);if(!groups.Comparison.children.length)groups.Comparison.innerHTML='<p>Comparison setup requires current-market retained history. Choose that chart context in Source data to inspect available retained caches.</p>';
  const derived=inspector.querySelector('#derived-market-chart');if(derived){derived.tabIndex=0;derived.setAttribute('role','region');figure.append(derived);}
- const showAnalysis=()=>{const visible=!!derived&&view.inspector==='Studies and formulas';figure.classList.toggle('analysis-visible',visible);if(derived)derived.hidden=!visible;};showAnalysis();
- figure.append(inspector);const select=name=>{rememberInstrumentScroll();view.inspector=name;for(const [key,section]of Object.entries(groups))section.hidden=key!==name;inspector.querySelectorAll('[data-chart-inspector-tab]').forEach(tab=>tab.setAttribute('aria-pressed',String(tab.dataset.chartInspectorTab===name)));showAnalysis();restoreInstrumentScroll();if(name==='Studies and formulas'){const panel=$('retained-chart-analysis');if(panel)panel.open=true;}};
- inspector.querySelectorAll('[data-chart-inspector-tab]').forEach(button=>button.onclick=()=>select(button.dataset.chartInspectorTab));inspector.querySelector('[data-open-calculations]').onclick=()=>select('Studies and formulas');
+ const showAnalysis=()=>{const visible=!!derived&&view.inspector==='Studies and formulas';figure.classList.toggle('analysis-visible',visible);figure.classList.toggle('inspector-closed',!view.inspector);if(derived)derived.hidden=!visible;};showAnalysis();
+ figure.append(inspector);const select=name=>{rememberInstrumentScroll();view.inspector=name;for(const [key,section]of Object.entries(groups))section.hidden=key!==name;figure.querySelectorAll('[data-chart-inspector-tab]').forEach(tab=>tab.setAttribute('aria-pressed',String(tab.dataset.chartInspectorTab===name)));showAnalysis();restoreInstrumentScroll();if(name==='Studies and formulas'){const panel=$('retained-chart-analysis');if(panel)panel.open=true;}};
+ if(activePage==='markets'){const tools=inspector.querySelector('nav');tools.classList.add('chart-tools');figure.prepend(tools);}
+ figure.querySelectorAll('[data-chart-inspector-tab]').forEach(button=>button.onclick=()=>{select(view.inspector===button.dataset.chartInspectorTab&&activePage==='markets'?'':button.dataset.chartInspectorTab);window.dispatchEvent(new Event('resize'));});inspector.querySelector('[data-open-calculations]').onclick=()=>select('Studies and formulas');
  if(view.inspector==='Studies and formulas'&&$('retained-chart-analysis'))$('retained-chart-analysis').open=true;
 }
 function bindReport(){
@@ -2696,6 +2705,9 @@ function layoutMarkets(){
   for(const node of [...host.children])if(node!==discovery&&node.id!=='watchlist-discovery-members')list.append(node);
   host.append(list);
   list.querySelector('.bulk-toolbar')?.insertAdjacentHTML('beforeend','<button data-action="run">Review research for selected stocks</button>');
+  const filters=list.querySelector('.filters'),watchlist=list.querySelector('.watchlist-controls'),tools=document.createElement('details');tools.id='markets-list-tools';tools.innerHTML='<summary>Filters, list management and batch actions</summary>';list.insertBefore(tools,filters);
+  const browse=document.createElement('div');browse.className='markets-browse';browse.append(filters.querySelector('.search-control'),watchlist.querySelector('label'));list.insertBefore(browse,tools);
+  for(const node of [list.querySelector('#universe-views'),filters,watchlist,list.querySelector('.bulk-toolbar'),list.querySelector('#column-picker'),list.querySelector('.universe-foot')])tools.append(node);
   $('markets-tabs').addEventListener('click',event=>{const button=event.target.closest('[data-market-tab]');if(!button)return;marketsTab=button.dataset.marketTab;layoutMarkets();});
  }
  if(scanner&&!scanner.dataset.layout){

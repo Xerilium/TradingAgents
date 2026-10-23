@@ -42,3 +42,13 @@
 #universe-review.markets-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:800px){#universe-review.markets-workspace #market-discovery{grid-template-columns:minmax(220px,.8fr) minmax(280px,1fr);overflow:auto}#universe-review.markets-workspace #workspace.detail-open{display:flex}#universe-review.markets-workspace #workspace.detail-open #universe-view{display:none}#universe-review.markets-workspace #stock-detail{flex:1}#universe-review.markets-workspace .bulk-toolbar{flex-wrap:wrap}}
 @media(max-width:560px){#universe-review.markets-workspace #market-discovery{display:block;overflow:auto}#universe-review.markets-workspace .markets-criteria,#universe-review.markets-workspace .markets-results{overflow:visible;margin-bottom:8px}}
+#universe-review.markets-workspace .markets-browse{display:flex;flex:none;gap:12px;padding:8px 0;flex-wrap:wrap;align-items:end}
+#universe-review.markets-workspace .markets-browse label{display:flex;flex-direction:column;gap:4px}.markets-browse .search-control{flex:1;min-width:180px}
+#universe-review.markets-workspace #markets-list-tools{flex:none;margin-bottom:8px;max-height:45%;overflow:auto}
+#universe-review.markets-workspace #markets-list-tools>summary{padding:8px;cursor:pointer}
+#universe-review.markets-workspace #table-scroll{min-height:0}
+#universe-review.markets-workspace .select-cell>span{display:block;font-size:12px;color:var(--muted)}
+#universe-review.markets-workspace:has(#workspace.detail-open)>.app-header{display:none}
+#universe-review.markets-workspace #workspace.detail-open{display:flex;flex-direction:column;gap:8px}
+#universe-review.markets-workspace #workspace.detail-open #universe-view{display:none}
+#universe-review.markets-workspace #workspace.detail-open #stock-detail{flex:1;height:auto}
