@@ -135,6 +135,9 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 #universe-review.alerts-workspace pre { white-space:pre-wrap; overflow-wrap:anywhere; }
 .alert-inspector { padding:12px; max-height:65vh; display:flex; flex-direction:column; }
 .alert-inspector-body { min-height:0; overflow:auto; }
+#universe-review.alerts-workspace [data-alert-pane].has-alert-evidence:not([hidden]) { display:flex; flex-direction:column; overflow:hidden; }
+#universe-review.alerts-workspace .has-alert-evidence .alert-inspector { flex:1; min-height:0; max-height:none; margin:0; }
+#universe-review.alerts-workspace .alert-inspector-body { flex:1; }
 @media(max-width:790px),(max-height:650px) { .settings-workspace { flex-direction:column; }.settings-workspace > .view-tabs { flex-direction:row; width:auto; }.settings-workspace > .view-tabs button { white-space:nowrap; }.settings-content { min-height:0; } }
 html,body { height:100%; overflow:hidden; }
 body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); height:100dvh; min-height:0; overflow:hidden; }

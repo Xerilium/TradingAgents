@@ -2630,10 +2630,10 @@ function renderAlerts(source){
  refreshData(source);const template=document.createElement('template');template.innerHTML=attentionPanel();const original=template.content.querySelector('#attention-workspace'),host=document.createElement('section');host.id='attention-workspace';host.className='panel';const panes=Object.fromEntries(['Inbox','Rules','Delivery'].map(name=>{const section=document.createElement('section');section.dataset.alertPane=name;section.hidden=name!==alertsTab;return [name,section];}));
  let group='Inbox';if(original)for(const node of [...original.children]){if(node.tagName==='SUMMARY')continue;if(node.tagName==='H3'&&node.textContent==='Your alert rules')group='Rules';panes[group].append(node);}
  if(!panes.Inbox.children.length)panes.Inbox.innerHTML='<p>No saved alert occurrences are available in this observation.</p>';else if(!panes.Inbox.querySelector('[data-attention-occurrence]'))panes.Inbox.insertAdjacentHTML('beforeend','<p>No alert occurrences recorded.</p>');
- panes.Inbox.insertAdjacentHTML('beforeend',attentionEvidencePanel());panes.Delivery.innerHTML=browserNotificationPanel();const delivery=panes.Delivery.querySelector('details');if(delivery)delivery.open=true;
+ const evidence=attentionEvidencePanel();if(evidence){panes.Inbox.innerHTML=evidence;panes.Inbox.classList.add('has-alert-evidence');}panes.Delivery.innerHTML=browserNotificationPanel();const delivery=panes.Delivery.querySelector('details');if(delivery)delivery.open=true;
  host.innerHTML=categoryTabs(['Inbox','Rules','Delivery'],alertsTab,'data-alert-tab','Alerts views');for(const pane of Object.values(panes))host.append(pane);return '<div id="universe-review" class="alerts-workspace">'+host.outerHTML+'</div>';
 }
-function bindAlerts(){const root=$('universe-review');if(root){bindAttention(root);root.querySelectorAll('article').forEach(node=>node.classList.add('alert-row'));}}
+function bindAlerts(){const root=$('universe-review');if(root){bindAttention(root);root.querySelectorAll('article').forEach(node=>node.classList.add('alert-row'));root.querySelectorAll('[data-alert-evidence-tab]').forEach(button=>button.id='alert-evidence-'+button.dataset.alertEvidenceTab);}}
 function layoutMarkets(){
  if(activePage!=='markets')return;
  const root=$('universe-review'),host=$('universe-view'),discovery=$('market-discovery'),scanner=$('saved-data-scans');
