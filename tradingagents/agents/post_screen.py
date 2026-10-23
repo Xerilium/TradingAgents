@@ -133,13 +133,20 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
         def progress():
             if on_progress:
                 on_progress(copy.deepcopy(evidence), budget)
-        acquired = bool(posts) and _LAYA_LOCK.acquire(blocking=False)
+        acquired = False
         try:
-            if posts and not acquired:
-                raise ValueError("another social classification is active")
             if budget["deadline"] is None:
                 expiry = budget.setdefault("expires_at", datetime.now(UTC).timestamp() + max_seconds)
                 budget["deadline"] = time.monotonic() + max(0, expiry - datetime.now(UTC).timestamp())
+            while posts and not acquired:
+                if cancelled():
+                    evidence["stop_reason"] = "operator_cancelled"
+                    raise InterruptedError("Social screening stopped by operator")
+                remaining = budget["deadline"] - time.monotonic()
+                if remaining <= 0:
+                    evidence["stop_reason"] = "time_budget_exhausted"
+                    raise TimeoutError("Social screening time budget expired while queued")
+                acquired = _LAYA_LOCK.acquire(timeout=min(.25, remaining))
             progress()
             for index, post in enumerate(posts):
                 if rows[index]["status"] == "classified":
