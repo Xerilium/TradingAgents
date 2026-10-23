@@ -116,6 +116,13 @@ class ExecutionClient(LiveExecutionClient):
             venue_id, position_id, trade_id, order.side, order.order_type, quantity, price,
             currency, commission, liquidity_side, ts_event)
 
+    def generate_package_leg_filled(self, parent, report):
+        if report.commission is None or "-LEG-" not in str(report.client_order_id):
+            raise ValueError("Actual package leg requires resolved fee provenance and explicit internal leg identity")
+        super().generate_order_filled(parent.strategy_id, report.instrument_id, report.client_order_id,
+            report.venue_order_id, None, report.trade_id, report.order_side, parent.order_type,
+            report.last_qty, report.last_px, self.base_currency, report.commission, report.liquidity_side, report.ts_event)
+
 
 class Strategy(NativeStrategy):
     def subscribe_quotes(self, instrument):
@@ -135,7 +142,7 @@ def build_node(data_factory, exec_factory, observer, loop):
     config = TradingNodeConfig(trader_id=TraderId("TRADINGAGENTS-001"), timeout_connection=150.0,
         cache=CacheConfig(database=None),
         logging=LoggingConfig(log_colors=False, print_config=False),
-        exec_engine=LiveExecEngineConfig(generate_missing_orders=False, load_cache=False,
+        exec_engine=LiveExecEngineConfig(generate_missing_orders=True, load_cache=False,
             reconciliation=False, inflight_check_interval_ms=0, snapshot_orders=False, snapshot_positions=False),
         data_clients={"ALPACA": LiveDataClientConfig()}, exec_clients={"ALPACA": LiveExecClientConfig()})
     node = TradingNode(config=config, loop=loop)

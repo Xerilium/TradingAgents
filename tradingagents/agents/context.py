@@ -1,6 +1,7 @@
 """Prompt context shared by the agents: instrument identity, output language and portfolio."""
 
 import functools
+import hashlib
 import logging
 from collections.abc import Mapping
 from typing import Any
@@ -184,6 +185,28 @@ def get_instrument_context_from_state(state: Mapping[str, Any]) -> str:
     return build_instrument_context(
         str(state["company_of_interest"]),
         state.get("asset_type", "stock"),
+    )
+
+
+def get_verified_market_context_from_state(state: Mapping[str, Any]) -> str:
+    """Carry the collected snapshot into decisions without fetching or summarizing it."""
+    text = state.get("verified_market_snapshot")
+    ticker, day = str(state.get("company_of_interest", "")).upper(), state.get("trade_date")
+    if (not ticker or not day or not isinstance(text, str)
+            or not text.startswith(f"## Verified market data snapshot for {ticker}\n")
+            or f"- Requested analysis date: {day}" not in text.splitlines()):
+        return ("Collected market snapshot: unavailable for this ticker and analysis date. "
+                "Report prose is analysis, not verified numeric evidence; do not substitute current data.")
+    return (
+        "Collected market facts, separate from analyst interpretations and debate. "
+        "Source: get_verified_market_snapshot; state verified_market_snapshot; "
+        f"snapshot text SHA-256 {hashlib.sha256(text.encode('utf-8')).hexdigest()}.\n"
+        "Use its dated prices, indicators and movement directions to check report claims. "
+        "Flag conflicts instead of repeating or silently reconciling them. Distinguish a net gain "
+        "between stated endpoints from consecutive gains: a net gain may include a down interval. "
+        "Use adjacent dated changes for streak claims and preserve stated coverage gaps. "
+        "This snapshot does not establish current quotes, bar finality or missing source provenance.\n\n"
+        + text
     )
 
 

@@ -9,6 +9,7 @@ import html
 import json
 import os
 import re
+import sqlite3
 import struct
 import threading
 import time
@@ -78,7 +79,19 @@ class DeskStore:
             })
             if run["status"] in {"queued", "running", "cancelling"}:
                 run["status"] = "interrupted"
-                run["error"] = "Server stopped during analysis. Start a new run."
+                run["error"] = ("Server stopped during analysis. Review continuation eligibility."
+                                if run.get("continuation") else "Server stopped during analysis. Start a new run.")
+                continuation = run.get("continuation")
+                if continuation:
+                    continuation["revision"] += 1
+                    continuation["attempts"][-1].update(status="interrupted", ended_at=datetime.now(UTC).isoformat(),
+                                                       reason=run["error"])
+                    for result in run["results"]:
+                        if result["status"] == "running":
+                            result["status"] = "interrupted"
+                        for effect in result.get("continuation", {}).get("effects", {}).values():
+                            if effect["outcome"] == "intent":
+                                effect["outcome"] = "unknown"
             if run["status"] in {"completed", "failed", "cancelled", "interrupted"}:
                 self._recover_measurements(run)
                 evidence = run.get("source_evidence")
@@ -170,11 +183,17 @@ class DeskStore:
             }
         return copy.deepcopy(summary)
 
+    def _refresh(self):
+        """Refresh external journal changes while the caller holds self.lock."""
+        with closing(sqlite3.connect(self.database.path, timeout=5)) as connection:
+            revision = connection.execute("SELECT revision FROM app_records WHERE name='journal'").fetchone()[0]
+        if revision != self.revision:
+            saved = self.database.read("journal")
+            self.data, self.revision = saved["data"], saved["revision"]
+
     def snapshot(self, *, compact=False, run_id=None):
         with self.lock:
-            saved = self.database.read("journal")
-            if saved["revision"] != self.revision:
-                self.data, self.revision = saved["data"], saved["revision"]
+            self._refresh()
             if compact:
                 data = copy.deepcopy({key: value for key, value in self.data.items() if key not in {"runs", "research_requests"}})
                 data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
@@ -234,8 +253,17 @@ class DeskStore:
     def save(self):
         with self.lock:
             try:
-                saved = self.database.update("journal", self.revision, lambda _: self.data)
-                self.revision = saved["revision"]
+                with self.database.transaction() as connection:
+                    row = connection.execute("SELECT revision,payload FROM app_records WHERE name='journal'").fetchone()
+                    revision = row[0] if row else 0
+                    if type(self.revision) is not int or self.revision != revision:
+                        raise StoreConflict(revision)
+                    encoded = self.database.encode(self.data)
+                    if row is None or encoded != row[1]:
+                        revision += 1
+                        connection.execute("INSERT INTO app_records VALUES('journal',?,?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at",
+                            (revision, encoded, datetime.now(UTC).isoformat()))
+                self.revision = revision
             except StoreConflict:
                 saved = self.database.read("journal")
                 self.data, self.revision = saved["data"], saved["revision"]
@@ -447,12 +475,12 @@ class DeskStore:
     def finalize_gateway_evidence(self, run):
         self.finalize_call_evidence(run, "gateway")
 
-    def finalize_call_evidence(self, run, origin):
+    def finalize_call_evidence(self, run, origin, *, reason="run_terminal"):
         with self.lock:
             evidence = run.get(f"{origin}_evidence")
             if evidence and not evidence.get("terminal_observed_at"):
                 evidence["terminal_observed_at"] = datetime.now(UTC).isoformat()
-                self._snapshot_call_evidence(run, "run_terminal", origin)
+                self._snapshot_call_evidence(run, reason, origin)
 
     def _write_source_result(self, run_id, attempt_id, output, prefix="source", *, allow_pagination_cursor=False):
         import pandas as pd

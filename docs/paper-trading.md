@@ -17,7 +17,6 @@ local directories/files. Credentials and runtime records are not repository asse
 
 The configured browser address is http://127.0.0.1:8098. Start/stop the native
 worker through the browser. The official Nautilus v1 cache runs in memory.
-SQLite application-only backup/restore remains available in Health.
 
 The normal desk supports explicit per-order approval and submission through
 Nautilus to Alpaca, plus authorized cancellation and replacement. Approval alone
