@@ -21,6 +21,9 @@
 #universe-review.markets-workspace .markets-results .table-scroll{overflow:auto;max-height:50vh}
 #universe-review.markets-workspace #saved-data-scans{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0;border:0}
 #universe-review.markets-workspace [data-scan-panel]{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);background:var(--paper);padding:12px}
+#universe-review.markets-workspace .scanner-actions{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:var(--paper);border-bottom:1px solid var(--line)}
+#universe-review.markets-workspace .scanner-actions>label{flex:0 0 100%;font-size:12px}
+#universe-review.markets-workspace .scan-details{margin-block:12px}
 #universe-review.markets-workspace [data-scan-panel=runs] article{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:8px 0}
 #universe-review.markets-workspace [data-scan-panel=runs] article p{flex:1;min-width:220px}
 #universe-review.markets-workspace #workspace-save-status{flex:none;min-height:24px}
