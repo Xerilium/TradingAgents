@@ -26,8 +26,9 @@
 #universe-review.markets-workspace #workspace-save-status{flex:none;min-height:24px}
 #universe-review.markets-workspace #workspace.detail-open{display:grid;grid-template-rows:auto minmax(0,1fr);grid-template-columns:minmax(0,1fr) minmax(360px,1fr);gap:12px}
 #universe-review.markets-workspace #workspace.detail-open #markets-tabs{grid-column:1/-1}
-#universe-review.markets-workspace #stock-detail{min-height:0;overflow:hidden}
-#universe-review.markets-workspace #detail-content{height:100%;min-height:0;overflow:auto}
+#universe-review.markets-workspace #stock-detail,#universe-review.portfolio-workspace #stock-detail,#universe-review.orders-workspace #stock-detail{display:flex;flex-direction:column;position:static;min-width:0;min-height:0;height:100%;max-height:none;overflow:hidden;inset:auto}
+#universe-review.markets-workspace #detail-content,#universe-review.portfolio-workspace #detail-content,#universe-review.orders-workspace #detail-content{display:flex;flex:1;height:auto;min-height:0;overflow:hidden}
+#universe-review.portfolio-workspace>#investor-policy,#universe-review.portfolio-workspace>#investor-proposals,#universe-review.portfolio-workspace>#allocation-workspace,#universe-review.portfolio-workspace>#attention-workspace{display:none}
 #universe-review.portfolio-workspace>.workspace{flex:1;min-height:0;overflow:auto}
 #universe-review.markets-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:800px){#universe-review.markets-workspace #market-discovery{grid-template-columns:minmax(220px,.8fr) minmax(280px,1fr);overflow:auto}#universe-review.markets-workspace #workspace.detail-open{display:flex}#universe-review.markets-workspace #workspace.detail-open #universe-view{display:none}#universe-review.markets-workspace #stock-detail{flex:1}#universe-review.markets-workspace .bulk-toolbar{flex-wrap:wrap}}
