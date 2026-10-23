@@ -202,6 +202,8 @@ New batches use that limit; changing it does not resize an existing run.
 Each stock has its own graph, checkpoints, reports and evidence attribution.
 Selected analyst roles can also work concurrently within a stock. A failure,
 rate limit or stop prevents further stock dispatch; in-flight work settles first.
+Laya social screening shares a serial lane across stocks; waiting for that lane
+is cancellable and counts against each stock's existing screening time limit.
 The workload dialog displays the limit, models and date. Duration estimates use
 observed stock durations and the selected limit; shared-service load can increase
 the actual time. Cost may be unavailable.
