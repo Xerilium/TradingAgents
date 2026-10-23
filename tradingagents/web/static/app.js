@@ -2267,7 +2267,7 @@ function bindBaskets(root){
  });
  root.addEventListener('click',e=>{
   const open=e.target.closest('[data-open-basket]'),remove=e.target.closest('[data-remove-target]');
-  if(open){loadBasket(investorRecord.data.baskets.find(b=>b.id===open.dataset.openBasket));render();return;}
+  if(open){loadBasket(investorRecord.data.baskets.find(b=>b.id===open.dataset.openBasket));basketTab='Targets';render();return;}
   if(remove){basketForm.targets.splice(Number(remove.dataset.removeTarget),1);basketForm.assumed_filled=[];basketPreview=null;investorDirty=true;render();return;}
   const id=e.target.id;
   if(id==='basket-add-selected'){selectedSymbols.forEach(addBasketTarget);render();}
@@ -2283,7 +2283,7 @@ async function investorAction(request){
  try{
   const result=await api('/api/investor',{...request,expected_revision:investorRecord.revision});
   if(state.store_generation!==generation)return;
-  if(request.action==='basket_preview'){if(current())basketPreview=result.preview;}
+  if(request.action==='basket_preview'){if(current()){basketPreview=result.preview;basketTab='Impact';}}
   else if(request.action==='preview'){if(current())proposalPreviews.set(draftKey,result.preview);}
   else{
    investorRecord=result;state.investor=result;if(current()&&active())investorDirty=false;
