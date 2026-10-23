@@ -291,7 +291,14 @@ analyst's sentiment report are different signals. Unclear/unscreened does not
 mean neutral; a classification contract never supplies trading authority.
 
 Source acquisition failures, unavailable/partial source data and capture failures
-can block completion. Gateway capture completeness is different from every
+can block completion. One explicit exception is an app-marked supplemental
+public-document read rejected with HTTP 403: its failed receipt remains saved,
+the analyst receives a not-retrieved/unverified disclosure, and otherwise
+complete required evidence may proceed. This does not bypass publisher access,
+required data, other errors, capture or unknown-outcome checks. Legacy failures
+without that explicit contract remain blocking.
+
+Gateway capture completeness is different from every
 tool call succeeding: a known, fully recorded tool validation error can coexist
 with completed research. Unknown/pending outcomes are not equivalent to such
 captured errors. The guard also requires terminal graph state, analyst reports
