@@ -1,0 +1,18 @@
+.orders-workspace{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.orders-workspace>:not(.orders-tabs):not(.orders-body){display:none}
+[data-basket-pane][hidden]{display:none!important}
+.orders-workspace>.app-header,.orders-workspace>#workspace-save-status,.orders-workspace>#investor-policy,.orders-workspace>#attention-workspace{display:none}
+.orders-body{display:flex;flex:1;min-width:0;min-height:0;overflow:hidden;gap:12px}
+.orders-panels{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}.orders-pane{flex:1;min-height:0;overflow:auto}.orders-pane[hidden]{display:none!important}
+.orders-workspace #workspace{display:none}.orders-workspace #workspace.detail-open{display:flex;width:46%;min-width:340px;min-height:0;padding:0}.orders-workspace #universe-view,.orders-workspace #holdings-view{display:none!important}
+.orders-workspace #stock-detail{flex:1;min-width:0;min-height:0;margin:0}.orders-workspace #close-detail{font-size:12px}
+.orders-workspace #investor-proposals>summary,.orders-workspace #allocation-workspace>summary{font-size:14px}
+.order-master-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,32%);height:100%;min-height:0;gap:12px}.order-master-detail>.panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}.order-master-detail .table-scroll{flex:1;min-height:0;overflow:auto}
+.order-inspector{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--line,#34414d);padding:12px;background:var(--paper,#1b252f)}.order-inspector-body{flex:1;min-height:0;overflow:auto}.order-inspector pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.shared-ticket{display:flex;flex-direction:column;min-height:0;height:100%;border:1px solid var(--line,#34414d);background:var(--paper,#1b252f)}
+.ticket-steps,.ticket-actions{display:flex;gap:8px;flex-shrink:0;padding:12px;border-bottom:1px solid var(--line,#34414d);overflow:auto}.ticket-steps button{min-height:32px}.ticket-steps button[aria-pressed=true]{color:var(--accent,#79ce9e);border-color:var(--accent,#79ce9e)}
+.ticket-body{flex:1;min-height:0;overflow:hidden}.ticket-body>[data-ticket-step]{height:100%;overflow:auto;padding:12px}.ticket-body>[hidden]{display:none!important}.ticket-body .proposal-editor{border:0;margin:0;padding:0;overflow:visible}
+.ticket-actions{border-bottom:0;border-top:1px solid var(--line,#34414d);flex-wrap:wrap;max-height:160px}.ticket-actions button[hidden]{display:none}.ticket-actions button{min-height:32px}
+#instrument-position:has(.shared-ticket){display:flex;flex-direction:column;overflow:hidden}#instrument-position>.shared-ticket{flex:1;min-height:0}#instrument-position>h3,#instrument-position>dl,#instrument-position>p{flex-shrink:0}
+@media(max-width:1100px){.order-master-detail{grid-template-columns:1fr;grid-template-rows:minmax(180px,1fr) minmax(180px,1fr)}}
+@media(max-width:900px),(max-height:650px){.orders-workspace:has(#workspace.detail-open) .orders-panels{display:none}.orders-workspace #workspace.detail-open{width:100%;min-width:0}.ticket-actions{max-height:140px}.ticket-actions button{flex:1}.orders-body{gap:0}}
