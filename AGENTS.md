@@ -76,8 +76,21 @@ actual installation, saved data and permitted smoke test.
 - Use KISS/YAGNI. Prefer an available LSP for code navigation. Track the user's
   score: each code line written costs 1, each test costs 2, a missed scope
   requirement costs 10,000; disclose code/test changes.
-- Do not create tests unless the user specifically asks to create tests.
-- For efficiency, batch all known fixes before running one verification/test
+- Start with visible failures and affected feature journeys in the built-in
+  browser. Investigate the root cause and make the smallest KISS fix.
+- Do not create automated tests without fresh, explicit user authorization.
+  No mocks, stubs, synthetic checks, benchmarks or speed-focused work.
+  A timing improvement is not acceptance: verify visible errors are resolved
+  and affected features produce useful outcomes. Preserve existing tests.
+- Do not create, expand, run, or debug tests using mocks, stubs, fake transports
+  or fake services. Existing mock results are not product acceptance
+  evidence; preserve existing tests unless their removal is explicitly authorized.
+- Validate behavior with actual installed components, real retained inputs and
+  observed results. Static checks remain appropriate. This does not authorize
+  broker actions, research runs or runtime activation. Preserve production data.
+  Running-app UAT uses the built-in browser only; browser verification does not
+  permit backend/API scripting against the running app or financial actions.
+- For efficiency, batch all known fixes before one affected browser verification
   cycle for that batch. If that cycle finds more problems, collect and fix them
   as the next batch, then run one cycle for that batch. Do not run a full cycle
   after each individual fix or spend more time running tests than producing

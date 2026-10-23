@@ -78,7 +78,19 @@ class DeskStore:
             })
             if run["status"] in {"queued", "running", "cancelling"}:
                 run["status"] = "interrupted"
-                run["error"] = "Server stopped during analysis. Start a new run."
+                run["error"] = ("Server stopped during analysis. Review continuation eligibility."
+                                if run.get("continuation") else "Server stopped during analysis. Start a new run.")
+                continuation = run.get("continuation")
+                if continuation:
+                    continuation["revision"] += 1
+                    continuation["attempts"][-1].update(status="interrupted", ended_at=datetime.now(UTC).isoformat(),
+                                                       reason=run["error"])
+                    for result in run["results"]:
+                        if result["status"] == "running":
+                            result["status"] = "interrupted"
+                        for effect in result.get("continuation", {}).get("effects", {}).values():
+                            if effect["outcome"] == "intent":
+                                effect["outcome"] = "unknown"
             if run["status"] in {"completed", "failed", "cancelled", "interrupted"}:
                 self._recover_measurements(run)
                 evidence = run.get("source_evidence")
@@ -447,12 +459,12 @@ class DeskStore:
     def finalize_gateway_evidence(self, run):
         self.finalize_call_evidence(run, "gateway")
 
-    def finalize_call_evidence(self, run, origin):
+    def finalize_call_evidence(self, run, origin, *, reason="run_terminal"):
         with self.lock:
             evidence = run.get(f"{origin}_evidence")
             if evidence and not evidence.get("terminal_observed_at"):
                 evidence["terminal_observed_at"] = datetime.now(UTC).isoformat()
-                self._snapshot_call_evidence(run, "run_terminal", origin)
+                self._snapshot_call_evidence(run, reason, origin)
 
     def _write_source_result(self, run_id, attempt_id, output, prefix="source", *, allow_pagination_cursor=False):
         import pandas as pd

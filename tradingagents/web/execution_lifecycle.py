@@ -8,23 +8,33 @@ import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from uuid import uuid4
 
 from .admission import DEFAULT, CommandAdmission, account_version, instant
-from .alpaca_readonly import AlpacaREST, trading_endpoint
+from .alpaca_readonly import AlpacaREST
 from .alpaca_stream import PaperStream
 from .app_database import ApplicationDatabase
 from .investor import decimal, digest, validated_replacement
+from .linked_orders import broker_payload, flatten_orders, native_type, order_class, fractional_terms, trailing_terms, native_trail, broker_session
+
+CONFIRMED = {"observed_current_process", "superseded_by_current_observation"}
+
+class CommandIdentityUnresolved(ValueError):
+    """One command needs reconciliation; this does not classify a connection failure."""
+
 
 class ExecutionLifecycle:
-    def __init__(self, native, database_path, credentials_file, observation, assets, *, native_epoch):
+    def __init__(self, native, database_path, credentials_file, observation, assets, *, native_epoch, connection=None):
         self.native, self.path = native, Path(database_path) if database_path else None
         self.credentials_file, self.observation, self.assets = credentials_file, observation, assets
         self.native_epoch = native_epoch
         self.database = None
-        self.transport = AlpacaREST(credentials_file, permit_paper_execution=True)
-        self.stream_status = {"state": "not_started", "gap": "Trade stream awaits the native account connection"}
+        self.transport = AlpacaREST(credentials_file, permit_paper_execution=True, connection=connection)
+        self.identity_reconciliation = {"pending": [], "unresolved": {}, "last_attempt_at": None}
+        self.stream_status = {"state": "not_started", "gap": "Trade stream awaits the native account connection",
+                              "identity_reconciliation": self.identity_reconciliation}
         if self.path and self.path.is_file():
             self.begin_native_epoch()
 
@@ -47,7 +57,7 @@ class ExecutionLifecycle:
             state["native_epoch"] = self.native_epoch
             for command in state["commands"].values():
                 for item in command.get("native_deliveries", {}).values():
-                    if item.get("status") in {"applied", "observed_current_process"} and item.get("native_epoch") != self.native_epoch:
+                    if item.get("status") in CONFIRMED | {"applied"} and item.get("native_epoch") != self.native_epoch:
                         item.setdefault("application_history", []).append({key: item.get(key) for key in ("native_epoch", "status", "updated_at")})
                         item.update(status="unresolved", updated_at=datetime.now(UTC).isoformat())
                         self.retain_commitment(command, item)
@@ -86,7 +96,7 @@ class ExecutionLifecycle:
             authority.enabled()
         state = authority.snapshot()["data"]
         command = state["commands"][identity]
-        if sending and command.get("origin") == "external_broker":
+        if sending and command.get("origin") in {"external_broker", "linked_broker"}:
             raise ValueError("Observed external orders have no original app submission authority")
         if sending and (command["state"] != "dispatch_intent" or not command["dispatch_intent_at"]):
             raise ValueError("Durable dispatch intent is required before transport I/O")
@@ -150,7 +160,7 @@ class ExecutionLifecycle:
                     item["native_epoch"] = self.native_epoch
             command.pop("native_pending_commitment", None)
             for pending in deliveries.values():
-                if pending["status"] != "observed_current_process" or pending.get("native_epoch") != self.native_epoch:
+                if pending["status"] not in CONFIRMED or pending.get("native_epoch") != self.native_epoch:
                     self.retain_commitment(command, pending)
             if command.get("native_pending_commitment"):
                 state.update(recovery_required=True, recovery_reason="Broker events await current-process native confirmation")
@@ -239,11 +249,95 @@ class ExecutionLifecycle:
             return []
         commands = self.authority().database.read("commands", {})["data"].get("commands", {})
         return [{"command_id": command["id"], "event_id": identity, "status": item["status"],
-                 "native_epoch": item.get("native_epoch"), "confirmed_current_process": item["status"] == "observed_current_process" and item.get("native_epoch") == self.native_epoch,
+                 "native_epoch": item.get("native_epoch"), "confirmed_current_process": item["status"] in CONFIRMED and item.get("native_epoch") == self.native_epoch,
                  "source_receipt": item["receipt"], "commission": item.get("input", {}).get("commission")}
                 for command in commands.values() for identity, item in command.get("native_deliveries", {}).items()]
 
+    def confirm_linked_observations(self, rows, history):
+        """Fresh complete native/fill proof can supersede old child state receipts, not replay them."""
+        if not history.get("complete") or not history.get("evidence"):
+            return False
+        from .native_types import ClientOrderId, OrderFilled, enum_name, native_dict, native_order_account
+        from .alpaca_reports import native_quantities, timestamp, execution_id, order_report
+        by_id, proofs = {row["id"]: row for row in rows}, {}
+        commands = self.authority().database.read("commands", DEFAULT)["data"]["commands"]
+        for command in commands.values():
+            root_exit = command["side"] == "SELL" and (command.get("terms", {}).get("exit_plan") or command.get("linked_group_owner_id"))
+            if not (command.get("linked_exit") or root_exit) or not command.get("native_pending_commitment"):
+                continue
+            order = self.native.cache.order(ClientOrderId(command.get("native_client_order_id", command["client_order_id"])))
+            row = by_id.get(str(order.venue_order_id)) if order is not None else None
+            if not row or row.get("import_error") or row.get("side") != "sell" or row.get("symbol") != command["symbol"]:
+                continue
+            parent = commands[command["linked_entry_command_id"]] if command.get("linked_exit") else commands.get(command.get("linked_group_owner_id"), command)
+            roots = set(parent["broker_order_ids"]) | set(parent.get("linked_root_order_ids", []))
+            if ((row["id"] not in roots if root_exit else row.get("group_parent_id") not in roots)
+                    or native_order_account(order, self.native) != "ALPACA-" + command["account_id"]
+                    or str(order.instrument_id) != command["instrument_id"]
+                    or timestamp(row["updated_at"]) > timestamp(history["through"])):
+                continue
+            chain, source = {row["id"]}, row
+            while source.get("replaces"):
+                prior = by_id.get(source["replaces"])
+                if (not prior or prior.get("replaced_by") != source["id"] or prior["id"] in chain
+                        or any(prior.get(key) != row.get(key) for key in ("symbol", "side", "type"))
+                        or (prior["id"] not in roots if root_exit else prior.get("group_parent_id") not in roots)):
+                    break
+                chain.add(prior["id"])
+                source = prior
+            if source.get("replaces") or not chain.intersection(command["broker_order_ids"]):
+                continue
+            total, filled = native_quantities(row)
+            actual = native_dict(order)
+            events = [event for event in order.events if isinstance(event, OrderFilled)]
+            if (order.quantity.as_decimal() != total or order.filled_qty.as_decimal() != filled
+                    or actual.get("side") != "SELL" or actual.get("type") != native_type(row["type"])
+                    or order.status != order_report(row, self.native.account_id, 0).order_status
+                    or decimal(actual.get("price")) != decimal(row.get("limit_price"))
+                    or decimal(actual.get("trigger_price")) != decimal(row.get("stop_price"))
+                    or enum_name(order.time_in_force).lower() != row["time_in_force"]
+                    or sum((event.last_qty.as_decimal() for event in events), Decimal(0)) != filled
+                    or len({execution_id(event.trade_id) for event in events}) != len(events)
+                    or any(str(event.venue_order_id) not in chain for event in events)):
+                continue
+            covered = []
+            for identity, delivery in command.get("native_deliveries", {}).items():
+                data = delivery["input"]
+                old = data.get("order") or {}
+                reference = delivery["receipt"]
+                path = (self.path.parent / reference["path"]).resolve()
+                if (delivery["status"] == "conflict" or old.get("id") not in chain
+                        or delivery["source_sha256"] != digest(data) or not path.is_relative_to(self.path.parent.resolve())
+                        or hashlib.sha256(path.read_bytes()).hexdigest() != reference["sha256"]
+                        or timestamp(data.get("timestamp") or old["updated_at"]) > timestamp(row["updated_at"])):
+                    continue
+                if data.get("event") in {"fill", "partial_fill"} and not self.native_applied(order, data["event"], data, old,
+                        "filled" if old.get("status") == "filled" else "partially_filled", data.get("timestamp") or old["updated_at"]):
+                    continue
+                covered.append(identity)
+            if covered:
+                proofs[command["id"]] = {"deliveries": covered, "native": actual, "broker_order_id": row["id"],
+                    "execution_ids": [execution_id(event.trade_id) for event in events]}
+        if not proofs:
+            return False
+        reference = self.receipt("linked-recovery", "Current broker/native linked exit proof; historical transitions not replayed",
+                                 {"history": history["evidence"], "through": history["through"], "proofs": proofs})
+        def change(records):
+            for identity, proof in proofs.items():
+                command = records["commands"]["commands"][identity]
+                for delivery_id in proof["deliveries"]:
+                    command["native_deliveries"][delivery_id].update(status="superseded_by_current_observation",
+                        native_epoch=self.native_epoch, current_observation_receipt=reference,
+                        updated_at=datetime.now(UTC).isoformat())
+                command.pop("native_pending_commitment", None)
+                for delivery in command["native_deliveries"].values():
+                    if delivery["status"] not in CONFIRMED or delivery.get("native_epoch") != self.native_epoch:
+                        self.retain_commitment(command, delivery)
+        self.authority().transaction(change)
+        return True
+
     def native_gap(self, identity, reason, receipt=None):
+        self.identity_reconciliation["unresolved"][identity] = {"reason": reason, "attempted_at": datetime.now(UTC).isoformat()}
         def change(records):
             state = records["commands"]
             state.update(recovery_required=True, recovery_reason=reason)
@@ -251,25 +345,178 @@ class ExecutionLifecycle:
                 "native_application": "unresolved", "reason": reason, "receipt": receipt})
         self.authority().transaction(change)
 
+    def checked_fractional_terms(self, terms):
+        asset = self.assets().get(terms["symbol"], {})
+        quantity = fractional_terms(terms, fractionable=asset.get("fractionable", False))
+        if quantity % 1:
+            bound = terms.get("fractional_asset") or {}
+            current = {key: asset.get(key) for key in ("id", "symbol", "class", "exchange", "status", "tradable", "fractionable",
+                                                      "overnight_tradable", "overnight_halted", "fractional_eh_enabled", "attributes")}
+            if terms.get("session", "regular") == "extended" and asset.get("fractional_eh_enabled") is not True:
+                raise ValueError("Current asset does not establish fractional extended-session eligibility")
+            if bound.get("asset") != current:
+                raise ValueError("Current fractional asset identity or eligibility differs from exact approval")
+
     def checked_native_order(self, order, durable):
         terms = durable["terms"]
+        self.checked_fractional_terms(terms)
+        if terms["side"] == "BUY" and terms["order_type"] == "STOP_MARKET":
+            raise ValueError("BUY stop-market broker conversion is not mapped; approve explicit STOP_LIMIT terms instead")
         from .native_types import native_dict, enum_name
         raw = native_dict(order)
+        if ("extended_hours" in (raw.get("tags") or [])) != (terms.get("session", "regular") == "extended"):
+            raise ValueError("Native session eligibility differs from exact durable approved terms")
+        if trailing_terms(terms):
+            offset, unit = native_trail(terms)
+            if (decimal(raw.get("trailing_offset")) != offset or raw.get("trailing_offset_type") != unit
+                    or raw.get("trigger_price") is not None or raw.get("activation_price") is not None
+                    or raw.get("emulation_trigger") != "NO_TRIGGER" or raw.get("trigger_type") != "DEFAULT"):
+                raise ValueError("Native trailing instructions differ from the initial approved broker-managed trail")
         if (str(order.instrument_id) != durable["instrument_id"] or str(order.client_order_id) != durable.get("native_client_order_id", durable["client_order_id"])
                 or enum_name(order.side) != terms["side"] or enum_name(order.order_type) != terms["order_type"]
-                or enum_name(order.time_in_force) != "DAY" or order.is_quote_quantity or order.is_reduce_only
+                or enum_name(order.time_in_force) != terms["time_in_force"] or order.is_quote_quantity
+                or order.is_reduce_only != (order_class(terms) == "oco")
                 or self.assets().get(terms["symbol"], {}).get("tradable") is not True):
             raise ValueError("Unsupported native order or exact durable identity/terms mismatch")
         if Decimal(raw["quantity"]) != Decimal(terms["quantity"]):
             raise ValueError("Native and reviewed quantities differ")
-        if terms["order_type"] == "LIMIT" and Decimal(raw["price"]) != Decimal(terms["limit_price"]):
+        if terms["order_type"] in {"LIMIT", "STOP_LIMIT"} and Decimal(raw["price"]) != Decimal(terms["limit_price"]):
             raise ValueError("Native and reviewed limit prices differ")
+        if terms["order_type"] in {"STOP_MARKET", "STOP_LIMIT"} and Decimal(raw["trigger_price"]) != Decimal(terms["stop_price"]):
+            raise ValueError("Native and reviewed stop triggers differ")
+
+    def bind_group(self, rows):
+        """Retain broker-assigned child IDs under the original approval, never submission authority."""
+        def change(records):
+            commands = records["commands"]["commands"]
+            for root in rows:
+                if root.get("group_class") != "oco" or root.get("group_role") != "take_profit":
+                    continue
+                command = next((command for command in commands.values() if command["client_order_id"] == root.get("client_order_id")), None)
+                owner = commands.get(command.get("linked_group_owner_id"), command) if command else None
+                if owner and owner.get("terms", {}).get("exit_plan") and owner["side"] == "SELL":
+                    if (root.get("symbol") != owner["symbol"] or root.get("side") != "sell" or root.get("type") != "limit"
+                            or root.get("asset_class") != "us_equity" or root.get("account_id", owner["account_id"]) != owner["account_id"]
+                            or root.get("time_in_force", "").upper() != owner["terms"]["time_in_force"]
+                            or decimal(root.get("limit_price")) != decimal(command["terms"].get("limit_price"))
+                            or command["terms"].get("replacement") and root.get("replaces") != command["terms"]["replacement"]["order_id"]):
+                        raise ValueError("Broker OCO root differs from its exact original or renewed group authority")
+                    self._resize_exit(command, root, owner)
+                    roots = owner.setdefault("linked_root_order_ids", [])
+                    if root["id"] not in roots:
+                        roots.append(root["id"])
+            for row in rows:
+                parent = next((command for command in commands.values() if command.get("terms", {}).get("exit_plan")
+                               and row.get("group_parent_id") in command.get("broker_order_ids", []) + command.get("linked_root_order_ids", [])), None)
+                if parent is None:
+                    # Submission response arrives before the parent report has recorded the venue ID.
+                    source = next((source for source in rows if source["id"] == row.get("group_parent_id")), None)
+                    parent = next((command for command in commands.values() if source and source.get("client_order_id") == command["client_order_id"]
+                                   and command.get("terms", {}).get("exit_plan")), None)
+                if parent is None:
+                    continue
+                if row.get("account_id", parent["account_id"]) != parent["account_id"]:
+                    raise ValueError("Broker exit account differs from its approved entry account")
+                role = row.get("group_role")
+                plan = parent["terms"]["exit_plan"]
+                if role not in {"take_profit", "stop_loss"} or row["symbol"] != parent["symbol"] or row["side"] != "sell":
+                    raise ValueError("Broker child does not match the approved entry exit plan")
+                expected = "limit" if role == "take_profit" else "stop_limit" if plan.get("stop_limit_price") else "stop"
+                if row["type"] != expected or row["time_in_force"].upper() != parent["terms"]["time_in_force"]:
+                    raise ValueError("Broker child type or duration differs from the approved exit")
+                native_id = parent["client_order_id"] + ("-TP" if role == "take_profit" else "-SL")
+                row["native_client_order_id"] = native_id
+                existing = next((command for command in commands.values() if row["id"] in command.get("broker_order_ids", [])
+                    or command.get("linked_exit") and command["client_order_id"] == row.get("client_order_id")), None)
+                if existing:
+                    if existing.get("linked_entry_command_id") != parent["id"]:
+                        raise ValueError("Broker exit identity is already bound to another command")
+                    if (row.get("client_order_id") != existing["client_order_id"]
+                            or decimal(row.get("limit_price")) != decimal(existing["terms"].get("limit_price"))
+                            or decimal(row.get("stop_price")) != decimal(existing["terms"].get("stop_price"))):
+                        raise ValueError("Broker exit economics differ from their current exact authorized terms")
+                    replacement = existing["terms"].get("replacement")
+                    if replacement and (row.get("replaces") != replacement["order_id"]
+                            or Decimal(row["qty"]) > Decimal(existing["terms"]["quantity"])
+                            or decimal(row.get("limit_price")) != decimal(existing["terms"].get("limit_price"))
+                            or decimal(row.get("stop_price")) != decimal(existing["terms"].get("stop_price"))):
+                        raise ValueError("Broker replacement exit differs from its renewed exact approval")
+                    row["native_client_order_id"] = existing.get("native_client_order_id", native_id)
+                    self._resize_exit(existing, row, parent)
+                    continue
+                expected_price = plan.get("take_profit") if role == "take_profit" else plan.get("stop_limit_price")
+                if ((row.get("limit_price") is None) != (expected_price is None)
+                        or expected_price is not None and Decimal(row["limit_price"]) != Decimal(expected_price)
+                        or role == "stop_loss" and Decimal(row["stop_price"]) != Decimal(plan["stop_price"])):
+                    raise ValueError("Broker-assigned exit prices differ from the exact approved group")
+                quantity = Decimal(row["qty"])
+                if not 0 < quantity <= Decimal(parent["terms"]["quantity"]) or quantity % 1:
+                    raise ValueError("Broker exit quantity exceeds its approved entry or is not whole shares")
+                terms = {**parent["terms"], "side": "SELL", "order_type": native_type(row["type"]), "quantity": row["qty"],
+                         "limit_price": row.get("limit_price"), "stop_price": row.get("stop_price")}
+                terms.pop("exit_plan", None)
+                child = copy.deepcopy(parent)
+                child.update(id=str(uuid4()), origin="linked_broker", submission_authority=False, linked_exit=True,
+                    linked_entry_command_id=parent["id"], linked_role=role, terms=terms, terms_sha256=digest(terms),
+                    client_order_id=row["client_order_id"], native_client_order_id=native_id, side="SELL",
+                    state="submitting", filled_quantity="0", remaining_quantity=terms["quantity"], price_cap=None,
+                    fee_commitment=None, cash_commitment="0", broker_order_ids=[row["id"]], fill_ids=[], event_ids=[],
+                    native_deliveries={}, timeline=[{"at": datetime.now(UTC).isoformat(), "state": "submitting",
+                        "reason": "Broker-assigned exit under the exact approved entry group; no independent submit authority"}],
+                    transport_attempt={"version": 1, "state": "external_submission"})
+                child["source_observation"] = {"order": copy.deepcopy(row), "parent_order_id": row["group_parent_id"],
+                                               "native_epoch": self.native_epoch, "captured_at": datetime.now(UTC).isoformat()}
+                child.pop("pending_action", None)
+                child.pop("native_pending_commitment", None)
+                commands[child["id"]] = child
+        self.authority().transaction(change)
+
+    @staticmethod
+    def _resize_exit(command, row, parent):
+        quantity, filled = Decimal(row["qty"]), Decimal(row["filled_qty"])
+        ceiling = Decimal(command.get("broker_group_quantity", command["terms"]["quantity"]))
+        if not 0 <= filled <= quantity <= min(ceiling, Decimal(parent["terms"]["quantity"])) or quantity <= 0 or quantity % 1:
+            raise ValueError("Broker-managed exit quantity is outside its approved entry coverage")
+        if ceiling != quantity:
+            command["timeline"].append({"at": datetime.now(UTC).isoformat(), "reason": "Broker-managed linked exit quantity adjustment",
+                                        "source": copy.deepcopy(row)})
+            command["broker_group_quantity"] = str(quantity)
+            command["remaining_quantity"] = str(quantity - filled)
+
+    async def submit_group(self, native_command, factory):
+        identity = (native_command.params or {}).get("durable_command_id")
+        durable = self.command(identity, sending=True)
+        from .linked_orders import native_group
+        # Rebuild expected seeds through the same official factory and compare material terms/links.
+        actual = list(native_command.order_list.orders)
+        expected = native_group(factory, durable["terms"], durable["client_order_id"])
+        from .native_types import native_dict
+        keys = ("client_order_id", "instrument_id", "side", "type", "quantity", "price", "trigger_price", "time_in_force",
+                "parent_order_id", "linked_order_ids", "order_list_id", "contingency_type", "emulation_trigger", "post_only",
+                "reduce_only", "quote_quantity", "trigger_type", "tags")
+        if len(actual) != len(expected.orders) or any(
+                {key: native_dict(a).get(key) for key in keys} != {key: native_dict(e).get(key) for key in keys}
+                for a, e in zip(actual, expected.orders)):
+            raise ValueError("Native group differs from the exact approved entry and exit terms")
+        self.checked_native_order(actual[0], durable)
+        await self._submit(native_command, durable, actual)
 
     @staticmethod
     def native_applied(order, event, data, row, status, source_time, *, indexed_venue_id=None):
         from .native_types import native_dict, enum_name, native_order_account
         from .alpaca_reports import native_quantities
-        _, cumulative = native_quantities(row)
+        total, cumulative = native_quantities(row)
+        if row.get("type") == "trailing_stop":
+            offset, unit = native_trail({"order_type": "TRAILING_STOP_MARKET", "quantity": row["qty"], "side": row["side"].upper(),
+                "time_in_force": row["time_in_force"].upper(), "trail_price": row.get("trail_price"), "trail_percent": row.get("trail_percent")})
+            actual = native_dict(order)
+            if (actual.get("type") != "TRAILING_STOP_MARKET" or decimal(actual.get("trailing_offset")) != offset
+                    or actual.get("trailing_offset_type") != unit):
+                return False
+        if event not in {"fill", "partial_fill", "replaced"} and (order.quantity.as_decimal() != total
+                or (None if getattr(order, "price", None) is None else order.price.as_decimal()) != decimal(row.get("limit_price"))
+                or (None if getattr(order, "trigger_price", None) is None else order.trigger_price.as_decimal()) != decimal(row.get("stop_price"))):
+            return False
         if event in {"fill", "partial_fill"}:
             from .native_types import OrderFilled
             from .alpaca_reports import timestamp, execution_id
@@ -303,7 +550,8 @@ class ExecutionLifecycle:
             if (expected and type(retained).__name__ == expected and retained.ts_event == timestamp(source_time)
                     and filled == cumulative):
                 if event == "replacement_authoritative" and (retained.quantity.as_decimal() != Decimal(row["qty"])
-                        or (None if retained.price is None else retained.price.as_decimal()) != (None if row.get("limit_price") is None else Decimal(row["limit_price"]))):
+                        or (None if retained.price is None else retained.price.as_decimal()) != (None if row.get("limit_price") is None else Decimal(row["limit_price"]))
+                        or (None if retained.trigger_price is None else retained.trigger_price.as_decimal()) != (None if row.get("stop_price") is None else Decimal(row["stop_price"]))):
                     continue
                 return True
         if event in {"order_cancel_rejected", "order_replace_rejected", "replacement_authoritative"}:
@@ -317,20 +565,23 @@ class ExecutionLifecycle:
         identity = (native_command.params or {}).get("durable_command_id")
         durable = self.command(identity, sending=True)
         self.checked_native_order(native_command.order, durable)
+        if durable["terms"].get("exit_plan"):
+            raise ValueError("An entry with exits must be submitted once as a native order list")
+        await self._submit(native_command, durable, [native_command.order])
+
+    async def _submit(self, native_command, durable, orders):
+        identity = durable["id"]
         if account_version(self.observation()) != durable["account_version"]:
             raise ValueError("Source account version changed before native dispatch")
         terms = durable["terms"]
-        body = {"symbol": terms["symbol"], "qty": terms["quantity"], "side": terms["side"].lower(),
-                "type": terms["order_type"].lower(), "time_in_force": "day", "extended_hours": False,
-                "client_order_id": durable["client_order_id"]}
-        if terms["order_type"] == "LIMIT":
-            body["limit_price"] = terms["limit_price"]
+        body = broker_payload(terms, durable["client_order_id"])
         self.record_pending(identity, "submitting", "Native adapter transport attempt begins after durable intent")
         if account_version(self.observation()) != durable["account_version"]:
             raise ValueError("Source account changed before native dispatch")
         self.authority().transport_boundary(identity, "submit")
         try:
-            self.native.generate_order_submitted(native_command.order)
+            for order in orders:
+                self.native.generate_order_submitted(order)
             result = await asyncio.to_thread(self.transport.submit_order, body)
             reference = self.receipt(identity, "Alpaca POST /v2/orders", {"request": body, "raw_response": result["raw"].decode()})
             self.record_pending(identity, "submitting", "HTTP response received; authoritative lifecycle confirmation remains required", reference)
@@ -363,30 +614,37 @@ class ExecutionLifecycle:
         parent = self.command(parent_id)
         action = parent.get("pending_action", {})
         child = self.command(action.get("replacement_command_id"), sending=True)
+        self.checked_fractional_terms(child["terms"])
         broker = str(native_command.venue_order_id or self.native.cache.venue_order_id(native_command.client_order_id) or "")
         if (action.get("kind") != "replace" or not action.get("intent_at") or not action.get("actor")
                 or action.get("broker_order_id") != broker or broker not in parent["broker_order_ids"]
                 or child["instrument_id"] != parent["instrument_id"] or child["side"] != parent["side"]
-                or child["terms"]["order_type"] != parent["terms"]["order_type"]
-                or native_command.trigger_price is not None):
+                or child["terms"]["order_type"] != parent["terms"]["order_type"]):
             raise ValueError("Replacement requires renewed admitted authority for the same supported instrument/side/type")
         predecessor = validated_replacement(child["terms"], self.observation())
         offset = Decimal(str((predecessor.get("native_replacement_quantity_binding") or {}).get("ancestor_filled_quantity", "0")))
         quantity = str(native_command.quantity.as_decimal() + offset) if native_command.quantity else parent["terms"]["quantity"]
         price = str(native_command.price.as_decimal()) if native_command.price else parent["terms"].get("limit_price")
         expected_price = child["terms"].get("limit_price")
+        trigger = str(native_command.trigger_price.as_decimal()) if native_command.trigger_price else parent["terms"].get("stop_price")
         if (Decimal(quantity) != Decimal(child["terms"]["quantity"]) or (price is None) != (expected_price is None)
-                or price is not None and (decimal(price) is None or decimal(expected_price) is None or decimal(price) != decimal(expected_price))):
+                or price is not None and (decimal(price) is None or decimal(expected_price) is None or decimal(price) != decimal(expected_price))
+                or decimal(trigger) != decimal(child["terms"].get("stop_price"))):
             raise ValueError("Replacement terms differ from renewed exact review")
         body = {"qty": quantity, "client_order_id": child["client_order_id"]}
         if price is not None:
             body["limit_price"] = price
+        if trigger is not None:
+            body["stop_price"] = trigger
+        if predecessor.get("group_class") in {"bracket", "oco"} or Decimal(predecessor["qty"]) % 1:
+            body.pop("qty")  # These amendments retain quantity and change prices only.
         self.record_pending(parent_id, "replace_pending", "Durable replacement intent precedes PATCH; original commitment retained")
         if account_version(self.observation()) != child["account_version"]:
             raise ValueError("Source account changed before native replacement")
         from .native_types import ClientOrderId
         native = self.native.cache.order(ClientOrderId(parent.get("native_client_order_id", parent["client_order_id"])))
         if (predecessor["id"] != broker or native is None
+                or ("extended_hours" in (native.tags or [])) != (child["terms"].get("session", "regular") == "extended")
                 or Decimal(str(predecessor["filled_qty"])) != native.filled_qty.as_decimal() + offset):
             raise ValueError("Replacement predecessor or cumulative native fills changed")
         self.authority().transport_boundary(parent_id, "replace")
@@ -399,20 +657,89 @@ class ExecutionLifecycle:
             raise
 
     async def reconcile_identity(self, identity):
+        from .alpaca_reports import order_report, exact, timestamp
+        from .native_types import Price, Quantity
         durable = self.command(identity)
+        progress = self.identity_reconciliation
+        attempted = datetime.now(UTC).isoformat()
+        progress["last_attempt_at"] = attempted
+        if identity not in progress["pending"]:
+            progress["pending"].append(identity)
         try:
-            result = await asyncio.to_thread(self.transport.read_receipt, "/v2/orders:by_client_order_id?" + urlencode({"client_order_id": durable["client_order_id"]}))
-        except Exception as exc:
-            self.record_pending(identity, "outcome_unknown", "Identity lookup unavailable or absent (" + type(exc).__name__ + "); absence never proves non-submission")
-            raise ValueError("Broker identity lookup unavailable or absent; outcome remains unknown") from None
-        reference = self.receipt(identity, "Alpaca client-order lookup", {"raw_response": result["raw"].decode()})
-        row = result["data"]
-        if (not row.get("id") or row.get("client_order_id") != durable["client_order_id"]
-                or row.get("symbol") != durable["symbol"] or row.get("side", "").upper() != durable["side"]
-                or row.get("account_id", durable["account_id"]) != durable["account_id"]):
-            self.record_pending(identity, "outcome_unknown", "Broker identity lookup does not match the exact command/account/instrument", reference)
-            raise ValueError("Broker identity lookup differs from the exact command; outcome remains unknown")
-        await self.handle_update({"stream": "trade_updates", "data": {"event": "rest_order_observation", "order": row}}, reference)
+            try:
+                result = await asyncio.to_thread(self.transport.read_receipt, "/v2/orders:by_client_order_id?" + urlencode({"client_order_id": durable["client_order_id"]}))
+            except HTTPError as exc:
+                reason = "Broker identity is absent; absence never proves non-submission" if exc.code == 404 else "Identity lookup failed (HTTP " + str(exc.code) + "); connection or provider failure remains unresolved"
+                self.native_gap(identity, reason)
+                progress["unresolved"][identity] = {"reason": reason, "attempted_at": attempted}
+                if exc.code == 404:
+                    raise CommandIdentityUnresolved(reason) from None
+                raise
+            except (URLError, TimeoutError):
+                progress["unresolved"][identity] = {"reason": "Identity lookup connection failed; no broker outcome is established", "attempted_at": attempted}
+                raise
+            reference = self.receipt(identity, "Alpaca client-order lookup", {"raw_response": result["raw"].decode()})
+            row = result["data"]
+            if (not isinstance(row, dict) or any(not isinstance(row.get(key), str) for key in
+                    ("id", "client_order_id", "symbol", "side", "qty", "filled_qty", "status", "type", "time_in_force", "created_at", "updated_at"))
+                    or not row.get("id") or row["client_order_id"] != durable["client_order_id"]
+                    or row["symbol"] != durable["symbol"] or row["side"].upper() != durable["side"]
+                    or row.get("account_id", durable["account_id"]) != durable["account_id"]):
+                self.native_gap(identity, "Broker identity lookup does not match the exact command/account/instrument", reference)
+                raise CommandIdentityUnresolved("Broker identity response is malformed or differs from the exact command; outcome remains unknown")
+            try:
+                source_at = instant(row["updated_at"])
+                filled = Decimal(row["filled_qty"])
+                if not filled.is_finite() or not 0 <= filled <= Decimal(row["qty"]):
+                    raise ValueError("Invalid cumulative fill")
+                for leg in flatten_orders([row]):
+                    if leg["status"] != "replaced":
+                        order_report(leg, self.native.account_id, timestamp(row["updated_at"]))
+                        continue
+                    # Raw supersession requires handle_update's lineage proof; never fabricate a report status.
+                    if (native_type(leg["type"]) not in {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT", "TRAILING_STOP_MARKET"}
+                            or leg["id"] == row["id"] and native_type(leg["type"]) != durable["terms"]["order_type"]
+                            or leg["time_in_force"] not in {"day", "gtc"}):
+                        raise ValueError("Unsupported superseded order terms")
+                    exact(Quantity.from_str, leg["qty"])
+                    exact(Quantity.from_str, leg["filled_qty"])
+                    timestamp(leg["created_at"])
+                    timestamp(leg["updated_at"])
+                    for key in {"limit": ("limit_price",), "stop": ("stop_price",), "stop_limit": ("limit_price", "stop_price")}.get(leg["type"], ()):
+                        if exact(Price.from_str, leg[key]).as_decimal() <= 0:
+                            raise ValueError("Invalid superseded order price")
+                    if leg["type"] == "trailing_stop":
+                        native_trail({"order_type": "TRAILING_STOP_MARKET", "quantity": leg["qty"], "side": leg["side"].upper(),
+                            "time_in_force": leg["time_in_force"].upper(), "trail_price": leg.get("trail_price"), "trail_percent": leg.get("trail_percent")})
+            except (ValueError, KeyError, TypeError, ArithmeticError):
+                reason = "Broker identity response is malformed or unsupported; source receipt retained without native application"
+                self.native_gap(identity, reason, reference)
+                raise CommandIdentityUnresolved(reason) from None
+            async with self.native.observation_lock:
+                current = self.command(identity)
+                if (filled < Decimal(current["filled_quantity"])
+                        or any(item.get("source_at") and instant(item["source_at"]) > source_at for item in current["timeline"])):
+                    raise CommandIdentityUnresolved("Lookup snapshot predates a later recorded command event; current authority and commitments are preserved")
+                await self.handle_update({"stream": "trade_updates", "data": {"event": "rest_order_observation", "order": row}}, reference)
+                current = self.command(identity)
+                if any(item.get("status") not in CONFIRMED or item.get("native_epoch") != self.native_epoch
+                       for item in current.get("native_deliveries", {}).values()):
+                    raise CommandIdentityUnresolved("Broker identity observed; exact native application remains unresolved. Review the retained receipts before retrying reconciliation")
+            progress["unresolved"].pop(identity, None)
+        except CommandIdentityUnresolved as exc:
+            progress["unresolved"][identity] = {"reason": str(exc), "attempted_at": attempted}
+            raise
+        finally:
+            if identity in progress["pending"]:
+                progress["pending"].remove(identity)
+
+    async def reconcile_stream_commands(self, identities):
+        """One sequential pass per socket connection; only explicit command gaps are isolated."""
+        for identity in identities:
+            try:
+                await self.reconcile_identity(identity)
+            except CommandIdentityUnresolved:
+                continue
 
     async def handle_update(self, message, reference=None, *, replacement_predecessor=None, replacement_source=None, replacement_execution=None):
         from .native_types import ClientOrderId, VenueOrderId, Quantity, Price, TradeId, LiquiditySide, Money, native_order_account
@@ -422,11 +749,27 @@ class ExecutionLifecycle:
         fee_source = getattr(self.native, "recovery_fee_sources", {}).get(canonical)
         effective_data = data
         row = data.get("order") or {}
+        if row.get("legs"):
+            flattened = flatten_orders([row])
+            self.bind_group(flattened)
+            for leg in flattened:
+                leg_data = {**data, "order": leg} if leg["id"] == row["id"] else {"event": "rest_order_observation", "order": leg}
+                await self.handle_update({**message, "data": leg_data}, reference,
+                    replacement_predecessor=replacement_predecessor if leg["id"] == row["id"] else None,
+                    replacement_source=replacement_source if leg["id"] == row["id"] else None,
+                    replacement_execution=replacement_execution if leg["id"] == row["id"] else None)
+            return
         authority = self.authority()
         state = authority.snapshot()["data"]
         durable = next((c for c in state["commands"].values() if row.get("client_order_id") == c["client_order_id"] or row.get("id") in c["broker_order_ids"]), None)
         if not durable:
             return
+        if durable.get("linked_exit"):
+            def resize(records):
+                commands = records["commands"]["commands"]
+                self._resize_exit(commands[durable["id"]], row, commands[durable["linked_entry_command_id"]])
+            authority.transaction(resize)
+            durable = self.command(durable["id"])
         if (data.get("event") in {"fill", "partial_fill"} and row.get("type") == "market"
                 and row.get("replaces") and not durable.get("native_replacement_quantity_binding")):
             response = await asyncio.to_thread(self.transport.read_receipt, "/v2/orders/" + row["replaces"])
@@ -446,7 +789,10 @@ class ExecutionLifecycle:
         if durable.get("native_replacement_quantity_binding"):
             row = {**row, "native_replacement_quantity_binding": durable["native_replacement_quantity_binding"]}
         if row.get("symbol") != durable["symbol"] or row.get("side", "").upper() != durable["side"]:
-            raise ValueError("Trade update does not match durable instrument/side identity")
+            reason = "Trade update does not match durable instrument/side identity; source retained without native application"
+            reference = reference or self.receipt(durable["id"], "Alpaca trade-update identity gap", message)
+            self.native_gap(durable["id"], reason, reference)
+            raise CommandIdentityUnresolved(reason)
         event = data.get("event")
         identity = data.get("event_id") or data.get("execution_id") or "source-sha256:" + digest(data)
         reference = reference or self.receipt(durable["id"], "Alpaca paper trade_updates", message)
@@ -475,6 +821,13 @@ class ExecutionLifecycle:
                     raise ValueError("Effective fee source receipt is missing or changed")
             if (data.get("commission_currency") or data.get("currency") or str(self.native.base_currency)) != str(self.native.base_currency):
                 raise ValueError("Receipt fee currency is unsupported; no FX conversion")
+            if durable["terms"]["order_type"] == "TRAILING_STOP_MARKET":
+                if (row.get("type") != "trailing_stop" or row.get("time_in_force", "").upper() != durable["terms"]["time_in_force"]
+                        or Decimal(row["qty"]) != Decimal(durable["terms"]["quantity"])
+                        or any(decimal(row.get(key)) != decimal(durable["terms"].get(key)) for key in ("trail_price", "trail_percent"))):
+                    raise ValueError("Broker trailing identity, initial distance or quantity differs from approved terms")
+            if broker_session(row) != durable["terms"].get("session", "regular"):
+                raise ValueError("Broker execution-session eligibility differs from approved terms")
             quantity = exact(Quantity.from_str, data["qty"]) if data.get("qty") is not None else None
             price = exact(Price.from_str, data["price"]) if data.get("price") is not None else None
             if quantity is not None and quantity.as_decimal() <= 0 or price is not None and price.as_decimal() <= 0:
@@ -484,13 +837,17 @@ class ExecutionLifecycle:
                     raise ValueError("Missing fill identity or economics")
                 commission, provenance = fill_commission({**data, "id": data["execution_id"],
                         "symbol": row["symbol"], "side": row["side"], "transaction_time": data.get("timestamp") or row.get("updated_at")},
-                        row, self.native.account_id, self.native.base_currency, endpoint=trading_endpoint(self.credentials_file),
+                        row, self.native.account_id, self.native.base_currency, endpoint=self.transport.connection.endpoint,
                         account=getattr(self.native, "fee_model_account", None), linked=fee_source)
                 effective_data = {**data, "commission": str(commission.as_decimal()), "native_fee": provenance}
                 trade_id = TradeId(canonical)
             if event == "replacement_authoritative":
                 if not replacement_predecessor or row.get("replaces") != replacement_predecessor or row.get("id") == replacement_predecessor:
                     raise ValueError("Replacement update requires a validated distinct successor chain")
+                if (native_type(row.get("type")) != durable["terms"]["order_type"]
+                        or decimal(row.get("limit_price")) != decimal(durable["terms"].get("limit_price"))
+                        or decimal(row.get("stop_price")) != decimal(durable["terms"].get("stop_price"))):
+                    raise ValueError("Replacement source prices or type differ from the renewed exact approval")
                 updated_quantity = exact(Quantity.from_str, row["qty"])
                 updated_price = exact(Price.from_str, row["limit_price"]) if row.get("limit_price") is not None else None
                 if updated_quantity.as_decimal() <= 0 or updated_price is not None and updated_price.as_decimal() <= 0:
@@ -515,10 +872,12 @@ class ExecutionLifecycle:
                 return
             successor_reference = self.receipt(child["id"], "authoritative replacement successor lookup",
                 {"predecessor_receipt": reference, "raw_response": response["raw"].decode()})
-        states = {"new": "accepted", "accepted": "accepted", "pending_new": "submitting", "partially_filled": "partially_filled",
+        states = {"new": "accepted", "accepted": "accepted", "held": "accepted", "done_for_day": "accepted", "pending_new": "submitting", "partially_filled": "partially_filled",
                   "filled": "filled", "canceled": "canceled", "expired": "expired", "rejected": "rejected",
                   "pending_cancel": "cancel_pending", "pending_replace": "replace_pending"}
         status = states.get(row.get("status"))
+        if row.get("status") == "done_for_day" and Decimal(row["filled_qty"]):
+            status = "partially_filled"
         if event in {"order_cancel_rejected", "order_replace_rejected"}:
             status = "partially_filled" if Decimal(row["filled_qty"]) else "accepted"
         if event == "replaced" or row.get("status") == "replaced":
@@ -671,11 +1030,24 @@ class ExecutionLifecycle:
         elif event == "order_replace_rejected":
             self.native.generate_order_modify_rejected(order, venue_id, "Broker rejected replacement; original remains authoritative", ts)
         elif event == "replacement_authoritative":
-            self.native.generate_order_updated(order, venue_id, updated_quantity, updated_price, None, None, ts, venue_order_id_modified=True)
+            self.native.generate_order_updated(order, venue_id, updated_quantity, updated_price,
+                exact(Price.from_str, row["stop_price"]) if row.get("stop_price") is not None else None,
+                None, ts, venue_order_id_modified=True)
         elif status in {"cancel_pending", "replace_pending"}:
             self.native.generate_observed_pending(order, venue_id, "PENDING_CANCEL" if status == "cancel_pending" else "PENDING_UPDATE", ts)
         elif status == "accepted":
-            self.native.generate_order_accepted(order, venue_id, ts)
+            if row.get("type") == "trailing_stop":
+                if order.venue_order_id is None:
+                    self.native.generate_order_accepted(order, venue_id, ts)
+                if row.get("stop_price") is not None:
+                    self.native.generate_order_updated(order, venue_id, exact(Quantity.from_str, row["qty"]), None,
+                        exact(Price.from_str, row["stop_price"]), False, ts)
+            elif durable.get("linked_exit") and order.venue_order_id is not None:
+                self.native.generate_order_updated(order, venue_id, exact(Quantity.from_str, row["qty"]),
+                    exact(Price.from_str, row["limit_price"]) if row.get("limit_price") is not None else None,
+                    exact(Price.from_str, row["stop_price"]) if row.get("stop_price") is not None else None, False, ts)
+            else:
+                self.native.generate_order_accepted(order, venue_id, ts)
         elif status == "canceled" and event != "replaced":
             self.native.generate_order_canceled(order, venue_id, ts)
         elif status == "expired":
@@ -699,25 +1071,46 @@ class ExecutionLifecycle:
         delay = 1
         while True:
             socket = PaperStream()
+            receive_task = recovery_task = None
             try:
-                self.stream_status = {"state": "connecting", "gap": "Reconnection requires identity reconciliation; no submission retry"}
-                await socket.connect(self.credentials_file)
-                for command in self.authority().snapshot()["data"]["commands"].values():
-                    if (command["dispatch_intent_at"] and command["state"] not in {"filled", "canceled", "rejected", "expired", "not_sent"}
-                            or any(item.get("status") != "observed_current_process" or item.get("native_epoch") != self.native_epoch for item in command.get("native_deliveries", {}).values())):
-                        await self.reconcile_identity(command["id"])
-                self.stream_status = {"state": "listening", "connected_at": datetime.now(UTC).isoformat(), "gap": "Prior disconnected interval is not claimed observed"}
+                self.stream_status = {"state": "connecting", "gap": "Reconnection requires identity reconciliation; no submission retry",
+                                      "identity_reconciliation": self.identity_reconciliation}
+                await socket.connect(self.transport.connection)
+                identities = [command["id"] for command in self.authority().snapshot()["data"]["commands"].values()
+                    if command["dispatch_intent_at"] and command["state"] not in {"filled", "canceled", "rejected", "expired", "not_sent"}
+                    or any(item.get("status") not in CONFIRMED or item.get("native_epoch") != self.native_epoch for item in command.get("native_deliveries", {}).values())]
+                self.stream_status = {"state": "listening", "connected_at": datetime.now(UTC).isoformat(),
+                    "gap": "Prior disconnected interval is not claimed observed; unresolved command identities remain separate",
+                    "identity_reconciliation": self.identity_reconciliation}
+                recovery_task = asyncio.create_task(self.reconcile_stream_commands(identities))
+                receive_task = asyncio.create_task(asyncio.wait_for(socket.receive(), 90))
                 delay = 1
                 while True:
-                    message = await asyncio.wait_for(socket.receive(), 90)
+                    done, _ = await asyncio.wait([task for task in (receive_task, recovery_task) if task is not None], return_when=asyncio.FIRST_COMPLETED)
+                    if recovery_task in done:
+                        recovery_task.result()  # Shared auth/network/storage failures must reach the connection boundary.
+                        recovery_task = None
+                    if receive_task not in done:
+                        continue
+                    message = receive_task.result()
+                    receive_task = asyncio.create_task(asyncio.wait_for(socket.receive(), 90))
                     if message.get("stream") == "trade_updates":
-                        async with self.native.observation_lock:
-                            await self.handle_update(message)
+                        try:
+                            async with self.native.observation_lock:
+                                await self.handle_update(message)
+                        except CommandIdentityUnresolved:
+                            continue
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self.stream_status = {"state": "disconnected", "at": datetime.now(UTC).isoformat(), "gap": "Trade updates unavailable (" + type(exc).__name__ + "); outstanding identities remain unresolved"}
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, 60)
+                self.stream_status = {"state": "disconnected", "at": datetime.now(UTC).isoformat(),
+                    "gap": "Trade updates unavailable (" + type(exc).__name__ + "); outstanding identities remain unresolved",
+                    "identity_reconciliation": self.identity_reconciliation}
             finally:
+                tasks = [task for task in (receive_task, recovery_task) if task is not None]
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
                 await socket.close()
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 60)

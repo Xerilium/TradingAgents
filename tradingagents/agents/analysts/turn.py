@@ -10,6 +10,37 @@ WRAP_UP = (
 )
 
 
+def research_memory_guidance(tools):
+    names = {tool.name for tool in tools}
+    guidance = [
+        " Use prior company, project or domain knowledge only when relevant to this research."
+        " During tool-enabled research, make a small, proportionate retrieval pass; stop if results are irrelevant."
+        " Follow the available tools' schemas. Once tool rounds are exhausted, or during tool-free review,"
+        " do not call tools; use only retained results and disclose unperformed checks.",
+    ]
+    for name, instruction in (
+        ("maenifold_graph__BuildContext", "Start with a relevant company or domain concept; use a shallow, small context and follow only useful source links."),
+        ("maenifold_graph__FindSimilarConcepts", "Resolve an ambiguous concept before following graph links; similarity is a retrieval hint, not evidence."),
+        ("maenifold_memory__SearchMemories", "Search relevant company or domain notes, especially when graph context is unavailable; avoid indiscriminate retrieval."),
+        ("maenifold_memory__ReadMemory", "Read the strongest directly relevant source notes returned by retrieval before relying on them."),
+        ("maenifold_thinking__SequentialThinking", "Use concise persistent reasoning for nontrivial research steps: record material assumptions, source-linked evidence, decisions and unresolved gaps; complete each reasoning session using its returned session ID and nextThoughtNeeded=false."),
+    ):
+        if name in names:
+            guidance.append(f" Use {name}: {instruction}")
+    if "maenifold_graph__BuildContext" not in names:
+        guidance.append(" Graph context retrieval is unavailable in this tool set; use available memory retrieval proportionately.")
+    if not names.intersection({"maenifold_memory__SearchMemories", "maenifold_memory__ReadMemory", "maenifold_graph__BuildContext"}):
+        guidance.append(" Prior-memory retrieval is unavailable in this tool set; continue primary-source research under the existing coverage requirements.")
+    guidance.append(
+        " In the report, state which relevant prior notes influenced the analysis and cite their memory:// sources,"
+        " or state that none were found, retrieval was unavailable, or no retrieval was performed, as actually observed."
+        " Separate dated memory and its original sources from current primary evidence; check availability as of the analysis date"
+        " and never treat old prices as current. Report tool failures and unresolved gaps without inventing calls or citations."
+        " Do not promote unsourced conclusions to verified durable knowledge. Existing required-data and report-format rules still apply."
+    )
+    return "".join(guidance)
+
+
 def request_inputs(state, report_key, calls):
     message_id = f"required-{report_key}-inputs"
     requested = next((message for message in state["messages"] if getattr(message, "id", None) == message_id), None)

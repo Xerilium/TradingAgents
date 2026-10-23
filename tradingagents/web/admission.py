@@ -8,6 +8,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from .investor import DEFAULT as INVESTOR_DEFAULT, RULES, decimal, digest, execution_costs, price_evidence, validated_replacement, remaining_quantity, broker_action_order, order_version, native_quantity_offset
+from .linked_orders import native_type
 
 DEFAULT = {"approvals": {}, "revocations": {}, "commands": {}, "account_versions": {},
            "new_orders_blocked": False, "control_history": [], "exercise_authorizations": {}, "basket_executions": {},
@@ -45,9 +46,9 @@ def account_version(runtime, symbols=()):
         "account": {key: account.get(key) for key in ("id", "status", "currency", "cash", "trading_blocked", "multiplier", "shorting_enabled")},
         "positions": sorted(({key: row.get(key) for key in position_keys} for row in runtime.get("positions") or []),
                             key=lambda row: (str(row["symbol"]), str(row["asset_id"]))),
-        "orders": sorted(({key: row.get(key) for key in ("id", "client_order_id", "symbol", "asset_class", "side", "qty", "filled_qty", "type", "order_type", "order_class", "limit_price", "stop_price", "time_in_force", "extended_hours", "status", "replaces", "replaced_by")} for row in runtime.get("orders") or []), key=lambda row: str(row["id"])),
+        "orders": sorted(({key: row.get(key) for key in ("id", "client_order_id", "symbol", "asset_class", "side", "qty", "filled_qty", "type", "order_type", "order_class", "limit_price", "stop_price", "trail_price", "trail_percent", "time_in_force", "extended_hours", "status", "replaces", "replaced_by", "group_parent_id", "group_class", "group_role", "group_entry_status", "exit_reserved")} for row in runtime.get("orders") or []), key=lambda row: str(row["id"])),
         "reconciliation": {key: reconciliation.get(key) for key in ("status", "gaps", "positions_reconciled", "orders_reconciled", "broker_cash", "native_cash")},
-        "endpoint": runtime.get("endpoint")}
+        "endpoint": runtime.get("endpoint"), "connection_session": runtime.get("connection_session")}
     if symbols:
         inputs["market_data"] = {symbol: runtime.get("market_data", {}).get(symbol) for symbol in sorted(set(symbols))}
         inputs["market_open"] = runtime.get("market_open")
@@ -220,7 +221,13 @@ class CommandAdmission:
             state["account_versions"][terms["account_id"]] = version
             invalidate(records)
             identity = str(uuid4())
+            mode = (runtime.get("connection_identity") or {}).get("observed_mode")
+            context = {"endpoint": runtime.get("endpoint"), "mode": mode, "account_id": terms["account_id"],
+                       "connection_session": runtime.get("connection_session")}
+            if mode not in {"paper", "live"} or {"paper": "https://paper-api.alpaca.markets", "live": "https://api.alpaca.markets"}[mode] != context["endpoint"] or not context["connection_session"]:
+                context = None  # Legacy/unavailable observations do not establish historical mode.
             state["approvals"][identity] = {"id": identity, "proposal_id": proposal_id,
+                "connection_context": context,
                 "proposal_revision": proposal["revision"], "terms_sha256": proposal["terms_sha256"],
                 "terms": copy.deepcopy(terms), "policy_revision": policy["revision"], "account_id": terms["account_id"],
                 "instrument_id": terms["instrument_id"], "account_version": version,
@@ -279,11 +286,14 @@ class CommandAdmission:
             raise ValueError("Required price or remaining quantity is unavailable")
         validated_replacement(terms, runtime)
         reserve = (quantity * cap if terms["side"] == "BUY" else Decimal(0)) + (fees if fees is not None else Decimal(0))
+        if (terms.get("replacement") or {}).get("contingent_group"):
+            reserve = Decimal(0)
         identity = str(uuid4())
         state["commands"][identity] = {"id": identity, "client_order_id": "ta-" + uuid4().hex,
             "proposal_id": proposal["id"], "proposal_revision": proposal["revision"], "approval_id": approval_id,
             "policy_revision": approval["policy_revision"], "account_id": terms["account_id"],
             "account_version": approval["account_version"], "instrument_id": terms["instrument_id"],
+            "connection_context": copy.deepcopy(approval.get("connection_context")),
             "symbol": terms["symbol"], "side": terms["side"], "terms": copy.deepcopy(terms),
             "terms_sha256": proposal["terms_sha256"], "state": "admitted_not_dispatched", "dispatch_intent_at": None,
             "transport_attempt": {"version": 1, "state": "not_started"},
@@ -301,7 +311,7 @@ class CommandAdmission:
     def _dispatch_intent(self, records, command_id):
         state = records["commands"]
         command = state["commands"][command_id]
-        if command.get("origin") == "external_broker":
+        if command.get("origin") in {"external_broker", "linked_broker"}:
             raise ValueError("An imported broker order has no app submission authority")
         if command["terms"].get("replacement"):
             raise ValueError("Replacement terms can only be sent through Replace on their exact predecessor")
@@ -360,9 +370,12 @@ class CommandAdmission:
                 identity = str(uuid4())
                 terms = {"account_id": runtime["account"]["id"], "symbol": order["symbol"],
                     "instrument_id": order["nautilus"]["instrument_id"], "side": order["side"].upper(),
-                    "quantity": str(order["qty"]), "order_type": str(order.get("type", order.get("order_type"))).upper(),
-                    "limit_price": order.get("limit_price"), "time_in_force": "DAY", "session": "regular",
+                    "quantity": str(order["qty"]), "order_type": native_type(order.get("type", order.get("order_type"))),
+                    "limit_price": order.get("limit_price"), "stop_price": None if order.get("type") == "trailing_stop" else order.get("stop_price"),
+                    "time_in_force": order["time_in_force"].upper(), "session": "extended" if order["extended_hours"] else "regular",
                     "rationale": "", "research": None}
+                if order.get("type") == "trailing_stop":
+                    terms.update({key: order[key] for key in ("trail_price", "trail_percent") if order.get(key) is not None})
                 cap = price_evidence(terms, runtime)["price"]
                 remaining = decimal(order["qty"]) - decimal(order["filled_qty"])
                 command = {"id": identity, "origin": "external_broker", "submission_authority": False,
@@ -401,6 +414,8 @@ class CommandAdmission:
                       "broker_order_version": order_version(order), "filled_quantity": str(order["filled_qty"]), "intent_at": stamp()}
             approval = {"constraints": {}}
             if kind == "replace":
+                from .linked_orders import amendment_supported
+                amendment_supported(order)
                 if replacement_approval_id:
                     self._admit(records, replacement_approval_id)
                     child = next(item for item in state["commands"].values() if item["approval_id"] == replacement_approval_id)
@@ -426,6 +441,11 @@ class CommandAdmission:
                 child.update(parent_command_id=command["id"], native_client_order_id=command.get("native_client_order_id", command["client_order_id"]),
                              state="dispatch_intent", dispatch_intent_at=stamp(),
                              transport_attempt={"version": 1, "state": "not_started"})
+                for key in ("linked_exit", "linked_entry_command_id", "linked_role"):
+                    if key in command:
+                        child[key] = command[key]
+                if command.get("linked_group_owner_id") or command["side"] == "SELL" and command["terms"].get("exit_plan"):
+                    child["linked_group_owner_id"] = command.get("linked_group_owner_id", command["id"])
                 action["replacement_command_id"] = child["id"]
             ttl = decimal(approval["constraints"].get("approval_max_age_seconds"))
             bounds = [instant(value) for value in (expires_at, approval.get("expires_at") if kind == "replace" else None) if value]
@@ -534,6 +554,8 @@ class CommandAdmission:
                     raise ValueError("Current price or remaining quantity is unavailable before transport")
                 target.update(price_cap=str(cap), cash_commitment=str(
                     (remaining * cap if target["side"] == "BUY" else Decimal(0)) + (fee if fee is not None else Decimal(0))))
+                if (target["terms"].get("replacement") or {}).get("contingent_group"):
+                    target["cash_commitment"] = "0"
                 if operation == "submit" and target["terms"].get("replacement"):
                     raise ValueError("Replacement authority cannot submit a new order")
                 if operation == "replace":
@@ -662,13 +684,13 @@ class CommandAdmission:
                     command["timeline"].append({"at": stamp(), "reason": "Conflicting duplicate event retained", "report": copy.deepcopy(report)})
                 return records
             filled = decimal(report.get("filled_quantity"))
-            previous, total = Decimal(command["filled_quantity"]), Decimal(command["terms"]["quantity"])
+            previous, total = Decimal(command["filled_quantity"]), Decimal(command.get("broker_group_quantity", command["terms"]["quantity"]))
             if filled is None or not previous <= filled <= total:
                 command["timeline"].append({"at": stamp(), "reason": "Out-of-order or inconsistent cumulative fill; retained for reconciliation", "report": copy.deepcopy(report)})
                 state.update(recovery_required=True, recovery_reason="Inconsistent cumulative fill report")
                 return records
             status = report.get("state")
-            if status not in TERMINAL | {"accepted", "partially_filled", "cancel_pending", "replace_pending", "outcome_unknown"}:
+            if status not in TERMINAL | {"submitting", "accepted", "partially_filled", "cancel_pending", "replace_pending", "outcome_unknown"}:
                 raise ValueError("Unsupported authoritative lifecycle state")
             if command["state"] in TERMINAL and status not in TERMINAL:
                 command["timeline"].append({"at": stamp(), "reason": "Late nonterminal event retained without reviving terminal authority", "report": copy.deepcopy(report)})

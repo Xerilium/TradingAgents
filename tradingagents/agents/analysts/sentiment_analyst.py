@@ -50,7 +50,7 @@ def create_sentiment_analyst(llm, *, screen_factory=None):
     """Create a sentiment analyst node for the trading graph.
 
     Pre-fetches news + StockTwits + Reddit data, injects them into the
-    prompt as structured blocks, and produces a deterministic sentiment
+    prompt as structured blocks, and produces a structured sentiment
     report via structured output (with a free-text fallback for providers
     that do not support it).
     """
@@ -192,6 +192,7 @@ Community discussion, without vote or comment counts. Subreddit character matter
 2. **Look for cross-source divergences.** If news framing is bearish but StockTwits is overwhelmingly bullish, that mismatch is itself a signal — it can mean retail is leaning into a thesis the news flow hasn't caught up to (or vice versa, that retail is chasing while institutions are cautious).
 
 3. **Read every supplied post for substance.** Classifier labels are fallible annotations, including confident predictions. Their counts measure model output, not market sentiment; never use those counts as directional evidence. Derive the sentiment assessment from the original authors' text and user tags, separate quoted opponents from the author's own opinion, and explicitly correct misclassified examples. Do not infer engagement absent vote or comment counts.
+Match each individual classifier-label claim to the source:text_sha256 ID in the supplied annotation mapping and original post. Cite that ID when discussing a classification; never assign an aggregate label to a particular post. Keep the recorded label separate from your interpretation. Without a matching annotation, the individual label is unknown.
 
 4. **Distinguish opinion from event.** A news headline ("Nvidia announces $500M Corning deal") is an event; a StockTwits post ("buying NVDA, this is going to moon") is opinion. Both are inputs but should be weighted differently in your conclusions.
 

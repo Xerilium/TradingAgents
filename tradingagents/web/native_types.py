@@ -8,10 +8,20 @@ from nautilus_trader.model.objects import AccountBalance, Currency, Money, Price
 from nautilus_trader.model.data import QuoteTick, TradeTick
 from nautilus_trader.model.events import OrderFilled
 from nautilus_trader.model.instruments import Equity as _Equity
+from nautilus_trader.model.instruments import Instrument
 from nautilus_trader.execution import reports as _reports
 
-def Equity(instrument_id, raw_symbol, currency, price_precision, price_increment, ts_event, ts_init, *, lot_size):
-    return _Equity(instrument_id, raw_symbol, currency, price_precision, price_increment, lot_size, ts_event, ts_init)
+def Equity(instrument_id, raw_symbol, currency, price_precision, price_increment, ts_event, ts_init, *, lot_size,
+           fractional_precision=False, info=None):
+    legacy = _Equity(instrument_id, raw_symbol, currency, price_precision, price_increment, lot_size, ts_event, ts_init, info=info)
+    if not fractional_precision:
+        return legacy
+    values = Instrument.base_to_dict(legacy)
+    values.update(size_precision=9, size_increment="0.000000001", info={**(info or {}),
+        "fractional_quantity_contract": {"precision": 9, "increment": "0.000000001",
+            "source": "https://docs.alpaca.markets/us/docs/fractional-trading",
+            "basis": "Reviewed broker precision contract, not fields supplied by asset metadata; native equity defaults retain EQUITY/SPOT/USD/multiplier1"}})
+    return Instrument.base_from_dict(values)
 
 def PositionStatusReport(*args, **kwargs):
     return _reports.PositionStatusReport(*args[:4], UUID4(), *args[4:], **kwargs)
@@ -26,7 +36,7 @@ def ExecutionMassStatus(client_id, account_id, venue, ts_init):
     return _reports.ExecutionMassStatus(client_id, account_id, venue, UUID4(), ts_init)
 
 def native_dict(value):
-    return type(value).to_dict(value)
+    return Instrument.base_to_dict(value) if type(value) is Instrument else type(value).to_dict(value)
 
 
 def enum_name(value):

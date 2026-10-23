@@ -8,6 +8,43 @@ from .investor import RULES, decimal, execution_costs, price_evidence, working_c
 
 def evaluate(terms, policy, runtime, commands, history, evidence, constraints, artifact, proposed_legs=None):
     from .admission import ACTIVE, instant
+    conditional = (terms.get("replacement") or {}).get("contingent_group")
+    if conditional:
+        from .investor import contingent_group
+        try:
+            predecessor = validated_replacement(terms, runtime)
+            if contingent_group(predecessor, runtime, commands) != conditional:
+                raise ValueError("Original conditional purchase authority differs")
+            entry = commands["commands"][conditional["entry_command_id"]]
+            revised = dict(entry["terms"])
+            target = next(member for member in conditional["members"] if member["role"] == "take_profit")
+            stop = next(member for member in conditional["members"] if member["role"] == "stop_loss")
+            plan = {"take_profit": target["limit_price"], "stop_price": stop["stop_price"]}
+            if stop.get("limit_price"):
+                plan["stop_limit_price"] = stop["limit_price"]
+            if predecessor["group_role"] == "take_profit":
+                plan["take_profit"] = terms["limit_price"]
+            else:
+                plan["stop_price"] = terms["stop_price"]
+                if terms.get("limit_price"):
+                    plan["stop_limit_price"] = terms["limit_price"]
+            revised["exit_plan"] = plan
+            from .linked_orders import exit_plan
+            exit_plan(plan, "BUY")
+            bases = [price_evidence(revised, runtime)["price"], price_evidence({**revised, "order_type": "MARKET"}, runtime)["price"]]
+            if any(value is None for value in bases) or decimal(plan["stop_price"]) > min(bases) - Decimal("0.01"):
+                raise ValueError("Revised bracket stop must remain below entry and current price bases")
+            # The existing purchase already owns its cash/exposure reservation. No hypothetical SELL or second BUY.
+            result = evaluate(revised, policy, runtime, commands, history, evidence, constraints, artifact, proposed_legs=[])
+            result["conditional_group"] = {"binding": conditional, "revised_entry_terms": revised,
+                "stop_loss_estimate_before_fees": str(max(Decimal(0), bases[0] - decimal(plan["stop_price"])) * decimal(revised["quantity"])),
+                "limitation": "Stop fills and loss are not guaranteed; partial entry remains unprotected until activation"}
+            result["checks"].append({"name": "conditional_group", "passed": True,
+                "reason": "Exact held bracket amendment; existing purchase resources retained and complete revised group reviewed"})
+            return result
+        except (ValueError, KeyError, TypeError) as exc:
+            return {"checks": [{"name": "conditional_group", "passed": False, "reason": str(exc)}],
+                    "source_references": {}, "states": {}, "hypothetical": True}
     checks, source_refs = [], {}
     def check(name, passed, reason, details=None):
         checks.append({"name": name, "passed": bool(passed), "reason": reason, "details": details})
@@ -84,6 +121,9 @@ def evaluate(terms, policy, runtime, commands, history, evidence, constraints, a
             proposed_buys[name] = proposed_buys.get(name, Decimal(0)) + max(old["cash"] if old else Decimal(0), value)
         else:
             sellable = sellable and pending_sells.get(name, Decimal(0)) + max(previous, quantity) <= quantities.get(name, Decimal(0))
+            available = decimal((positions.get(name) or {}).get("qty_available"))
+            if available is not None and not predecessor:
+                sellable = sellable and proposed_sells.get(name, Decimal(0)) + quantity <= available
             pending_sells[name] = pending_sells.get(name, Decimal(0)) + max(previous, quantity)
             proposed_sells[name] = proposed_sells.get(name, Decimal(0)) + (min(previous, quantity) if old else quantity)
         mark = price_evidence({**term, "order_type": "MARKET"}, runtime)["price"]
@@ -204,11 +244,12 @@ def evaluate(terms, policy, runtime, commands, history, evidence, constraints, a
                     raise ValueError("Resulting exposure inputs are unavailable")
                 names = {s for s, value in conservative.items() if value > 0}
                 for name in names:
-                    candidates = [v for v in history.get("entries", {}).values() if v["symbol"] == name and v.get("adjustment") == rule.get("adjustment") and v.get("required_coverage", {}).get("sufficient") is True]
+                    from .history_coverage import recorded_timeframe
+                    candidates = [v for v in history.get("entries", {}).values() if v["symbol"] == name and recorded_timeframe(v, artifact) == "1Day" and v.get("adjustment") == rule.get("adjustment") and v.get("required_coverage", {}).get("sufficient") is True]
                     meta = max(candidates, key=lambda v: v["captured_at"]) if candidates else {}
                     data = artifact(meta.get("artifact", {}))
                     from .history_coverage import current, latest_calendar
-                    if not data or not current(meta, data, artifact, calendar_meta=latest_calendar(history)).get("sufficient") or not fresh(meta.get("captured_at"), rule.get("max_history_age_seconds")):
+                    if not data or not current(meta, data, artifact, calendar_meta=latest_calendar(history, artifact)).get("sufficient") or not fresh(meta.get("captured_at"), rule.get("max_history_age_seconds")):
                         raise ValueError("Required history/calendar coverage missing for " + name)
                     closes = [(b["t"], decimal(b.get("raw", {}).get("c", b.get("c")))) for b in data["bars"]][-window - 1:]
                     if len(closes) < window + 1 or any(v is None or v <= 0 for _, v in closes):

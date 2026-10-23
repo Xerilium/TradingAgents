@@ -15,6 +15,7 @@ network call succeeded.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import html
 import http.client
 import json
@@ -169,7 +170,8 @@ def fetch_stocktwits_messages(
         else:
             unlabeled += 1
             tag = "no-label"
-        lines.append(f"[{created} · @{user} · {tag}] {body}")
+        text_id = hashlib.sha256(_body(m).encode()).hexdigest()
+        lines.append(f"[stocktwits:{text_id}] [{created} · @{user} · {tag}] {body}")
 
     total = bullish + bearish + unlabeled
     bull_pct = round(100 * bullish / total) if total else 0

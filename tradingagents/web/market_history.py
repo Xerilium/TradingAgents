@@ -1,6 +1,9 @@
 """Explicit IEX history jobs and immutable cache receipts, separate from research."""
 
 import copy
+import json
+from decimal import Decimal
+from math import isfinite
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +18,7 @@ from .investor import decimal, digest
 from .store import SourceEvidenceError
 
 DEFAULT = {"entries": {}, "coverage": {}, "jobs": {}}
+TIMEFRAMES = ("1Min", "5Min", "15Min", "30Min", "1Hour", "1Day")
 
 
 class HistoryResponseError(ValueError):
@@ -47,6 +51,7 @@ class MarketDataJobs:
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="stock-data")
         self.canceled, self.futures = set(), set()
         self.lock = threading.RLock()
+        self.intervals = {}
         def recover(saved):
             for job in saved["jobs"].values():
                 if job["status"] in {"queued", "running", "canceling"}:
@@ -67,15 +72,35 @@ class MarketDataJobs:
         from .approval_review import read_artifact
         from .history_coverage import current, latest_calendar
         calendars = {}
-        calendar_meta = latest_calendar(record)
+        for item in record.get("entries", {}).values():
+            item["timeframe"] = self.timeframe(item)
         def artifact(reference):
             key = (reference.get("path"), reference.get("sha256"))
             if key not in calendars:
                 calendars[key] = read_artifact(self.service.store.directory, reference)
             return calendars[key]
+        calendar_meta = latest_calendar(record, artifact)
         for item in record.get("coverage", {}).values():
-            item["required_coverage"] = current(item, None, artifact, calendar_meta=calendar_meta)
+            item["timeframe"] = self.timeframe(item)
+            if item["timeframe"] == "1Day":
+                item["required_coverage"] = current(item, None, artifact, calendar_meta=calendar_meta)
+            else:
+                item["required_coverage"] = {"sufficient": False, "reasons": ["A recorded daily interval is required for baseline coverage"]}
         return record
+
+    def timeframe(self, meta):
+        if meta.get("timeframe"):
+            return meta["timeframe"]
+        from .approval_review import read_artifact
+        reference = meta.get("last_usable_artifact") or meta.get("artifact", {})
+        key = (str(self.service.store.directory.resolve()), reference.get("path"), reference.get("sha256"))
+        if key not in self.intervals:
+            retained = read_artifact(self.service.store.directory, reference)
+            value = retained.get("timeframe") if isinstance(retained, dict) else None
+            if value in TIMEFRAMES:
+                self.intervals[key] = value
+            return value
+        return self.intervals[key]
 
     def state(self):
         record = self.database.read("market_history", DEFAULT)
@@ -132,7 +157,7 @@ class MarketDataJobs:
             return self.evidence_request(body)
         if action == "baseline":
             body = {**body, "start": (today - timedelta(days=730)).isoformat(), "end": today.isoformat(),
-                    "asof": body.get("asof") or today.isoformat(), "purpose": "required_baseline"}
+                    "asof": body.get("asof") or today.isoformat(), "purpose": "required_baseline", "timeframe": "1Day"}
         if action == "cancel":
             identity = body["id"]
             self.canceled.add(identity)
@@ -162,8 +187,14 @@ class MarketDataJobs:
         adjustment = body.get("adjustment")
         if adjustment not in {"raw", "split", "dividend", "all"}:
             raise ValueError("Choose an explicit historical adjustment basis")
+        timeframe = body.get("timeframe", "1Day")
+        if timeframe not in TIMEFRAMES:
+            raise ValueError("Unsupported chart interval; choose " + ", ".join(TIMEFRAMES))
+        if body.get("purpose") in {"required_baseline", "benchmark"} and timeframe != "1Day":
+            raise ValueError("Required baselines and daily benchmarks require the recorded 1Day interval")
         identity = str(uuid4())
-        request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment}
+        request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment,
+                   "timeframe": timeframe, "feed": "iex", "session": "provider_bar_aggregation", "currency": "USD"}
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
             "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or instruments.get(s, {}).get("supported") else "unsupported",
                 "error": instruments.get(s, {}).get("limitation")} for s in dict.fromkeys(symbols)}}
@@ -209,7 +240,11 @@ class MarketDataJobs:
         return {**matches[0], "registry_reference": reference} if matches else None
 
     def fetch(self, identity, symbol, request):
-        key = digest({"provider": "Alpaca", "feed": "iex", "symbol": symbol, "timeframe": "1Day", **request})
+        timeframe = request.get("timeframe", "1Day")
+        if timeframe not in TIMEFRAMES:
+            raise ValueError("Unsupported recorded history-job interval")
+        request = {**request, "timeframe": timeframe, "feed": "iex", "session": "provider_bar_aggregation", "currency": "USD"}
+        key = digest({"provider": "Alpaca", "symbol": symbol, **request})
         bars, receipts, token, tokens = {}, [], None, set()
         complete, error, error_kind = False, None, None
         calendar, instrument, calendar_reference, instrument_reference, listing = [], {}, None, None, None
@@ -217,9 +252,13 @@ class MarketDataJobs:
         canceled = lambda: identity in self.canceled
         try:
             for _ in range(20):
-                query = {"symbols": symbol, "timeframe": "1Day", "start": request["start"] + "T00:00:00Z",
+                query = {"symbols": symbol, "timeframe": timeframe, "start": request["start"] + "T00:00:00Z",
                     "end": request["end"] + "T23:59:59Z", "feed": "iex", "adjustment": request["adjustment"],
                     "asof": request["asof"], "limit": 10000}
+                if timeframe != "1Day":
+                    first = datetime.combine(date.fromisoformat(request["start"]), datetime.min.time(), ZoneInfo("America/New_York"))
+                    last = datetime.combine(date.fromisoformat(request["end"]) + timedelta(days=1), datetime.min.time(), ZoneInfo("America/New_York"))
+                    query.update(start=first.astimezone(UTC).isoformat(), end=(last - timedelta(microseconds=1)).astimezone(UTC).isoformat())
                 if token:
                     query["page_token"] = token
                 phase = "requesting provider page"
@@ -230,16 +269,22 @@ class MarketDataJobs:
                 reference = self.service.store._write_source_result(identity, str(uuid4()), response["raw"].decode(),
                     prefix="iex-history", allow_pagination_cursor=True)
                 receipts.append({"artifact": reference, "captured_at": response["received_at"], "source_date": response["source_date"], "page_token": token})
-                payload = response["data"]
+                payload = json.loads(response["raw"], parse_float=Decimal)
                 phase = "validating provider page"
                 if not isinstance(payload.get("bars"), dict) or set(payload["bars"]) - {symbol}:
                     raise HistoryResponseError("Provider bars do not match the requested symbol; confirm the symbol mapping/as-of date before retrying.")
                 for row in payload["bars"].get(symbol, []):
-                    if not all(decimal(row.get(k)) is not None for k in ("o", "h", "l", "c", "v")) or not row.get("t"):
+                    if not all(decimal(row.get(k)) is not None and isfinite(float(row[k])) for k in ("o", "h", "l", "c", "v")) or not isinstance(row.get("t"), str):
                         raise HistoryResponseError("Provider OHLCV is missing or non-finite; the affected page cannot establish history coverage.")
-                    if row["t"] in bars and bars[row["t"]] != row:
-                        raise HistoryResponseError("Provider returned conflicting values for the same session; retain the receipts and request a fresh interval.")
-                    bars[row["t"]] = row
+                    stamp = datetime.fromisoformat(row["t"].replace("Z", "+00:00"))
+                    if stamp.tzinfo is None:
+                        raise HistoryResponseError("Provider bar timestamp has no timezone; no session or instant was inferred.")
+                    chart_time = stamp.astimezone(ZoneInfo("America/New_York")).date().isoformat() if timeframe == "1Day" else stamp.timestamp()
+                    if timeframe != "1Day" and not chart_time.is_integer():
+                        raise HistoryResponseError("Intraday aggregation timestamp is not an exact UTC second; source bytes are retained.")
+                    if chart_time in bars and bars[chart_time] != row:
+                        raise HistoryResponseError("Provider returned conflicting values for the same bar; retain the receipts and request a fresh interval.")
+                    bars[chart_time] = row
                 token = payload.get("next_page_token")
                 if not token:
                     complete = True
@@ -262,16 +307,15 @@ class MarketDataJobs:
             error, error_kind = "IEX history " + phase + " failed (" + type(exc).__name__ + "); check the local connection and saved job diagnostics before retrying.", "transport_or_schema"
         diagnostic.update(failure_phase=phase if error else None, saved_price_pages=len(receipts), error_kind=error_kind)
         converted = []
-        for row in sorted(bars.values(), key=lambda item: item["t"]):
-            session = datetime.fromisoformat(row["t"].replace("Z", "+00:00")).astimezone(ZoneInfo("America/New_York")).date().isoformat()
-            converted.append({"t": session, "provider_timestamp": row["t"], "raw": {k: str(row[k]) for k in ("o", "h", "l", "c", "v")},
+        for chart_time, row in sorted(bars.items()):
+            converted.append({"t": chart_time, "provider_timestamp": row["t"], "raw": {k: str(row[k]) for k in ("o", "h", "l", "c", "v")},
                               **{k: float(row[k]) for k in ("o", "h", "l", "c", "v")}})
         captured = datetime.now(UTC).isoformat()
         today = datetime.now(ZoneInfo("America/New_York")).date()
-        calendar_through = (today + timedelta(days=366)).isoformat()
+        calendar_through = (today + timedelta(days=366)).isoformat() if timeframe == "1Day" else None
         try:
-            for path, scope in (("/v2/calendar?" + urlencode({"start": (today - timedelta(days=730)).isoformat(), "end": calendar_through}), "calendar"),
-                                ("/v2/assets/" + symbol, "instrument")):
+            for path, scope in ((("/v2/calendar?" + urlencode({"start": (today - timedelta(days=730)).isoformat(), "end": calendar_through}), "calendar"),
+                                ("/v2/assets/" + symbol, "instrument")) if timeframe == "1Day" else ()):
                 response = self.read(path, data=False, canceled=canceled)
                 reference = self.service.store._write_source_result(identity, str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
                 receipts.append({"artifact": reference, "captured_at": response["received_at"], "scope": scope})
@@ -283,21 +327,24 @@ class MarketDataJobs:
                     if response["data"].get("symbol") != symbol:
                         raise ValueError("Instrument provenance symbol differs")
                     instrument, instrument_reference = response["data"], reference
-            listing = self.listing(instrument)
+            listing = self.listing(instrument) if timeframe == "1Day" else None
         except Exception as exc:
             error_kind = error_kind or "coverage_source"
             error = error or "Calendar/listing provenance unavailable (" + type(exc).__name__ + ")"
         from .history_coverage import assess
         required_coverage = assess(converted, calendar, instrument, pagination_complete=complete,
-            calendar_reference=calendar_reference, instrument_reference=instrument_reference, captured_at=datetime.now(UTC).isoformat(), listing=listing)
+            calendar_reference=calendar_reference, instrument_reference=instrument_reference, captured_at=datetime.now(UTC).isoformat(), listing=listing) if timeframe == "1Day" else {
+                "sufficient": False, "reasons": ["Intraday chart bars do not establish the required daily baseline"]}
         result = {"key": key, "symbol": symbol, "context": "current", "run_id": None, "research_date": None,
-            "provider": "Alpaca", "feed": "iex", "timeframe": "1Day", "session_timezone": "America/New_York", **request,
+            "provider": "Alpaca", "session_timezone": "America/New_York", **request,
+            "time_basis": "provider_business_day" if timeframe == "1Day" else "utc_epoch_seconds",
+            "coverage_scope": "Provider pagination is distinct from verified session completeness, bar finality and execution permission.",
             "captured_at": captured, "bars": converted, "complete": complete, "pagination_complete": complete,
             "required_coverage": required_coverage, "calendar_through": calendar_through, "pages": len([r for r in receipts if "page_token" in r]), "receipts": receipts,
             "error": error, "error_kind": error_kind, "diagnostic": diagnostic, "indicators": [], "claims": [], "problems": [error] if error else [],
-            "price_basis": "Current-market daily OHLCV · " + request["adjustment"] + " adjustment · IEX only",
+            "price_basis": "Current-market " + timeframe + " provider-aggregated OHLCV · " + request["adjustment"] + " adjustment · IEX only",
             "source": {"vendor": "Alpaca IEX", "captured_at": captured},
-            "missing_fields": [] if converted else ["daily_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
+            "missing_fields": [] if converted else ["daily_ohlcv" if timeframe == "1Day" else "intraday_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
         result["artifact"] = self.service.store._write_json_artifact(identity, "iex-history-cache", result)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
@@ -311,7 +358,9 @@ class MarketDataJobs:
                 meta["last_usable_artifact"] = previous["last_usable_artifact"]
             saved["entries"][key] = meta
             prior_baseline = saved["coverage"].get(symbol, {})
-            if (required_coverage["sufficient"] or not prior_baseline.get("required_coverage", {}).get("sufficient")
+            if timeframe != "1Day":
+                pass  # Chart-only caches never replace daily evidence coverage.
+            elif (required_coverage["sufficient"] or not prior_baseline.get("required_coverage", {}).get("sufficient")
                     or prior_baseline["required_coverage"].get("latest_completed_session") != required_coverage.get("latest_completed_session")):
                 saved["coverage"][symbol] = copy.deepcopy(meta)
             else:
@@ -344,14 +393,17 @@ class MarketDataJobs:
                 job.update(status="canceled" if identity in self.canceled else "completed" if all(v["status"] == "completed" for v in job["symbols"].values()) else "completed_with_gaps", completed_at=datetime.now(UTC).isoformat())
             self.update(finish)
         except Exception as exc:
-            self.update(lambda saved: saved["jobs"][identity].update(status="failed", message="Data job stopped (" + type(exc).__name__ + "); received evidence remains saved"))
+            self.update(lambda saved, problem=type(exc).__name__: saved["jobs"][identity].update(status="failed", message="Data job stopped (" + problem + "); received evidence remains saved"))
 
-    def detail(self, symbol, key=None):
+    def detail(self, symbol, key=None, *, timeframe="1Day"):
+        if timeframe not in TIMEFRAMES:
+            raise ValueError("Unsupported chart interval")
         record = self.database.read("market_history", DEFAULT)["data"]
         entries = record["entries"]
-        candidates = [v for v in entries.values() if v["symbol"] == symbol and (key is None or v["key"] == key)]
+        candidates = [v for v in entries.values() if v["symbol"] == symbol and (v["key"] == key if key else self.timeframe(v) == timeframe)]
         if not candidates:
-            return {"symbol": symbol, "context": "current", "bars": [], "complete": False, "error": "No current-market history cached; choose an interval and request it explicitly"}
+            return {"symbol": symbol, "context": "current", "timeframe": timeframe, "bars": [], "complete": False, "error_kind": "missing_retained_bars",
+                    "error": "No matching retained history; request the selected interval explicitly"}
         meta = max(candidates, key=lambda item: item["captured_at"])
         reference = meta.get("last_usable_artifact") or meta["artifact"]
         path = (self.service.store.directory / reference["path"]).resolve()
@@ -363,11 +415,18 @@ class MarketDataJobs:
         if hashlib.sha256(payload).hexdigest() != reference["sha256"]:
             raise ValueError("History cache artifact hash differs")
         result = json.loads(payload)
+        if result.get("timeframe") not in TIMEFRAMES:
+            raise ValueError("Retained history interval is missing or unsupported; no interval was inferred from its dates")
+        if result.get("symbol") != symbol or result.get("key") != meta["key"] or meta.get("timeframe", result["timeframe"]) != result["timeframe"]:
+            raise ValueError("Retained history identity or interval differs from the selected cache")
+        result.setdefault("currency", "USD")  # Recorded Alpaca US-stock bars API default currency.
+        result.setdefault("session", "provider_bar_aggregation")
         result["source"].update(path=reference["path"], sha256=reference["sha256"])
         from .history_coverage import current, latest_calendar
         from .approval_review import read_artifact
         result["required_coverage"] = current(meta, result, lambda ref: read_artifact(self.service.store.directory, ref),
-                                             calendar_meta=latest_calendar(record))
+                                             calendar_meta=latest_calendar(record, lambda ref: read_artifact(self.service.store.directory, ref))) if result["timeframe"] == "1Day" else {
+            "sufficient": False, "reasons": ["Intraday chart bars do not establish the required daily baseline"]}
         result["latest_attempt"] = meta
         result["retained_older_data"] = bool(meta.get("last_usable_artifact"))
         return result

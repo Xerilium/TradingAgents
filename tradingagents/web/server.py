@@ -114,6 +114,20 @@ class DeskHandler(BaseHTTPRequestHandler):
         if path == "/api/workspace":
             self._send(200, self.server.service.workspace())
             return
+        if path == "/api/runs/continuation":
+            try:
+                self._send(200, self.server.service.continuation_status(parse_qs(url.query).get("run_id", [None])[0]))
+            except (KeyError, StopIteration, ValueError):
+                self._send(400, {"error": "Saved research continuation is unavailable."})
+            return
+        if path == "/api/discovery":
+            query = parse_qs(url.query)
+            try:
+                result = self.server.service.discovery_detail(query.get("observation", [None])[0], query.get("symbol", [None])[0]) if query else self.server.service.discovery()
+                self._send(200, result)
+            except (ValueError, KeyError):
+                self._send(400, {"error": "Retained discovery observation is unavailable"})
+            return
         elif path == "/api/investor":
             self._send(200, self.server.service.investor())
             return
@@ -133,6 +147,14 @@ class DeskHandler(BaseHTTPRequestHandler):
             except (ValueError, KeyError, OSError):
                 self._send(400, {"error": "Saved command receipt is unavailable or changed"})
             return
+        if path.startswith("/api/attention/occurrences/"):
+            try:
+                identity = path.removeprefix("/api/attention/occurrences/")
+                result = self.server.service.attention_occurrence(identity, parse_qs(url.query).get("generation", [None])[0])
+                self._send(200, result)
+            except (OSError, ValueError, KeyError, TypeError):
+                self._send(400, {"error": "Saved alert evidence is unavailable or the application generation changed"})
+            return
         if path == "/api/attention":
             self._send(200, self.server.service.attention())
             return
@@ -140,10 +162,16 @@ class DeskHandler(BaseHTTPRequestHandler):
             try:
                 query = parse_qs(url.query)
                 symbol = query.get("symbol", [None])[0]
-                result = self.server.service.data_jobs.detail(symbol, query.get("key", [None])[0]) if symbol else self.server.service.data_jobs.state()
+                result = self.server.service.data_jobs.detail(symbol, query.get("key", [None])[0], timeframe=query.get("timeframe", ["1Day"])[0]) if symbol else self.server.service.data_jobs.state()
                 self._send(200, result)
             except (OSError, ValueError, KeyError):
                 self._send(400, {"error": "Saved current-market history is unavailable or changed"})
+            return
+        if path == "/api/evaluations":
+            try:
+                self._send(200, self.server.service.evaluations(parse_qs(url.query).get("id", [None])[0]))
+            except (OSError, ValueError, KeyError):
+                self._send(400, {"error": "Saved simulation evidence is unavailable or changed"})
             return
         if path == "/api/stock-evidence":
             try:
@@ -208,6 +236,11 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/lists.js": "lists.js",
             "/static/nautilus.js": "nautilus.js",
             "/static/command-controls.js": "command-controls.js",
+            "/static/market-chart.js": "market-chart.js",
+            "/static/vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js": "vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js",
+            "/static/vendor/lightweight-charts/5.2.1/LICENSE": "vendor/lightweight-charts/5.2.1/LICENSE",
+            "/static/vendor/lightweight-charts/5.2.1/NOTICE": "vendor/lightweight-charts/5.2.1/NOTICE",
+            "/static/vendor/lightweight-charts/5.2.1/SOURCE.txt": "vendor/lightweight-charts/5.2.1/SOURCE.txt",
             "/static/styles.css": "styles.css",
             "/static/app.css": "app.css",
             "/static/recovery.js": "recovery.js",
@@ -262,7 +295,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be a JSON object.")
             service = self.server.service
             path = urlsplit(self.path).path
-            if not (path == "/api/reporting" and data.get("action") == "collect" or
+            if not (path == "/api/discovery" or path == "/api/reporting" and data.get("action") == "collect" or
                     path == "/api/recovery" and data.get("action") in {"preview", "backup"}):
                 service.maintenance.acquire()
                 maintenance_guard = service.maintenance
@@ -270,7 +303,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
                 return
             if service.browse_only and path not in {
-                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history"}:
+                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
@@ -288,8 +321,12 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.save_config(data)
             elif path == "/api/workspace":
                 result = service.save_workspace(data)
+            elif path == "/api/discovery":
+                result = service.discovery(data)
             elif path == "/api/investor":
                 result = service.save_investor(data)
+            elif path == "/api/evaluations":
+                result = service.evaluation_action(data)
             elif path == "/api/approvals":
                 result = service.approval_action(data)
             elif path == "/api/admission":
@@ -320,6 +357,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.reconcile_commands()
             elif path == "/api/attention":
                 result = service.save_attention(data)
+            elif path == "/api/native-report":
+                result = service.native_report(data)
             elif path == "/api/market-history":
                 result = service.data_jobs.request(data)
             elif path == "/api/runs":
@@ -330,6 +369,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                 )
             elif path == "/api/runs/cancel":
                 result = service.cancel_run(data["run_id"])
+            elif path == "/api/runs/resume":
+                result = service.resume_run(data["run_id"], data.get("continuation_revision"))
             elif path in {"/api/proposals", "/api/drafts"}:
                 raise ValueError("Legacy native draft creation was retired. Save validated BUY/SELL proposals through the investor workspace.")
             elif path == "/api/trading/pause":

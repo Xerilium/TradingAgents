@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from .workspace import text
+from .linked_orders import exit_plan, amendment_supported, native_type, broker_payload, equity_quantity, fractional_terms, trailing_terms, native_trail
 
 RULES = {"cash_reserve_pct": "Minimum cash reserve %", "max_position_pct": "Maximum position %",
          "max_gross_exposure_pct": "Maximum gross exposure %", "loss_limit_pct": "Loss limit %",
@@ -54,11 +55,11 @@ def decimal(value):
 
 def price_evidence(terms, runtime):
     """Exact limit or dated IEX estimate; neither a consolidated quote nor guaranteed fill."""
-    if terms.get("order_type") == "LIMIT":
+    if terms.get("order_type") in {"LIMIT", "STOP_LIMIT"}:
         price = decimal(terms.get("limit_price"))
         return {"price": price if price is not None and price > 0 else None,
                 "basis": "Exact human limit / USD", "ts_event": None}
-    if terms.get("order_type") != "MARKET":
+    if terms.get("order_type") not in {"MARKET", "STOP_MARKET", "TRAILING_STOP_MARKET"}:
         return {"price": None, "basis": "Unsupported order price basis", "ts_event": None}
     market = runtime.get("market_data", {}).get(terms["symbol"], {})
     quote, trade = market.get("quote") or {}, market.get("trade") or {}
@@ -67,6 +68,12 @@ def price_evidence(terms, runtime):
                                 (trade.get("price"), trade.get("ts_event"), "Dated IEX last-trade estimate")):
         price, stamp = decimal(value), decimal(event)
         if price is not None and price > 0 and stamp is not None and 0 < stamp <= Decimal(str(datetime.now(UTC).timestamp())) * 1000000000:
+            if terms.get("order_type") == "STOP_MARKET" and terms.get("side") == "BUY":
+                trigger = decimal(terms.get("stop_price"))
+                if trigger is None or trigger <= 0:
+                    return {"price": None, "basis": "BUY stop trigger is unavailable", "ts_event": event}
+                price = max(price, trigger)
+                basis = "BUY stop estimate: higher of dated price and trigger; not a guaranteed fill cap"
             return {"price": price, "basis": basis + "; execution price is unknown", "ts_event": event}
     return {"price": None, "basis": "Dated side quote or last trade unavailable", "ts_event": None}
 
@@ -74,7 +81,7 @@ def price_evidence(terms, runtime):
 def execution_costs(terms, runtime, constraints):
     price = price_evidence(terms, runtime)["price"]
     ceiling = decimal(constraints.get("max_execution_price"))
-    if terms["order_type"] == "MARKET" and terms["side"] == "BUY" and ceiling is not None:
+    if terms["order_type"] in {"MARKET", "STOP_MARKET"} and terms["side"] == "BUY" and ceiling is not None:
         price = ceiling if price is not None and price <= ceiling else None
     return price, decimal(constraints.get("max_fees"))
 
@@ -82,7 +89,7 @@ def execution_costs(terms, runtime, constraints):
 def order_version(order):
     return digest({key: order.get(key) for key in ("id", "client_order_id", "symbol", "asset_id", "side", "qty",
         "filled_qty", "type", "order_type", "order_class", "limit_price", "stop_price", "time_in_force",
-        "extended_hours", "status", "replaces", "replaced_by")})
+        "trail_price", "trail_percent", "extended_hours", "status", "replaces", "replaced_by", "group_parent_id", "group_class", "group_role", "group_entry_status", "exit_reserved")})
 
 
 
@@ -131,7 +138,16 @@ def broker_action_order(runtime, identity, version=None):
     if len(matches) != 1:
         raise ValueError("The selected broker order is not a distinct current observation")
     order = matches[0]
+    equity_quantity(order["qty"])
+    equity_quantity(order["filled_qty"], zero=True)
     native = order.get("binding_native") or order.get("nautilus") or {}
+    if order.get("type") == "trailing_stop":
+        offset, unit = native_trail({"order_type": "TRAILING_STOP_MARKET", "quantity": order["qty"],
+            "side": order["side"].upper(), "time_in_force": order["time_in_force"].upper(),
+            "trail_price": order.get("trail_price"), "trail_percent": order.get("trail_percent")})
+        if (decimal(native.get("trailing_offset")) != offset or native.get("trailing_offset_type") != unit
+                or decimal(native.get("trigger_price")) != decimal(order.get("stop_price"))):
+            raise ValueError("Native trailing distance or current broker-observed trigger differs")
     account_id = (runtime.get("account") or {}).get("id")
     total, filled = decimal(order.get("qty")), decimal(order.get("filled_qty"))
     offset = native_quantity_offset(order)
@@ -144,6 +160,10 @@ def broker_action_order(runtime, identity, version=None):
         and alias.get("broker_client_order_id") == order.get("client_order_id")
         and alias.get("native_client_order_id") == client and isinstance(chain, list) and len(chain) >= 2
         and all(isinstance(item, str) and item for item in chain) and len(set(chain)) == len(chain) and identity in chain)
+    child_binding = order.get("native_child_order_binding") or {}
+    client_matches = client_matches or (child_binding.get("source") == "broker_nested_group"
+        and child_binding.get("broker_order_id") == identity and child_binding.get("broker_client_order_id") == order.get("client_order_id")
+        and child_binding.get("native_client_order_id") == client and child_binding.get("parent_order_id") == order.get("group_parent_id"))
     if order.get("native_replacement_quantity_binding"):
         client_matches = client == order.get("client_order_id")
     venue = native.get("venue_order_id")
@@ -152,27 +172,99 @@ def broker_action_order(runtime, identity, version=None):
             and indexed.get("source") == "native_cache_venue_order_index"
             and indexed.get("client_order_id") == native.get("client_order_id")):
         venue = indexed.get("venue_order_id")
-    expected_status = {"new": "ACCEPTED", "accepted": "ACCEPTED", "partially_filled": "PARTIALLY_FILLED", "pending_new": "SUBMITTED"}
+    expected_status = {"new": "ACCEPTED", "accepted": "ACCEPTED", "held": "ACCEPTED", "done_for_day": "PARTIALLY_FILLED" if filled else "ACCEPTED", "partially_filled": "PARTIALLY_FILLED", "pending_new": "SUBMITTED"}
     if order.get("status") == "partially_filled" and filled is not None and filled - offset == 0:
         expected_status["partially_filled"] = "ACCEPTED"
     if (runtime.get("status") != "connected" or not account_id or order.get("account_id") not in (None, account_id)
             or order.get("asset_class") != "us_equity" or order.get("side") not in {"buy", "sell"}
-            or str(order.get("type", order.get("order_type"))).upper() not in {"MARKET", "LIMIT"}
-            or order.get("time_in_force") != "day" or order.get("extended_hours") is not False
-            or order.get("order_class") not in (None, "", "simple") or order.get("import_error")
-            or total is None or total <= 0 or total % 1 or filled is None or not 0 <= filled < total
+            or native_type(order.get("type", order.get("order_type"))) not in {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT", "TRAILING_STOP_MARKET"}
+            or order.get("time_in_force") not in {"day", "gtc"} or type(order.get("extended_hours")) is not bool
+            or order.get("order_class") not in (None, "", "simple", "oto", "bracket", "oco") or order.get("import_error")
+            or total is None or total <= 0 or filled is None or not 0 <= filled < total
             or not order.get("client_order_id") or native_account != "ALPACA-" + str(account_id)
             or native.get("instrument_id") != order.get("symbol", "") + ".ALPACA"
             or not client_matches or venue != identity
             or native.get("side") != order["side"].upper()
-            or native.get("type") != str(order.get("type", order.get("order_type"))).upper()
-            or native.get("time_in_force") != "DAY"
-            or str(order.get("type", order.get("order_type"))).upper() == "LIMIT" and decimal(native.get("price")) != decimal(order.get("limit_price"))
+            or native.get("type") != native_type(order.get("type", order.get("order_type")))
+            or native.get("time_in_force") != order["time_in_force"].upper()
+            or order.get("type") in {"limit", "stop_limit"} and decimal(native.get("price")) != decimal(order.get("limit_price"))
+            or order.get("type") in {"stop", "stop_limit"} and decimal(native.get("trigger_price")) != decimal(order.get("stop_price"))
             or total is None or filled is None or decimal(native.get("quantity")) != total - offset or decimal(native.get("filled_qty")) != filled - offset
             or native.get("status") != expected_status.get(order.get("status"))
             or version is not None and version != order_version(order)):
-        raise ValueError("Broker/native identity, source terms or supported regular DAY equity order state differs")
+        raise ValueError("Broker/native identity, source terms or supported equity order state differs")
+    from .linked_orders import broker_session
+    if ("extended_hours" in (native.get("tags") or [])) != (broker_session(order) == "extended"):
+        raise ValueError("Native and broker execution-session eligibility differs")
     return order
+
+
+def contingent_group(order, runtime, commands=None):
+    """Exact conditional authority for modifying an approved, still-held bracket exit."""
+    if not (order.get("group_class") == "bracket" and order.get("group_role") in {"take_profit", "stop_loss"}
+            and order.get("status") == "held"):
+        return None
+    parent_id = order.get("group_parent_id")
+    rows = [row for row in runtime.get("orders", []) if row.get("id") == parent_id or row.get("group_parent_id") == parent_id]
+    parents = [row for row in rows if row.get("id") == parent_id and row.get("group_role") == "entry"]
+    if (len(rows) != 3 or len(parents) != 1 or {row.get("group_role") for row in rows} != {"entry", "take_profit", "stop_loss"}
+            or parents[0].get("status") not in {"new", "accepted", "partially_filled", "done_for_day"}
+            or any(row.get("status") != "held" for row in rows if row["id"] != parent_id)):
+        raise ValueError("A complete current held bracket and working entry are required")
+    parent = parents[0]
+    native_by_role = {row["group_role"]: row.get("binding_native") or row.get("nautilus") or {} for row in rows}
+    exit_ids = [native_by_role[role].get("client_order_id") for role in ("take_profit", "stop_loss")]
+    members = []
+    for row in sorted(rows, key=lambda row: row["id"]):
+        broker_action_order(runtime, row["id"])
+        native = row.get("binding_native") or row.get("nautilus") or {}
+        is_entry = row["id"] == parent_id
+        expected_links = exit_ids if is_entry else [identity for identity in exit_ids if identity != native.get("client_order_id")]
+        if (row.get("symbol") != order["symbol"] or row.get("group_class") != "bracket"
+                or decimal(row.get("qty")) != decimal(parent.get("qty"))
+                or row["id"] != parent_id and (row.get("side") != "sell" or decimal(row.get("filled_qty")) != 0)
+                or not native.get("order_list_id") or native.get("order_list_id") != (parent.get("binding_native") or parent.get("nautilus") or {}).get("order_list_id")
+                or row["id"] != parent_id and native.get("parent_order_id") != native_by_role["entry"].get("client_order_id")
+                or is_entry and native.get("parent_order_id") is not None
+                or native.get("reduce_only") is not (not is_entry)
+                or native.get("contingency_type") != ("OTO" if is_entry else "OCO")
+                or native.get("emulation_trigger") != "NO_TRIGGER"
+                or not isinstance(native.get("linked_order_ids"), list) or not all(isinstance(identity, str) for identity in exit_ids)
+                or sorted(native["linked_order_ids"]) != sorted(expected_links)):
+            raise ValueError("Held bracket quantity or native parent/list relationship differs")
+        members.append({"order_id": row["id"], "version": order_version(row), "native_client_order_id": native["client_order_id"],
+                        "native_order_list_id": native["order_list_id"], "role": row["group_role"],
+                        **{key: native.get(key) for key in ("parent_order_id", "linked_order_ids", "contingency_type", "reduce_only", "emulation_trigger")},
+                        **{key: row.get(key) for key in ("client_order_id", "qty", "filled_qty", "status", "type", "limit_price", "stop_price", "time_in_force")}})
+    result = {"parent_order_id": parent_id, "account_id": (runtime.get("account") or {}).get("id"), "members": members}
+    if commands is not None:
+        candidates = [command for command in commands.get("commands", {}).values() if parent_id in command.get("broker_order_ids", [])
+                      and command.get("side") == "BUY" and command.get("terms", {}).get("exit_plan")]
+        if len(candidates) != 1:
+            raise ValueError("Held amendment requires the original approved app purchase")
+        entry = candidates[0]
+        approval = commands.get("approvals", {}).get(entry.get("approval_id"), {})
+        if (entry.get("account_id") != result["account_id"] or entry.get("terms_sha256") != digest(entry["terms"])
+                or approval.get("terms_sha256") != entry["terms_sha256"] or approval.get("account_id") != entry["account_id"]
+                or decimal(entry["terms"]["quantity"]) != decimal(parent["qty"])
+                or entry["terms"]["instrument_id"] != parent["symbol"] + ".ALPACA" or parent.get("side") != "buy"
+                or entry["terms"]["order_type"] != native_type(parent["type"])
+                or entry["terms"]["time_in_force"] != parent["time_in_force"].upper()
+                or decimal(entry["terms"].get("limit_price")) != decimal(parent.get("limit_price"))):
+            raise ValueError("Original purchase approval, account or quantity provenance differs")
+        for row in rows:
+            if row["id"] == parent_id:
+                continue
+            children = [child for child in commands.get("commands", {}).values() if row["id"] in child.get("broker_order_ids", [])]
+            if (len(children) != 1 or children[0].get("linked_entry_command_id") != entry["id"]
+                    or children[0].get("linked_role") != row["group_role"]
+                    or children[0].get("account_id") != entry["account_id"]
+                    or children[0].get("terms_sha256") != digest(children[0]["terms"])
+                    or decimal(children[0]["terms"].get("limit_price")) != decimal(row.get("limit_price"))
+                    or decimal(children[0]["terms"].get("stop_price")) != decimal(row.get("stop_price"))):
+                raise ValueError("Held sibling lacks its exact approved group provenance")
+        result.update(entry_command_id=entry["id"], entry_approval_id=entry["approval_id"], entry_terms_sha256=entry["terms_sha256"])
+    return result
 
 
 def validated_replacement(terms, runtime):
@@ -183,17 +275,28 @@ def validated_replacement(terms, runtime):
     if len(matches) != 1:
         raise ValueError("Exact replacement predecessor is not a current authoritative working order")
     order = broker_action_order(runtime, binding.get("order_id"), binding.get("order_version"))
+    amendment_supported(order)
+    contingent = binding.get("contingent_group")
+    current = contingent_group(order, runtime)
+    if bool(contingent) != bool(current) or current and any(contingent.get(key) != value for key, value in current.items()):
+        raise ValueError("Conditional bracket authority changed; review the complete group again")
     filled, total = decimal(order.get("filled_qty")), decimal(terms.get("quantity"))
     if (binding.get("account_id") != (runtime.get("account") or {}).get("id")
             or binding.get("symbol") != terms["symbol"] or binding.get("side") != terms["side"]
             or order.get("symbol") != terms["symbol"] or str(order.get("side")).upper() != terms["side"]
-            or str(order.get("type", order.get("order_type"))).upper() != terms["order_type"]
+            or native_type(order.get("type", order.get("order_type"))) != terms["order_type"]
             or str(order.get("time_in_force")).upper() != terms["time_in_force"]
-            or order.get("status") not in {"new", "accepted", "partially_filled", "pending_new"}
+            or order.get("extended_hours") is not (terms.get("session", "regular") == "extended")
+            or order.get("status") not in {"new", "accepted", "partially_filled", "pending_new", "done_for_day", "held"}
             or order.get("import_error") or not binding.get("client_order_id") or binding.get("client_order_id") != order.get("client_order_id")
             or binding.get("order_version") != order_version(order) or filled is None
             or decimal(binding.get("filled_quantity")) != filled or total is None or total <= filled):
         raise ValueError("Replacement predecessor identity, version, filled quantity or compatible terms changed")
+    if order.get("group_class") in {"bracket", "oco"} and (total != decimal(order["qty"]) or terms.get("exit_plan")):
+        raise ValueError("Linked exit amendments change prices only, never quantity or group membership")
+    if (total % 1 or decimal(order["qty"]) % 1) and total != decimal(order["qty"]):
+        raise ValueError("Fractional order replacement preserves the exact total quantity; amend prices only")
+    fractional_terms(terms)
     return order
 
 
@@ -215,6 +318,12 @@ def working_commitments(runtime, commands=None, constraints=None):
     for command in local:
         matches = [o for o in runtime.get("orders", []) if o.get("id") in command.get("broker_order_ids", [])
                    or o.get("client_order_id") == command.get("client_order_id")]
+        if (command.get("terms", {}).get("replacement") or {}).get("contingent_group") and (not matches or all(o.get("exit_reserved") is False for o in matches)):
+            covered.update(o["id"] for o in matches)
+            continue
+        if command.get("linked_exit") and matches and all(o.get("exit_reserved") is False for o in matches):
+            covered.update(o["id"] for o in matches)
+            continue
         if any(o.get("symbol") != command["symbol"] or str(o.get("side")).upper() != command["side"]
                 or o.get("client_order_id") != command.get("client_order_id")
                 or o.get("account_id") not in (None, account_id) for o in matches):
@@ -262,6 +371,8 @@ def working_commitments(runtime, commands=None, constraints=None):
         seen.add(identity)
         if identity in covered:
             continue
+        if order.get("group_role") in {"take_profit", "stop_loss"} and order.get("exit_reserved") is False:
+            continue
         qty, filled = decimal(order.get("qty")), decimal(order.get("filled_qty"))
         side = str(order.get("side")).upper()
         price = price_evidence({"symbol": order.get("symbol"), "side": side,
@@ -281,6 +392,22 @@ def working_commitments(runtime, commands=None, constraints=None):
             previous.update(remaining=max(previous["remaining"], item["remaining"]), cash=max(previous["cash"], item["cash"]),
                 order_ids=previous["order_ids"] | item["order_ids"], command_ids=previous["command_ids"] | item["command_ids"])
             items.remove(item)
+    groups = {}
+    by_id = {o["id"]: o for o in runtime.get("orders", [])}
+    for item in list(items):
+        rows = [by_id[identity] for identity in item["order_ids"] if identity in by_id]
+        linked = next((row for row in rows if row.get("group_class") in {"bracket", "oco"}
+                       and row.get("group_role") in {"take_profit", "stop_loss"}), None)
+        if not linked:
+            continue
+        key = linked.get("group_parent_id") or linked["id"]
+        prior = groups.get(key)
+        if prior:
+            prior.update(remaining=max(prior["remaining"], item["remaining"]), cash=max(prior["cash"], item["cash"]),
+                         order_ids=prior["order_ids"] | item["order_ids"], command_ids=prior["command_ids"] | item["command_ids"])
+            items.remove(item)
+        else:
+            groups[key] = item
     return items, known
 
 
@@ -321,6 +448,16 @@ def policy(request, previous):
             "saved_at": datetime.now(UTC).isoformat()}
 
 
+def fractional_asset(runtime, symbol):
+    market = runtime.get("market_data", {}).get(symbol, {})
+    info = (market.get("instrument") or {}).get("info") or {}
+    asset = info.get("alpaca_asset") or {}
+    if (asset.get("fractionable") is not True or asset.get("tradable") is not True or asset.get("class") != "us_equity" or asset.get("status") != "active"
+            or asset.get("symbol") != symbol or not asset.get("id") or not info.get("asset_observed_at") or not info.get("asset_source")):
+        raise ValueError("Fractional trading requires an observed active fractionable Alpaca equity asset and its source provenance")
+    return {"asset": copy.deepcopy(asset), "observed_at": info["asset_observed_at"], "source": info["asset_source"]}
+
+
 def instruments(runtime, universe):
     observed = {p["symbol"]: p for p in runtime.get("positions", [])}
     result = {}
@@ -331,11 +468,16 @@ def instruments(runtime, universe):
         supported = bool(native and tradable) or bool(tradable and holding and holding.get("asset_class") == "us_equity"
                                          and holding.get("nautilus") and not holding.get("import_error"))
         reason = (holding or {}).get("import_error")
-        if holding and (decimal(holding.get("qty")) is None or decimal(holding["qty"]) % 1 or holding.get("side") == "short"):
-            supported, reason = False, reason or "Fractional/short holdings are observation-only"
+        if holding and (decimal(holding.get("qty")) is None or holding.get("side") == "short"):
+            supported, reason = False, reason or "Unknown/short holdings are observation-only"
+        try:
+            fractional_asset(runtime, symbol)
+            fractionable = True
+        except ValueError:
+            fractionable = False
         result[symbol] = {"symbol": symbol, "instrument_id": symbol + ".ALPACA" if supported else None,
                           "supported": supported and not reason, "limitation": reason or (None if supported else "Supported equity instrument has not been observed"),
-                          "holding": bool(holding)}
+                          "holding": bool(holding), "fractionable": fractionable, "quantity_precision": 9 if fractionable else 0}
     return result
 
 
@@ -353,6 +495,9 @@ def impact(terms, runtime, rules, *, commands=None):
     cash = decimal(account.get("cash")) if connected else None
     equity = decimal(account.get("equity")) if connected else None
     resulting = current + (qty if side == "BUY" else -qty) if current is not None and qty is not None else None
+    conditional = (terms.get("replacement") or {}).get("contingent_group")
+    if conditional:
+        resulting, delta = current, Decimal(0)
     observed, known_orders = working_commitments(runtime, commands)
     replacement = (terms.get("replacement") or {}).get("order_id")
     commitments = [{"id": next(iter(o["order_ids"]), None), "symbol": o["symbol"], "side": o["side"],
@@ -389,7 +534,7 @@ def impact(terms, runtime, rules, *, commands=None):
                     blockers.append("Estimated position would breach the concentration limit")
             else:
                 blockers.append(label + " requires additional sourced valuation/loss/scenario inputs")
-    return {"existing_quantity": str(current) if current is not None else None,
+    return {"conditional_group_amendment": conditional, "existing_quantity": str(current) if current is not None else None,
             "resulting_quantity": str(resulting) if resulting is not None else None,
             "price_estimate": str(price) if price is not None else None, "price_basis": price_basis,
             "estimated_principal": str(principal) if principal is not None else None,
@@ -404,7 +549,7 @@ def impact(terms, runtime, rules, *, commands=None):
             "executable": False}
 
 
-def save(saved, request, runtime, universe, resolve_research):
+def save(saved, request, runtime, universe, resolve_research, *, commands=None):
     action = request.get("action")
     stamp = datetime.now(UTC).isoformat()
     if action == "policy":
@@ -435,16 +580,29 @@ def save(saved, request, runtime, universe, resolve_research):
     instrument = instruments(runtime, universe).get(symbol)
     if not instrument or not instrument["supported"]:
         raise ValueError((instrument or {}).get("limitation") or "Select an observed supported equity")
-    quantity = str(terms.get("quantity", ""))
-    if not re.fullmatch(r"[1-9]\d{0,17}", quantity):
-        raise ValueError("Enter a positive whole-share quantity; no rounding is performed")
-    if terms.get("side") not in {"BUY", "SELL"} or terms.get("order_type") not in {"MARKET", "LIMIT"}:
-        raise ValueError("Only BUY/SELL and MARKET/LIMIT proposals are supported")
-    limit = terms.get("limit_price") if terms["order_type"] == "LIMIT" else None
+    quantity = format(equity_quantity(terms.get("quantity", "")), "f")
+    if "." in quantity:
+        quantity = quantity.rstrip("0").rstrip(".")
+    allowed_types = {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT", "TRAILING_STOP_MARKET"}
+    if terms.get("side") not in {"BUY", "SELL"} or terms.get("order_type") not in allowed_types:
+        raise ValueError("Choose a supported market, limit, stop or standalone SELL trailing order")
+    limit = terms.get("limit_price") if terms["order_type"] in {"LIMIT", "STOP_LIMIT"} else None
     if limit is not None and (not re.fullmatch(r"\d{1,12}(?:\.\d{1,2})?", str(limit)) or decimal(limit) <= 0):
         raise ValueError("Enter a positive limit price with at most two decimal places")
-    if terms["order_type"] == "LIMIT" and limit is None:
+    if terms["order_type"] in {"LIMIT", "STOP_LIMIT"} and limit is None:
         raise ValueError("Limit price is required")
+    duration = terms.get("time_in_force", "DAY")
+    if duration not in {"DAY", "GTC"}:
+        raise ValueError("Choose DAY or GTC duration")
+    plan = exit_plan(terms.get("exit_plan"), terms["side"])
+    stop = terms.get("stop_price") if terms["order_type"] in {"STOP_MARKET", "STOP_LIMIT"} else None
+    if stop is not None and (not re.fullmatch(r"\d{1,12}(?:\.\d{1,2})?", str(stop)) or decimal(stop) <= 0):
+        raise ValueError("Enter a positive USD stop trigger with at most two decimal places")
+    if terms["order_type"] in {"STOP_MARKET", "STOP_LIMIT"} and stop is None:
+        raise ValueError("Stop trigger is required")
+    if terms["order_type"] == "STOP_LIMIT" and ((terms["side"] == "BUY" and decimal(limit) < decimal(stop))
+                                               or (terms["side"] == "SELL" and decimal(limit) > decimal(stop))):
+        raise ValueError("A BUY stop limit must be at or above its trigger; a SELL stop limit must be at or below it")
     rationale = text(terms.get("rationale", ""), 10000, "proposal rationale")
     research = resolve_research(terms["research"]) if terms.get("research") else None
     from .evidence_requirements import DECISION_SCOPES, VERSION
@@ -455,9 +613,22 @@ def save(saved, request, runtime, universe, resolve_research):
         raise ValueError("Linked research belongs to another symbol")
     exact = {"symbol": symbol, "instrument_id": instrument["instrument_id"], "side": terms["side"],
              "quantity": quantity, "order_type": terms["order_type"], "limit_price": str(limit) if limit is not None else None,
-             "time_in_force": "DAY", "session": "regular", "rationale": rationale, "research": research,
+             "time_in_force": duration, "currency": "USD", "session": terms.get("session", "regular"), "rationale": rationale, "research": research,
              "decision_evidence_scopes": sorted(set(evidence_scopes)), "evidence_requirements_version": VERSION,
              "account_id": (runtime.get("account") or {}).get("id")}
+    fractional_terms({**exact, "exit_plan": plan}, fractionable=instrument["fractionable"])
+    if decimal(quantity) % 1:
+        exact["fractional_asset"] = fractional_asset(runtime, symbol)
+        if exact["session"] == "extended" and exact["fractional_asset"]["asset"].get("fractional_eh_enabled") is not True:
+            raise ValueError("Fractional extended trading requires observed fractional_eh_enabled=true asset evidence")
+    trail = trailing_terms({**terms, **exact, "exit_plan": plan})
+    if trail:
+        exact[trail[0]] = str(terms[trail[0]])
+    if plan:
+        exact["exit_plan"] = plan
+        broker_payload(exact, "validate-reviewed-group")
+    if stop is not None:
+        exact["stop_price"] = str(stop)
     if terms.get("replacement"):
         identity = terms["replacement"].get("order_id")
         order = next((o for o in runtime.get("orders", []) if o.get("id") == identity), None)
@@ -466,6 +637,13 @@ def save(saved, request, runtime, universe, resolve_research):
         exact["replacement"] = {"order_id": identity, "client_order_id": order.get("client_order_id"),
             "account_id": exact["account_id"], "symbol": symbol, "side": exact["side"],
             "filled_quantity": str(order.get("filled_qty")), "order_version": order_version(order)}
+        conditional = contingent_group(order, runtime, commands)
+        if conditional:
+            if commands is None:
+                raise ValueError("Held amendments require server-owned purchase authority")
+            exact["replacement"]["contingent_group"] = conditional
+            entry_terms = commands["commands"][conditional["entry_command_id"]]["terms"]
+            exact["decision_evidence_scopes"] = sorted(set(exact["decision_evidence_scopes"]) | set(entry_terms.get("decision_evidence_scopes", [])))
         validated_replacement(exact, runtime)
     snapshot = {"account": runtime.get("account"), "account_at": runtime.get("account_at"),
                 "positions": runtime.get("positions"), "orders": runtime.get("orders"),

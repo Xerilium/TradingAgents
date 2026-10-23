@@ -117,6 +117,20 @@ def build_verified_market_snapshot(
     for _, row in recent.iterrows():
         lines.append(f"| {_fmt(row['Date'])} | {_fmt(row.get('Close'))} |")
 
+    lines += ["", "### Dated close-to-close movements", "",
+              "Adjacent available rows only; exchange-session completeness is not independently verified.",
+              "| From | To | Close change | Direction | Coverage |", "|---|---|---:|---|---|"]
+    if len(recent) < 2:
+        lines.append("Insufficient observed closes to establish a session movement.")
+    for index in range(1, len(recent)):
+        previous, current = recent.iloc[index - 1], recent.iloc[index]
+        start, end = _fmt(previous["Date"]), _fmt(current["Date"])
+        gaps = [day for day in df.attrs.get("incomplete_ohlcv_dates", []) if start < day <= end]
+        change = current["Close"] - previous["Close"]
+        direction = "up" if change > 0 else "down" if change < 0 else "unchanged"
+        coverage = "not consecutive: incomplete bars " + ", ".join(gaps) if gaps else "no known excluded bar between rows"
+        lines.append(f"| {start} | {end} | {change:+.2f} | {direction} | {coverage} |")
+
     lines += [
         "",
         "Use this snapshot as the source of truth for exact OHLCV, price-level, "

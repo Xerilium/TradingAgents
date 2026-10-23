@@ -74,8 +74,15 @@ def assess(bars, calendar, instrument, *, pagination_complete, calendar_referenc
         "as_of": captured_at, "provenance": provenance, "pagination_complete": bool(pagination_complete)}
 
 
-def latest_calendar(record):
-    candidates = [item for item in record.get("entries", {}).values() if item.get("calendar_through")
+def recorded_timeframe(meta, artifact=None):
+    if meta.get("timeframe"):
+        return meta["timeframe"]
+    retained = artifact(meta.get("last_usable_artifact") or meta.get("artifact", {})) if artifact else None
+    return retained.get("timeframe") if isinstance(retained, dict) else None
+
+
+def latest_calendar(record, artifact=None):
+    candidates = [item for item in record.get("entries", {}).values() if recorded_timeframe(item, artifact) == "1Day" and item.get("calendar_through")
                   and item.get("required_coverage", {}).get("provenance", {}).get("calendar_reference")]
     return max(candidates, key=lambda item: item.get("captured_at", ""), default=None)
 
@@ -88,6 +95,8 @@ def current(meta, data, artifact, now=None, calendar_meta=None):
               "captured_sufficient": coverage.get("sufficient"), "reasons": list(coverage.get("reasons", []))}
     try:
         source = data or meta
+        if recorded_timeframe(source, artifact) != "1Day":
+            raise ValueError("A recorded daily interval is required")
         if calendar_meta:
             provenance = calendar_meta.get("required_coverage", {}).get("provenance", {})
             if all(provenance.get(key) == coverage.get("provenance", {}).get(key) and provenance.get(key)

@@ -18,7 +18,6 @@ from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from urllib.parse import urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -195,6 +194,10 @@ class DeskService:
         self.chart_lock = threading.Lock()
         self.chart_cache = {}
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paper-analysis")
+        self.simulation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="saved-plan-simulation")
+        self.simulation_closed = False
+        self.simulation_process_lock, self.simulation_processes = threading.Lock(), set()
+        self.simulation_session = str(uuid4())
         self.cancelled = set()
         self._account_observation = None
         self.market = {
@@ -203,7 +206,7 @@ class DeskService:
                 "paper_verified": False,
                 "endpoint": getattr(self.gateway, "endpoint", "http://localhost:8080/mcp"),
                 "domains": [],
-                "message": "Connect to load the paper account.",
+                "message": "Connect to load the configured Alpaca account.",
             },
             "account": None,
             "positions": [],
@@ -238,7 +241,7 @@ class DeskService:
     def attention_context(self):
         runtime = self.runtime.state()
         market = self._runtime_market()
-        saved = self._saved_research_index()
+        saved = self._saved_research_index(bind_attention=True)
         symbols = set(self.store.data["config"]["universe"]) | {p["symbol"] for p in runtime.get("positions", [])}
         sources = {scope: {} for scope in ("quote", "account", "research", "history", "news", "earnings", "fundamentals", "corporate_actions", "classification")}
         for symbol in symbols:
@@ -248,12 +251,14 @@ class DeskService:
             quote = market["quotes"].get(symbol, {})
             sources["quote"][symbol] = {"status": "available" if quote.get("price") is not None and market["connection"]["connected"] else "unavailable",
                 "price": quote.get("price"), "change_pct": quote.get("change_pct"), "observed_at": quote.get("timestamp"),
-                "reason": quote.get("error"), "checked_at": quote.get("checked_at")}
+                "reason": quote.get("error"), "checked_at": quote.get("checked_at"),
+                **{key: quote.get(key) for key in ("basis", "feed", "source_id", "instrument_id", "native_epoch", "source_event_ns", "source_received_ns")}}
             result = saved.get(symbol)
             sources["research"][symbol] = {"status": "available" if result and result.get("status") == "completed" else "missing",
                 "observed_at": result.get("observed_at") if result else None, "run_id": result.get("run_id") if result else None,
                 "time_basis": result.get("time_basis") if result else None, "trade_date": result.get("trade_date") if result else None,
-                "revision": result.get("revision") if result else None, "reason": (None if result.get("observed_at") else
+                "revision": result.get("revision") if result else None,
+                **{key: result.get(key) if result else None for key in ("result_sha256", "market_source_sha256")}, "reason": (None if result.get("observed_at") else
                     "Saved research has only an analysis date; completion age is unavailable") if result else "No saved research for this stock"}
         sources["account"]["account"] = {"status": "available" if market["connection"]["connected"] and market.get("reconciliation", {}).get("status") == "reconciled" else "unavailable",
             "observed_at": runtime.get("account_at"), "account_id": (runtime.get("account") or {}).get("id"),
@@ -267,7 +272,7 @@ class DeskService:
                     or runtime.get("reconciliation", {}).get("status") != "reconciled"):
                 proposal["conditions_stale"] = True
         return {"sources": sources, "research": saved, "universe_count": len(self.store.data["config"]["universe"]),
-                "symbols": symbols, "proposals": {p["id"]: p for p in proposals}}
+                "symbols": symbols, "proposals": {p["id"]: p for p in proposals}, "store_generation": self.store.directory.resolve().as_posix()}
 
     def attention(self):
         from .attention import DEFAULT, OBSERVATIONS
@@ -291,8 +296,82 @@ class DeskService:
                     if key in {"input_identity", "artifact", "required_coverage", "effective_dates", "content_sha256"}}
                 for scope in ("history", "corporate_actions")} for symbol in symbols}
 
+    def attention_occurrence(self, identity, generation):
+        """Open only retained alert inputs; no provider request or latest-source substitution."""
+        from uuid import UUID
+        from .attention import OBSERVATIONS
+        from .approval_review import read_artifact
+        from .investor import DEFAULT as INVESTOR_DEFAULT, digest
+        from .recovery import references
+        with self.maintenance:
+            current = self.store.directory.resolve().as_posix()
+            if generation != current or str(UUID(identity)) != identity:
+                raise ValueError("Alert identity or application generation changed; reopen the saved occurrence")
+            occurrence = self.store.database.read("attention_observations", OBSERVATIONS)["data"]["occurrences"].get(identity)
+            if occurrence is None:
+                raise ValueError("The saved alert occurrence is unavailable")
+            result = {"store_generation": current, "occurrence": copy.deepcopy(occurrence), "sources": []}
+            evidence = occurrence.get("evidence")
+            if not evidence or evidence.get("version") != "occurrence-evidence-v1":
+                return {**result, "evidence_status": "unavailable", "reason": "Legacy occurrence has no captured input bindings; no historical source is inferred"}
+            result.update(evidence_status="captured", reason="Saved evaluated observations remain available even when a full retained source cannot be resolved")
+            if evidence.get("store_generation") != current:
+                return {**result, "reason": "Capture generation is different or unrecorded; evaluated facts remain readable but exact full-source association is unavailable",
+                        "sources": [{"kind": "capture_generation", "status": "unavailable", "reason": "The captured generation does not match the active profile; query identity alone cannot establish source provenance"}]}
+            source, symbol = evidence["source"], evidence["rule"]["symbol"]
+            if source.get("artifact"):
+                try:
+                    reference = source["artifact"]
+                    next(references(reference))
+                    data = read_artifact(self.store.directory, reference)
+                    if data is None or isinstance(data, dict) and (data.get("symbol", symbol) != symbol
+                            or evidence["rule"]["scope"] == "history" and data.get("key") != source.get("input_identity")):
+                        raise ValueError("Exact retained source is unavailable")
+                    result["sources"].append({"kind": evidence["rule"]["scope"], "status": "available", "reference": reference, "data": data})
+                except (ValueError, KeyError, TypeError, OSError, StopIteration):
+                    result["sources"].append({"kind": evidence["rule"]["scope"], "status": "unavailable",
+                        "reason": "The occurrence's retained artifact is missing, changed or mismatched; newer same-key data is not substituted"})
+            if source.get("run_id"):
+                try:
+                    run = self.run_detail(source["run_id"])
+                    saved = copy.deepcopy(next(item for item in run["results"] if item["symbol"] == symbol))
+                    saved.setdefault("revision", 0)
+                    if saved["revision"] != source.get("revision") or digest(saved) != source.get("result_sha256"):
+                        raise ValueError("Captured research revision differs")
+                    result["sources"].append({"kind": "research_result", "status": "available", "run_id": run["id"], "data": saved})
+                    if self._attention_market_signature(run, symbol) != source.get("market_source_sha256"):
+                        raise ValueError("Captured run market sources differ")
+                    from .market_evidence import recorded_market
+                    root = self.store.directory if any(item["id"] == run["id"] for item in self.store.data["runs"]) else self.history_directory
+                    market = recorded_market(root, run, symbol) if root else None
+                    result["sources"].append({"kind": "run_instrument", "status": "partial" if market and market.get("source") and market.get("problems") else "available" if market and market.get("source") else "unavailable",
+                        "reason": "; ".join(market.get("problems", [])) if market else "Retained run instrument sources are unavailable", "data": market})
+                except (ValueError, KeyError, TypeError, OSError, StopIteration):
+                    result["sources"].append({"kind": "research_source", "status": "unavailable",
+                        "reason": "Exact captured run/result or market-source revision is unavailable; no newer report or instrument source is substituted"})
+            expected = evidence.get("proposal")
+            if expected:
+                proposals = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
+                proposal = next((item for item in proposals if item["id"] == expected["id"]), {})
+                candidates = [proposal, *proposal.get("history", [])]
+                saved = next((item for item in candidates if item.get("revision") == expected["revision"]
+                    and item.get("policy_revision") == expected["policy_revision"] and item.get("terms_sha256") == expected["terms_sha256"]
+                    and digest(item.get("terms")) == expected["terms_sha256"]
+                    and item.get("impact", {}).get("conditions") == expected["conditions"]), None)
+                result["sources"].append({"kind": "proposal_revision", "status": "available" if saved else "unavailable",
+                    "reason": "Exact saved proposal terms and conditions" if saved else "Captured proposal revision/conditions are unavailable; newer terms are not substituted",
+                    "data": {"id": expected["id"], **{key: copy.deepcopy(saved.get(key)) for key in ("revision", "policy_revision", "terms_sha256", "terms", "impact")}} if saved else None})
+            return result
+
     def save_attention(self, request):
         from .attention import DEFAULT, OBSERVATIONS, change
+        if str(request.get("action", "")).startswith("browser_"):
+            from .attention import browser_delivery
+            delivery = {}
+            def update_browser(records):
+                delivery.update(browser_delivery(records["attention_observations"], request, self.store.directory.resolve().as_posix()))
+            self.store.database.transact({"attention_observations": OBSERVATIONS}, update_browser)
+            return {**self.attention(), "browser_delivery": delivery}
         if request.get("action") == "acknowledge":
             def acknowledge(saved):
                 occurrence = saved["occurrences"][request["id"]]
@@ -360,6 +439,10 @@ class DeskService:
                     "run_id": r["id"], **{key: result.get(key) for key in
                         ("symbol", "status", "rating", "trade_date", "revision")}})
         current_ids = {run["id"] for run in data["runs"]}
+        for run in data["runs"]:
+            if "continuation" in run:
+                saved = run["continuation"]
+                run["continuation"] = {key: saved.get(key) for key in ("version", "revision", "blocked_reason")}
         for saved in self.history.get("runs", []):
             if saved["id"] in current_ids:
                 continue
@@ -382,23 +465,69 @@ class DeskService:
                         store_generation=self.store.directory.resolve().as_posix())
         return data
 
-    def _saved_research_index(self):
+    @staticmethod
+    def _attention_market_signature(run, symbol):
+        from .investor import digest
+        return digest({"trade_date": run.get("trade_date"), "attempts": [attempt for attempt in run.get("source_evidence", {}).get("attempts", [])
+            if attempt.get("arguments", {}).get("symbol", attempt.get("arguments", {}).get("ticker")) == symbol
+            and attempt.get("operation") in {"get_stock_data", "get_indicators", "ohlcv_history", "ohlcv_cache_read"}]})
+
+    def _saved_research_index(self, *, bind_attention=False):
         saved = {}
         current = self.store.snapshot()["runs"]
         for run in sorted(current + self.history.get("runs", []), key=lambda item: item.get("created_at") or "", reverse=True):
             for result in run.get("results", []):
-                if result.get("status") == "completed":
+                if result.get("status") == "completed" and result["symbol"] not in saved:
                     completion = next((e.get("time") for e in reversed(run.get("events", []))
                                        if e.get("kind") == "complete" and e.get("symbol") == result["symbol"]), None)
                     observed = result.get("completed_at") or completion or run.get("completed_at")
                     basis = "stock_completion" if result.get("completed_at") or completion else "run_completion" if observed else "analysis_date_only"
                     saved.setdefault(result["symbol"], {"run_id": run["id"], "observed_at": observed, "time_basis": basis,
                         **{key: result.get(key) for key in ("symbol", "status", "rating", "trade_date", "revision")}})
+                    if bind_attention:
+                        from .investor import digest
+                        bound = copy.deepcopy(result)
+                        bound.setdefault("revision", 0)
+                        saved[result["symbol"]].update(revision=bound["revision"], result_sha256=digest(bound),
+                            market_source_sha256=self._attention_market_signature(run, result["symbol"]))
         return saved
 
     def workspace(self):
         from .workspace import DEFAULT
         return self.store.database.read("workspace", DEFAULT)
+
+    def discovery(self, request=None):
+        from .market_discovery import DEFAULT, discover, metadata, seal
+        if request is None:
+            return metadata()
+        if request.get("action") == "add_to_universe":
+            with self.maintenance:
+                if not isinstance(request.get("observation_id"), str) or not request["observation_id"]:
+                    raise ValueError("Choose a retained discovery observation")
+                result = self.discovery_detail(request.get("observation_id"))
+                symbol = request.get("symbol")
+                if not isinstance(symbol, str) or not symbol or result.get("status") != "completed" or not any(row.get("symbol") == symbol for row in result["rows"]):
+                    raise ValueError("Select a symbol from a retained successful discovery observation")
+                return self.save_config({}, add_symbol=symbol, expected_revision=request.get("config_revision"))
+        if request.get("action", "screen") != "screen":
+            raise ValueError("Unknown discovery action")
+        store = self.store
+        result = seal(discover(request))
+        with self.maintenance:
+            if self.store is not store:
+                raise ValueError("Application records changed during discovery; reload the workspace")
+            store.database.transact({"discovery": DEFAULT}, lambda records: records["discovery"]["observations"].update({result["id"]: result}))
+        return result
+
+    def discovery_detail(self, identity=None, symbol=None):
+        from .market_discovery import DEFAULT
+        values = self.store.database.read("discovery", DEFAULT)["data"]["observations"]
+        if identity:
+            if identity not in values:
+                raise ValueError("Retained discovery observation is unavailable")
+            return values[identity]
+        matches = [value for value in values.values() if not symbol or any(row.get("symbol") == symbol for row in value["rows"])]
+        return max(matches, key=lambda value: value["captured_at"]) if matches else None
 
     def save_workspace(self, request):
         from .workspace import DEFAULT, change
@@ -406,7 +535,7 @@ class DeskService:
                                           lambda saved: change(saved, request), DEFAULT)
 
     def investor(self):
-        from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version
+        from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version, working_commitments, decimal, contingent_group
         from .approval_review import evaluate
         from .admission import DEFAULT as COMMANDS
         from .market_history import DEFAULT as HISTORY
@@ -422,13 +551,33 @@ class DeskService:
         for order in runtime.get("orders", []):
             try:
                 broker_action_order(runtime, order["id"])
-                broker_actions[order["id"]] = {"supported": True, "order_version": order_version(order)}
+                from .linked_orders import amendment_supported
+                replacement_reason = None
+                try:
+                    amendment_supported(order)
+                    contingent_group(order, runtime, commands)
+                except ValueError as exc:
+                    replacement_reason = str(exc)
+                broker_actions[order["id"]] = {"supported": True, "cancel_supported": True,
+                    "replace_supported": replacement_reason is None, "replacement_reason": replacement_reason,
+                    "order_version": order_version(order)}
             except (ValueError, KeyError, TypeError) as exc:
                 broker_actions[order.get("id")] = {"supported": False, "reason": str(exc)}
+        available_instruments = instruments(runtime, self.store.data["config"]["universe"])
+        commitments, known = working_commitments(runtime, commands)
+        for symbol, instrument in available_instruments.items():
+            position = next((position for position in runtime.get("positions", []) if position["symbol"] == symbol), None)
+            held = decimal((position or {}).get("qty"))
+            reserved = sum((item["remaining"] for item in commitments if item["symbol"] == symbol and item["side"] == "SELL"), 0)
+            quantity = max(held - reserved, 0) if known and held is not None and not position.get("import_error") else None
+            broker_available = decimal((position or {}).get("qty_available"))
+            if quantity is not None and broker_available is not None:
+                quantity = min(quantity, max(broker_available, 0))
+            instrument.update(available_exit_quantity=str(quantity) if quantity is not None else None, exit_availability_known=quantity is not None)
         return {**record, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
                 "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
                 "current_checks": checks, "broker_order_actions": broker_actions,
-                "instruments": instruments(runtime, self.store.data["config"]["universe"])}
+                "instruments": available_instruments}
 
     def health(self):
         import sqlite3
@@ -470,8 +619,9 @@ class DeskService:
             return stage(self, request.get("archive"))
         if request.get("action") == "backup":
             return backup(self)
-        with self.store.lock:
+        with self.maintenance, self.store.lock:
             if request.get("action") == "restore":
+                self._stop_simulations()
                 return restore(self, request.get("token"), request.get("confirmation"))
         raise ValueError("Choose backup, preview or restore")
 
@@ -482,14 +632,31 @@ class DeskService:
         return (self.application_root / "recovery" / "backups" / (identity + ".zip")).read_bytes()
 
     def reporting(self, *, compact=False):
-        from .decision_journal import DEFAULT, decisions
+        from .decision_journal import DEFAULT, decisions, position_outcomes
         from .investor import DEFAULT as INVESTOR_DEFAULT
         record = self.store.database.read("reporting", DEFAULT)
         if compact:
             return {"revision": record["revision"], "collection_count": len(record["data"]["collections"]),
+                    "native_position_capture_count": len(record["data"].get("native_position_captures", [])),
                     "benchmark": record["data"]["benchmark"], "horizon_days": record["data"]["horizon_days"]}
         investor = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]
-        return {**record, "decisions": decisions(investor, self.store.snapshot(), self.history, self.admission.snapshot()["data"])}
+        from .approval_review import read_artifact
+        captures = []
+        for capture in record["data"].get("native_position_captures", []):
+            report = read_artifact(self.store.directory, capture["artifact"])
+            mismatch = bool(report and any(report.get(key) != capture.get(key) for key in ("native_epoch", "captured_at", "account_context")))
+            captures.append({**capture, "report": report,
+                "metadata_gap": "Capture index account/epoch/time differs from the original report; inspect both retained sources" if mismatch else None})
+        authority, runtime = self.admission.snapshot()["data"], self.runtime.state()
+        outcomes = position_outcomes(captures, authority, investor)
+        outcomes.update(current_native_epoch=runtime.get("native_epoch"), current_native_status=runtime["status"])
+        for group in outcomes["groups"]:
+            group["freshness"] = {"status": "retained_capture", "captured_at": group["latest_capture_at"],
+                "native_epoch_matches_current": group["selected_source_ref"]["native_epoch"] == runtime.get("native_epoch"),
+                "native_status": runtime["status"], "mark_is_live": False,
+                "limitation": "Explicit retained capture; this result is not live account performance"}
+        return {**record, "position_outcomes": outcomes,
+                "decisions": decisions(investor, self.store.snapshot(), self.history, authority, outcomes["groups"])}
 
     def reporting_detail(self, identity, receipt=None):
         record = self.reporting()
@@ -514,7 +681,7 @@ class DeskService:
             saved = self.data_jobs.state()["data"]["entries"]
             matching = [entry for entry in saved.values() if entry["symbol"] == benchmark["symbol"]
                         and entry["start"] == result["requested_start"] and entry["end"] == result["requested_end"]
-                        and entry["adjustment"] == "split"]
+                        and entry["adjustment"] == "split" and self.data_jobs.timeframe(entry) == "1Day"]
             if matching:
                 current = self.data_jobs.detail(benchmark["symbol"], max(matching, key=lambda item: item["captured_at"])["key"])
         return report_methods(result, benchmark=benchmark, history=current)
@@ -711,7 +878,7 @@ class DeskService:
         if request.get("action") == "preview":
             record = self.store.database.read("investor", DEFAULT)
             updated = save(copy.deepcopy(record["data"]), {**request, "action": "draft"}, runtime,
-                           universe, self._proposal_research)
+                           universe, self._proposal_research, commands=self.store.database.read("commands", COMMAND_DEFAULT)["data"])
             proposal = next(p for p in updated["proposals"] if p["id"] == request.get("id")) if request.get("id") else updated["proposals"][0]
             from .market_history import DEFAULT as HISTORY_DEFAULT
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
@@ -738,7 +905,7 @@ class DeskService:
             from .baskets import save as save_basket
             update(lambda records: save_basket(records["investor"], request, runtime, universe, self._proposal_research, commands=records["commands"]))
             return self.investor()
-        update(lambda records: save(records["investor"], request, runtime, universe, self._proposal_research))
+        update(lambda records: save(records["investor"], request, runtime, universe, self._proposal_research, commands=records["commands"]))
         return self.investor()
 
     @staticmethod
@@ -949,10 +1116,15 @@ class DeskService:
             "message": "Model configuration present; checked when analysis starts.",
         }
 
-    def save_config(self, changes):
+    def save_config(self, changes, *, add_symbol=None, expected_revision=None):
         if self.browse_only and set(changes) - {"name", "universe"}:
             raise ValueError("Read-only review allows only index name and symbols to change")
         with self.execution_lock, self.store.lock:
+            if add_symbol is not None:
+                from .app_database import StoreConflict
+                if type(expected_revision) is not int or expected_revision != self.store.data["config_revision"]:
+                    raise StoreConflict(self.store.data["config_revision"])
+                changes = {"universe": list(dict.fromkeys([*self.store.data["config"]["universe"], add_symbol]))}
             if any(
                 run["status"] in {"queued", "running", "cancelling"}
                 for run in self.store.data["runs"]
@@ -965,8 +1137,29 @@ class DeskService:
             self.runtime.configure(config.universe)
         return self.state()
 
+    def connection_context(self, runtime):
+        from .alpaca_readonly import trading_endpoint, TRADING_ORIGINS
+        try:
+            configured = trading_endpoint(self.runtime.credentials_file)
+            intent, error = TRADING_ORIGINS[configured], None
+        except (OSError, ValueError, KeyError):
+            configured, intent, error = None, "unknown", "Configured Alpaca origin is unavailable or unsupported; correct the file and explicitly reconnect"
+        identity = runtime.get("connection_identity") or {}
+        account = runtime.get("account") or {}
+        current = (runtime.get("status") == "connected" and account.get("id")
+            and identity.get("account_id") == account["id"] and identity.get("endpoint") == runtime.get("endpoint")
+            and runtime.get("connection_session") and runtime.get("connection_session") == runtime.get("native_epoch"))
+        observed = TRADING_ORIGINS.get(runtime.get("endpoint"), "unknown") if current else "unknown"
+        return {"configured_mode": intent, "configured_endpoint": configured, "configuration_error": error,
+            "observed_mode": observed, "observed_account_id": account.get("id") if current else None,
+            "session_endpoint": runtime.get("endpoint"), "session_id": runtime.get("connection_session"),
+            "mode_basis": "Official trading origin and authenticated account in the current native session",
+            "reconnect_to_apply": bool(error or configured != runtime.get("endpoint")),
+            "credential_policy": "Credentials and destination are pinned until an explicit new native session"}
+
     def _runtime_market(self):
         runtime = self.runtime.state()
+        connection_identity = self.connection_context(runtime)
         available = runtime["status"] == "connected"
         from .investor import DEFAULT as INVESTOR_DEFAULT
         rule = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["policy"]["rules"].get("session_freshness", {})
@@ -986,6 +1179,9 @@ class DeskService:
             previous = observation.get("previous_close")
             quotes[symbol] = {"price": price, "basis": "last_trade" if trade else "quote_midpoint" if quote else None,
                 "timestamp": stamp.isoformat() if stamp else None, "feed": "Nautilus / Alpaca IEX",
+                "instrument_id": (trade or quote or {}).get("instrument_id"), "source_id": (trade or quote or {}).get("trade_id"),
+                "native_epoch": runtime.get("native_epoch"), "source_event_ns": timestamp,
+                "source_received_ns": (trade or quote or {}).get("ts_init"),
                 "stale": (age is None or not 0 <= age <= maximum) if configured else None,
                 "max_age_seconds": maximum if configured else None, "age_seconds": age,
                 "session": "open" if opened is True else "closed" if opened is False else None,
@@ -1001,7 +1197,8 @@ class DeskService:
             errors.append({"source": "reconciliation", "message": "; ".join(reconciliation.get("gaps", []))})
         return {
             "connection": {"connected": available, "account_verified": available and bool((runtime.get("account") or {}).get("id")),
-                "paper_verified": available and urlsplit(runtime.get("endpoint") or "").hostname == "paper-api.alpaca.markets",
+                "identity": connection_identity,
+                "paper_verified": connection_identity["observed_mode"] == "paper",
                 "endpoint": runtime.get("endpoint"),
                 "domains": ["NautilusTrader"] if available else [],
                 "message": "Configured Alpaca account through Nautilus; reconciliation and user command authority are reported separately." if available else
@@ -1021,6 +1218,28 @@ class DeskService:
     def refresh_quotes(self):
         self.runtime.request("refresh")
         return self.state()
+
+    def native_report(self, request):
+        kind = request.get("report_kind")
+        if not isinstance(kind, str) or kind not in {"orders", "order_fills", "fills", "positions", "account"}:
+            raise ValueError("Choose an available native cached report")
+        with self.maintenance:
+            report = self.runtime.request("native_report", report_kind=kind)["native_report"]
+            capture = None
+            if kind == "positions":
+                from .decision_journal import DEFAULT
+                if not isinstance(report.get("position_lifecycles"), list):
+                    raise ValueError("This native worker lacks position membership capture; the table alone cannot establish lifecycle attribution")
+                identity = str(uuid4())
+                reference = self.store._write_json_artifact(identity, "native-position-report", report)
+                capture = {"id": identity, "artifact": reference, "captured_at": report["captured_at"],
+                    "native_epoch": report["native_epoch"], "account_context": report["account_context"]}
+                record = self.store.database.read("reporting", DEFAULT)
+                def retain(saved):
+                    saved.setdefault("native_position_captures", []).append(capture)
+                    return saved
+                self.store.database.update("reporting", record["revision"], retain, DEFAULT)
+            return {**report, "capture": capture, "store_generation": self.store.directory.resolve().as_posix()}
 
     def refresh(self):
         # Connecting is explicit; page loads and research never start an execution strategy.
@@ -1151,7 +1370,7 @@ class DeskService:
                 raise ValueError("Research inputs incomplete: wait for the selected symbols' Nautilus price snapshots.")
             if any(
                 r["status"] in {"queued", "running", "cancelling"} for r in self.store.data["runs"]
-            ):
+            ) or any(not future.done() for future in self.research_futures):
                 raise ValueError("An analysis is already running.")
             run = {
                 "id": str(uuid4()),
@@ -1200,6 +1419,10 @@ class DeskService:
                     "stages": [{"stage": "preflight", "elapsed_seconds": time.monotonic() - request_started}],
                 },
             }
+            from tradingagents.graph.checkpointer import desk_checkpoint_signature
+            run["continuation"] = {"version": 1, "revision": 0, "source_signature": desk_checkpoint_signature(),
+                "market": copy.deepcopy(market), "attempts": [{"id": str(uuid4()), "parent_id": None,
+                    "started_at": requested_at, "status": "queued"}]}
             self.store.data["runs"].insert(0, run)
             request["run_id"] = run["id"]
             self.store.save()
@@ -1252,6 +1475,12 @@ class DeskService:
                 run.setdefault(f"{origin}_evidence", {}).update(
                     capture_complete=False, persistence_error="Call terminal evidence export failed."
                 )
+        if run.get("continuation"):
+            continuation = run["continuation"]
+            continuation["attempts"][-1].update(status=run["status"], ended_at=now(),
+                reason=run.get("error"), measurements=copy.deepcopy(measurements),
+                measurement_artifact=run.get("measurement_artifact"))
+            continuation["revision"] += 1
         self.store.save()
 
     def _evidence_recorder(self, owner_id):
@@ -1273,11 +1502,165 @@ class DeskService:
         with capture_vendor_evidence(self._evidence_recorder(run_id)):
             self._run_with_evidence(run_id, market, request_started, queued_at)
 
+    def continuation_status(self, run_id):
+        from tradingagents.graph.checkpointer import desk_checkpoint_exists, desk_checkpoint_signature
+        with self.store.lock:
+            run = self._find_run(run_id)
+            continuation = run.get("continuation", {})
+            reason = ""
+            if continuation.get("version") != 1:
+                reason = "This saved run predates resumable desk checkpoints."
+            elif run.get("cancel_requested_at") or run["status"] in {"cancelled", "cancelling"}:
+                reason = "Operator cancellation is retained; this run cannot continue."
+            elif run["status"] != "interrupted":
+                reason = "Only an interrupted run can continue."
+            elif any(item["status"] in {"queued", "running", "cancelling"} for item in self.store.data["runs"]) or any(not future.done() for future in self.research_futures):
+                reason = "Another analysis owns the research worker."
+            elif continuation.get("source_signature") != desk_checkpoint_signature():
+                reason = "Execution source or installed persistence versions changed; start a new run."
+            elif continuation.get("blocked_reason"):
+                reason = continuation["blocked_reason"]
+            elif any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False)
+                     for origin in ("source", "gateway", "jev")):
+                reason = "Interrupted evidence capture is incomplete; continuation cannot verify prior outcomes."
+            elif any(attempt.get("outcome") != "success" or attempt.get("data_status") in {"partial", "unavailable"}
+                     for attempt in run.get("source_evidence", {}).get("attempts", [])):
+                reason = "Original source collection is incomplete; retained failures cannot be silently replaced by continuation."
+            symbols = []
+            for symbol in run["symbols"]:
+                result = next((item for item in run["results"] if item["symbol"] == symbol), {})
+                saved = result.get("continuation", {})
+                budget = saved.get("social_budget", {})
+                exists = bool(saved.get("thread_id")) and desk_checkpoint_exists(self.store.directory / "cache", symbol, saved["thread_id"])
+                pending_social = any(row.get("status") == "pending" for source in result.get("social_sentiment", {}).get("sources", {}).values() for row in source.get("posts", []))
+                pending_effect = next((effect for effect in saved.get("effects", {}).values()
+                                       if effect["stateful"] and effect["outcome"] != "confirmed"), None)
+                unfinished_social = result.get("social_sentiment", {}).get("status") != "completed"
+                if result and result.get("status") != "completed" and not reason:
+                    if not exists:
+                        reason = f"No durable checkpoint is available for {symbol}."
+                    elif pending_effect:
+                        reason = f"{pending_effect['command']} has an uncertain prior outcome; it will not be replayed."
+                    elif pending_social:
+                        reason = f"A {symbol} social request has an unknown outcome; it will not be replayed."
+                    elif unfinished_social and budget.get("expires_at") and budget["expires_at"] <= datetime.now(UTC).timestamp():
+                        reason = f"The original {symbol} social screening time budget expired."
+                    elif unfinished_social and budget.get("remaining") == 0:
+                        reason = f"The original {symbol} social screening post budget is exhausted."
+                symbols.append({"symbol": symbol, "status": result.get("status", "not_started"),
+                    "remaining_posts": budget.get("remaining", run["config"].get("social_screen_max_posts", 100)),
+                    "expires_at": datetime.fromtimestamp(budget["expires_at"], UTC).isoformat() if budget.get("expires_at") else None,
+                    "checkpoint_available": exists})
+            if not reason and not any(item["checkpoint_available"] for item in symbols):
+                reason = "No durable symbol checkpoint is available."
+            return {"run_id": run_id, "revision": continuation.get("revision", 0), "eligible": not bool(reason),
+                    "reason": reason, "analysis_date": run["trade_date"], "original_created_at": run["created_at"],
+                    "account_captured_at": run.get("account_context", {}).get("captured_at"),
+                    "attempts": [{key: attempt.get(key) for key in ("id", "parent_id", "started_at", "ended_at", "status", "reason")}
+                                 for attempt in continuation.get("attempts", [])], "symbols": symbols}
+
+    def resume_run(self, run_id, revision):
+        with self.maintenance, self.execution_lock, self.store.lock:
+            if self.browse_only:
+                raise ValueError("Research continuation is unavailable in review-only mode.")
+            status = self.continuation_status(run_id)
+            if type(revision) is not int or revision != status["revision"]:
+                raise ValueError("Continuation state changed. Refresh and review it again.")
+            if not status["eligible"]:
+                raise ValueError(status["reason"])
+            run = self._find_run(run_id)
+            continuation = run["continuation"]
+            if run.get("retry_at") and datetime.fromisoformat(run["retry_at"]) > datetime.now(UTC):
+                raise ValueError("The recorded upstream retry delay has not elapsed.")
+            attempt = {"id": str(uuid4()), "parent_id": continuation["attempts"][-1]["id"],
+                       "started_at": now(), "status": "queued"}
+            attempt["previous_results"] = self.store._write_json_artifact(run_id, "continuation-prior-results", run["results"])
+            continuation["attempts"].append(attempt)
+            continuation["revision"] += 1
+            run["status"] = "queued"
+            continuation.setdefault("measurement_history", []).append(copy.deepcopy(run.get("measurements", {})))
+            run["measurements"] = {"started_at": now(), "stages": [], "callbacks": {}}
+            run.pop("error", None)
+            run.pop("completed_at", None)
+            for origin in ("source", "gateway", "jev"):
+                evidence = run.get(f"{origin}_evidence", {})
+                if "terminal_observed_at" in evidence:
+                    continuation.setdefault("terminal_evidence_history", []).append(
+                        {"origin": origin, "terminal_observed_at": evidence.pop("terminal_observed_at")})
+            self.store.save()
+            started = time.monotonic()
+            try:
+                future = self.executor.submit(self._run, run_id, copy.deepcopy(continuation["market"]), started, started)
+                self.research_futures.add(future)
+                future.add_done_callback(self.research_futures.discard)
+            except Exception:
+                run["status"] = "interrupted"
+                attempt.update(status="interrupted", ended_at=now(), reason="Continuation scheduling failed.")
+                self.store.save()
+                raise
+            return {"run_id": run_id, "status": "queued", "continuation_revision": continuation["revision"]}
+
+    def _research_effect(self, run, result, domain, command, call_id, parameters, dispatch, *, stateful=True, interruptible=True):
+        from .approval_review import read_artifact
+        identity = hashlib.sha256(f"{domain}:{command}:{call_id}".encode()).hexdigest()
+        arguments = hashlib.sha256(json.dumps(parameters, sort_keys=True, allow_nan=False).encode()).hexdigest()
+        with self.store.lock:
+            effects = result["continuation"].setdefault("effects", {})
+            prior = effects.get(identity)
+            reason = run["continuation"].get("blocked_reason")
+            if run.get("cancel_requested_at"):
+                reason = "Analysis stopped by operator; cancellation remains in force."
+            if not reason and prior and prior["arguments_sha256"] != arguments:
+                reason = "A retained external call identity has different arguments."
+            elif not reason and prior and prior["outcome"] == "confirmed":
+                retained_arguments = read_artifact(self.store.directory, prior["arguments"])
+                if (retained_arguments is None or retained_arguments != parameters
+                        or hashlib.sha256(json.dumps(retained_arguments, sort_keys=True, allow_nan=False).encode()).hexdigest() != arguments):
+                    reason = "A retained external call's argument artifact is missing or changed."
+                else:
+                    retained = read_artifact(self.store.directory, prior["result"])
+                    if isinstance(retained, dict) and "value" in retained:
+                        return retained["value"]
+                    reason = "A confirmed external result is missing or changed."
+            elif not reason and prior and stateful:
+                reason = f"{command} has an uncertain prior outcome and cannot be replayed."
+            if reason:
+                run["continuation"]["blocked_reason"] = reason
+                self.store.save()
+            else:
+                attempt = {"id": str(uuid4()), "parent_id": prior["id"] if prior else None,
+                    "domain": domain, "command": command, "tool_call_id": call_id, "arguments_sha256": arguments,
+                    "stateful": stateful, "outcome": "intent", "started_at": now(),
+                    "history": [*prior.get("history", []), {key: value for key, value in prior.items() if key != "history"}] if prior else []}
+                attempt["arguments"] = self.store._write_source_result(run["id"], attempt["id"], parameters, prefix="continuation-arguments")
+                effects[identity] = attempt
+                self.store.save()
+        if reason:
+            if interruptible:
+                from langgraph.types import interrupt
+                interrupt(reason)
+            raise ValueError(reason)
+        try:
+            value = dispatch()
+            with self.store.lock:
+                attempt["result"] = self.store._write_source_result(run["id"], attempt["id"], {"value": value}, prefix="continuation-result")
+                attempt.update(outcome="confirmed", ended_at=now())
+                self.store.save()
+            return value
+        except BaseException:
+            with self.store.lock:
+                attempt.update(outcome="unknown" if stateful else "error", ended_at=now())
+                if stateful:
+                    run["continuation"]["blocked_reason"] = f"{command} has an uncertain outcome; automatic replay is blocked."
+                self.store.save()
+            raise
+
     def _run_with_evidence(self, run_id, market, request_started, queued_at):
         stats = StatsCallbackHandler()
         with self.store.lock:
             run = self._find_run(run_id)
             run["status"] = "running"
+            run["continuation"]["attempts"][-1]["status"] = "running"
             run["measurements"]["worker_started_at"] = now()
             run["measurements"]["stages"].append({"stage": "queue", "elapsed_seconds": time.monotonic() - queued_at})
             config = copy.deepcopy(run["config"])
@@ -1302,8 +1685,19 @@ class DeskService:
             for symbol in run["symbols"]:
                 if run_id in self.cancelled:
                     break
-                self._event(run_id, "symbol", "Analysis started", symbol)
-                result = {
+                result = next((item for item in run["results"] if item["symbol"] == symbol), None)
+                if result and result["status"] == "completed":
+                    continue
+                with self.store.lock:
+                    for origin in ("source", "gateway", "jev"):
+                        evidence = run.get(f"{origin}_evidence", {})
+                        if "terminal_observed_at" in evidence:
+                            run["continuation"].setdefault("terminal_evidence_history", []).append(
+                                {"origin": origin, "terminal_observed_at": evidence.pop("terminal_observed_at")})
+                self._event(run_id, "symbol", "Analysis continued" if result else "Analysis started", symbol,
+                            attempt_id=run["continuation"]["attempts"][-1]["id"])
+                existing_result = result is not None
+                result = result or {
                     "symbol": symbol,
                     "status": "running",
                     "trade_date": run["trade_date"],
@@ -1314,7 +1708,10 @@ class DeskService:
                     "revision": 0,
                 }
                 with self.store.lock:
-                    run["results"].append(result)
+                    if not existing_result:
+                        run["results"].append(result)
+                    result["status"] = "running"
+                    result.pop("error", None)
                     self.store.save()
                 started = datetime.now(UTC)
                 stage = "setup"
@@ -1331,6 +1728,7 @@ class DeskService:
                     stage, stage_started = name, ended
 
                 try:
+                    graph = None
                     graph_config = build_default_config()
                     graph_config.update(config)
                     graph_config.update(
@@ -1341,17 +1739,23 @@ class DeskService:
                         results_dir=str(self.store.directory / "reports" / run_id),
                         data_cache_dir=str(self.store.directory / "cache"),
                         memory_log_path=str(self.store.directory / "decision-memory.md"),
-                        checkpoint_enabled=False,
+                        checkpoint_enabled=True,
                     )
+                    saved = result.setdefault("continuation", {"thread_id": f"{run_id}:{symbol}", "effects": {},
+                        "social_budget": {"remaining": config.get("social_screen_max_posts", 100),
+                                          "max_seconds": config.get("social_screen_timeout_seconds", 600)}})
+                    def effect(domain, command, call_id, parameters, dispatch, *, stateful=True, current=result, interruptible=True):
+                        return self._research_effect(run, current, domain, command, call_id, parameters, dispatch,
+                                                     stateful=stateful, interruptible=interruptible)
                     tools = build_langchain_tools(
                         self.gateway, domains=("maenifold.memory", "maenifold.graph", "maenifold.thinking"),
-                        symbol=symbol, trade_date=run["trade_date"]
+                        symbol=symbol, trade_date=run["trade_date"], research_effect=effect
                     )
-                    social_budget = {"remaining": config.get("social_screen_max_posts", 100), "deadline": None,
-                                     "max_seconds": config.get("social_screen_timeout_seconds", 600)}
+                    social_budget = {**saved["social_budget"], "deadline": None}
                     social_gateway = (MaenifoldGateway(self.gateway.endpoint, timeout=social_budget["max_seconds"])
                                       if isinstance(self.gateway, MaenifoldGateway) else self.gateway)
                     def screen_factory(ticker, source, current=result, budget=social_budget, gateway=social_gateway, *, instrument_context=""):
+                        retained = copy.deepcopy(current["social_sentiment"]["sources"].get(source))
                         def record(evidence):
                             with self.store.lock:
                                 social = current["social_sentiment"]
@@ -1361,56 +1765,86 @@ class DeskService:
                                                     else "unavailable" if all(s in {"unavailable", "not_screened"} for s in statuses) else "partial")
                                 current["revision"] += 1
                                 self.store.save()
+                        def progress(evidence, budget):
+                            evidence["classified_count"] = sum(row["status"] == "classified" for row in evidence["posts"])
+                            evidence["status"] = "partial"
+                            with self.store.lock:
+                                current["continuation"]["social_budget"] = {key: value for key, value in budget.items() if key != "deadline"}
+                                record(evidence)
                         with self.store.lock:
-                            current["social_sentiment"]["sources"][source] = {
-                                "admission_version": SOCIAL_ADMISSION_VERSION,
-                                "status": "not_screened", "source": source, "counts": {}, "posts": [],
-                                "note": "No eligible posts supplied by the source; inspect the sentiment report for source availability."}
+                            if retained is None:
+                                current["social_sentiment"]["sources"][source] = {
+                                    "admission_version": SOCIAL_ADMISSION_VERSION,
+                                    "status": "not_screened", "source": source, "counts": {}, "posts": [],
+                                    "note": "No eligible posts supplied by the source; inspect the sentiment report for source availability."}
                             current["social_sentiment"]["status"] = "partial"
                             self.store.save()
                         company = re.search(r"(?:Company|Name): ([^\n;]+)", instrument_context)
                         instrument = f"{company.group(1)} ({ticker})" if company else ticker
                         return laya_screen(ticker, gateway, budget=budget, instrument=instrument,
                                            source=source, on_evidence=record,
-                                           cancelled=lambda: run_id in self.cancelled)
+                                           cancelled=lambda: run_id in self.cancelled,
+                                           retained=retained if retained and retained.get("posts") else None, on_progress=progress)
                     graph = (self.graph_factory or TradingAgentsGraph)(
                         selected_analysts=config["selected_analysts"],
                         config=graph_config, supplemental_tools=tools, callbacks=[stats],
                         social_screen_factory=screen_factory,
+                        research_effect=effect,
                     )
+                    graph_signature = graph._run_signature("stock", portfolio)
+                    if saved.get("graph_signature") and saved["graph_signature"] != graph_signature:
+                        raise ValueError("Saved graph settings or tool schemas changed; continuation is blocked.")
+                    saved["graph_signature"] = graph_signature
                     final = {}
                     seen = set()
                     memory_seen = None
-                    initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
+                    initial = copy.deepcopy(saved.get("initial"))
+                    if initial is None:
+                        initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
                     initial["desk_execution_policy"] = desk_execution_policy(config)
-                    quote_context = research_quote_context(symbol, run["trade_date"], market)
-                    initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote_context
-                    if config.get("exclude_fred"):
+                    quote_context = result.get("quote_context") or research_quote_context(symbol, run["trade_date"], market)
+                    if "initial" not in saved:
+                        initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote_context
+                    if config.get("exclude_fred") and "initial" not in saved:
                         initial["instrument_context"] += "\nFRED macro data excluded by operator for this run during provider maintenance. Macro coverage is unverified; do not claim complete macro coverage."
                     with self.store.lock:
                         result["quote_context"] = quote_context
                         result["desk_execution_policy"] = initial["desk_execution_policy"]
                         self.store.save()
-                    self.store.record_portfolio_context(run_id, {
+                    if "initial" not in saved:
+                        self.store.record_portfolio_context(run_id, {
                         "schema_version": 1,
                         "run_id": run_id,
                         "analysis_date": run["trade_date"],
                         "account_id": market["account"]["id"],
                         "account_context": copy.deepcopy(run["account_context"]),
                         "portfolio": portfolio.model_dump(mode="json"),
-                    })
+                        })
                     account_context = run.get("account_context")
-                    if account_context:
+                    if account_context and "initial" not in saved:
                         initial["portfolio_context"] = (
                             f"{account_context['description']} Captured at {account_context['captured_at']}.\n"
                             + initial.get("portfolio_context", "")
                         )
+                    with self.store.lock:
+                        saved["initial"] = initial
+                        self.store.save()
+                    graph.begin_checkpoint(symbol, run["trade_date"], portfolio=portfolio, identity=saved["thread_id"])
                     graph_args = graph.propagator.get_graph_args()
-                    graph_args["config"] = {**graph_args.get("config", {}), "callbacks": [stats]}
+                    graph_args["config"] = {**graph_args.get("config", {}), "callbacks": [stats],
+                                            "configurable": {"thread_id": saved["thread_id"]}}
+                    graph_args["durability"] = "sync"
+                    snapshot = graph.graph.get_state(graph_args["config"], subgraphs=True)
+                    final.update(snapshot.values)
+                    if snapshot.metadata:
+                        remaining_steps = graph_config["max_recur_limit"] - max(0, snapshot.metadata.get("step", 0))
+                        if remaining_steps <= 0 and snapshot.next:
+                            raise ValueError("The original research graph step budget is exhausted.")
+                        graph_args["config"]["recursion_limit"] = max(1, remaining_steps)
                     next_stage("analysis")
-                    for messages, state in graph.stream_run(
-                        initial, **graph_args
-                    ):
+                    stream = (() if graph._resuming and not snapshot.next else
+                              graph.stream_run(graph.checkpoint_input(initial), **graph_args))
+                    for messages, state in stream:
                         if run_id in self.cancelled:
                             raise InterruptedError("Analysis stopped by operator.")
                         for message in messages:
@@ -1447,6 +1881,21 @@ class DeskService:
                                             result["reports"][key] = content
                                             result["revision"] += 1
                     next_stage("decision_persistence")
+                    if run["continuation"].get("blocked_reason"):
+                        raise ValueError(run["continuation"]["blocked_reason"])
+                    terminal = graph.graph.get_state(graph_args["config"], subgraphs=True)
+                    if terminal.next or terminal.interrupts:
+                        raise ValueError("Research checkpoint still has pending steps; continuation did not complete.")
+                    final.update(terminal.values)
+                    with self.store.lock:
+                        for key in (*REPORT_KEYS, "investment_debate_state", "risk_debate_state"):
+                            if final.get(key):
+                                content = (json.dumps(final[key], ensure_ascii=False, indent=2)
+                                           if key.endswith("_debate_state") else final[key])
+                                if result["reports"].get(key) != content:
+                                    result["reports"][key] = content
+                                    result["revision"] += 1
+                        self.store.save()
                     missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
                     if missing:
                         raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
@@ -1454,13 +1903,21 @@ class DeskService:
                                 if a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"} or a.get("capture_error")]
                     if failures or not run["source_evidence"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
+                    if any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False) for origin in ("gateway", "jev")):
+                        raise ValueError("Research incomplete: Gateway or Jev evidence capture failed.")
                     social = result["social_sentiment"]
                     if (set(social["sources"]) != {"stocktwits", "reddit"}
                             or any(s.get("status") not in {"completed", "empty"}
                                    or s.get("classified_count") != s.get("total_count")
                                    for s in social["sources"].values())):
                         raise ValueError("Research incomplete: not all fetched social posts were screened; inspect social coverage and errors.")
-                    graph.record_decision(symbol, run["trade_date"], final)
+                    for origin in ("source", "gateway", "jev"):
+                        self.store.finalize_call_evidence(run, origin, reason="symbol_terminal")
+                    if any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False)
+                           for origin in ("source", "gateway", "jev")):
+                        raise ValueError("Research incomplete: terminal evidence publication failed.")
+                    effect("local", "Record decision", "record-decision", {"final": {key: value for key, value in final.items() if key != "messages"}},
+                           lambda: graph.record_decision(symbol, run["trade_date"], final), interruptible=False)
                     rating = run_rating(final)
                     if run_id in self.cancelled:
                         raise InterruptedError("Analysis stopped by operator.")
@@ -1485,7 +1942,9 @@ class DeskService:
                     break
                 except Exception as exc:
                     with self.store.lock:
-                        result.update(status="failed", error=str(exc)[:600])
+                        resumable = bool(result.get("continuation", {}).get("thread_id"))
+                        result.update(status="interrupted" if resumable else "failed", error=str(exc)[:600])
+                        run["error"] = str(exc)[:600]
                         self.store.save()
                     self._event(run_id, "error", str(exc)[:600], symbol)
                     if isinstance(exc, GatewayRateLimited):
@@ -1494,7 +1953,11 @@ class DeskService:
                             run["error"] = str(exc)
                             run["retry_at"] = (datetime.now(UTC) + timedelta(seconds=exc.retry_after)).isoformat()
                         break
+                    if resumable:
+                        break
                 finally:
+                    if graph is not None:
+                        graph.end_checkpoint()
                     next_stage(None)
                     with self.store.lock:
                         result["elapsed_seconds"] = round((datetime.now(UTC) - started).total_seconds(), 3)
@@ -1506,8 +1969,8 @@ class DeskService:
                     if run_id in self.cancelled
                     else (
                         "completed"
-                        if all(r["status"] == "completed" for r in run["results"])
-                        else "failed"
+                        if len(run["results"]) == len(run["symbols"]) and all(r["status"] == "completed" for r in run["results"])
+                        else "interrupted" if any(r["status"] == "interrupted" for r in run["results"]) else "failed"
                     )
                 )
                 run["completed_at"] = now()
@@ -1526,6 +1989,9 @@ class DeskService:
             if run["status"] not in {"queued", "running", "cancelling"}:
                 raise ValueError("This analysis is no longer running.")
             self.cancelled.add(run_id)
+            run.setdefault("cancel_requested_at", now())
+            if run.get("continuation"):
+                run["continuation"]["revision"] += 1
             run["status"] = "cancelling"
             self.store.save()
         return {
@@ -1536,7 +2002,121 @@ class DeskService:
     def propose(self, run_id):
         raise ValueError("Order creation unavailable: no Nautilus sizing policy is configured.")
 
+    def evaluations(self, identity=None):
+        from .approval_review import read_artifact
+        from .decision_journal import DEFAULT as REPORTING_DEFAULT
+        record = self.store.database.read("reporting", REPORTING_DEFAULT)
+        items = copy.deepcopy(record["data"].get("simulations", {}))
+        for item in items.values():
+            if item.get("session_id") != self.simulation_session and item["status"] in {"queued", "running"}:
+                item.update(status="interrupted", error="Service stopped; this simulation is not resumed automatically")
+        if identity:
+            item = items[identity]
+            for kind in ("preview", "result"):
+                if item.get(kind + "_artifact"):
+                    value = read_artifact(self.store.directory, item[kind + "_artifact"])
+                    if value is None:
+                        raise ValueError("Saved simulation evidence is unavailable or changed")
+                    item[kind] = {key: val for key, val in value.items() if key != "bars"}
+            return item
+        from .investor import DEFAULT as INVESTOR_DEFAULT
+        from .market_history import DEFAULT as HISTORY_DEFAULT
+        proposals = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
+        histories = self.store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"]
+        return {"items": list(items.values()), "proposals": [{key: p[key] for key in
+            ("id", "revision", "updated_at", "terms", "terms_sha256")} for p in proposals],
+            "histories": [{key: h.get(key) for key in ("key", "symbol", "start", "end", "captured_at", "adjustment", "complete")}
+                          for h in histories.values() if self.data_jobs.timeframe(h) == "1Day"]}
+
+    def evaluation_action(self, request):
+        from .approval_review import read_artifact
+        from .decision_journal import DEFAULT as REPORTING_DEFAULT
+        from .evaluation import execute, prepare, reference
+        from .investor import DEFAULT as INVESTOR_DEFAULT
+        from .market_history import DEFAULT as HISTORY_DEFAULT
+        store = self.store
+        def save(item):
+            store.database.transact({"reporting": REPORTING_DEFAULT},
+                lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
+        action = request.get("action")
+        if action == "preview":
+            proposal = next((p for p in store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
+                             if p["id"] == request.get("proposal_id")), None)
+            if proposal is None:
+                raise ValueError("Choose an existing saved proposal")
+            meta = store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"].get(request.get("history_key"))
+            if not meta or self.data_jobs.timeframe(meta) != "1Day":
+                raise ValueError("Choose existing saved daily history")
+            history_ref = reference(meta.get("last_usable_artifact") or meta.get("artifact"))
+            history = read_artifact(store.directory, history_ref)
+            if history is None:
+                raise ValueError("Saved history evidence is unavailable or changed")
+            history["artifact"] = history_ref
+            provenance = history.get("required_coverage", {}).get("provenance", {})
+            calendar = read_artifact(store.directory, reference(provenance.get("calendar_reference")))
+            instrument = read_artifact(store.directory, reference(provenance.get("instrument_reference")))
+            if calendar is None or not isinstance(instrument, dict) or instrument.get("symbol") != proposal["terms"]["symbol"]:
+                raise ValueError("Saved calendar/instrument evidence is unavailable, changed or mismatched")
+            spec = prepare(proposal, history, request, calendar=calendar)
+            identity = str(uuid4())
+            save({"id": identity, "kind": "simulation", "status": "preview", "created_at": datetime.now(UTC).isoformat(),
+                "proposal": spec["proposal"], "spec_sha256": spec["spec_sha256"],
+                "preview_artifact": store._write_json_artifact(identity, "simulation-preview", spec)})
+            return self.evaluations(identity)
+        if action != "run" or self.simulation_closed:
+            raise ValueError("Choose Preview or explicitly Run simulation")
+        item = self.evaluations(request.get("id"))
+        if item["status"] != "preview" or request.get("spec_sha256") != item["spec_sha256"]:
+            raise ValueError("Run only the exact saved preview once; create a new preview for another scenario")
+        spec = read_artifact(store.directory, item["preview_artifact"])
+        if spec is None:
+            raise ValueError("Saved simulation preview is unavailable or changed")
+        item.pop("preview", None)
+        session = self.simulation_session
+        item.update(status="queued", session_id=session)
+        save(item)
+        def run():
+            with self.maintenance:
+                if self.store is not store or self.simulation_closed or session != self.simulation_session:
+                    return
+                item.update(status="running")
+                save(item)
+            try:
+                result = execute(spec, self.runtime.python,
+                    lambda process, active: self._simulation_process(process, active, store, session))
+            except Exception as error:
+                result = {"kind": "simulation", "status": "failed", "spec_sha256": spec["spec_sha256"],
+                          "error": type(error).__name__ + ": " + str(error)}
+            with self.maintenance:
+                if self.store is not store or self.simulation_closed or session != self.simulation_session:
+                    return
+                item.update(status=result["status"], finished_at=datetime.now(UTC).isoformat(),
+                    result_artifact=store._write_json_artifact(item["id"], "simulation-result", result))
+                save(item)
+        queued = copy.deepcopy(item)
+        self.simulation_executor.submit(run)
+        return queued
+
+    def _simulation_process(self, process, active, store, session):
+        with self.simulation_process_lock:
+            if active and not self.simulation_closed and self.store is store and session == self.simulation_session:
+                self.simulation_processes.add(process)
+            else:
+                self.simulation_processes.discard(process)
+                if active and process.poll() is None:
+                    process.terminate()
+
+    def _stop_simulations(self, *, closing=False):
+        with self.simulation_process_lock:
+            self.simulation_closed = closing
+            self.simulation_session = str(uuid4())
+            for process in self.simulation_processes:
+                if process.poll() is None:
+                    process.terminate()
+
     def close(self):
+        self._stop_simulations(closing=True)
+        self.simulation_executor.shutdown(wait=False, cancel_futures=True)
         self.attention_monitor.close()
         self.data_jobs.close()
         self.runtime.stop()

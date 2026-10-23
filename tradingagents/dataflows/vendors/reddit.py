@@ -16,6 +16,7 @@ raising, so callers never special-case missing data.
 
 from __future__ import annotations
 
+import hashlib
 import html
 import http.client
 import logging
@@ -333,12 +334,13 @@ def fetch_reddit_posts(
         sub_posts = sub_posts[:limit_per_sub] if limit_per_sub is not None else sub_posts
         lines = [f"r/{sub} — {len(sub_posts)} recent posts mentioning {ticker.upper()}:"]
         for p in sub_posts:
+            text_id = hashlib.sha256(f"{p.get('title') or ''}\n{p.get('selftext') or ''}".encode()).hexdigest()
             title = (p.get("title") or "").replace("\n", " ").strip()
             created = p.get("created_utc")
             created_str = time.strftime("%Y-%m-%d", time.gmtime(created)) if created else "?"
             selftext = (p.get("selftext") or "").replace("\n", " ").strip()
             lines.append(
-                f"  [{created_str}] {title}"
+                f"  [reddit:{text_id}] [{created_str}] {title}"
                 + (f"\n    body: {selftext}" if selftext else "")
                 + (f"\n    Source: {p['url']}" if p.get("url") else "")
             )

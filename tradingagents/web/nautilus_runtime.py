@@ -107,6 +107,8 @@ class NautilusRuntime:
             status = self.state()["status"]
             if status not in {"connected", "starting"}:
                 raise ValueError("A connected Nautilus node is required")
+            if command == "native_report" and status != "connected":
+                raise ValueError("A current connected native node is required for reports")
             self.pending[request_id] = target
             try:
                 self.process.stdin.write(json.dumps({"command": command, "request_id": request_id, **fields}) + "\n")
@@ -118,6 +120,11 @@ class NautilusRuntime:
             reply = target.get(timeout=45)
             if reply.get("error"):
                 raise ValueError(reply["error"])
+            if command == "native_report":
+                current = self.state()
+                if (reply.get("read_only") is not True or current["status"] != "connected"
+                        or reply.get("native_report", {}).get("native_epoch") != current.get("native_epoch")):
+                    raise ValueError("Native report capture no longer belongs to the current connected node")
             return reply
         except queue.Empty:
             raise ValueError("Nautilus did not acknowledge the command within 45 seconds") from None
@@ -137,6 +144,9 @@ class NautilusRuntime:
                 if time.monotonic() - self.received > 5 or age > 90:
                     state.update(status="stale", error="Nautilus heartbeat or account snapshot is stale")
             state["desired_symbols"] = list(self.symbols)
+            if state["status"] != "connected":
+                state["native_risk"] = {**state.get("native_risk", {}), "status": "unavailable", "values": None,
+                                        "reason": "Native node is " + state["status"]}
             state.setdefault("persistence", {"configured": False, "state": "in_memory", "backing": "memory", "restore_ready": False, "durable_writes_confirmed": False})
             return state
 

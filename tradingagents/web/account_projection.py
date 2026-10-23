@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from .linked_orders import native_type, native_trail
+
 
 def history_scope(observed):
     history = observed.get("recovery_history") or {}
@@ -81,11 +83,20 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
         if not reason and (Decimal(native["quantity"]) + offset != Decimal(row["qty"])
                            or Decimal(native["filled_qty"]) + offset != Decimal(row["filled_qty"])):
             reason = "Native order quantities differ from broker observation"
-        expected_status = {"new": "ACCEPTED", "accepted_for_bidding": "ACCEPTED",
+        expected_status = {"new": "ACCEPTED", "held": "ACCEPTED", "done_for_day": "ACCEPTED", "accepted_for_bidding": "ACCEPTED",
                            "pending_new": "SUBMITTED", "pending_replace": "PENDING_UPDATE"}.get(row.get("status"), str(row.get("status", "")).upper())
         if expected_status == "PARTIALLY_FILLED" and row.get("native_replacement_quantity_binding") and Decimal(row["filled_qty"]) == offset:
             expected_status = "ACCEPTED"
+        if row.get("status") == "done_for_day" and Decimal(row["filled_qty"]) > offset:
+            expected_status = "PARTIALLY_FILLED"
         expected_tif = {"opg": "AT_THE_OPEN", "cls": "AT_THE_CLOSE"}.get(row.get("time_in_force"), str(row.get("time_in_force", "")).upper())
+        if not reason:
+            from .linked_orders import broker_session
+            try:
+                if ("extended_hours" in (native.get("tags") or [])) != (broker_session(row) == "extended"):
+                    reason = "Native session eligibility differs from broker observation"
+            except ValueError as exc:
+                reason = str(exc)
         authorized_pending, before = False, {}
         command = next((c for c in (commands or {}).values() if row["id"] in c.get("broker_order_ids", [])
                         and c.get("account_id") == broker_id and c.get("instrument_id") == row.get("symbol", "") + ".ALPACA"
@@ -106,15 +117,30 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
         except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
             authorized_pending = False
         if not reason and (native.get("side") != row["side"].upper()
-                           or native.get("type") != row["type"].upper()
+                           or native.get("type") != native_type(row["type"])
                            or native.get("status") != expected_status and not authorized_pending or native.get("time_in_force") != expected_tif):
             reason = "Native order side/type/status/TIF differs from broker observation"
         if not reason:
+            if row.get("type") == "trailing_stop":
+                try:
+                    offset, unit = native_trail({"order_type": "TRAILING_STOP_MARKET", "quantity": row["qty"], "side": row["side"].upper(),
+                        "time_in_force": row["time_in_force"].upper(), "trail_price": row.get("trail_price"), "trail_percent": row.get("trail_percent")})
+                    if Decimal(str(native.get("trailing_offset"))) != offset or native.get("trailing_offset_type") != unit:
+                        reason = "Native initial trailing distance differs from broker observation"
+                    if (row.get("stop_price") is None) != (native.get("trigger_price") is None):
+                        reason = "Native or broker current trailing trigger is unavailable"
+                except (ValueError, TypeError, ArithmeticError):
+                    reason = "Native or broker trailing distance is unavailable or unsupported"
             expected_price, actual_price = row.get("limit_price"), native.get("price")
             if (expected_price is None) != (actual_price is None):
                 reason = "Native or broker order price is unavailable"
             elif expected_price is not None and Decimal(str(expected_price)) != Decimal(str(actual_price)):
                 reason = "Native limit price differs from broker observation"
+            if row.get("stop_price") is not None:
+                if native.get("trigger_price") is None:
+                    reason = "Native stop trigger is unavailable"
+                elif Decimal(str(row["stop_price"])) != Decimal(str(native["trigger_price"])):
+                    reason = "Native stop trigger differs from broker observation"
             if row.get("filled_avg_price") is not None:
                 average = native.get("avg_px")
                 if average is None or Decimal(str(average)) != Decimal(str(row["filled_avg_price"])):

@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from tradingagents.agents.analysts.turn import request_inputs, take_turn
+from tradingagents.agents.analysts.turn import request_inputs, research_memory_guidance, take_turn
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
 from tradingagents.agents.tools import get_indicators, get_stock_data, get_verified_market_snapshot
 from tradingagents.dataflows.vendors.yahoo.snapshot import DEFAULT_SNAPSHOT_INDICATORS
@@ -77,9 +77,11 @@ Volume-Based Indicators:
 - Select indicators that provide diverse and complementary information. Avoid redundancy (e.g., do not select both rsi and stochrsi). Also briefly explain why they are suitable for the given market context. When you tool call, please use the exact name of the indicators provided above as they are defined parameters, otherwise your call will fail. Please make sure to call get_stock_data first to retrieve the CSV that is needed to generate indicators. Then use get_indicators with the specific indicator names.
 
 A verified market snapshot has already been fetched for this ticker and date. Treat it as the source of truth for any exact OHLCV, price-level, or indicator-value claim. If another tool's output conflicts with the verified snapshot, flag the discrepancy rather than inventing a reconciled number. Do not claim historical validation, support/resistance bounces, or exact percentage moves unless they are directly supported by tool output with concrete dates and prices.
+Ground session-movement and streak claims in the snapshot's dated close-to-close directions, citing the dates and closes. A net gain does not establish consecutive up sessions. Do not describe rows spanning excluded bars as consecutive sessions; disclose incomplete or unverified session coverage.
 
 Write a very detailed and nuanced report of the trends you observe. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."""
             + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
+            + research_memory_guidance(tools)
             + get_language_instruction()
         )
 

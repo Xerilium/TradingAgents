@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from numbers import Integral, Real
+from math import isfinite
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -30,10 +32,12 @@ def main():
     adapter_spec.loader.exec_module(adapter_module)
     from _tradingagents_native_adapter.execution_lifecycle import ExecutionLifecycle
     from _tradingagents_native_adapter.native_recovery import collect_history
-    from alpaca_readonly import read, trading_endpoint
+    from _tradingagents_native_adapter.linked_orders import flatten_orders, native_order, native_group, native_observation, LIVE, equity_quantity, asset_session_flags
+    from _tradingagents_native_adapter.alpaca_readonly import AlpacaREST, ConnectionConfig
     from _tradingagents_native_adapter.alpaca_reports import fill_report, order_report, position_report, timestamp, execution_id, native_quantities, market_replacement_binding
-    from account_projection import reconcile, history_scope
+    from _tradingagents_native_adapter.account_projection import reconcile, history_scope
     from nautilus_trader import __version__, __file__ as native_package_file
+    import pandas as pd
     from _tradingagents_native_adapter.native_types import (
         AccountBalance, AccountId, AccountType, Currency, Equity, InstrumentId,
         Money, OmsType, OrderSide, Price, Quantity, QuoteTick, Symbol, TimeInForce, Venue,
@@ -54,15 +58,12 @@ def main():
     native_epoch = str(uuid4())  # One identity per actual worker/native-node process, not per web adapter.
     venue, usd = Venue("ALPACA"), Currency.from_str("USD")
     startup = json.loads(sys.stdin.readline())
-    endpoint = trading_endpoint(sys.argv[1])
+    connection = ConnectionConfig.load(sys.argv[1])
+    transport = AlpacaREST(sys.argv[1], connection=connection)
+    endpoint = connection.endpoint
 
     def diagnose(exc):
-        message = str(exc)
-        for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
-            if "=" in line and not line.lstrip().startswith("#"):
-                secret = line.split("=", 1)[1].strip().strip("\"'")
-                if secret:
-                    message = message.replace(secret, "[redacted]")
+        message = connection.redact(str(exc))
         print(type(exc).__name__ + ": " + message[:1200], file=sys.stderr, flush=True)
         traceback.print_tb(exc.__traceback__, limit=8, file=sys.stderr)
     persistence_status = {"configured": False, "state": "in_memory", "backing": "memory",
@@ -72,7 +73,7 @@ def main():
     desired = list(startup["symbols"])
     authority_database = startup.get("authority_database")
     instrument_id = lambda symbol: InstrumentId.from_str(f"{symbol}.ALPACA")
-    initial_account = read("/v2/account", sys.argv[1])
+    initial_account = transport.read("/v2/account")
     account_id = AccountId("ALPACA-" + initial_account["id"])
     observed = {"account": None, "account_at": None, "error": None, "market_open": None,
                 "positions": [], "orders": [], "fills": [], "gaps": [], "lookback_start": None}
@@ -88,7 +89,7 @@ def main():
     async def get(path, *, data=False):
         # No method/body input exists at this boundary. Never import the proof strategy.
         try:
-            return await asyncio.to_thread(read, path, sys.argv[1], data=data)
+            return await asyncio.to_thread(transport.read, path, data=data)
         except Exception as exc:
             if data:
                 raise
@@ -106,16 +107,26 @@ def main():
             self.last_attempt, self.retry_at, self.last_symbols = 0, 0, ()
             self.checked_at = None
             self.asset_metadata = {a["symbol"]: a for a in await get("/v2/assets?status=active&asset_class=us_equity")}
+            self.asset_metadata = {symbol: {**asset, **asset_session_flags(asset)} for symbol, asset in self.asset_metadata.items()}
+            self.asset_observed_at = datetime.now(UTC).isoformat()
             self.assets = set(self.asset_metadata)
             self.register(desired)
             self.task = self.create_task(self.poll(), "read-only-index-prices")
 
-        def register(self, symbols):
+        def register(self, symbols, *, observed=False, fractional_observation=False):
             stamp = self.clock.timestamp_ns()
             for symbol in symbols:
-                if symbol in self.assets and self.cache.instrument(instrument_id(symbol)) is None:
+                asset = self.asset_metadata.get(symbol, {})
+                metadata = {key: asset.get(key) for key in ("id", "symbol", "class", "exchange", "status", "tradable", "fractionable",
+                                                          "overnight_tradable", "overnight_halted", "fractional_eh_enabled", "attributes")}
+                prior = self.cache.instrument(instrument_id(symbol))
+                fractional = asset.get("fractionable") is True or fractional_observation or prior is not None and prior.size_precision == 9
+                if (symbol in self.assets or observed) and (prior is None or fractional and prior.size_precision != 9
+                        or (prior.info or {}).get("alpaca_asset") != metadata):
                     self._handle_instrument(Equity(instrument_id(symbol), Symbol(symbol), usd, 2,
-                        Price.from_str("0.01"), stamp, stamp, lot_size=Quantity.from_str("1")))
+                        Price.from_str("0.01"), stamp, stamp, lot_size=Quantity.from_str("1"), fractional_precision=fractional,
+                        info={"alpaca_asset": metadata, "asset_observed_at": self.asset_observed_at,
+                              "asset_source": "/v2/assets?status=active&asset_class=us_equity"}))
 
         async def _subscribe_quotes(self, command):
             self.wake.set()
@@ -227,6 +238,156 @@ def main():
                 "pending_event": {"type": type(event).__name__, "id": str(event.id), "ts_event": event.ts_event,
                                   "prior_ids": [str(item.id) for item in order.events[:-1]]} if pending else None}
 
+    def risk_snapshot(connected):
+        result = {"source": "node.kernel.risk_engine public getters", "native_epoch": native_epoch,
+                  "captured_at": datetime.now(UTC).isoformat(), "engine_version": __version__,
+                  "status": "unavailable", "values": None}
+        if not connected or retained_node[0] is None:
+            return {**result, "reason": "A connected native node is required"}
+        try:
+            risk = retained_node[0].kernel.risk_engine
+            submit, modify = risk.max_order_submit_rate(), risk.max_order_modify_rate()
+            result.update(status="available", values={"bypassed": bool(risk.is_bypassed),
+                "trading_state": enum_name(risk.trading_state),
+                "submit_rate": {"commands": submit[0], "interval_ns": str(pd.Timedelta(submit[1]).value)},
+                "modify_rate": {"commands": modify[0], "interval_ns": str(pd.Timedelta(modify[1]).value)},
+                "max_notional_per_order": [{"instrument_id": str(instrument), "amount": str(amount) if amount is not None else None}
+                    for instrument, amount in risk.max_notionals_per_order().items()],
+                "notional_scope": "Empty means no configured per-instrument caps; null amount means explicitly disabled"})
+        except (ValueError, TypeError, AttributeError, RuntimeError, OverflowError) as exc:
+            result["reason"] = "Native risk getters unavailable (" + type(exc).__name__ + ")"
+        return result
+
+    def report_cell(value):
+        if value is None or isinstance(value, (str, bool)):
+            return value
+        if isinstance(value, dict):
+            return {str(key): report_cell(item) for key, item in value.items()}
+        if isinstance(value, (tuple, list)):
+            return [report_cell(item) for item in value]
+        if pd.isna(value):
+            return None
+        if isinstance(value, (pd.Timestamp, datetime)):
+            stamp = pd.Timestamp(value)
+            return {"iso": stamp.isoformat(), "unix_ns": str(stamp.value)}
+        if isinstance(value, (Decimal, Integral, Real)):
+            if not isfinite(value):
+                raise ValueError("Native table contains a nonfinite number")
+            return str(value)
+        raise TypeError("Unsupported native table cell: " + type(value).__name__)
+
+    def native_report(node, kind):
+        generators = {"orders": node.trader.generate_orders_report,
+            "order_fills": node.trader.generate_order_fills_report, "fills": node.trader.generate_fills_report,
+            "positions": node.trader.generate_positions_report,
+            "account": lambda: node.trader.generate_account_report(account_id=account_id)}
+        if not isinstance(kind, str) or kind not in generators:
+            raise ValueError("Choose native report orders, order_fills, fills, positions or account")
+        context = runtime_snapshot(node.cache, include_market_data=False)
+        if context["status"] != "connected":
+            raise ValueError("A connected native node is required to capture a native report")
+        frame = generators[kind]()
+        account_context = {"account_id": str(account_id) if account_id is not None else None, "broker_account_id": context["account"]["id"],
+            "endpoint": context["endpoint"], "mode": context["connection_identity"]["observed_mode"]}
+        lifecycles = []
+        if kind == "positions":
+            execution = clients["execution"]
+            reports, sources = {}, {}
+            source_orders = {row["id"]: row for row in observed.get("order_history", [])}
+            for report in execution.fill_reports:
+                reports.setdefault(execution_id(report.trade_id), []).append(report)
+            for source in context["fills"]:
+                sources.setdefault(execution_id(source.get("execution_id") or source["id"]), []).append(source)
+            for snapshot, positions in ((False, node.cache.positions(account_id=account_id)),
+                                        (True, node.cache.position_snapshots(account_id=account_id))):
+                for position in positions:
+                    raw, events, gaps = report_cell(native_dict(position)), [], []
+                    identity = {**account_context, "position_id": str(position.id) if position.id is not None else None,
+                        "instrument_id": str(position.instrument_id) if position.instrument_id is not None else None,
+                        "opening_order_id": str(position.opening_order_id) if position.opening_order_id is not None else None,
+                        "ts_opened": str(position.ts_opened) if position.ts_opened is not None else None}
+                    for event in position.events:
+                        fill_id = execution_id(event.trade_id) if event.trade_id is not None else None
+                        matches, evidence = reports.get(fill_id, []), sources.get(fill_id, [])
+                        matched, validated_source = False, None
+                        if len(matches) == len(evidence) == 1:
+                            try:
+                                require_fill_match(matches[0], event)
+                                validated_source = dict(evidence[0])
+                                source_report = fill_report(validated_source, source_orders[validated_source["order_id"]], account_id, usd,
+                                    time.time_ns(), endpoint=endpoint, account=execution.fee_model_account,
+                                    linked=execution.recovery_fee_sources.get(fill_id))
+                                require_fill_match(source_report, event)
+                                matched = True
+                            except (ValueError, KeyError, TypeError, ArithmeticError):
+                                pass
+                        if not matched:
+                            gaps.append("Fill " + fill_id + ": capture lacks one exact native report and broker source match")
+                        native_order = node.cache.order(event.client_order_id) if event.client_order_id is not None else None
+                        order_state = native_dict(native_order) if native_order is not None else None
+                        events.append({"fill_id": fill_id, "event_id": str(event.id) if event.id is not None else None,
+                            "client_order_id": str(event.client_order_id) if event.client_order_id is not None else None,
+                            "broker_order_id": str(event.venue_order_id) if event.venue_order_id is not None else None,
+                            "account_id": str(event.account_id) if event.account_id is not None else None,
+                            "instrument_id": str(event.instrument_id) if event.instrument_id is not None else None, "side": enum_name(event.order_side),
+                            "quantity": str(event.last_qty.as_decimal()), "price": str(event.last_px.as_decimal()), "ts_event": str(event.ts_event),
+                            "commission": None if event.commission is None else {"amount": str(event.commission.as_decimal()), "currency": str(event.commission.currency)},
+                            "role": "entry_or_increase" if event.order_side == position.entry else "exit_or_reduce",
+                            "order_as_of_capture": None if order_state is None else {key: order_state.get(key) for key in
+                                ("type", "status", "quantity", "filled_qty", "order_list_id", "parent_order_id", "linked_order_ids", "ts_last")},
+                            "source_matched": matched, "source": report_cell(validated_source or evidence[0]) if len(evidence) == 1 else None,
+                            "source_receipt": (context.get("recovery_history") or {}).get("evidence")})
+                    mark, unrealized, total = None, None, position.realized_pnl if position.is_closed else None
+                    if position.is_open and not snapshot:
+                        quote, trade = node.cache.quote_tick(position.instrument_id), node.cache.trade_tick(position.instrument_id)
+                        if quote is not None:
+                            price = quote.bid_price if enum_name(position.side) == "LONG" else quote.ask_price
+                            tick, basis = quote, "cached_bid" if enum_name(position.side) == "LONG" else "cached_ask"
+                        else:
+                            tick, basis, price = trade, "cached_last_trade", trade.price if trade is not None else None
+                        if price is not None:
+                            mark = {"price": str(price.as_decimal()), "basis": basis, "ts_event": str(tick.ts_event), "ts_init": str(tick.ts_init)}
+                            cached = getattr(clients.get("data"), "observations", {}).get(str(position.instrument_id).removesuffix(".ALPACA"), {})
+                            mark.update(provider=cached.get("provider"), feed=cached.get("feed"), declared_feed=context.get("feed"),
+                                source_snapshot=report_cell(cached.get("latestQuote" if quote is not None else "latestTrade")),
+                                provenance="Cached source fields only; missing provider/feed remain unknown, declared feed is not publisher verification")
+                            if tick.ts_event < position.ts_last:
+                                gaps.append("Cached mark predates the latest position event; keep the dated native estimate, capture again before claiming complete net")
+                            pnl = position.unrealized_pnl(price)
+                            unrealized = {"amount": str(pnl.as_decimal()), "currency": str(pnl.currency)}
+                            total = position.total_pnl(price)
+                        else:
+                            gaps.append("Open position has no dated cached mark; explicitly capture again after market data becomes available")
+                    elif position.is_open:
+                        gaps.append("Historical open snapshot has no same-time mark; unrealized PnL is not reconstructed")
+                    if position.adjustments:
+                        gaps.append("Native position includes non-fill adjustments; their source/cost attribution requires review")
+                    lifecycles.append({"identity": identity, "is_snapshot": snapshot, "native_position": raw,
+                        "events": events, "client_order_ids": [str(value) if value is not None else None for value in position.client_order_ids],
+                        "broker_order_ids": [str(value) if value is not None else None for value in position.venue_order_ids],
+                        "fill_ids": [execution_id(value) if value is not None else None for value in position.trade_ids],
+                        "adjustment_ids": [str(value.id) for value in position.adjustments],
+                        "realized_pnl": None if position.realized_pnl is None else {"amount": str(position.realized_pnl.as_decimal()), "currency": str(position.realized_pnl.currency)},
+                        "native_total_pnl": None if total is None else {"amount": str(total.as_decimal()), "currency": str(total.currency)},
+                        "unrealized_pnl": unrealized, "mark": mark,
+                        "commissions": [{"amount": str(value.as_decimal()), "currency": str(value.currency)} for value in position.commissions()], "gaps": gaps})
+        return {"report_kind": kind, "generator": "node.trader.generate_" + kind + "_report",
+            "account_context": account_context, "position_lifecycles": lifecycles,
+            "native_epoch": native_epoch, "captured_at": datetime.now(UTC).isoformat(), "engine_version": __version__,
+            "cache_scope": "current_native_cache", "row_count": len(frame), "complete_table": True,
+            "index_names": list(frame.index.names), "index": [report_cell(value) for value in frame.index],
+            "columns": [str(value) for value in frame.columns],
+            "data": [[report_cell(value) for value in row] for row in frame.itertuples(index=False, name=None)],
+            "reconciliation": context["reconciliation"], "recovery_coverage": context.get("recovery_history"),
+            "persistence": context["persistence"], "fee_provenance": {
+                "native_contract": context["native_contract"],
+                "fill_sources": [{"fill_id": fill.get("id"), "actual_commission": fill.get("commission"),
+                    "native_fee": fill.get("native_fee"), "native_application": fill.get("native_application")} for fill in context["fills"]]},
+            "limitations": ["Native cached tables are separate from broker actual performance and simulations",
+                "Complete table does not establish complete account history or resolved reconciliation",
+                "Native modeled fees do not establish actual fees; absent actual commission remains unknown",
+                "Numeric cells are strings; upstream floating-point values cannot regain lost precision"]}
+
     def runtime_snapshot(cache, *, include_market_data=True):
         account = cache.account(account_id)
         native_positions = [native_dict(p) for p in cache.positions_open()]
@@ -265,11 +426,22 @@ def main():
             trade = cache.trade_tick(instrument_id(symbol))
             prices[symbol] = {**observation,
                 "instrument": native_dict(instrument) if instrument else None,
+                "fractionable": getattr(data, "asset_metadata", {}).get(symbol, {}).get("fractionable"),
+                "asset_observed_at": getattr(data, "asset_observed_at", None),
+                "session_eligibility": {**{key: value if type(value := getattr(data, "asset_metadata", {}).get(symbol, {}).get(key)) is bool else None
+                    for key in ("overnight_tradable", "overnight_halted", "fractionable", "fractional_eh_enabled")},
+                    "observed_at": getattr(data, "asset_observed_at", None), "source": "/v2/assets?status=active&asset_class=us_equity"},
                 "trade_supported": getattr(data, "asset_metadata", {}).get(symbol, {}).get("tradable") is True,
                 "quote": native_dict(quote) if quote and observation.get("latestQuote") else None,
                 "trade": native_dict(trade) if trade and observation.get("latestTrade") else None}
         connected = len(clients) == 2 and all(c.is_connected for c in clients.values()) and observed.get("account") is not None
         return {"status": "error" if observed["error"] else "connected" if connected else "starting",
+            "connection_session": native_epoch,
+            "connection_identity": {"configured_mode": connection.mode, "endpoint": endpoint,
+                "stream_endpoint": connection.stream_url, "account_id": initial_account["id"],
+                "observed_mode": connection.mode if connected and not observed["error"] else "unknown",
+                "mode_basis": "Official trading origin plus authenticated account observation", "credentials_pinned": True},
+            "native_risk": risk_snapshot(connected and not observed["error"]),
             "version": __version__, "native_epoch": native_epoch, "worker_pid": os.getpid(), "persistence": dict(persistence_status),
             "broker_observation": observed.get("broker_observation", {}),
             "native_import_gap": observed.get("native_import_gap"),
@@ -280,6 +452,8 @@ def main():
                 "blockers": list(getattr(clients.get("execution"), "reconciliation_blockers", ["Initial observation pending"]))},
             "updated_at": datetime.now(UTC).isoformat(),
             "account": observed["account"],
+            "account_configuration": observed.get("account_configuration", {"disable_overnight_trading": None,
+                "observed_at": None, "source": "/v2/account/configurations", "error": "Not observed"}),
             "positions": reconciliation["positions"], "orders": reconciliation["orders"],
             "fills": reconciliation["fills"], "reconciliation": reconciliation,
             "account_at": observed["account_at"], "market_open": observed["market_open"],
@@ -288,6 +462,7 @@ def main():
             "recovery_history": observed.get("recovery_history"),
             "native_recovery_action": observed.get("native_recovery_action"),
             "native_deliveries": clients["execution"].lifecycle.delivery_summary() if "execution" in clients and hasattr(clients["execution"], "lifecycle") else [],
+            "trade_stream": dict(execution.lifecycle.stream_status) if execution and hasattr(execution, "lifecycle") else {"state": "not_started"},
             "prices_checked_at": getattr(data, "checked_at", None),
             "error": observed["error"], "read_only": False, "endpoint": endpoint}
 
@@ -298,7 +473,7 @@ def main():
             self.history_cache = None
             self.recovery_fee_sources = {}
             self.last_observation = 0
-            self.lifecycle = ExecutionLifecycle(self, authority_database, sys.argv[1], lambda: runtime_snapshot(self.cache), lambda: getattr(clients["data"], "asset_metadata", {}), native_epoch=native_epoch)
+            self.lifecycle = ExecutionLifecycle(self, authority_database, sys.argv[1], lambda: runtime_snapshot(self.cache), lambda: getattr(clients["data"], "asset_metadata", {}), native_epoch=native_epoch, connection=connection)
             self.position_reports, self.order_reports, self.fill_reports = [], [], []
             self.reconciliation_blockers = ["Initial broker observation pending"]
             try:
@@ -322,8 +497,18 @@ def main():
                 account, positions, orders, clock = await asyncio.gather(
                     get("/v2/account"), get("/v2/positions"),
                     get("/v2/orders?status=open&limit=500&nested=true"), get("/v2/clock"))
+                open_response_count = len(orders)
+                orders = flatten_orders(orders)
                 if account["id"] != initial_account["id"]:
                     raise ValueError("Broker account identity changed; restart with the intended account")
+                try:
+                    config = await asyncio.to_thread(transport.read, "/v2/account/configurations")
+                    value = config.get("disable_overnight_trading")
+                    observed["account_configuration"] = {"disable_overnight_trading": value if type(value) is bool else None,
+                        "observed_at": datetime.now(UTC).isoformat(), "source": "/v2/account/configurations", "error": None}
+                except (HTTPError, URLError, TimeoutError, ValueError, TypeError, AttributeError) as exc:
+                    observed["account_configuration"] = {"disable_overnight_trading": None, "observed_at": None,
+                        "source": "/v2/account/configurations", "error": "Configuration observation unavailable (" + type(exc).__name__ + ")"}
                 self.fee_model_account = account
                 commands = self.lifecycle.authority().database.read("commands", {})["data"].get("commands", {})
                 current_symbols = {row["symbol"] for row in positions + orders}
@@ -331,7 +516,7 @@ def main():
                 current_symbols.update(row["symbol"] for row in commands.values() if row.get("account_id") == account["id"]
                     and (row.get("state") not in {"filled", "canceled", "rejected", "expired", "not_sent"} or row.get("native_pending_commitment")))
                 gaps, fills = [], []
-                if len(orders) == 500:
+                if open_response_count == 500:
                     gaps.append("Open-order response reached the provider limit; completeness is unverified")
                 fees = {}
                 try:
@@ -351,10 +536,10 @@ def main():
                 observed.update(account={key: account.get(key) for key in (
                     "id", "status", "currency", "cash", "equity", "trading_blocked", "buying_power",
                     "long_market_value", "multiplier", "shorting_enabled", "initial_margin", "maintenance_margin")},
-                    account_at=datetime.now(UTC).isoformat(), positions=positions, orders=orders,
+                    account_at=datetime.now(UTC).isoformat(), positions=positions, orders=[row for row in orders if row["status"] in LIVE],
                     fills=fills, market_open=clock["is_open"], gaps=gaps, lookback_start=cutoff, error=None,
                     broker_observation={"account_available": True, "positions_complete": True,
-                        "orders_complete": len(orders) < 500, "source": "Alpaca paper Trading API",
+                        "orders_complete": open_response_count < 500, "source": "Alpaca paper Trading API",
                         "observed_at": datetime.now(UTC).isoformat()})
                 if strategy_holder[0] is not None and strategy_holder[0].is_running:
                     strategy_holder[0].sync_markets()
@@ -393,6 +578,9 @@ def main():
                             native_fills[identity] = event
                 parent_ids = {fill["order_id"] for fill in scoped_fills} | {str(event.venue_order_id) for event in native_fills.values()}
                 pending = set(parent_ids) | set(by_order)
+                pending.update(identity for command in commands.values() if command.get("terms", {}).get("exit_plan")
+                               and command["symbol"] in current_symbols
+                               for identity in command.get("broker_order_ids", []))
                 visited = set()
                 while pending:
                     identity = pending.pop()
@@ -400,12 +588,17 @@ def main():
                         continue
                     visited.add(identity)
                     if identity not in by_order:
-                        response = await asyncio.to_thread(self.lifecycle.transport.read_receipt, "/v2/orders/" + identity)
+                        response = await asyncio.to_thread(self.lifecycle.transport.read_receipt, "/v2/orders/" + identity + "?nested=true")
                         self.lifecycle.receipt("native-recovery", "Alpaca fill-parent/replacement order", {"raw_response": response["raw"].decode()})
                         if response["data"].get("id") != identity:
                             raise ValueError("Fetched order identity differs")
-                        by_order[identity] = response["data"]
+                        for member in flatten_orders([response["data"]]):
+                            by_order[member["id"]] = member
+                            if member["id"] not in visited:
+                                pending.add(member["id"])
                     pending.update(value for value in (by_order[identity].get("replaces"), by_order[identity].get("replaced_by")) if value and value not in visited)
+                self.lifecycle.bind_group(list(by_order.values()))
+                commands = self.lifecycle.authority().database.read("commands", {})["data"].get("commands", {})
                 for row in by_order.values():
                     chain, root = set(), row
                     while root.get("replaces"):
@@ -420,7 +613,13 @@ def main():
                             raise ValueError("Replacement chain identity, economics or chronology differs")
                         predecessor["native_replacement_verified"] = True
                         root = predecessor
-                    row["native_client_order_id"] = row["client_order_id"] if row["type"] == "market" else root["client_order_id"]
+                    bound = next((command for command in commands.values() if root["id"] in command.get("broker_order_ids", [])
+                                  and command.get("linked_exit")), None)
+                    row["native_client_order_id"] = bound["native_client_order_id"] if bound else row["client_order_id"] if row["type"] == "market" else root["client_order_id"]
+                    if bound:
+                        row["native_child_order_binding"] = {"source": "broker_nested_group", "broker_order_id": row["id"],
+                            "broker_client_order_id": row["client_order_id"], "native_client_order_id": row["native_client_order_id"],
+                            "parent_order_id": row.get("group_parent_id")}
                     if row["type"] == "market" and row.get("replaces"):
                         row["native_replacement_quantity_binding"] = market_replacement_binding(row,
                             [by_order[identity] for identity in (chain | {root["id"]}) - {row["id"]}],
@@ -440,11 +639,16 @@ def main():
                                 command.update(native_client_order_id=row["client_order_id"],
                                     native_quantity_offset=binding["ancestor_filled_quantity"], native_replacement_quantity_binding=binding)
                 self.lifecycle.authority().transaction(bind_market_observations)
-                rows = positions + list(by_order.values())
+                rows = positions + list(by_order.values()) + [
+                    {**fill, "symbol": fill.get("symbol") or by_order.get(fill.get("order_id"), {}).get("symbol"), "asset_class": "us_equity"}
+                    for fill in scoped_fills if fill.get("symbol") in current_symbols or fill.get("order_id") in by_order]
                 for row in rows:
-                    if row.get("asset_class") == "us_equity" and self.cache.instrument(instrument_id(row["symbol"])) is None:
-                        clients["data"]._handle_instrument(Equity(instrument_id(row["symbol"]), Symbol(row["symbol"]),
-                            usd, 2, Price.from_str("0.01"), captured, captured, lot_size=Quantity.from_str("1")))
+                    if row.get("asset_class") == "us_equity":
+                        try:
+                            fractional = any(equity_quantity(row.get(key, "0"), zero=True) % 1 for key in ("qty", "filled_qty"))
+                        except ValueError:
+                            fractional = False
+                        clients["data"].register([row["symbol"]], observed=True, fractional_observation=fractional)
                 unique_fills = {}
                 for fill in scoped_fills:
                     identity = execution_id(fill.get("execution_id") or fill.get("id"))
@@ -491,6 +695,7 @@ def main():
                     self.position_reports.append(PositionStatusReport(account_id, missing, PositionSide.FLAT,
                         Quantity.from_str("0"), captured, captured))
                 observed["order_history"] = list(by_order.values())
+                observed["orders"] = [row for row in by_order.values() if row["status"] in LIVE]
                 self.recovery_fee_sources = {}
                 for report in self.fill_reports:
                     if report.commission is None or report.commission.currency != usd:
@@ -540,8 +745,8 @@ def main():
 
         async def observe_market_successor(self, row, predecessor, predecessor_row):
             quantity, filled = native_quantities(row)
-            if quantity != quantity.to_integral_value() or filled != filled.to_integral_value():
-                raise ValueError("Fractional MARKET successor quantity is outside the whole-share mapping")
+            equity_quantity(str(quantity))
+            equity_quantity(str(filled), zero=True)
             _, prior_filled = native_quantities(predecessor_row)
             if predecessor is None or predecessor.filled_qty.as_decimal() != prior_filled:
                 raise ValueError("MARKET predecessor requires all actual fills before supersession")
@@ -560,7 +765,7 @@ def main():
             if order is None:
                 order = strategy_holder[0].order_factory.market(instrument_id=instrument_id(row["symbol"]),
                     order_side=OrderSide.BUY if row["side"] == "buy" else OrderSide.SELL,
-                    quantity=Quantity.from_str(str(quantity.to_integral_value())), time_in_force=TimeInForce.DAY,
+                    quantity=Quantity.from_str(str(quantity)), time_in_force=TimeInForce.DAY,
                     client_order_id=identity, tags=["broker_replacement_observation"])
                 self.cache.add_order(order, client_id=self.client_id)
             if order.quantity.as_decimal() != quantity or order.instrument_id != predecessor.instrument_id or order.side != predecessor.side:
@@ -613,7 +818,7 @@ def main():
                         for identity in reversed(path):
                             successor = reports[identity]
                             self.generate_order_updated(order, successor.venue_order_id, successor.quantity, successor.price,
-                                None, False, timestamp(parents[identity]["created_at"]), venue_order_id_modified=True)
+                                successor.trigger_price, False, timestamp(parents[identity]["created_at"]), venue_order_id_modified=True)
                             await settled(lambda: order.venue_order_id == successor.venue_order_id)
 
                     for report in self.order_reports:
@@ -623,10 +828,8 @@ def main():
                             continue
                         order = self.cache.order(report.client_order_id)
                         if order is None:
-                            kwargs = dict(instrument_id=report.instrument_id, order_side=report.order_side,
-                                quantity=report.quantity, time_in_force=report.time_in_force, client_order_id=report.client_order_id,
-                                tags=["broker_observation"])
-                            order = factory.limit(**kwargs, price=report.price) if enum_name(report.order_type) == "LIMIT" else factory.market(**kwargs)
+                            row = parents[str(report.venue_order_id)]
+                            order = native_observation(factory, row, parents)
                             self.cache.add_order(order, client_id=self.client_id)
                         if order.instrument_id != report.instrument_id or order.side != report.order_side:
                             raise ValueError("Cached native order instrument or side conflicts")
@@ -682,7 +885,8 @@ def main():
                     self.generate_account_state([AccountBalance(cash, Money(0, usd), cash)], [], True, self.clock.timestamp_ns())
                     await settled(lambda: self.cache.account(account_id) is not None and self.cache.account(account_id).balance_total(usd).as_decimal() == cash.as_decimal())
                     observed.pop("native_import_gap", None)
-                    if self.lifecycle.resolve_market_replacement_receipts():
+                    linked_confirmed = self.lifecycle.confirm_linked_observations(list(parents.values()), observed.get("recovery_history", {}))
+                    if self.lifecycle.resolve_market_replacement_receipts() or linked_confirmed:
                         self.lifecycle.authority().reconcile()
                 except (ValueError, KeyError, TypeError, ArithmeticError) as exc:
                     observed["native_import_gap"] = str(exc)
@@ -785,6 +989,9 @@ def main():
         async def _submit_order(self, command):
             await self.lifecycle.submit(command)
 
+        async def _submit_order_list(self, command):
+            await self.lifecycle.submit_group(command, strategy_holder[0].order_factory)
+
         async def _cancel_order(self, command):
             await self.lifecycle.cancel(command)
 
@@ -840,12 +1047,11 @@ def main():
             native_id = ClientOrderId(durable.get("native_client_order_id", durable["client_order_id"]))
             params = {"durable_command_id": identity}
             if action == "submit":
-                kwargs = {"instrument_id": instrument_id(terms["symbol"]),
-                    "order_side": OrderSide.BUY if terms["side"] == "BUY" else OrderSide.SELL,
-                    "quantity": Quantity.from_str(terms["quantity"]), "time_in_force": TimeInForce.DAY,
-                    "client_order_id": native_id}
-                order = self.order_factory.limit(**kwargs, price=Price.from_str(terms["limit_price"])) if terms["order_type"] == "LIMIT" else self.order_factory.market(**kwargs)
-                self.submit_order(order, params=params)
+                lifecycle.checked_fractional_terms(terms)
+                if terms.get("exit_plan"):
+                    self.submit_order_list(native_group(self.order_factory, terms, str(native_id)), params=params)
+                else:
+                    self.submit_order(native_order(self.order_factory, terms, str(native_id)), params=params)
             elif action == "cancel":
                 order = self.cache.order(native_id)
                 lifecycle.native_action_intent(identity, durable["pending_action"]["id"], order_snapshot(order), [str(event.id) for event in order.events])
@@ -853,12 +1059,14 @@ def main():
             elif action == "replace":
                 replacement = lifecycle.command(durable["pending_action"]["replacement_command_id"], sending=True)
                 proposed = replacement["terms"]
+                lifecycle.checked_fractional_terms(proposed)
                 order = self.cache.order(native_id)
                 lifecycle.native_action_intent(identity, durable["pending_action"]["id"], order_snapshot(order), [str(event.id) for event in order.events])
                 source = next(row for row in observed["orders"] if row["id"] == durable["pending_action"]["broker_order_id"])
                 quantity = Decimal(proposed["quantity"]) - Decimal(str((source.get("native_replacement_quantity_binding") or {}).get("ancestor_filled_quantity", "0")))
-                self.modify_order(order, quantity=Quantity.from_str(str(quantity.to_integral_value())),
-                    price=Price.from_str(proposed["limit_price"]) if proposed["order_type"] == "LIMIT" else None, params=params)
+                self.modify_order(order, quantity=Quantity.from_str(str(quantity)),
+                    price=Price.from_str(proposed["limit_price"]) if proposed["order_type"] in {"LIMIT", "STOP_LIMIT"} else None,
+                    trigger_price=Price.from_str(proposed["stop_price"]) if proposed.get("stop_price") else None, params=params)
             else:
                 raise ValueError("Unsupported native command action")
 
@@ -875,7 +1083,14 @@ def main():
         async def receive(command):
             reply = {"type": "reply", "request_id": command.get("request_id"), "read_only": False}
             try:
-                if command.get("command") == "configure":
+                if command.get("command") == "native_report":
+                    reply["read_only"] = True
+                    try:
+                        reply["native_report"] = native_report(node, command.get("report_kind"))
+                    except Exception as exc:
+                        raise ValueError("Native report unavailable (" + type(exc).__name__ + "): " +
+                            (str(exc) if isinstance(exc, ValueError) else "generation or serialization failed")) from None
+                elif command.get("command") == "configure":
                     observer.configure(command["symbols"])
                 elif command.get("command") == "refresh":
                     await clients["data"].refresh()
@@ -885,13 +1100,18 @@ def main():
                     observer.dispatch(command["command_id"], command.get("action", "submit"))
                     reply["queued_in_native_engine"] = True
                 elif command.get("command") == "reconcile_identity":
-                    await clients["execution"].lifecycle.reconcile_identity(command["command_id"])
+                    try:
+                        await clients["execution"].lifecycle.reconcile_identity(command["command_id"])
+                    except (HTTPError, URLError, TimeoutError) as exc:
+                        detail = "HTTP " + str(exc.code) if isinstance(exc, HTTPError) else type(exc).__name__
+                        reply.update(error="Identity lookup connection/provider failure (" + detail + "); uncertainty is preserved",
+                                     failure_scope="connection_or_provider")
                 else:
                     raise ValueError("Unsupported native command")
             except (ValueError, KeyError, TypeError) as exc:
                 reply["error"] = str(exc)
             publish_once()
-            output.write(json.dumps(reply) + "\n")
+            output.write(json.dumps(reply, allow_nan=False) + "\n")
 
         def commands():
             for line in sys.stdin:

@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
+from .linked_orders import equity_quantity, native_trail
 
 from .native_types import (
     ClientOrderId, FillReport, InstrumentId, LiquiditySide, Money, OrderSide,
@@ -53,7 +54,7 @@ def fill_commission(row, order, account_id, currency, *, endpoint=None, account=
                 or str(account_id) != "ALPACA-" + str(account.get("id"))
                 or account.get("currency") != "USD" or str(currency) != "USD"
                 or order.get("asset_class") != "us_equity"
-                or order.get("order_class") not in (None, "", "simple") or order.get("legs")
+                or order.get("order_class") not in (None, "", "simple", "bracket", "oto", "oco")
                 or any(account.get(key) for key in ("broker_id", "partner_id", "elite", "is_elite"))):
             raise ValueError("Actual commission unavailable; documented paper simulation model is inapplicable")
         amount = "0"
@@ -81,8 +82,8 @@ def market_replacement_binding(row, ancestors, fills, history):
         identity = execution_id(fill.get("execution_id") or fill["id"])
         if identity in executions or fill.get("symbol") != row["symbol"] or fill.get("side") != row["side"]:
             raise ValueError("MARKET replacement execution identity or economics conflict")
-        quantity = Decimal(str(fill["qty"]))
-        if not quantity.is_finite() or quantity <= 0 or quantity != quantity.to_integral_value() or timestamp(fill["transaction_time"]) > timestamp(history["through"]):
+        quantity = equity_quantity(fill["qty"])
+        if timestamp(fill["transaction_time"]) > timestamp(history["through"]):
             raise ValueError("MARKET replacement execution quantity or time is invalid")
         executions[identity] = fill["order_id"]
         if fill["order_id"] == row["id"]:
@@ -140,9 +141,7 @@ def exact(factory, value):
 def eligible(row):
     if row.get("asset_class") != "us_equity":
         raise ValueError("Instrument class is observation-only; native equity mapping unavailable")
-    qty = Decimal(row["qty"])
-    if not qty.is_finite() or qty != qty.to_integral_value():
-        raise ValueError("Fractional quantity is preserved as an unsupported broker observation")
+    qty = equity_quantity(row["qty"])
     if row.get("side") == "short" or qty < 0:
         raise ValueError("Short exposure is observation-only for the current CASH import")
     return InstrumentId.from_str(row["symbol"] + ".ALPACA")
@@ -159,16 +158,19 @@ def position_report(row, account_id, ts_init):
 
 
 def order_report(row, account_id, ts_init):
+    from .linked_orders import broker_session
+    broker_session(row)
     instrument = eligible(row)
-    if row.get("order_class") not in {None, "", "simple"} or row.get("legs"):
-        raise ValueError("Compound order and nested legs are observation-only in this import slice")
-    statuses = {"new": "ACCEPTED", "accepted": "ACCEPTED", "pending_new": "SUBMITTED",
+    if row.get("order_class") not in {None, "", "simple", "bracket", "oto", "oco"} or row.get("legs"):
+        raise ValueError("Linked orders must be flattened from their authoritative broker relationship before import")
+    statuses = {"new": "ACCEPTED", "accepted": "ACCEPTED", "held": "ACCEPTED", "done_for_day": "ACCEPTED", "pending_new": "SUBMITTED",
                 "accepted_for_bidding": "ACCEPTED", "partially_filled": "PARTIALLY_FILLED",
                 "filled": "FILLED", "canceled": "CANCELED", "expired": "EXPIRED",
                 "rejected": "REJECTED", "pending_cancel": "PENDING_CANCEL", "pending_replace": "PENDING_UPDATE"}
     if row.get("status") == "replaced" and row.get("native_replacement_verified"):
         statuses["replaced"] = "CANCELED"
-    types = {"market": OrderType.MARKET, "limit": OrderType.LIMIT}
+    types = {"market": OrderType.MARKET, "limit": OrderType.LIMIT, "stop": OrderType.STOP_MARKET, "stop_limit": OrderType.STOP_LIMIT,
+             "trailing_stop": OrderType.TRAILING_STOP_MARKET}
     tifs = {"day": TimeInForce.DAY, "gtc": TimeInForce.GTC, "ioc": TimeInForce.IOC,
             "fok": TimeInForce.FOK, "opg": TimeInForce.AT_THE_OPEN, "cls": TimeInForce.AT_THE_CLOSE}
     if row.get("status") not in statuses or row.get("type") not in types or row.get("time_in_force") not in tifs:
@@ -180,28 +182,37 @@ def order_report(row, account_id, ts_init):
     filled = exact(Quantity.from_str, native_filled)
     if quantity.as_decimal() <= 0 or filled.as_decimal() > quantity.as_decimal():
         raise ValueError("Order filled quantity exceeds its total or total quantity is invalid")
-    if filled.as_decimal() != filled.as_decimal().to_integral_value():
-        raise ValueError("Fractional filled quantity is an unsupported observation")
+    equity_quantity(row["filled_qty"], zero=True)
     average = Decimal(str(row["filled_avg_price"])) if row.get("filled_avg_price") is not None else None
     if average is not None and (not average.is_finite() or average <= 0):
         raise ValueError("Filled average price must be finite and positive")
     if filled.as_decimal() > 0 and average is None:
         raise ValueError("Filled average price is unavailable")
     limit = exact(Price.from_str, row["limit_price"]) if row.get("limit_price") is not None else None
-    if row["type"] == "limit" and (limit is None or limit.as_decimal() <= 0):
+    if row["type"] in {"limit", "stop_limit"} and (limit is None or limit.as_decimal() <= 0):
         raise ValueError("Limit price must be present and positive")
-    from nautilus_trader.model.enums import TrailingOffsetType
+    trigger = exact(Price.from_str, row["stop_price"]) if row.get("stop_price") is not None else None
+    if row["type"] in {"stop", "stop_limit"} and (trigger is None or trigger.as_decimal() <= 0):
+        raise ValueError("Stop trigger must be present and positive")
+    from nautilus_trader.model.enums import TrailingOffsetType, TriggerType
+    offset, offset_type = None, "NO_TRAILING_OFFSET"
+    if row["type"] == "trailing_stop":
+        offset, offset_type = native_trail({"order_type": "TRAILING_STOP_MARKET", "quantity": row["qty"],
+            "side": row["side"].upper(), "time_in_force": row["time_in_force"].upper(),
+            "exit_plan": row if row.get("order_class") not in (None, "", "simple") else None,
+            "trail_price": row.get("trail_price"), "trail_percent": row.get("trail_percent")})
     return OrderStatusReport(
         account_id, instrument, VenueOrderId(row["id"]),
         OrderSide.BUY if row["side"] == "buy" else OrderSide.SELL,
-        types[row["type"]], tifs[row["time_in_force"]], getattr(OrderStatus, "ACCEPTED" if row["status"] == "partially_filled" and filled.as_decimal() == 0 else statuses[row["status"]]),
+        types[row["type"]], tifs[row["time_in_force"]], getattr(OrderStatus, "PARTIALLY_FILLED" if row["status"] == "done_for_day" and filled.as_decimal() > 0 else "ACCEPTED" if row["status"] == "partially_filled" and filled.as_decimal() == 0 else statuses[row["status"]]),
         quantity, filled,
         timestamp(row.get("submitted_at") or row["created_at"]),
         timestamp(row.get("updated_at") or row["created_at"]), ts_init,
         client_order_id=ClientOrderId(row.get("native_client_order_id") or row["client_order_id"]) if row.get("client_order_id") else None,
-        price=limit, avg_px=average,
+        price=limit, avg_px=average, trigger_price=trigger,
+        trigger_type=TriggerType.DEFAULT if trigger is not None or offset is not None else TriggerType.NO_TRIGGER,
         cancel_reason=row.get("reject_reason"),
-        trailing_offset_type=TrailingOffsetType.NO_TRAILING_OFFSET,
+        trailing_offset=offset, trailing_offset_type=TrailingOffsetType[offset_type],
     )
 
 

@@ -41,6 +41,22 @@ def evaluate(proposal, policy, runtime, evidence, history, commands, constraints
     account, reconciliation = runtime.get("account") or {}, runtime.get("reconciliation", {})
     check("exact_terms", proposal["terms_sha256"] == digest(terms) and proposal["status"] == "draft",
           "Saved draft terms and their digest must match")
+    check("buy_stop_mapping", not (terms["side"] == "BUY" and terms["order_type"] == "STOP_MARKET"),
+          "BUY stop-market submission is unavailable: broker documentation describes conversion to stop-limit; review an explicit STOP_LIMIT trigger and limit instead")
+    from .linked_orders import trailing_terms, session_terms
+    session_terms(terms)
+    trailing_terms(terms)
+    if decimal(terms["quantity"]) % 1:
+        from .investor import fractional_asset
+        from .linked_orders import fractional_terms
+        try:
+            fractional_terms(terms, fractionable=True)
+            valid = terms.get("fractional_asset") == fractional_asset(runtime, symbol)
+            if terms.get("session", "regular") == "extended":
+                valid = valid and terms["fractional_asset"]["asset"].get("fractional_eh_enabled") is True
+        except ValueError:
+            valid = False
+        check("fractional_asset", valid, "Exact fractional DAY terms must retain current observed fractionable asset identity and provenance", terms.get("fractional_asset"))
     check("account", runtime.get("status") == "connected" and reconciliation.get("status") == "reconciled"
           and account.get("id") == terms.get("account_id") and not runtime.get("local_record_error"),
           "Current account identity and complete native/broker reconciliation are required")
@@ -57,9 +73,19 @@ def evaluate(proposal, policy, runtime, evidence, history, commands, constraints
         event_time = None
     check("instrument", market.get("trade_supported") is True and market.get("instrument") is not None,
           "An observed tradable equity instrument is required")
-    needs_observation = terms["order_type"] == "MARKET" or constraints.get("quote_max_age_seconds") not in (None, "")
+    needs_observation = terms["order_type"] in {"MARKET", "STOP_MARKET", "TRAILING_STOP_MARKET"} or constraints.get("quote_max_age_seconds") not in (None, "")
     check("price", selected["price"] is not None and (not needs_observation or age(event_time, constraints.get("quote_max_age_seconds"))),
           "Use exact LIMIT terms or dated IEX side-quote/last-trade evidence; configured freshness checks still apply", selected["basis"])
+    plan = terms.get("exit_plan") or {}
+    if plan:
+        from .linked_orders import exit_plan
+        try:
+            exit_plan(plan, terms["side"])
+            bases = [price for price in (observed["price"], selected["price"]) if price is not None]
+            valid = bool(bases) and (not plan.get("stop_price") or decimal(plan["stop_price"]) <= min(bases) - Decimal("0.01"))
+        except (ValueError, TypeError, KeyError):
+            valid = False
+        check("exit_plan", valid, "Linked exit USD prices must be valid; the stop trigger must be at least USD 0.01 below entry and current price bases")
     try:
         predecessor = validated_replacement(terms, runtime)
         replacement_valid = True
@@ -71,7 +97,7 @@ def evaluate(proposal, policy, runtime, evidence, history, commands, constraints
     cap, fees = execution_costs(terms, runtime, constraints)
     ceiling = decimal(constraints.get("max_execution_price"))
     check("price_and_fee_bounds", cap is not None and cap > 0 and (fees is None or fees >= 0)
-          and (terms["side"] != "BUY" or terms["order_type"] != "MARKET" or ceiling is None or selected["price"] is not None and selected["price"] <= ceiling),
+          and (terms["side"] != "BUY" or terms["order_type"] not in {"MARKET", "STOP_MARKET"} or ceiling is None or selected["price"] is not None and selected["price"] <= ceiling),
           "Use exact limit terms or an observed market-price estimate; honor configured buy/fee bounds. Unknown fees are excluded, not zero.")
     lifetime = decimal(constraints.get("approval_max_age_seconds"))
     check("expiry_tolerance", constraints.get("approval_max_age_seconds") in (None, "") or lifetime is not None and lifetime > 0,
@@ -80,7 +106,7 @@ def evaluate(proposal, policy, runtime, evidence, history, commands, constraints
         saved = history.get("coverage", {}).get(symbol, {})
         bars = artifact(saved.get("artifact", {}))
         from .history_coverage import current, latest_calendar
-        coverage = current(saved, bars, artifact, calendar_meta=latest_calendar(history))
+        coverage = current(saved, bars, artifact, calendar_meta=latest_calendar(history, artifact))
         valid_history = bool(bars and bars.get("symbol") == symbol and coverage.get("sufficient") is True
                              and bars.get("bars") and not bars.get("missing_fields"))
         if saved.get("artifact"):

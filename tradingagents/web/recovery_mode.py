@@ -58,7 +58,7 @@ class RecoveryService:
         self.writer_lease = writer_lease(self.application_root)
         self.maintenance = threading.RLock()
         self.restore_candidates = {}
-        self.store = SimpleNamespace(revision=0)
+        self.store = SimpleNamespace(revision=0, lock=self.maintenance)
         self.runtime = runtime
         self.instance_id, self.sequence = str(uuid4()), 0
         self.failure = "Saved application records could not be opened (" + type(failure).__name__ + ")."
@@ -86,7 +86,7 @@ class RecoveryService:
         if action != "restore":
             raise ValueError("Choose archive preview or deliberate restore")
         # The sibling lease alone cannot establish that the original writer is stopped.
-        with writer_lease(self.original_root):
+        with self.maintenance, writer_lease(self.original_root):
             return self.restore(request)
 
     def restore(self, request):
@@ -103,7 +103,11 @@ class RecoveryService:
         generation = fresh["id"]
         staged = self.application_root / "recovery" / "staged" / generation
         retained_commands = retain_damaged_authority(self, staged / "application" / "desk.sqlite3", staged / "application")
-        invalidate_authority(staged / "application" / "desk.sqlite3", retained_commands=retained_commands)
+        invalidate_authority(staged / "application" / "desk.sqlite3", retained_commands=retained_commands,
+            checkpoint_coverage=reviewed["checkpoint_coverage"], recovery_reference={
+                "prior_state_backup": None, "original_store_preserved": True, "original_directory": str(self.original_root),
+                "reason": "Damaged original store retained; local continuation history and a prior-state backup could not be established.",
+                "archive_sha256": candidate["archive_sha256"]})
         if fresh["manifest"].get("history_included"):
             history_path = staged / "history" / "desk.json"
             history = json.loads(history_path.read_text(encoding="utf-8"))
@@ -123,6 +127,8 @@ class RecoveryService:
         self.restart_required = True
         self.restore_candidates.clear()
         return {"restored": True, "restart_required": True, "generation": generation,
+                "checkpoint_coverage": reviewed["checkpoint_coverage"], "checkpoint_warning": reviewed["checkpoint_warning"],
+                "prior_state_backup": None, "original_store_preserved": True,
                 "message": "Recovery committed in the sibling recovery directory. Original records remain untouched. Stop this instance and restart with the original data directory; fresh account reconciliation is required and execution stays disabled."}
 
     def commit_json(self, name, value):

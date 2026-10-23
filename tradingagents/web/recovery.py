@@ -7,12 +7,14 @@ import io
 import json
 import os
 import re
+import shutil
 import sqlite3
 import stat
 import zipfile
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
+from importlib.metadata import version
 from uuid import UUID, uuid4
 
 from .app_database import ApplicationDatabase
@@ -128,17 +130,22 @@ def records(database):
         rows = connection.execute("SELECT name,revision,payload FROM app_records").fetchall()
     result = {}
     for name, revision, payload in rows:
-        if name not in {"journal", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence"} or type(revision) is not int or revision < 1:
+        if name not in {"journal", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery"} or type(revision) is not int or revision < 1:
             raise ValueError("Unsupported application record scope or revision")
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
     from .record_integrity import validate
     validate(result)
+    if "discovery" in result:
+        from .market_discovery import validate as validate_discovery
+        validate_discovery(result["discovery"])
     workspace = result.get("workspace")
     if workspace:
-        from .workspace import lists, preferences
+        from .workspace import lists, preferences, saved_screens
         lists(workspace["watchlists"])
         preferences(workspace["preferences"])
+        if "saved_screens" in workspace:
+            saved_screens(workspace["saved_screens"])
         if not isinstance(workspace["notes"], dict):
             raise ValueError("Invalid saved investor notes")
     investor = result.get("investor")
@@ -162,23 +169,83 @@ def validate_journal(journal):
                 raise ValueError("Invalid saved evidence owner identity")
 
 
+def checkpoint_coverage(journal, metadata, *, current=False, current_journal=None, current_databases=None, current_generation=None):
+    from tradingagents.graph.checkpointer import desk_checkpoint_signature
+    from tradingagents.dataflows.symbols import safe_ticker_component
+    metadata = metadata or {}
+    versions = {name: version(name) for name in ("langgraph", "langgraph-checkpoint", "langgraph-checkpoint-sqlite")}
+    signature = desk_checkpoint_signature() if current else metadata.get("source_signature")
+    available = {item["path"].removeprefix("application/"): item["root_threads"] for item in metadata.get("databases", [])}
+    archived = {item["path"].removeprefix("application/"): item["thread_sha256"] for item in metadata.get("databases", [])}
+    present = {item["path"]: item["thread_sha256"] for item in current_databases or []}
+    coverage = []
+    for run in journal["runs"]:
+        for symbol in run["symbols"]:
+            continuation = run.get("continuation", {})
+            result = next((item for item in run["results"] if item["symbol"] == symbol), {})
+            checkpoint = result.get("continuation", {})
+            thread = checkpoint.get("thread_id")
+            status, reason = "included", "Native root checkpoint retained; explicit continuation eligibility review is still required."
+            if continuation.get("version") != 1:
+                status, reason = "legacy", "This run predates native desk continuation."
+            elif not thread or thread not in available.get(f"cache/checkpoints/{safe_ticker_component(symbol).upper()}.db", []):
+                status, reason = "missing", "No matching native root checkpoint was retained for this symbol."
+            elif continuation.get("source_signature") != signature or current and metadata.get("versions") != versions:
+                status, reason = "incompatible", "Execution source or installed persistence versions differ from the saved run."
+            elif (run.get("cancel_requested_at") or run["status"] in {"cancelled", "cancelling"}
+                    or continuation.get("blocked_reason") or any(effect["stateful"] and effect["outcome"] != "confirmed" for effect in checkpoint.get("effects", {}).values())
+                    or any(row.get("status") == "pending" for source in result.get("social_sentiment", {}).get("sources", {}).values() for row in source.get("posts", []))):
+                status, reason = "blocked", "Retained cancellation or uncertain external effects prevent automatic continuation."
+            budget = checkpoint.get("social_budget", {})
+            observed_at = datetime.now(UTC).timestamp() if current else datetime.fromisoformat(metadata["captured_at"]).timestamp() if metadata else 0
+            if status == "included" and result.get("social_sentiment", {}).get("status") != "completed" and (
+                    budget.get("remaining") == 0 or budget.get("expires_at", float("inf")) <= observed_at):
+                status, reason = "blocked", "The original social screening budget is exhausted or expired."
+            if current and status == "included":
+                local = next((item for item in (current_journal or {}).get("runs", []) if item["id"] == run["id"]), None)
+                keys = ("trade_date", "config", "account_context", "portfolio_evidence", "continuation", "results",
+                        "cancel_requested_at", "source_evidence", "gateway_evidence", "jev_evidence")
+                path = f"cache/checkpoints/{safe_ticker_component(symbol).upper()}.db"
+                if current_generation != metadata.get("store_generation") or local is None:
+                    status, reason = "blocked", "Same-generation local research continuity is unavailable; later external effects cannot be excluded."
+                elif (any(run.get(key) != local.get(key) for key in keys)
+                      or archived.get(path, {}).get(thread) != present.get(path, {}).get(thread)):
+                    status, reason = "blocked", "Local research state advanced or differs from this archive; later effects, cancellation or budget use cannot be erased."
+            coverage.append({"run_id": run["id"], "symbol": symbol, "thread_id": thread, "status": status, "reason": reason})
+    return coverage
+
+
 def backup(service):
     identity = str(uuid4())
     directory = service.application_root / "recovery" / "backups"
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / (identity + ".zip")
     staged_database = directory / (identity + ".sqlite3")
+    checkpoint_staging = directory / (identity + "-checkpoints")
     try:
         files = {}
         # Capture one generation; immutable artifact reads and compression need no writer lock.
         with service.maintenance, service.store.lock, service.store.database.transaction():
-            if any(not future.done() for future in service.research_futures | service.data_jobs.futures):
+            if (any(not future.done() for future in service.research_futures | service.data_jobs.futures)
+                    or any(run["status"] in {"queued", "running", "cancelling"} for run in service.store.data["runs"])):
                 raise ValueError("Research/data writers are active. Wait for them to finish before backup")
             with closing(sqlite3.connect(service.store.database.path)) as source, closing(sqlite3.connect(staged_database)) as target:
                 source.backup(target)
                 target.commit()
             journal_records = records(staged_database.resolve())
             files["application/desk.sqlite3"] = staged_database.read_bytes()
+            from tradingagents.graph.checkpointer import checkpoint_inventory, desk_checkpoint_signature
+            checkpoint_staging.mkdir(exist_ok=False)
+            inventory = checkpoint_inventory(service.store.directory, snapshot_root=checkpoint_staging)
+            for item in inventory:
+                files["application/" + item["path"]] = (checkpoint_staging / item["path"]).read_bytes()
+                item["path"] = "application/" + item["path"]
+            checkpoints = {"version": 1, "captured_at": datetime.now(UTC).isoformat(),
+                "consistency": "Sequential consistent SQLite snapshots under application research/data writer quiescence; not a cross-store atomic transaction.",
+                "versions": {name: version(name) for name in ("langgraph", "langgraph-checkpoint", "langgraph-checkpoint-sqlite")},
+                "source_signature": desk_checkpoint_signature(), "databases": inventory}
+            checkpoints["store_generation"] = sha(str(service.store.directory.resolve()).encode())
+            checkpoints["coverage"] = checkpoint_coverage(journal_records["journal"], checkpoints)
             scopes = [("application", service.store.directory, journal_records)]
             history_raw = None
             history_json_source = False
@@ -212,7 +279,10 @@ def backup(service):
                     "records": sorted(journal_records), "history_included": history_raw is not None,
                     "credentials_included": False, "broker_history_restorable": False,
                      "native_cache_included": False, "native_durability": "in_memory",
+                    "research_checkpoints": checkpoints,
                     "files": {name: {"sha256": sha(payload), "bytes": len(payload)} for name, payload in files.items()}}
+        if len(json.dumps(manifest, allow_nan=False).encode()) > 2 * 1024 * 1024:
+            raise ValueError("Checkpoint coverage exceeds the supported restore manifest boundary")
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("manifest.json", json.dumps(manifest, allow_nan=False))
@@ -228,7 +298,13 @@ def backup(service):
     finally:
         for suffix in ("", "-wal", "-shm"):
             staged_database.with_name(staged_database.name + suffix).unlink(missing_ok=True)
-    return {"id": identity, "sha256": sha(payload), "bytes": len(payload), "manifest": manifest}
+        if checkpoint_staging.exists():
+            if checkpoint_staging.is_symlink() or not checkpoint_staging.resolve().is_relative_to(directory.resolve()):
+                raise ValueError("Checkpoint snapshot cleanup escaped the backup staging boundary")
+            shutil.rmtree(checkpoint_staging)
+    return {"id": identity, "sha256": sha(payload), "bytes": len(payload), "manifest": manifest,
+            "checkpoint_coverage": checkpoints["coverage"],
+            "checkpoint_warning": "Checkpoint inclusion does not authorize resumption; original budgets, cancellation and uncertain effects remain binding. Separate SQLite stores are not captured atomically."}
 
 
 def stage(service, encoded):
@@ -255,6 +331,7 @@ def stage(service, encoded):
                 raise ValueError("Restore archive contains an unsafe path")
             allowed = name in {"manifest.json", "application/desk.sqlite3", "history/desk.json",
                                "application/constituents.csv", "application/sp500-constituents.csv"}
+            allowed = allowed or re.fullmatch(r"application/cache/checkpoints/[A-Z0-9_.-]+\.db", name)
             if not allowed and not re.fullmatch(r"(?:application|history)/reports/(?:[0-9a-f-]{36}|native-recovery|native-targeted-orders)/[A-Za-z0-9_.-]+", name):
                 raise ValueError("Restore archive contains files outside application records and evidence")
         entry = archive.getinfo("manifest.json")
@@ -277,6 +354,46 @@ def stage(service, encoded):
             with path.open("xb") as stream:
                 stream.write(content)
     values = records((root / "application" / "desk.sqlite3").resolve())
+    from tradingagents.graph.checkpointer import checkpoint_inventory
+    checkpoints = manifest.get("research_checkpoints")
+    checkpoint_files = {name for name in manifest["files"] if name.startswith("application/cache/checkpoints/")}
+    if checkpoints is not None:
+        if (not isinstance(checkpoints, dict) or checkpoints.get("version") != 1
+                or not isinstance(checkpoints.get("databases"), list) or not isinstance(checkpoints.get("coverage"), list)
+                or not isinstance(checkpoints.get("versions"), dict)
+                or set(checkpoints["versions"]) != {"langgraph", "langgraph-checkpoint", "langgraph-checkpoint-sqlite"}
+                or any(not isinstance(value, str) for value in checkpoints["versions"].values())
+                or not isinstance(checkpoints.get("source_signature"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", checkpoints["source_signature"])
+                or not isinstance(checkpoints.get("store_generation"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", checkpoints["store_generation"])
+                or not isinstance(checkpoints.get("captured_at"), str) or not isinstance(checkpoints.get("consistency"), str)):
+            raise ValueError("Unsupported research checkpoint manifest")
+        datetime.fromisoformat(checkpoints["captured_at"])
+        inventory = checkpoint_inventory(root / "application")
+        for item in inventory:
+            item["path"] = "application/" + item["path"]
+        if (inventory != checkpoints["databases"] or {item["path"] for item in inventory} != checkpoint_files
+                or checkpoint_coverage(values["journal"], checkpoints) != checkpoints["coverage"]):
+            raise ValueError("Native checkpoint schema, thread coverage or declared run coverage differs")
+    elif checkpoint_files:
+        raise ValueError("Native checkpoint files are missing their schema and coverage manifest")
+    with service.maintenance, service.store.lock:
+        local = None
+        local_databases = None
+        if not getattr(service, "recovery_only", False) and not any(not future.done() for future in service.research_futures | service.data_jobs.futures):
+            try:
+                local = service.store.database.read("journal")["data"]
+                if not isinstance(local, dict):
+                    local = None
+                local_databases = checkpoint_inventory(service.store.directory)
+            except (OSError, ValueError, KeyError, sqlite3.Error):
+                local = None
+        coverage = checkpoint_coverage(values["journal"], checkpoints, current=True, current_journal=local,
+            current_databases=local_databases,
+            current_generation=None if getattr(service, "recovery_only", False) else sha(str(service.store.directory.resolve()).encode()))
+    checkpoint_warning = ("Legacy backup contains no native research checkpoint coverage; interrupted research cannot continue."
+                          if checkpoints is None else "Checkpoint bytes do not guarantee continuation eligibility. Older/foreign generations or changed local lineage stay blocked; original budgets/cancellation and uncertain effects remain binding. Separate snapshots are not cross-store atomic.")
     scopes = [("application", values)]
     if manifest.get("history_included"):
         history = json.loads((root / "history" / "desk.json").read_text(encoding="utf-8"))
@@ -295,16 +412,25 @@ def stage(service, encoded):
         service.restore_candidates[token] = {"id": identity, "archive_sha256": sha(payload),
                                              "store_revision": service.store.revision, "manifest": manifest}
     return {"token": token, "archive_sha256": sha(payload), "manifest": manifest,
+            "checkpoint_coverage": coverage, "checkpoint_warning": checkpoint_warning,
             "warning": "Restores local records only. Broker history is unchanged; approvals will be invalidated and fresh reconciliation is required."}
 
 
-def invalidate_authority(database, *, retained_commands=()):
+def invalidate_authority(database, *, retained_commands=(), checkpoint_coverage=(), recovery_reference=None):
     with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("PRAGMA trusted_schema=OFF")
         for name, payload in connection.execute("SELECT name,payload FROM app_records").fetchall():
             value = json.loads(payload)
             if name == "journal":
                 value["paused"] = True
+                for run in value["runs"]:
+                    limitation = next((item for item in checkpoint_coverage if item["run_id"] == run["id"] and item["status"] != "included"), None)
+                    if limitation and run.get("continuation"):
+                        run["continuation"].setdefault("blocked_reason", "Restored checkpoint limitation: " + limitation["reason"])
+                        if recovery_reference is not None:
+                            run["continuation"].setdefault("recovery_limits", []).append({"at": datetime.now(UTC).isoformat(),
+                                "limitations": [item for item in checkpoint_coverage if item["run_id"] == run["id"] and item["status"] != "included"],
+                                **recovery_reference})
                 collections = ("proposals", "drafts")
             elif name == "investor":
                 collections = ("proposals", "baskets")
@@ -330,6 +456,8 @@ def invalidate_authority(database, *, retained_commands=()):
                 monitor = value["monitor"]
                 monitor["gaps"].append({"from": monitor.get("last_evaluated_at"), "to": datetime.now(UTC).isoformat(), "reason": "Restored monitoring history; intervening interval was not observed"})
                 monitor["state"] = "awaiting_observation"
+                for profile in value.get("browser_profiles", {}).values():
+                    profile["enabled"] = False
                 collections = ()
             else:
                 continue
@@ -458,6 +586,14 @@ def retain_damaged_authority(service, database, destination):
 
 
 def restore(service, token, confirmation):
+    with service.maintenance, service.store.lock:
+        if (any(not future.done() for future in service.research_futures | service.data_jobs.futures)
+                or any(run["status"] in {"queued", "running", "cancelling"} for run in service.store.data["runs"])):
+            raise ValueError("Research/data writers must be quiescent before restore")
+        return _restore_quiescent(service, token, confirmation)
+
+
+def _restore_quiescent(service, token, confirmation):
     if confirmation != "RESTORE LOCAL RECORDS" or token not in service.restore_candidates:
         raise ValueError("Preview the archive and type RESTORE LOCAL RECORDS to confirm")
     candidate = service.restore_candidates[token]
@@ -473,7 +609,8 @@ def restore(service, token, confirmation):
     generation = fresh["id"]
     staged = service.application_root / "recovery" / "staged" / generation
     retained_commands = retain_command_authority(service, staged / "application" / "desk.sqlite3", staged / "application")
-    invalidate_authority(staged / "application" / "desk.sqlite3", retained_commands=retained_commands)
+    invalidate_authority(staged / "application" / "desk.sqlite3", retained_commands=retained_commands,
+                         checkpoint_coverage=reviewed["checkpoint_coverage"])
     if candidate["manifest"].get("history_included"):
         history_path = staged / "history" / "desk.json"
         history = json.loads(history_path.read_text(encoding="utf-8"))
@@ -485,6 +622,13 @@ def restore(service, token, confirmation):
     restored_store = DeskStore(staged / "application", service.store.data["config"])
     restored_history = DeskStore.read_existing(staged / "history") if candidate["manifest"].get("history_included") else {"runs": [], "drafts": []}
     retained = backup(service)
+    with restored_store.lock:
+        for run in restored_store.data["runs"]:
+            limits = [item for item in reviewed["checkpoint_coverage"] if item["run_id"] == run["id"] and item["status"] != "included"]
+            if limits and run.get("continuation"):
+                run["continuation"].setdefault("recovery_limits", []).append({"at": datetime.now(UTC).isoformat(),
+                    "limitations": limits, "prior_state_backup": retained["id"], "archive_sha256": candidate["archive_sha256"]})
+        restored_store.save()
     service.runtime.stop()
     # Directory movement is confined to these two server-owned recovery subdirectories.
     destination = service.application_root / "recovery" / "generations" / generation
@@ -520,4 +664,5 @@ def restore(service, token, confirmation):
     service.runtime.configure(service.store.data["config"]["universe"])
     service.restore_candidates.clear()
     return {"restored": True, "generation": generation, "prior_state_backup": retained["id"],
+            "checkpoint_coverage": reviewed["checkpoint_coverage"], "checkpoint_warning": reviewed["checkpoint_warning"],
             "message": "Local records restored. Original store and recovery backup retained. Your pause choice is preserved; reconnect Nautilus for fresh reconciliation and review. Previous approvals are invalid."}
