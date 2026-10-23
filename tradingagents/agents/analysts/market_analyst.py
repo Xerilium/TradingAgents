@@ -42,9 +42,9 @@ def create_market_analyst(llm, tools=None):
                 id="required-market-snapshot",
             )
             snapshot_messages.append(snapshot)
-        if not str(snapshot.content).startswith(
+        if not isinstance(snapshot.content, str) or not snapshot.content.startswith(
             f"## Verified market data snapshot for {state['company_of_interest'].upper()}\n"
-        ) or f"- Requested analysis date: {current_date}" not in str(snapshot.content):
+        ) or f"- Requested analysis date: {current_date}" not in snapshot.content.splitlines():
             raise RuntimeError("Market analyst cannot complete: verified market data snapshot unavailable")
         instrument_context = get_instrument_context_from_state(state)
 
@@ -112,6 +112,7 @@ Write a very detailed and nuanced report of the trends you observe. Provide spec
         return {
             "messages": [*snapshot_messages, result],
             "market_report": report,
+            "verified_market_snapshot": snapshot.content,
         }
 
     return market_analyst_node

@@ -1,9 +1,10 @@
 """Compare broker receipts with Nautilus cache snapshots; never calculate a new ledger."""
 
+from contextlib import suppress
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from .linked_orders import native_type, native_trail
+from .linked_orders import broker_position_quantity, native_type, native_trail
 
 
 def history_scope(observed):
@@ -19,7 +20,7 @@ def history_scope(observed):
             "fill_history_complete": complete, "fill_history_records": history.get("records"), "fill_history_limits": limits}
 
 
-def reconcile(observed, native_positions, native_orders, native_cash, *, commands=None, native_epoch=None):
+def reconcile(observed, native_positions, native_orders, native_cash, *, commands=None, native_epoch=None, native_balance=None):
     gaps = list(observed.get("gaps", []))
     positions, orders, reporting_gaps = [], [], []
     broker_id = (observed.get("account") or {}).get("id")
@@ -27,6 +28,26 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
     native_by_symbol = {p["instrument_id"].removesuffix(".ALPACA"): p for p in native_positions}
     for source in observed.get("positions", []):
         row = dict(source)
+        with suppress(ValueError, TypeError, ArithmeticError, KeyError):
+            row["qty"] = str(broker_position_quantity(source))
+        if row.get("asset_class") == "us_option":
+            from .linked_orders import option_contract
+            try:
+                option_contract(row.get("option_contract"))
+            except (ValueError, KeyError, TypeError, ArithmeticError):
+                reason = "Option contract/deliverable metadata is unavailable; native economics remain unknown"
+                row.update(import_error=reason, reconciliation_status="incomplete", management_supported=False,
+                    nautilus=None, exposure_status="unknown")
+                positions.append(row)
+                gaps.append(str(row.get("symbol", "Unidentified option")) + ": " + reason)
+                continue
+        if row.get("asset_class") not in {"us_equity", "us_option"}:
+            reason = row.get("import_error") or "Unsupported position retained; native exposure is unknown"
+            row.update(import_error=reason, reconciliation_status="incomplete", management_supported=False,
+                       nautilus=None, exposure_status="unknown")
+            gaps.append(str(row.get("symbol", row.get("asset_id", "Unidentified position"))) + ": " + reason)
+            positions.append(row)
+            continue
         native = native_by_symbol.pop(row["symbol"], None)
         reason, cost_reason = row.get("import_error"), None
         if not reason and native is None:
@@ -35,8 +56,9 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
             if not native_account_id or native.get("account_id") != native_account_id:
                 reason = "Native position account identity is unavailable or differs"
             actual = Decimal(native["quantity"])
-            expected = abs(Decimal(row["qty"]))
-            if actual != expected or str(native["side"]) != "LONG":
+            expected = broker_position_quantity(row)
+            signed = -actual if str(native["side"]) == "SHORT" else actual
+            if signed != expected or str(native["side"]) not in {"LONG", "SHORT"}:
                 reason = "Native position quantity/direction differs from broker observation"
             average = native.get("avg_px_open")
             if average is None:
@@ -44,7 +66,9 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
             elif Decimal(str(average)) != Decimal(str(row["avg_entry_price"])):
                 cost_reason = "Reported native average cost differs from broker average cost"
             if average is not None and row.get("cost_basis") is not None:
-                if actual * Decimal(str(average)) != Decimal(str(row["cost_basis"])):
+                from .linked_orders import contract_multiplier
+                multiplier = contract_multiplier(row)
+                if signed * Decimal(str(average)) * multiplier != Decimal(str(row["cost_basis"])):
                     cost_reason = cost_reason or "Reported broker cost basis differs from native quantity × average"
         if cost_reason:
             reporting_gaps.append(row["symbol"] + ": " + cost_reason)
@@ -65,7 +89,26 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
             and binding.get("client_order_id") == order.get("client_order_id") else None)
     by_id = {str(venue_id(o)): o for o in native_orders}
     for source in observed.get("orders", []):
+        package = source.get("package_terms")
+        if source.get("package_parent_id"):
+            parent = next((row for row in orders if row.get("id") == source["package_parent_id"]), {})
+            reason = parent.get("import_error") or (None if parent.get("package_mapping") else "Actual package parent control mapping is unavailable")
+            orders.append({**source, "nautilus": None, "management_supported": False, "import_error": reason,
+                "reconciliation_status": "incomplete" if reason else "reconciled", "package_leg_observation": True,
+                "economics_basis": "Actual leg executions only; parent control is not a leg order"})
+            if reason:
+                gaps.append(source["id"] + ": " + reason)
+            continue
+        if not package and (source.get("asset_class") not in {"us_equity", "us_option"} or source.get("order_class") not in {None, "", "simple", "bracket", "oto", "oco"}):
+            reason = source.get("import_error") or "Unsupported broker order retained; commitment is unknown"
+            orders.append({**source, "import_error": reason, "reconciliation_status": "incomplete",
+                           "management_supported": False, "nautilus": None, "exposure_status": "unknown", "cash_commitment": None})
+            gaps.append(str(source.get("id", "Unidentified order")) + ": " + reason)
+            continue
         row, native = dict(source), by_id.pop(source["id"], None)
+        expected_instrument = package["instrument_id"] if package else row.get("symbol", "") + ".ALPACA"
+        if package and native is not None:
+            native = {**native, "package_control": source["package_control"]}
         reason, cost_reason = row.get("import_error"), None
         if not reason and native is None:
             reason = "Open order is not present in the Nautilus cache"
@@ -75,7 +118,7 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
                  and binding.get("source") == "native_order_events_and_execution_client")
         account_matches = bound if native is not None and "account_binding" in native else (native or {}).get("account_id") == native_account_id
         if not reason and (not native_account_id or not account_matches
-                           or native.get("instrument_id") != row.get("symbol", "") + ".ALPACA"
+                           or native.get("instrument_id") != expected_instrument
                            or venue_id(native) != row.get("id")
                            or not row.get("client_order_id") or native.get("client_order_id") != row.get("native_client_order_id", row["client_order_id"])):
             reason = "Native order account/instrument/client/venue identity is unavailable or differs"
@@ -93,13 +136,17 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
         if not reason:
             from .linked_orders import broker_session
             try:
-                if ("extended_hours" in (native.get("tags") or [])) != (broker_session(row) == "extended"):
+                if package and "atomic_option_package" not in (native.get("tags") or []):
+                    reason = "Native spread control marker differs"
+                if row.get("asset_class") == "us_option" and not package and "option_intent:" + str(row.get("position_intent")) not in (native.get("tags") or []):
+                    reason = "Native option intent differs from broker observation"
+                if ("extended_hours" in (native.get("tags") or [])) != ((package["session"] if package else broker_session(row)) == "extended"):
                     reason = "Native session eligibility differs from broker observation"
             except ValueError as exc:
                 reason = str(exc)
         authorized_pending, before = False, {}
         command = next((c for c in (commands or {}).values() if row["id"] in c.get("broker_order_ids", [])
-                        and c.get("account_id") == broker_id and c.get("instrument_id") == row.get("symbol", "") + ".ALPACA"
+                        and c.get("account_id") == broker_id and c.get("instrument_id") == expected_instrument
                         and c.get("native_client_order_id", c.get("client_order_id")) == (native or {}).get("client_order_id")), {})
         action = command.get("pending_action") or {}
         transition, event = action.get("native_transition") or {}, (native or {}).get("pending_event") or {}
@@ -116,7 +163,7 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
                 and (not action.get("expires_at") or datetime.fromisoformat(action["expires_at"]) > datetime.now(UTC)))
         except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
             authorized_pending = False
-        if not reason and (native.get("side") != row["side"].upper()
+        if not reason and (native.get("side") != ("BUY" if package else row["side"].upper())
                            or native.get("type") != native_type(row["type"])
                            or native.get("status") != expected_status and not authorized_pending or native.get("time_in_force") != expected_tif):
             reason = "Native order side/type/status/TIF differs from broker observation"
@@ -159,7 +206,30 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
     if by_id:
         gaps.append("Native open orders remain which the current broker response reports absent")
     broker_cash = (observed.get("account") or {}).get("cash")
-    if native_cash is None or broker_cash is None or Decimal(native_cash) != Decimal(broker_cash):
+    projection = observed.get("balance_projection")
+    margin_basis = (native_balance or {}).get("account_type") == "MARGIN"
+    if margin_basis:
+        try:
+            source, derived = projection["source_fields"], projection["derived"]
+            if (projection["version"] != "alpaca-paper-equity-initial-v1" or projection["currency"] != "USD"
+                    or projection["calculate_account_state"] is not False or native_balance["calculate_account_state"] is not False
+                    or projection.get("source_receipt") != observed.get("source_receipts", {}).get("account")
+                    or any(Decimal(str(source[key])) != Decimal(str(observed["account"][key])) for key in
+                        ("cash", "equity", "initial_margin", "maintenance_margin", "options_buying_power"))
+                    or Decimal(derived["total"]) != Decimal(str(source["equity"]))
+                    or Decimal(derived["locked"]) != Decimal(str(source["initial_margin"]))
+                    or Decimal(derived["free"]) != Decimal(str(source["equity"])) - Decimal(str(source["initial_margin"]))
+                    or any(Decimal(str(native_balance[key])) != Decimal(derived[key]) for key in ("total", "locked", "free"))
+                    or native_balance["currency"] != "USD"
+                    or native_balance["reported_margin"]["currency"] != "USD" or projection["reported_margin"]["currency"] != "USD"
+                    or Decimal(native_balance["reported_margin"]["initial"]) != Decimal(str(source["initial_margin"]))
+                    or Decimal(native_balance["reported_margin"]["maintenance"]) != Decimal(str(source["maintenance_margin"]))
+                    or Decimal(str(projection["reported_margin"]["initial"])) != Decimal(str(source["initial_margin"]))
+                    or Decimal(str(projection["reported_margin"]["maintenance"])) != Decimal(str(source["maintenance_margin"]))):
+                raise ValueError()
+        except (ValueError, KeyError, TypeError, ArithmeticError):
+            gaps.append("Native declared margin projection and actual same-receipt account facts are unavailable or differ")
+    elif native_cash is None or broker_cash is None or Decimal(native_cash) != Decimal(broker_cash):
         gaps.append("Native cash and broker cash are unavailable or differ")
     if observed.get("error"):
         gaps.append(observed["error"])
@@ -169,6 +239,9 @@ def reconcile(observed, native_positions, native_orders, native_cash, *, command
             "positions_reconciled": positions_reconciled, "orders_reconciled": orders_reconciled,
             "observed_at": observed.get("account_at"), **history_scope(observed),
             "positions": positions, "orders": orders,
+            "unsupported_exposure": observed.get("unsupported_exposure"), "option_lifecycle": observed.get("option_lifecycle", []),
             "fills": observed.get("fills", []), "broker_cash": broker_cash, "native_cash": native_cash,
+            "native_balance": native_balance, "balance_projection": projection,
+            "balance_comparison_basis": "Declared equity/initial requirement projection; not cash or spendable funds" if margin_basis else "Existing native CASH versus actual broker cash",
             "market_value_basis": "Broker reported; no same-feed native valuation comparison is established",
-            "scope": "Native account, quantity, cash and order comparison; reported cost discrepancies are separate. Market valuation and full fee history are not verified"}
+            "scope": "Native account, quantity, declared balance and order comparison; reported cost discrepancies are separate. Market valuation and full fee history are not verified"}

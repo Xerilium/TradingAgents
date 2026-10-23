@@ -194,7 +194,7 @@ Community discussion, without vote or comment counts. Subreddit character matter
 3. **Read every supplied post for substance.** Classifier labels are fallible annotations, including confident predictions. Their counts measure model output, not market sentiment; never use those counts as directional evidence. Derive the sentiment assessment from the original authors' text and user tags, separate quoted opponents from the author's own opinion, and explicitly correct misclassified examples. Do not infer engagement absent vote or comment counts.
 Match each individual classifier-label claim to the source:text_sha256 ID in the supplied annotation mapping and original post. Cite that ID when discussing a classification; never assign an aggregate label to a particular post. Keep the recorded label separate from your interpretation. Without a matching annotation, the individual label is unknown.
 
-4. **Distinguish opinion from event.** A news headline ("Nvidia announces $500M Corning deal") is an event; a StockTwits post ("buying NVDA, this is going to moon") is opinion. Both are inputs but should be weighted differently in your conclusions.
+4. **Distinguish claims, opinions and confirmed events.** A headline reports a claim; it does not independently confirm an event. Preserve its source, publication date and supplied confirmation limits. Do not infer unseen article content or upgrade a teaser, social post or issuer index entry into primary confirmation. Limited evidence can inform a qualified sentiment assessment; it is not fabricated merely because confirmation is unavailable.
 
 5. **Identify recurring narrative themes.** What topic keeps coming up across sources? That's the dominant narrative driving current sentiment.
 

@@ -9,7 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -17,8 +17,104 @@ from .alpaca_readonly import AlpacaREST
 from .investor import decimal, digest
 from .store import SourceEvidenceError
 
-DEFAULT = {"entries": {}, "coverage": {}, "jobs": {}}
+DEFAULT = {"entries": {}, "coverage": {}, "jobs": {}, "chart_calculations": {}}
 TIMEFRAMES = ("1Min", "5Min", "15Min", "30Min", "1Hour", "1Day")
+
+
+def chart_calendar_coverage(history):
+    coverage = history.get("calendar_coverage")
+    if not isinstance(coverage, dict) or set(coverage) != {"start", "end", "reference"}:
+        return None
+    reference = history.get("required_coverage", {}).get("provenance", {}).get("calendar_reference")
+    matches = [row for row in history.get("receipts", []) if row.get("scope") == "calendar"
+        and row.get("artifact") == coverage["reference"] == reference and row.get("request_path")]
+    if len(matches) != 1:
+        return None
+    path = urlsplit(matches[0]["request_path"])
+    query = parse_qs(path.query)
+    if path.path != "/v2/calendar" or query != {"start": [coverage["start"]], "end": [coverage["end"]]}:
+        return None
+    if date.fromisoformat(coverage["start"]) > date.fromisoformat(coverage["end"]):
+        raise ValueError("Recorded calendar request bounds are reversed")
+    return copy.deepcopy(coverage)
+
+
+def validate_chart_calculations(saved, workspace=None, resolve_artifact=None):
+    from uuid import UUID
+
+    from .evaluation import validate_chart_calculation, validate_chart_result
+    from .workspace import source_pin
+    rows = saved.get("chart_calculations", {})
+    if not isinstance(rows, dict):
+        raise ValueError("Invalid retained chart calculation registry")
+    history = (workspace or {}).get("chart_definition_history", [])
+    for key, item in rows.items():
+        if (not isinstance(item, dict) or str(UUID(key)) != key or item.get("id") != key
+                or item.get("version") != "chart-calculation-v1" or item.get("status") not in {"queued", "running", "completed", "unavailable", "interrupted", "failed"}
+                or any(not isinstance(item.get(field), str) or len(item[field]) != 64 or any(c not in "0123456789abcdef" for c in item[field])
+                    for field in ("spec_sha256", "definition_sha256"))):
+            raise ValueError("Invalid chart calculation identity or digest")
+        successful = item["status"] in {"completed", "unavailable"}
+        if successful:
+            if any(not isinstance(item.get(field), str) or len(item[field]) != 64
+                    or any(c not in "0123456789abcdef" for c in item[field]) for field in ("result_sha256", "derivation_identity")):
+                raise ValueError("Chart result identity is invalid")
+        elif any(field in item for field in ("result_artifact", "result_sha256", "derivation_identity")):
+            raise ValueError("Unfinished or failed calculation cannot claim a numerical result")
+        execution = item.get("execution")
+        if execution is not None:
+            if (not isinstance(execution, dict) or set(execution) != {"budget_seconds", "queued_at", "deadline_at", "spec_sha256"}
+                    or type(execution["budget_seconds"]) is not int or not 1 <= execution["budget_seconds"] <= 600
+                    or execution["spec_sha256"] != item["spec_sha256"] or execution["queued_at"] != item.get("created_at")
+                    or digest(execution) != item.get("execution_sha256")):
+                raise ValueError("Chart execution budget or immutable admission identity changed")
+            queued, deadline = datetime.fromisoformat(execution["queued_at"]), datetime.fromisoformat(execution["deadline_at"])
+            if queued.utcoffset() is None or deadline.utcoffset() is None or (deadline - queued).total_seconds() != execution["budget_seconds"]:
+                raise ValueError("Chart admission deadline differs from its explicit budget")
+            if item["status"] in {"interrupted", "failed"} and not item.get("reason"):
+                raise ValueError("Stopped chart calculation requires its actual reason")
+            for name in ("started_at", "finished_at"):
+                if name in item and (datetime.fromisoformat(item[name]).utcoffset() is None or datetime.fromisoformat(item[name]) < queued):
+                    raise ValueError("Chart lifecycle timestamps must follow admission")
+            if item["status"] not in {"queued", "running"} and "finished_at" not in item:
+                raise ValueError("Terminal chart calculation requires its finish time")
+        elif not successful:
+            raise ValueError("Chart jobs require their frozen execution budget")
+        source_pin(item.get("source_pin"))
+        if datetime.fromisoformat(item["created_at"]).utcoffset() is None:
+            raise ValueError("Chart calculation requires its actual capture time")
+        definition = [row for row in history if row["definition"]["id"] == item.get("definition_id")
+            and row["definition"]["revision"] == item.get("definition_revision") and row["sha256"] == item["definition_sha256"]]
+        if workspace is not None and len(definition) != 1:
+            raise ValueError("Chart calculation lacks its exact saved definition revision")
+        for name in (("spec_artifact", "result_artifact") if successful else ("spec_artifact",)):
+            from .evaluation import reference
+            reference(item.get(name))
+        if resolve_artifact is None:
+            continue
+        spec = resolve_artifact(item["spec_artifact"])
+        if not isinstance(spec, dict):
+            raise ValueError("Exact chart calculation artifact is unavailable or changed")
+        validate_chart_calculation(spec)
+        if (spec["spec_sha256"] != item["spec_sha256"] or spec["source_pin"] != item["source_pin"]
+                or digest(spec["definition"]) != item["definition_sha256"]):
+            raise ValueError("Chart specification differs from its durable identity")
+        if not successful:
+            continue
+        result = resolve_artifact(item["result_artifact"])
+        if not isinstance(result, dict):
+            raise ValueError("Exact chart result artifact is unavailable or changed")
+        validate_chart_result(result, spec)
+        if (spec["spec_sha256"] != item["spec_sha256"] or result["result_sha256"] != item["result_sha256"]
+                or result["status"] != item["status"] or result["derivation_identity"] != item["derivation_identity"]
+                or spec["source_pin"] != item["source_pin"]
+                or digest(spec["definition"]) != item["definition_sha256"]):
+            raise ValueError("Chart calculation artifact differs from its durable identity")
+    analysis = (workspace or {}).get("preferences", {}).get("chartView", {}).get("analysis")
+    if analysis is not None and (analysis.get("calculation_id") not in rows
+            or not rows[analysis["calculation_id"]].get("result_sha256")
+            or rows[analysis["calculation_id"]].get("result_sha256") != analysis.get("result_sha256")):
+        raise ValueError("Saved chart selection lacks its exact calculation result")
 
 
 class HistoryResponseError(ValueError):
@@ -52,12 +148,20 @@ class MarketDataJobs:
         self.canceled, self.futures = set(), set()
         self.lock = threading.RLock()
         self.intervals = {}
+        self.scan_limits = threading.local()
         def recover(saved):
             for job in saved["jobs"].values():
                 if job["status"] in {"queued", "running", "canceling"}:
                     job.update(status="interrupted", message="Service stopped; unfinished symbols require explicit resume")
+            for item in saved.get("chart_calculations", {}).values():
+                if item["status"] in {"queued", "running"}:
+                    item.update(status="interrupted", finished_at=datetime.now(UTC).isoformat(),
+                        reason="Service restarted; unfinished chart work is not replayed",
+                        termination={"termination_confirmed": False, "reason": "Prior process lifetime is unknown after restart"})
             return saved
         self.update(recover)
+        from .market_discovery import recover_scans
+        recover_scans(self)
 
     @property
     def database(self):
@@ -71,7 +175,7 @@ class MarketDataJobs:
     def current_coverage(self, record):
         from .approval_review import read_artifact
         from .history_coverage import current, latest_calendar
-        calendars = {}
+        calendars, completed_calendars, now = {}, {}, datetime.now(UTC)
         for item in record.get("entries", {}).values():
             item["timeframe"] = self.timeframe(item)
         def artifact(reference):
@@ -83,7 +187,7 @@ class MarketDataJobs:
         for item in record.get("coverage", {}).values():
             item["timeframe"] = self.timeframe(item)
             if item["timeframe"] == "1Day":
-                item["required_coverage"] = current(item, None, artifact, calendar_meta=calendar_meta)
+                item["required_coverage"] = current(item, None, artifact, now=now, calendar_meta=calendar_meta, calendar_cache=completed_calendars)
             else:
                 item["required_coverage"] = {"sufficient": False, "reasons": ["A recorded daily interval is required for baseline coverage"]}
         return record
@@ -109,7 +213,7 @@ class MarketDataJobs:
         instruments = self.service.investor()["instruments"]
         eligibility = {symbol: {**item, "required_coverage": record["data"]["coverage"].get(symbol, {}).get("required_coverage", {
             "sufficient": False, "reasons": ["Required 252-session baseline has not been collected"]})} for symbol, item in instruments.items()}
-        return {**record, "eligibility": eligibility, "coverage_counts": {"configured": len(universe),
+        return {**record, "chart_analysis": self.service.chart_analysis(), "eligibility": eligibility, "coverage_counts": {"configured": len(universe),
             "complete_history": sum(record["data"]["coverage"].get(s, {}).get("required_coverage", {}).get("sufficient") is True for s in universe),
             "missing_or_incomplete": sum(record["data"]["coverage"].get(s, {}).get("required_coverage", {}).get("sufficient") is not True for s in universe),
             "holdings_outside_universe": sum(item["holding"] and symbol not in universe for symbol, item in instruments.items())},
@@ -151,6 +255,8 @@ class MarketDataJobs:
         return self.state()
 
     def request(self, body):
+        if str(body.get("action", "")).startswith("chart_"):
+            return self.service.chart_analysis_action(body)
         today = datetime.now(ZoneInfo("America/New_York")).date()
         action = body.get("action", "start")
         if action == "evidence":
@@ -208,7 +314,12 @@ class MarketDataJobs:
     def read(self, path, *, data, canceled):
         client = AlpacaREST(self.service.runtime.credentials_file)
         for attempt in range(3):
-            self.budget.wait(canceled)
+            limit = getattr(self.scan_limits, "value", None)
+            if limit:
+                from .market_discovery import scan_dispatch
+            self.budget.wait(lambda limit=limit: canceled() or bool(limit and (limit["run_id"] in self.canceled or time.monotonic() >= limit["deadline"])))
+            if limit:
+                scan_dispatch(self, limit)
             try:
                 return client.read_receipt(path, data=data)
             except HTTPError as exc:
@@ -251,7 +362,7 @@ class MarketDataJobs:
         diagnostic, phase = {}, "requesting provider page"
         canceled = lambda: identity in self.canceled
         try:
-            for _ in range(20):
+            for _ in range(request.get("page_limit", 20)):
                 query = {"symbols": symbol, "timeframe": timeframe, "start": request["start"] + "T00:00:00Z",
                     "end": request["end"] + "T23:59:59Z", "feed": "iex", "adjustment": request["adjustment"],
                     "asof": request["asof"], "limit": 10000}
@@ -268,7 +379,8 @@ class MarketDataJobs:
                 phase = "saving provider page"
                 reference = self.service.store._write_source_result(identity, str(uuid4()), response["raw"].decode(),
                     prefix="iex-history", allow_pagination_cursor=True)
-                receipts.append({"artifact": reference, "captured_at": response["received_at"], "source_date": response["source_date"], "page_token": token})
+                receipts.append({"artifact": reference, "captured_at": response["received_at"], "source_date": response["source_date"],
+                    "page_token": token, "request_path": "/v2/stocks/bars?" + urlencode(query)})
                 payload = json.loads(response["raw"], parse_float=Decimal)
                 phase = "validating provider page"
                 if not isinstance(payload.get("bars"), dict) or set(payload["bars"]) - {symbol}:
@@ -312,17 +424,27 @@ class MarketDataJobs:
                               **{k: float(row[k]) for k in ("o", "h", "l", "c", "v")}})
         captured = datetime.now(UTC).isoformat()
         today = datetime.now(ZoneInfo("America/New_York")).date()
-        calendar_through = (today + timedelta(days=366)).isoformat() if timeframe == "1Day" else None
+        scan_limit = getattr(self.scan_limits, "value", None)
+        needs_calendar = timeframe == "1Day" or bool(scan_limit)
+        calendar_through = (today + timedelta(days=366)).isoformat() if needs_calendar else None
+        calendar_query = {"start": min((today - timedelta(days=730)).isoformat(), request["start"]) if scan_limit else
+            (today - timedelta(days=730)).isoformat(), "end": calendar_through}
+        metadata_cache = scan_limit.setdefault("metadata_receipts", {}) if scan_limit else {}
+        calendar_coverage = None
         try:
-            for path, scope in ((("/v2/calendar?" + urlencode({"start": (today - timedelta(days=730)).isoformat(), "end": calendar_through}), "calendar"),
-                                ("/v2/assets/" + symbol, "instrument")) if timeframe == "1Day" else ()):
-                response = self.read(path, data=False, canceled=canceled)
-                reference = self.service.store._write_source_result(identity, str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
-                receipts.append({"artifact": reference, "captured_at": response["received_at"], "scope": scope})
+            for path, scope in ((("/v2/calendar?" + urlencode(calendar_query), "calendar"),
+                                ("/v2/assets/" + symbol, "instrument")) if needs_calendar else ()):
+                if path not in metadata_cache:
+                    response = self.read(path, data=False, canceled=canceled)
+                    reference = self.service.store._write_source_result(identity, str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
+                    metadata_cache[path] = (response, reference)
+                response, reference = metadata_cache[path]
+                receipts.append({"artifact": reference, "captured_at": response["received_at"], "scope": scope, "request_path": path})
                 if scope == "calendar":
                     if not isinstance(response["data"], list):
                         raise ValueError("Unsupported calendar response")
                     calendar, calendar_reference = response["data"], reference
+                    calendar_coverage = {**calendar_query, "reference": reference}
                 else:
                     if response["data"].get("symbol") != symbol:
                         raise ValueError("Instrument provenance symbol differs")
@@ -334,17 +456,21 @@ class MarketDataJobs:
         from .history_coverage import assess
         required_coverage = assess(converted, calendar, instrument, pagination_complete=complete,
             calendar_reference=calendar_reference, instrument_reference=instrument_reference, captured_at=datetime.now(UTC).isoformat(), listing=listing) if timeframe == "1Day" else {
-                "sufficient": False, "reasons": ["Intraday chart bars do not establish the required daily baseline"]}
+                "sufficient": False, "reasons": ["Intraday chart bars do not establish the required daily baseline"],
+                "provenance": {"calendar_reference": calendar_reference, "instrument_reference": instrument_reference,
+                    "asset_id": instrument.get("id"), "exchange": instrument.get("exchange")}}
         result = {"key": key, "symbol": symbol, "context": "current", "run_id": None, "research_date": None,
             "provider": "Alpaca", "session_timezone": "America/New_York", **request,
             "time_basis": "provider_business_day" if timeframe == "1Day" else "utc_epoch_seconds",
             "coverage_scope": "Provider pagination is distinct from verified session completeness, bar finality and execution permission.",
             "captured_at": captured, "bars": converted, "complete": complete, "pagination_complete": complete,
-            "required_coverage": required_coverage, "calendar_through": calendar_through, "pages": len([r for r in receipts if "page_token" in r]), "receipts": receipts,
+            "required_coverage": required_coverage, "calendar_through": calendar_through, "calendar_coverage": calendar_coverage,
+            "pages": len([r for r in receipts if "page_token" in r]), "receipts": receipts,
             "error": error, "error_kind": error_kind, "diagnostic": diagnostic, "indicators": [], "claims": [], "problems": [error] if error else [],
             "price_basis": "Current-market " + timeframe + " provider-aggregated OHLCV · " + request["adjustment"] + " adjustment · IEX only",
             "source": {"vendor": "Alpaca IEX", "captured_at": captured},
             "missing_fields": [] if converted else ["daily_ohlcv" if timeframe == "1Day" else "intraday_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
+        self.derive(result)
         result["artifact"] = self.service.store._write_json_artifact(identity, "iex-history-cache", result)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
@@ -395,7 +521,28 @@ class MarketDataJobs:
         except Exception as exc:
             self.update(lambda saved, problem=type(exc).__name__: saved["jobs"][identity].update(status="failed", message="Data job stopped (" + problem + "); received evidence remains saved"))
 
-    def detail(self, symbol, key=None, *, timeframe="1Day"):
+    def derive(self, result):
+        from .history_coverage import indicator_observations
+        from .market_evidence import derive_indicators
+        source = {**{key: value for key, value in result.get("source", {}).items() if key not in {"path", "sha256"}}, **{key: result.get(key) for key in
+            ("symbol", "feed", "timeframe", "currency", "session", "session_timezone", "adjustment")},
+            "symbol_mapping_asof": result.get("asof"), "full_history": result.get("pagination_complete") is True,
+            "precision": "provider decimal strings; Stockstats float64 calculation",
+            "history_hashes": [row["artifact"]["sha256"] for row in result.get("receipts", []) if "page_token" in row],
+            "instrument": result.get("required_coverage", {}).get("provenance", {}).get("asset_id")}
+        coverage = {"indicator_observations": indicator_observations(result.get("bars", []), result.get("required_coverage", {}),
+            captured_at=result["captured_at"], timeframe=result["timeframe"])}
+        try:
+            result["indicators"] = derive_indicators(result.get("bars", []), source, coverage=coverage)
+        except (ValueError, TypeError, KeyError) as exc:
+            result["indicators"] = []
+            result.setdefault("problems", []).append("Indicator derivation unavailable (" + type(exc).__name__ + ")")
+        result["indicator_evidence"] = coverage
+        result["derivation_identity"] = digest(sorted([
+            {"name": series["name"], "derivation_identity": series.get("derivation_identity") or digest(series)}
+            for series in result["indicators"]], key=lambda item: (item["name"], item["derivation_identity"])))
+
+    def detail(self, symbol, key=None, *, timeframe="1Day", artifact=None):
         if timeframe not in TIMEFRAMES:
             raise ValueError("Unsupported chart interval")
         record = self.database.read("market_history", DEFAULT)["data"]
@@ -406,6 +553,11 @@ class MarketDataJobs:
                     "error": "No matching retained history; request the selected interval explicitly"}
         meta = max(candidates, key=lambda item: item["captured_at"])
         reference = meta.get("last_usable_artifact") or meta["artifact"]
+        if artifact is not None:
+            retained = [meta.get("artifact"), meta.get("last_usable_artifact"), *meta.get("prior_artifacts", [])]
+            if not any(ref and all(ref.get(field) == artifact.get(field) for field in ("path", "sha256")) for ref in retained):
+                raise ValueError("Pinned history artifact is not retained for this exact cache")
+            reference = artifact
         path = (self.service.store.directory / reference["path"]).resolve()
         if not path.is_relative_to(self.service.store.directory.resolve()):
             raise ValueError("History cache reference escapes its boundary")
@@ -424,14 +576,18 @@ class MarketDataJobs:
         result["source"].update(path=reference["path"], sha256=reference["sha256"])
         from .history_coverage import current, latest_calendar
         from .approval_review import read_artifact
-        result["required_coverage"] = current(meta, result, lambda ref: read_artifact(self.service.store.directory, ref),
+        result["required_coverage"] = result.get("required_coverage", {}) if artifact is not None else current(meta, result, lambda ref: read_artifact(self.service.store.directory, ref),
                                              calendar_meta=latest_calendar(record, lambda ref: read_artifact(self.service.store.directory, ref))) if result["timeframe"] == "1Day" else {
             "sufficient": False, "reasons": ["Intraday chart bars do not establish the required daily baseline"]}
-        result["latest_attempt"] = meta
-        result["retained_older_data"] = bool(meta.get("last_usable_artifact"))
+        result["latest_attempt"] = None if artifact is not None else meta
+        result["retained_older_data"] = reference.get("sha256") != meta["artifact"].get("sha256")
+        self.derive(result)
         return result
 
     def close(self):
+        from .market_discovery import DEFAULT as DISCOVERY
+        self.canceled.update(run["id"] for run in self.database.read("discovery", DISCOVERY)["data"].get("runs", {}).values()
+            if run["status"] in {"queued", "running", "canceling"})
         for job in self.database.read("market_history", DEFAULT)["data"]["jobs"].values():
             if job["status"] in {"queued", "running"}:
                 self.canceled.add(job["id"])

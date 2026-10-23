@@ -209,6 +209,17 @@ def get_stock_stats_indicators_window(
     return result_str
 
 
+def calculate_stockstats(frame, indicators=None):
+    """Calculate existing research formulas from supplied rows, without collection."""
+    names = tuple(indicators or INDICATOR_DESCRIPTIONS)
+    if set(names) - INDICATOR_DESCRIPTIONS.keys():
+        raise ValueError("Unsupported research indicator")
+    result = wrap(frame.copy())
+    for name in names:
+        result[name]
+    return result
+
+
 def _get_stock_stats_bulk(
     symbol: Annotated[str, "ticker symbol of the company"],
     indicator: Annotated[str, "technical indicator to calculate"],
@@ -219,10 +230,8 @@ def _get_stock_stats_bulk(
     Fetches data once and calculates indicator for all available dates.
     Returns dict mapping date strings to indicator values.
     """
-    from stockstats import wrap
-
     data = load_ohlcv(symbol, as_of_date)
-    df = wrap(data)
+    df = calculate_stockstats(data, (indicator,))
     df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
 
     df[indicator]  # This triggers stockstats to calculate the indicator
@@ -287,7 +296,7 @@ def get_stock_stats(
     ],
 ):
     data = load_ohlcv(symbol, as_of_date)
-    df = wrap(data)
+    df = calculate_stockstats(data, (indicator,))
     df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
     as_of_str = pd.to_datetime(as_of_date).strftime("%Y-%m-%d")
 

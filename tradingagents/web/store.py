@@ -9,6 +9,7 @@ import html
 import json
 import os
 import re
+import sqlite3
 import struct
 import threading
 import time
@@ -182,11 +183,17 @@ class DeskStore:
             }
         return copy.deepcopy(summary)
 
+    def _refresh(self):
+        """Refresh external journal changes while the caller holds self.lock."""
+        with closing(sqlite3.connect(self.database.path, timeout=5)) as connection:
+            revision = connection.execute("SELECT revision FROM app_records WHERE name='journal'").fetchone()[0]
+        if revision != self.revision:
+            saved = self.database.read("journal")
+            self.data, self.revision = saved["data"], saved["revision"]
+
     def snapshot(self, *, compact=False, run_id=None):
         with self.lock:
-            saved = self.database.read("journal")
-            if saved["revision"] != self.revision:
-                self.data, self.revision = saved["data"], saved["revision"]
+            self._refresh()
             if compact:
                 data = copy.deepcopy({key: value for key, value in self.data.items() if key not in {"runs", "research_requests"}})
                 data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
@@ -246,8 +253,17 @@ class DeskStore:
     def save(self):
         with self.lock:
             try:
-                saved = self.database.update("journal", self.revision, lambda _: self.data)
-                self.revision = saved["revision"]
+                with self.database.transaction() as connection:
+                    row = connection.execute("SELECT revision,payload FROM app_records WHERE name='journal'").fetchone()
+                    revision = row[0] if row else 0
+                    if type(self.revision) is not int or self.revision != revision:
+                        raise StoreConflict(revision)
+                    encoded = self.database.encode(self.data)
+                    if row is None or encoded != row[1]:
+                        revision += 1
+                        connection.execute("INSERT INTO app_records VALUES('journal',?,?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at",
+                            (revision, encoded, datetime.now(UTC).isoformat()))
+                self.revision = revision
             except StoreConflict:
                 saved = self.database.read("journal")
                 self.data, self.revision = saved["data"], saved["revision"]

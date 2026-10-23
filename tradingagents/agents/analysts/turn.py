@@ -19,8 +19,8 @@ def research_memory_guidance(tools):
         " do not call tools; use only retained results and disclose unperformed checks.",
     ]
     for name, instruction in (
-        ("maenifold_graph__BuildContext", "Start with a relevant company or domain concept; use a shallow, small context and follow only useful source links."),
-        ("maenifold_graph__FindSimilarConcepts", "Resolve an ambiguous concept before following graph links; similarity is a retrieval hint, not evidence."),
+        ("maenifold_graph__BuildContext", "Use only a relevant existing concept returned by retrieval, with depth=1, maxEntities=5, includeContent=true. On CONCEPT_NOT_FOUND, resolve the anchor once with FindSimilarConcepts if available; never retry the missing anchor or mutate the corpus to make retrieval succeed."),
+        ("maenifold_graph__FindSimilarConcepts", "Before BuildContext, discover an existing anchor using conceptName and maxResults=5. Use only a directly relevant returned concept; if none exists or resolution fails, disclose no relevant memory and continue primary-source research. Never invent an anchor or force an unrelated match; similarity is not evidence."),
         ("maenifold_memory__SearchMemories", "Search relevant company or domain notes, especially when graph context is unavailable; avoid indiscriminate retrieval."),
         ("maenifold_memory__ReadMemory", "Read the strongest directly relevant source notes returned by retrieval before relying on them."),
         ("maenifold_thinking__SequentialThinking", "Use concise persistent reasoning for nontrivial research steps: record material assumptions, source-linked evidence, decisions and unresolved gaps; complete each reasoning session using its returned session ID and nextThoughtNeeded=false."),

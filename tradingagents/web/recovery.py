@@ -71,21 +71,22 @@ def sha(payload):
     return hashlib.sha256(payload).hexdigest()
 
 
-def references(value):
+def references(value, *, native_reconstruction=False):
     if isinstance(value, dict):
         if SECRET_KEYS & {str(k).lower() for k in value}:
             raise ValueError("Application record contains a credential field; backup excluded rather than exporting it")
         if "path" in value and "sha256" in value:
             name = value["path"]
-            if (not isinstance(name, str) or not re.fullmatch(r"reports/(?:[0-9a-f-]{36}|native-recovery|native-targeted-orders)/[A-Za-z0-9_.-]+", name)
+            if (not isinstance(name, str) or (not re.fullmatch(r"reports/(?:[0-9a-f-]{36}|native-recovery|native-targeted-orders)/[A-Za-z0-9_.-]+", name)
+                    and not (native_reconstruction and re.fullmatch(r"reports/native-reconstruction/execution-[0-9a-f-]{36}\.json", name)))
                     or not isinstance(value["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"])):
                 raise ValueError("Unsupported artifact reference; backup is incomplete")
             yield name, value["sha256"]
         for item in value.values():
-            yield from references(item)
+            yield from references(item, native_reconstruction=native_reconstruction)
     elif isinstance(value, list):
         for item in value:
-            yield from references(item)
+            yield from references(item, native_reconstruction=native_reconstruction)
 
 
 def artifacts(root, value):
@@ -112,7 +113,7 @@ def artifacts(root, value):
         yield relative, payload
 
 
-def records(database):
+def records(database, resolve_artifact=None):
     with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
         connection.execute("PRAGMA trusted_schema=OFF")
         if connection.execute("PRAGMA user_version").fetchone()[0] != ApplicationDatabase.VERSION:
@@ -135,10 +136,10 @@ def records(database):
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
     from .record_integrity import validate
-    validate(result)
+    validate(result, resolve_artifact)
     if "discovery" in result:
         from .market_discovery import validate as validate_discovery
-        validate_discovery(result["discovery"])
+        validate_discovery(result["discovery"], result.get("workspace"), resolve_artifact)
     workspace = result.get("workspace")
     if workspace:
         from .workspace import lists, preferences, saved_screens

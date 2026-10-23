@@ -29,6 +29,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+evaluation = ["optuna==5.0.0"]
 paper = [
     "mcp>=1.26,<2",
     "jsonschema>=4.23,<5",

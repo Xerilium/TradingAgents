@@ -6,6 +6,8 @@ import argparse
 import json
 import mimetypes
 import secrets
+import sys
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
@@ -64,6 +66,8 @@ class DeskHandler(BaseHTTPRequestHandler):
             return False
 
     def _send(self, status, body, content_type="application/json; charset=utf-8", *, headers=None):
+        if getattr(self, "quote_diagnostic", None) is not None:
+            self.quote_diagnostic["status"] = status
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode("utf-8")
         self.send_response(status)
@@ -78,15 +82,27 @@ class DeskHandler(BaseHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         )
-        self.end_headers()
+        try:
+            self.end_headers()
+        except (ConnectionError, TimeoutError) as exc:
+            if getattr(self, "quote_diagnostic", None) is not None:
+                self.quote_diagnostic.update(transport_exception=type(exc).__name__, response_stage="headers")
+            raise
         try:
             self.wfile.write(body)
-        except (ConnectionError, TimeoutError):
+            if getattr(self, "quote_diagnostic", None) is not None:
+                self.quote_diagnostic["response_stage"] = "written"
+        except (ConnectionError, TimeoutError) as exc:
+            if getattr(self, "quote_diagnostic", None) is not None:
+                self.quote_diagnostic.update(transport_exception=type(exc).__name__, response_stage="body")
             # A cancelled browser request does not invalidate the operation
             # already journaled by the service, and must not trigger a retry.
             self.close_connection = True
 
     def do_GET(self):
+        if not urlsplit(self.path).path.startswith("/api/"):
+            self._get()
+            return
         with self.server.service.maintenance:
             self._get()
 
@@ -169,7 +185,9 @@ class DeskHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/evaluations":
             try:
-                self._send(200, self.server.service.evaluations(parse_qs(url.query).get("id", [None])[0]))
+                query = parse_qs(url.query)
+                identity, event = query.get("id", [None])[0], query.get("event_id", [None])[0]
+                self._send(200, self.server.service.experiment_event(identity, event) if event else self.server.service.evaluations(identity))
             except (OSError, ValueError, KeyError):
                 self._send(400, {"error": "Saved simulation evidence is unavailable or changed"})
             return
@@ -237,6 +255,9 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/nautilus.js": "nautilus.js",
             "/static/command-controls.js": "command-controls.js",
             "/static/market-chart.js": "market-chart.js",
+            "/static/vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js": "vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js",
+            "/static/vendor/lightweight-charts-drawing/0.6.2/LICENSE": "vendor/lightweight-charts-drawing/0.6.2/LICENSE",
+            "/static/vendor/lightweight-charts-drawing/0.6.2/SOURCE.txt": "vendor/lightweight-charts-drawing/0.6.2/SOURCE.txt",
             "/static/vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js": "vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js",
             "/static/vendor/lightweight-charts/5.2.1/LICENSE": "vendor/lightweight-charts/5.2.1/LICENSE",
             "/static/vendor/lightweight-charts/5.2.1/NOTICE": "vendor/lightweight-charts/5.2.1/NOTICE",
@@ -259,7 +280,27 @@ class DeskHandler(BaseHTTPRequestHandler):
         self._send(200, file.read_bytes(), f"{content_type}; charset=utf-8", headers=headers)
 
     def do_POST(self):
-        self._post()
+        self.quote_diagnostic = None
+        if urlsplit(self.path).path == "/api/quotes/refresh":
+            request_id = self.headers.get("X-Request-ID", "")
+            if len(request_id) != 32 or any(c not in "0123456789abcdef" for c in request_id):
+                request_id = secrets.token_hex(16)
+            self.quote_diagnostic = {"request_id": request_id, "method": "POST", "path": "/api/quotes/refresh"}
+            self._quote_log("admitted")
+        try:
+            self._post()
+        except Exception as exc:
+            if self.quote_diagnostic is not None:
+                self.quote_diagnostic["exception"] = type(exc).__name__
+            raise
+        finally:
+            if self.quote_diagnostic is not None:
+                self._quote_log("finished")
+            self.quote_diagnostic = None
+
+    def _quote_log(self, event):
+        print(json.dumps({"time": datetime.now(timezone.utc).isoformat(), "event": event,
+                          **self.quote_diagnostic}), file=sys.stderr, flush=True)
 
     def _post(self):
         if (
@@ -295,8 +336,9 @@ class DeskHandler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be a JSON object.")
             service = self.server.service
             path = urlsplit(self.path).path
-            if not (path == "/api/discovery" or path == "/api/reporting" and data.get("action") == "collect" or
-                    path == "/api/recovery" and data.get("action") in {"preview", "backup"}):
+            if not (path in {"/api/discovery", "/api/quotes/refresh", "/api/commands/reconcile", "/api/native-report"} or path == "/api/reporting" and data.get("action") == "collect" or
+                    path == "/api/recovery" and data.get("action") in {"preview", "backup"} or
+                    path == "/api/commands" and data.get("action") == "option_instruction" and data.get("operation") == "submit"):
                 service.maintenance.acquire()
                 maintenance_guard = service.maintenance
             if getattr(service, "recovery_only", False) and path != "/api/recovery":
@@ -310,7 +352,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "Legacy direct-order submission is unsupported. Use exact proposal approval, admission and Nautilus commands through /api/commands."})
                 return
             if path == "/api/nautilus/start":
-                result = service.start_native()
+                result = service.start_native(data)
             elif path == "/api/nautilus/stop":
                 result = service.runtime.stop()
             elif path == "/api/quotes/refresh":
@@ -390,9 +432,13 @@ class DeskHandler(BaseHTTPRequestHandler):
         except (BadZipFile, LargeZipFile):
             self._send(400, {"error": "Invalid or damaged backup ZIP. Choose an intact TradingAgents backup archive and inspect it again."})
         except (ValueError, KeyError, StopIteration) as exc:
+            if self.quote_diagnostic is not None:
+                self.quote_diagnostic["exception"] = type(exc).__name__
             self.close_connection = True
             self._send(400, {"error": str(exc) or "Requested item was not found."})
-        except Exception:
+        except Exception as exc:
+            if self.quote_diagnostic is not None:
+                self.quote_diagnostic["exception"] = type(exc).__name__
             self._send(
                 502,
                 {

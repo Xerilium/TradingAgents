@@ -13,11 +13,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 import pandas as pd
-from stockstats import wrap
 
 from tradingagents.dataflows.errors import NoMarketDataError
 from tradingagents.dataflows.symbols import normalize_symbol
-from tradingagents.dataflows.vendors.yahoo.market import INDICATOR_DESCRIPTIONS
+from tradingagents.dataflows.vendors.yahoo.market import (
+    INDICATOR_DESCRIPTIONS,
+    calculate_stockstats,
+)
 from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
@@ -71,9 +73,8 @@ def build_verified_market_snapshot(
     # Volume); stockstats `wrap()` lowercases columns and adds indicator
     # columns, so read raw prices from `df` and indicators from `stock_df`.
     df = _verified_rows(symbol, as_of_date)
-    stock_df = wrap(df.copy())
-
     selected = tuple(indicators or DEFAULT_SNAPSHOT_INDICATORS)
+    stock_df = calculate_stockstats(df, selected)
     indicator_values: dict[str, str] = {}
     for name in selected:
         try:

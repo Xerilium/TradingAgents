@@ -77,11 +77,81 @@ class AlpacaREST:
     def read_receipt(self, path, *, data=False):
         return self._request(path, "GET", receipt=True, data=data)
 
+    def option_contracts(self, query):
+        import hashlib
+        from urllib.parse import urlencode
+
+        from .linked_orders import OPTION_MAPPING
+        allowed = {"symbol", "underlying_symbols", "expiration_date", "expiration_date_gte", "expiration_date_lte", "type", "page_token", "limit", "status"}
+        if set(query) - allowed:
+            raise ValueError("Unsupported option contract filters")
+        symbol = query.get("symbol")
+        if symbol is not None and (set(query) != {"symbol"} or not re.fullmatch(r"[A-Z]{1,6}\d{6}[CP]\d{8}", symbol)):
+            raise ValueError("Single option inspection requires an exact contract symbol")
+        path = "/v2/options/contracts" + ("/" + symbol if symbol else "") + "?" + urlencode({**({} if symbol else query), "show_deliverables": "true"})
+        requested = datetime.now(UTC).isoformat()
+        result = self.read_receipt(path)
+        rows = [result["data"]] if symbol else result["data"].get("option_contracts")
+        if not isinstance(rows, list):
+            raise ValueError("Broker contract page is unavailable")
+        return {**result, "contracts": [{"mapping_version": OPTION_MAPPING, "raw": raw,
+            "sha256": hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest(),
+            "response_sha256": hashlib.sha256(result["raw"]).hexdigest(), "source": self.connection.endpoint + path,
+            "requested_at": requested, "received_at": result["received_at"]} for raw in rows],
+            "next_page_token": result["data"].get("next_page_token")}
+
+    def option_quote(self, symbol, feed):
+        from urllib.parse import urlencode
+        if feed not in {"opra", "indicative"} or not re.fullmatch(r"[A-Z]{1,6}\d{6}[CP]\d{8}", symbol):
+            raise ValueError("Choose an explicit OPRA or indicative feed and exact option symbol")
+        path = "/v1beta1/options/quotes/latest?" + urlencode({"symbols": symbol, "feed": feed})
+        return {**self.read_receipt(path, data=True), "feed": feed, "source": "https://data.alpaca.markets" + path}
+
     def submit_order(self, body):
         from .linked_orders import fractional_terms, session_terms
         if not self.permit_paper_execution:
             raise ValueError("This transport instance does not permit execution")
+        if body.get("order_class") == "mleg":
+            from functools import reduce
+            from math import gcd
+
+            from .linked_orders import equity_quantity
+
+            legs = body.get("legs")
+            if (set(body) != {"order_class", "qty", "type", "time_in_force", "client_order_id", "legs"} | ({"limit_price"} if body.get("type") == "limit" else set())
+                    or body.get("type") not in {"market", "limit"} or body.get("time_in_force") not in {"day", "gtc"}
+                    or equity_quantity(body["qty"]) % 1 or not isinstance(legs, list) or not 2 <= len(legs) <= 4
+                    or not isinstance(body["client_order_id"], str) or not 1 <= len(body["client_order_id"]) <= 48):
+                raise ValueError("Only exact atomic 2–4 leg option MARKET/LIMIT DAY/GTC payloads are supported")
+            ratios, symbols = [], set()
+            for leg in legs:
+                if (not isinstance(leg, dict) or set(leg) != {"symbol", "ratio_qty", "side", "position_intent"}
+                        or not re.fullmatch(r"[A-Z]{1,6}\d{6}[CP]\d{8}", leg["symbol"]) or leg["symbol"] in symbols
+                        or (leg["side"], leg["position_intent"]) not in {("buy", "buy_to_open"), ("sell", "sell_to_close"), ("buy", "buy_to_close"), ("sell", "sell_to_open")}):
+                    raise ValueError("Package legs require distinct actual symbols and BTO/STC intent")
+                ratio = equity_quantity(leg["ratio_qty"])
+                if ratio % 1:
+                    raise ValueError("Package ratios must be positive integers")
+                ratios.append(int(ratio))
+                symbols.add(leg["symbol"])
+            if reduce(gcd, ratios) != 1:
+                raise ValueError("Package ratios must be normalized before approval")
+            if body["type"] == "limit":
+                self._package_limit(body["limit_price"])
+            return self._request("/v2/orders", "POST", body, receipt=True)
         required = {"symbol", "qty", "side", "type", "time_in_force", "client_order_id", "extended_hours"}
+        if "position_intent" in body:
+            from .linked_orders import equity_quantity, native_type, option_order_prices
+            prices = option_order_prices({"order_type": native_type(body.get("type")), "time_in_force": str(body.get("time_in_force", "")).upper(),
+                "limit_price": body.get("limit_price"), "stop_price": body.get("stop_price")})
+            if (set(body) != required | {"position_intent"} | prices
+                    or not re.fullmatch(r"[A-Z]{1,6}\d{6}[CP]\d{8}", body["symbol"])
+                    or body["extended_hours"] is not False
+                    or equity_quantity(body["qty"]) % 1
+                    or (body["side"], body["position_intent"]) not in {("buy", "buy_to_open"), ("sell", "sell_to_close")}
+                    or not isinstance(body["client_order_id"], str) or not 1 <= len(body["client_order_id"]) <= 48):
+                raise ValueError("Only exact standalone whole-contract long option BTO/STC terms are supported")
+            return self._request("/v2/orders", "POST", body, receipt=True)
         group = body.get("order_class", "simple")
         extra = ({"order_class"} | ({"take_profit"} if "take_profit" in body else set()) | ({"stop_loss"} if "stop_loss" in body else set())) if group != "simple" else set()
         prices = ({"limit_price"} if body.get("type") in {"limit", "stop_limit"} and group != "oco" else set()) | ({"stop_price"} if body.get("type") in {"stop", "stop_limit"} else set())
@@ -132,33 +202,50 @@ class AlpacaREST:
         if not re.fullmatch(r"\d{1,12}(?:\.\d{1,2})?", str(value)) or Decimal(str(value)) <= 0:
             raise ValueError("Limit price must be positive with at most two decimal places")
 
+    @staticmethod
+    def _package_limit(value):
+        from decimal import Decimal
+        if not re.fullmatch(r"-?\d{1,12}(?:\.\d{1,2})?", str(value)) or Decimal(str(value)) == 0:
+            raise ValueError("Package limit must be exact signed nonzero cents; zero pricing is unsupported")
+
     def cancel_order(self, order_id):
         if str(UUID(order_id)) != order_id:
             raise ValueError("Single-order cancellation requires an exact broker UUID")
         return self._request("/v2/orders/" + order_id, "DELETE", receipt=True)
 
-    def replace_order(self, order_id, body):
-        if str(UUID(order_id)) != order_id or set(body) - {"qty", "limit_price", "stop_price", "client_order_id"} or "client_order_id" not in body:
+    def replace_order(self, order_id, body, *, package=False):
+        if str(UUID(order_id)) != order_id or set(body) - {"qty", "limit_price", "stop_price", "client_order_id", "time_in_force"} or "client_order_id" not in body:
             raise ValueError("Replacement requires the existing broker identity and reviewed quantity/limit terms")
+        if "time_in_force" in body and body["time_in_force"] not in {"day", "gtc"}:
+            raise ValueError("Replacement duration must be exact DAY/GTC")
         if "qty" in body:
             from .linked_orders import equity_quantity
             if equity_quantity(body["qty"]) % 1:
                 raise ValueError("Fractional quantity cannot be patched; retain quantity and amend prices only")
         if "limit_price" in body:
-            self._limit(body["limit_price"])
+            (self._package_limit if package else self._limit)(body["limit_price"])
         if "stop_price" in body:
+            if package:
+                raise ValueError("Package replacement cannot add a stop trigger")
             self._limit(body["stop_price"])
         if not isinstance(body["client_order_id"], str) or not 1 <= len(body["client_order_id"]) <= 48:
             raise ValueError("Replacement client identity is invalid")
         return self._request("/v2/orders/" + order_id, "PATCH", body, receipt=True)
 
+    def option_instruction(self, symbol, kind):
+        if kind not in {"exercise", "do_not_exercise"} or not re.fullmatch(r"[A-Z]{1,6}\d{6}[CP]\d{8}", symbol):
+            raise ValueError("Exact option symbol and explicit instruction are required")
+        action = "exercise" if kind == "exercise" else "do-not-exercise"
+        return self._request("/v2/positions/" + symbol + "/" + action, "POST", receipt=True)
+
     def _request(self, path, method, body=None, *, data=False, receipt=False):
+        instruction = method == "POST" and re.fullmatch(r"/v2/positions/[A-Z]{1,6}\d{6}[CP]\d{8}/(?:exercise|do-not-exercise)", path)
         if method != "GET":
             single = re.fullmatch(r"/v2/orders/[0-9a-f-]{36}", path)
             if (not self.permit_paper_execution or data or not
-                    (method == "POST" and path == "/v2/orders" or method in {"PATCH", "DELETE"} and single)):
+                    (method == "POST" and path == "/v2/orders" or method in {"PATCH", "DELETE"} and single or instruction and body is None)):
                 raise ValueError("Broker write is disabled or unsupported")
-        allowed_data = data and method == "GET" and path.split("?", 1)[0] in {"/v1beta1/news", "/v1/corporate-actions"}
+        allowed_data = data and method == "GET" and path.split("?", 1)[0] in {"/v1beta1/news", "/v1/corporate-actions", "/v1beta1/options/quotes/latest"}
         if (not path.startswith("/v2/") and not allowed_data) or "://" in path:
             raise ValueError("Invalid Alpaca path")
         base = "https://data.alpaca.markets" if data else self.connection.endpoint
@@ -169,7 +256,7 @@ class AlpacaREST:
                 payload = response.read(8 * 1024 * 1024 + 1)
                 if len(payload) > 8 * 1024 * 1024:
                     raise ValueError("Account-history response exceeds its receipt size boundary")
-                return {"raw": payload, "data": json.loads(payload, parse_float=str) if payload else None,
+                return {"raw": payload, "data": json.loads(payload, parse_float=str) if payload and not instruction else None, "status": response.status,
                         "received_at": datetime.now(UTC).isoformat(), "source_date": response.headers.get("Date")}
             return json.load(response)
 

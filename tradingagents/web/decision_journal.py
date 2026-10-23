@@ -7,7 +7,123 @@ from datetime import UTC, date, datetime
 from .workspace import text
 from .investor import decimal, digest
 
-DEFAULT = {"entries": {}, "collections": [], "benchmark": None, "horizon_days": None, "settings_history": []}
+DEFAULT = {"entries": {}, "collections": [], "benchmark": None, "horizon_days": None, "settings_history": [],
+           "strategy_definitions": {}, "strategy_history": []}
+
+
+def validate_experiment_event(item, event, captured):
+    if (not isinstance(captured, dict) or captured.get("experiment_id") != item["id"]
+            or captured.get("event_id") != event["id"] or captured.get("ordinal") != event["ordinal"] or captured.get("at") != event["at"]):
+        raise ValueError("Retained experiment event envelope differs from its durable index")
+    payload = captured.get("payload")
+    if (not isinstance(payload, dict) or digest(payload) != event["payload_sha256"]
+            or payload.get("spec_sha256") != item["spec_sha256"]
+            or any(payload.get(key) != event.get(key) for key in ("type", "fold_id", "trial_id", "phase", "scenario_id", "source_event_id", "execution", "source_trial"))):
+        raise ValueError("Retained event kind, source identity or complete payload hash differs")
+    if event["type"] == "dispatch":
+        if payload.get("native_spec_sha256") != event["native_spec_sha256"]:
+            raise ValueError("Native dispatch specification differs from its durable event")
+        if event.get("execution") == "native":
+            spec = payload.get("native_spec") or {}
+            if (spec.get("kind") != "strategy_trial" or spec.get("experiment_sha256") != item["spec_sha256"]
+                    or spec.get("spec_sha256") != event["native_spec_sha256"]
+                    or digest({key: value for key, value in spec.items() if key != "spec_sha256"}) != spec["spec_sha256"]):
+                raise ValueError("Exact native trial kind/specification is unavailable or changed")
+    if event["type"] == "result":
+        result = payload.get("result") or {}
+        if result.get("kind") != "strategy_trial" or result.get("spec_sha256") != event.get("native_spec_sha256"):
+            raise ValueError("Actual native result kind/specification differs from its source event")
+    return payload
+
+
+def validate_experiment_record(item, resolve_artifact=None):
+    """Validate the durable index and event ordering, without interpreting optimizer results."""
+    from uuid import UUID
+
+    from .evaluation import EXPERIMENT_VERSION, reference, validate_experiment
+    if str(UUID(item["id"])) != item["id"]:
+        raise ValueError("Invalid retained experiment identity")
+    if item["kind"] == "experiment_comparison":
+        reference(item["comparison_artifact"])
+        if len(item["members"]) < 2 or len({row["experiment_id"] for row in item["members"]}) != len(item["members"]):
+            raise ValueError("Comparison requires distinct immutable experiment members")
+        for row in item["members"]:
+            reference(row["preview_artifact"])
+            reference(row["result_artifact"])
+        if resolve_artifact:
+            captured = resolve_artifact(item["comparison_artifact"])
+            if not isinstance(captured, dict) or captured.get("kind") != "experiment_comparison" or captured.get("members") != item["members"]:
+                raise ValueError("Retained comparison payload differs from its exact member index")
+        return
+    if (item["kind"] != "experiment" or item.get("version") != EXPERIMENT_VERSION
+            or item["status"] not in {"preview", "queued", "running", "cancelling", "completed", "no_qualifier", "cancelled", "interrupted", "failed"}
+            or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("spec_sha256", "")))
+            or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("strategy_sha256", ""))) or type(item.get("cancel_requested")) is not bool
+            or not isinstance(item.get("events"), list) or type(item.get("strategy_revision")) is not int or item["strategy_revision"] <= 0):
+        raise ValueError("Invalid retained experiment state or immutable identity")
+    reference(item["preview_artifact"])
+    if resolve_artifact:
+        spec = resolve_artifact(item["preview_artifact"])
+        if not isinstance(spec, dict):
+            raise ValueError("Exact immutable experiment preview is unavailable")
+        validate_experiment(spec)
+        if (spec["spec_sha256"] != item["spec_sha256"] or spec["strategy_sha256"] != item["strategy_sha256"]
+                or spec["strategy"]["id"] != item["strategy_id"] or spec["strategy"]["revision"] != item["strategy_revision"]):
+            raise ValueError("Experiment preview differs from its immutable index")
+    if item.get("result_artifact"):
+        reference(item["result_artifact"])
+        if resolve_artifact:
+            result = resolve_artifact(item["result_artifact"])
+            if not isinstance(result, dict) or result.get("kind") != "experiment" or result.get("spec_sha256") != item["spec_sha256"] or result.get("status") != item["status"]:
+                raise ValueError("Retained experiment result differs from its exact immutable index")
+    elif item["status"] in {"completed", "no_qualifier"}:
+        raise ValueError("A completed experiment requires its actual retained result")
+    asked, dispatched, results, told, ids, sources = set(), {}, {}, set(), set(), set()
+    for ordinal, event in enumerate(item["events"], 1):
+        if str(UUID(event["id"])) != event["id"] or event["id"] in ids or event["ordinal"] != ordinal:
+            raise ValueError("Experiment events require unique durable identities and consecutive ordinals")
+        ids.add(event["id"])
+        reference(event["artifact"])
+        kind, trial = event["type"], (event.get("fold_id"), event.get("trial_id"))
+        run = (*trial, event.get("phase"), event.get("scenario_id"))
+        source_id = digest({"type": kind, "fold_id": trial[0], "trial_id": trial[1], "phase": run[2], "scenario_id": run[3], "spec_sha256": item["spec_sha256"]})
+        if event.get("source_event_id") != source_id or source_id in sources or not re.fullmatch(r"[0-9a-f]{64}", str(event.get("payload_sha256", ""))):
+            raise ValueError("Experiment event source identity/payload hash is invalid or repeated")
+        sources.add(source_id)
+        payload = validate_experiment_event(item, event, resolve_artifact(event["artifact"])) if resolve_artifact else None
+        if kind not in {"ask", "dispatch", "result", "tell", "selection", "oos", "budget"}:
+            raise ValueError("Unknown experiment event type")
+        if kind == "ask":
+            if trial in asked or None in trial:
+                raise ValueError("An optimizer trial cannot be asked twice or without identity")
+            asked.add(trial)
+        elif kind == "dispatch":
+            if trial not in asked or run in dispatched or run[2] not in {"train", "validation", "oos"}:
+                raise ValueError("Native dispatch needs one durable ASK and a unique actual run identity")
+            if event.get("execution") not in {"native", "reused_source_trial"} or not re.fullmatch(r"[0-9a-f]{64}", str(event.get("native_spec_sha256", ""))):
+                raise ValueError("Native execution and explicitly reused source trials must remain distinct")
+            if event["execution"] == "reused_source_trial":
+                source = event.get("source_trial") or {}
+                source_run = tuple(source.get(key) for key in ("fold_id", "trial_id", "phase", "scenario_id"))
+                if source_run not in results or dispatched[source_run]["native_spec_sha256"] != event["native_spec_sha256"]:
+                    raise ValueError("A reused trial requires a prior retained result of the identical native specification")
+            dispatched[run] = event
+        elif kind == "result":
+            if run not in dispatched or run in results:
+                raise ValueError("Native RESULT must follow its unique durable DISPATCH")
+            if event.get("native_spec_sha256") != dispatched[run].get("native_spec_sha256") or event.get("execution") != dispatched[run].get("execution"):
+                raise ValueError("Trial result differs from its exact native/reused source dispatch")
+            if event.get("execution") == "reused_source_trial":
+                if event.get("source_trial") != dispatched[run].get("source_trial"):
+                    raise ValueError("Reused result source differs from its retained dispatch")
+                source_run = tuple(event["source_trial"].get(key) for key in ("fold_id", "trial_id", "phase", "scenario_id"))
+                if payload is not None and payload["result"] != results[source_run]:
+                    raise ValueError("Reused result bytes differ from their retained actual source result")
+            results[run] = payload["result"] if payload is not None else None
+        elif kind == "tell":
+            if trial not in asked or trial in told or not any(row[:2] == trial and row[2] != "oos" for row in results) or any(row[:2] == trial and row[2] != "oos" and row not in results for row in dispatched):
+                raise ValueError("Optimizer TELL requires durable completed results and cannot replay a trial")
+            told.add(trial)
 
 
 def command_outcome(command, authority, position_groups=()):
@@ -52,6 +168,10 @@ def position_outcomes(captures, authority, investor):
             continue
         for observation in report.get("position_lifecycles", []):
             identity = observation.get("identity", {})
+            if any(command.get("terms", {}).get("order_class") == "mleg" and command.get("instrument_id") == identity.get("instrument_id") for command in commands.values()):
+                unattributed.append({"capture_id": capture["id"], "artifact": capture["artifact"], "captured_at": capture["captured_at"],
+                    "observation": copy.deepcopy(observation), "gaps": ["Internal package control position/status is not actual leg economics, fees or PnL"]})
+                continue
             if (any(not isinstance(identity.get(key), str) or identity[key] in ("", "None") for key in
                     ("account_id", "broker_account_id", "endpoint", "mode", "position_id", "instrument_id", "opening_order_id", "ts_opened"))
                     or identity["mode"] not in {"paper", "live"} or not identity["ts_opened"].isdigit() or int(identity["ts_opened"]) <= 0
@@ -119,7 +239,12 @@ def position_outcomes(captures, authority, investor):
         mode_bound = original_mode_proof | {identity for identity, command in commands.items() if any(
             all(context.get(key) == group["account_context"].get(key) for key in ("account_id", "broker_account_id", "endpoint", "mode"))
             for context in contexts.get((command.get("source_observation") or {}).get("native_epoch"), []))}
-        candidates = {identity for identity, command in commands.items() if command.get("account_id") == group["broker_account_id"]
+        package_members = {identity for identity, command in commands.items() if command.get("account_id") == group["broker_account_id"]
+            and command.get("terms", {}).get("order_class") == "mleg" and any(
+                member.get("symbol", "") + ".ALPACA" == latest["native_position"]["instrument_id"]
+                and (member.get("id") in member_brokers or member.get("package_parent_id") in member_brokers)
+                and member.get("native_client_order_id") in member_clients for member in command.get("package_members", []))}
+        candidates = package_members | {identity for identity, command in commands.items() if command.get("account_id") == group["broker_account_id"]
             and command.get("instrument_id") == latest["native_position"]["instrument_id"] and (
                 command.get("native_client_order_id", command.get("client_order_id")) in member_clients
                 or member_brokers.intersection(command.get("broker_order_ids", [])) or member_fills.intersection(command.get("fill_ids", [])))}
@@ -128,7 +253,7 @@ def position_outcomes(captures, authority, investor):
             prior = set(members)
             broker_ids = {value for identity in members for value in commands[identity].get("broker_order_ids", [])}
             for identity, command in commands.items():
-                if identity not in mode_bound or command.get("account_id") != group["broker_account_id"] or command.get("instrument_id") != latest["native_position"]["instrument_id"]:
+                if identity not in mode_bound or command.get("account_id") != group["broker_account_id"] or command.get("instrument_id") != latest["native_position"]["instrument_id"] and identity not in package_members:
                     continue
                 relations = {command.get(key) for key in ("parent_command_id", "linked_entry_command_id", "linked_group_owner_id")}
                 if identity in members:

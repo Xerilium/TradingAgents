@@ -182,7 +182,7 @@ class DeskService:
         self.runtime = runtime or NautilusRuntime(
             Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe", DEFAULT_CREDENTIALS)
         DeskConfig.model_validate(self.store.data["config"])
-        self.runtime.configure(self.store.data["config"]["universe"])
+        self.configure_symbols()
         self.gateway = gateway or MaenifoldGateway(timeout=90)
         self.graph_factory = graph_factory
         self.lock = threading.RLock()
@@ -195,8 +195,11 @@ class DeskService:
         self.chart_cache = {}
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paper-analysis")
         self.simulation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="saved-plan-simulation")
+        self.chart_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chart-calculation")
         self.simulation_closed = False
         self.simulation_process_lock, self.simulation_processes = threading.Lock(), set()
+        self.experiment_processes = {}
+        self.chart_jobs = {}
         self.simulation_session = str(uuid4())
         self.cancelled = set()
         self._account_observation = None
@@ -227,7 +230,9 @@ class DeskService:
         from .market_history import MarketDataJobs
         self.data_jobs = MarketDataJobs(self)
         from .attention import AttentionMonitor
-        self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance)
+        from .market_discovery import due_scans
+        self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
+            tick=lambda: (self._expire_charts(), due_scans(self.data_jobs)))
         self.attention_monitor.start()
 
     def _observe_runtime(self, observation):
@@ -272,13 +277,120 @@ class DeskService:
                     or runtime.get("reconciliation", {}).get("status") != "reconciled"):
                 proposal["conditions_stale"] = True
         return {"sources": sources, "research": saved, "universe_count": len(self.store.data["config"]["universe"]),
-                "symbols": symbols, "proposals": {p["id"]: p for p in proposals}, "store_generation": self.store.directory.resolve().as_posix()}
+                "symbols": symbols, "proposals": {p["id"]: p for p in proposals}, "indicators": self.attention_indicators(),
+                "drawings": self.attention_drawings(),
+                "store_generation": self.store.directory.resolve().as_posix()}
+
+    @staticmethod
+    def drawing_scope(detail):
+        source = detail.get("source") or {}
+        return {"symbol": detail["symbol"], "timeframe": detail.get("timeframe", "1Day"),
+            "context": "current" if detail.get("context") == "current" else "saved", "unit": "price",
+            **{key: detail.get(key) if detail.get(key) is not None else source.get("vendor" if key == "provider" else key)
+               for key in ("instrument_id", "currency", "provider", "feed", "adjustment", "session")},
+            "instrument_id": detail.get("instrument_id") or source.get("instrument_id") or detail.get("required_coverage", {}).get("provenance", {}).get("asset_id")}
+
+    def attention_drawings(self):
+        """Resolve saved geometry against the selected retained series, never collect data."""
+        from .attention import DEFAULT, atoms, drawing_geometry, drawing_history_points, drawing_key
+        from .investor import digest
+        from .workspace import DEFAULT as WORKSPACE
+        workspace = self.store.database.read("workspace", WORKSPACE)["data"]
+        values = {}
+        for rule in self.store.database.read("attention", DEFAULT)["data"]["rules"].values():
+            if not rule["active"] or rule["removed"]:
+                continue
+            for atom in atoms(rule):
+                if atom["kind"] != "drawing":
+                    continue
+                params, symbol = atom["parameters"], rule["symbol"]
+                key = drawing_key(symbol, params)
+                if key in values:
+                    continue
+                try:
+                    drawing = params["drawing"]
+                    current = workspace.get("drawings", {}).get(drawing["id"])
+                    if current != drawing or drawing.get("deleted") or drawing_geometry(drawing) != params["drawing_ref"]["geometry_sha256"]:
+                        raise ValueError("Drawing edited/deleted; explicitly rebind its saved revision before monitoring")
+                    self.validate_drawing_sources({drawing["id"]: drawing})
+                    research = params["context"] == "research"
+                    detail = self.chart(symbol, run_id=params["run_id"]) if research else self.data_jobs.detail(symbol, params["history_key"], timeframe=params["timeframe"])
+                    scope = self.drawing_scope(detail)
+                    if scope != drawing["scope"] or any(scope.get(field) in (None, "") for field in
+                            ("instrument_id", "currency", "provider", "feed", "adjustment", "session")):
+                        raise ValueError("Exact instrument/currency/provider/feed/session/adjustment drawing scope is unavailable or differs")
+                    source = detail.get("source") or {}
+                    binding = {**scope, "observed_at": detail.get("captured_at") or source.get("captured_at"),
+                        "key": detail.get("key"), "artifact": {k: source[k] for k in ("path", "sha256", "format") if k in source},
+                        "content_sha256": source.get("sha256"), "status": "available"}
+                    binding["eligibility_evidence"] = copy.deepcopy(detail.get("required_coverage"))
+                    if not source.get("path") or not source.get("sha256"):
+                        raise ValueError("Retained history artifact identity is unavailable")
+                    if research:
+                        run = self.run_detail(params["run_id"])
+                        result = copy.deepcopy(next(row for row in run["results"] if row["symbol"] == symbol))
+                        binding.update(run_id=run["id"], revision=result.get("revision", 0), result_sha256=digest(result),
+                            market_source_sha256=self._attention_market_signature(run, symbol),
+                            artifact_store="application" if any(row["id"] == run["id"] for row in self.store.data["runs"]) else "history")
+                    states = detail.get("indicator_evidence", {}).get("indicator_observations", {})
+                    if not states and detail.get("indicators"):
+                        states = {str(point["t"]): point for point in detail["indicators"][0].get("points", [])}
+                    values[key] = {"points": drawing_history_points(detail.get("bars", []), states), "source": binding,
+                        "selected_time": detail.get("required_coverage", {}).get("latest_completed_session") if params["timeframe"] == "1Day" else None,
+                        "comparable_identity": digest({"scope": scope, "selection": {name: params.get(name) for name in
+                            ("context", "history_key", "run_id", "timeframe")}, "store_generation": self.store.directory.resolve().as_posix()})}
+                except (ValueError, KeyError, TypeError, OSError, StopIteration) as exc:
+                    values[key] = {"points": [], "source": {}, "error": str(exc)}
+        return values
+
+    def attention_indicators(self):
+        """Derive requested conditions from retained inputs only; never queue collection."""
+        from .attention import DEFAULT, atoms, indicator_key
+        from .investor import digest
+        values = {}
+        for rule in self.store.database.read("attention", DEFAULT)["data"]["rules"].values():
+            if not rule["active"] or rule["removed"]:
+                continue
+            symbols = [m["symbol"] for m in rule["memberships"].values() if m["status"] == "monitoring"] if "memberships" in rule else [rule["symbol"]]
+            for atom in atoms(rule):
+                if atom["kind"] != "indicator":
+                    continue
+                params = atom["parameters"]
+                for symbol in symbols:
+                    key = indicator_key(symbol, params)
+                    if key in values:
+                        continue
+                    try:
+                        research = params["context"] == "research"
+                        detail = self.chart(symbol, run_id=params["run_id"]) if research else self.data_jobs.detail(
+                            symbol, params.get("history_key") or None, timeframe=params["timeframe"])
+                        if not research and detail.get("timeframe") != params["timeframe"]:
+                            raise ValueError("Selected indicator cache interval differs")
+                        source = detail.get("source") or {}
+                        binding = {"observed_at": source.get("captured_at") or detail.get("captured_at"),
+                            "status": "available" if detail.get("indicators") else "unavailable", "key": detail.get("key"),
+                            "artifact": {k: source[k] for k in ("path", "sha256", "format") if k in source} if source.get("sha256") else None,
+                            "content_sha256": source.get("sha256"), "provider": source.get("vendor"),
+                            **{k: detail.get(k, source.get(k)) for k in ("feed", "timeframe", "adjustment", "currency", "session")}}
+                        if research:
+                            run = self.run_detail(params["run_id"])
+                            result = copy.deepcopy(next(r for r in run["results"] if r["symbol"] == symbol))
+                            result.setdefault("revision", 0)
+                            binding.update(run_id=run["id"], revision=result["revision"], result_sha256=digest(result),
+                                market_source_sha256=self._attention_market_signature(run, symbol),
+                                artifact_store="application" if any(r["id"] == run["id"] for r in self.store.data["runs"]) else "history")
+                        values[key] = {"series": detail.get("indicators", []), "source": binding, "error": detail.get("error"),
+                            "selected_time": detail.get("required_coverage", {}).get("latest_completed_session")
+                                if not research and detail.get("timeframe") == "1Day" else None}
+                    except (ValueError, KeyError, TypeError, OSError, StopIteration) as exc:
+                        values[key] = {"series": [], "source": {}, "error": "Retained indicator input unavailable (" + type(exc).__name__ + ")"}
+        return values
 
     def attention(self):
         from .attention import DEFAULT, OBSERVATIONS
         from .investor import digest
         record = self.store.database.read("attention", DEFAULT)
-        bindings = self.review_source_bindings()
+        bindings = self.review_source_bindings() if record["data"]["reviews"] else {}
         for review in record["data"]["reviews"].values():
             current = bindings.get(review["symbol"], {})
             prior = review.get("source_bindings")
@@ -287,7 +399,13 @@ class DeskService:
             review["review_required"] = bool(changed)
             review["review_reasons"] = [scope + " source revision changed or was not bound when reviewed" for scope in changed]
             review["current_source_bindings"] = current
-        return {**record, "observations": self.store.database.read("attention_observations", OBSERVATIONS)}
+        from .attention import drawing_geometry
+        from .workspace import DEFAULT as WORKSPACE
+        drawings = self.store.database.read("workspace", WORKSPACE)["data"].get("drawings", {})
+        return {**record, "observations": self.store.database.read("attention_observations", OBSERVATIONS),
+            "drawing_options": [{"drawing_ref": {"drawing_id": row["id"], "revision": row["revision"], "geometry_sha256": drawing_geometry(row)},
+                "drawing": copy.deepcopy(row), "scope": copy.deepcopy(row["scope"])} for row in drawings.values()
+                if not row.get("deleted") and row["kind"] in {"horizontal-line", "trend-line"}]}
 
     def review_source_bindings(self):
         sources = self.data_jobs.sources()
@@ -299,9 +417,9 @@ class DeskService:
     def attention_occurrence(self, identity, generation):
         """Open only retained alert inputs; no provider request or latest-source substitution."""
         from uuid import UUID
-        from .attention import OBSERVATIONS
+        from .attention import OBSERVATIONS, drawing_coordinates, drawing_history_points, drawing_threshold
         from .approval_review import read_artifact
-        from .investor import DEFAULT as INVESTOR_DEFAULT, digest
+        from .investor import DEFAULT as INVESTOR_DEFAULT, decimal, digest
         from .recovery import references
         with self.maintenance:
             current = self.store.directory.resolve().as_posix()
@@ -318,49 +436,89 @@ class DeskService:
             if evidence.get("store_generation") != current:
                 return {**result, "reason": "Capture generation is different or unrecorded; evaluated facts remain readable but exact full-source association is unavailable",
                         "sources": [{"kind": "capture_generation", "status": "unavailable", "reason": "The captured generation does not match the active profile; query identity alone cannot establish source provenance"}]}
-            source, symbol = evidence["source"], evidence["rule"]["symbol"]
-            if source.get("artifact"):
-                try:
-                    reference = source["artifact"]
-                    next(references(reference))
-                    data = read_artifact(self.store.directory, reference)
-                    if data is None or isinstance(data, dict) and (data.get("symbol", symbol) != symbol
-                            or evidence["rule"]["scope"] == "history" and data.get("key") != source.get("input_identity")):
-                        raise ValueError("Exact retained source is unavailable")
-                    result["sources"].append({"kind": evidence["rule"]["scope"], "status": "available", "reference": reference, "data": data})
-                except (ValueError, KeyError, TypeError, OSError, StopIteration):
-                    result["sources"].append({"kind": evidence["rule"]["scope"], "status": "unavailable",
-                        "reason": "The occurrence's retained artifact is missing, changed or mismatched; newer same-key data is not substituted"})
-            if source.get("run_id"):
-                try:
-                    run = self.run_detail(source["run_id"])
-                    saved = copy.deepcopy(next(item for item in run["results"] if item["symbol"] == symbol))
-                    saved.setdefault("revision", 0)
-                    if saved["revision"] != source.get("revision") or digest(saved) != source.get("result_sha256"):
-                        raise ValueError("Captured research revision differs")
-                    result["sources"].append({"kind": "research_result", "status": "available", "run_id": run["id"], "data": saved})
-                    if self._attention_market_signature(run, symbol) != source.get("market_source_sha256"):
-                        raise ValueError("Captured run market sources differ")
-                    from .market_evidence import recorded_market
-                    root = self.store.directory if any(item["id"] == run["id"] for item in self.store.data["runs"]) else self.history_directory
-                    market = recorded_market(root, run, symbol) if root else None
-                    result["sources"].append({"kind": "run_instrument", "status": "partial" if market and market.get("source") and market.get("problems") else "available" if market and market.get("source") else "unavailable",
-                        "reason": "; ".join(market.get("problems", [])) if market else "Retained run instrument sources are unavailable", "data": market})
-                except (ValueError, KeyError, TypeError, OSError, StopIteration):
-                    result["sources"].append({"kind": "research_source", "status": "unavailable",
-                        "reason": "Exact captured run/result or market-source revision is unavailable; no newer report or instrument source is substituted"})
-            expected = evidence.get("proposal")
-            if expected:
-                proposals = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
-                proposal = next((item for item in proposals if item["id"] == expected["id"]), {})
-                candidates = [proposal, *proposal.get("history", [])]
-                saved = next((item for item in candidates if item.get("revision") == expected["revision"]
-                    and item.get("policy_revision") == expected["policy_revision"] and item.get("terms_sha256") == expected["terms_sha256"]
-                    and digest(item.get("terms")) == expected["terms_sha256"]
-                    and item.get("impact", {}).get("conditions") == expected["conditions"]), None)
-                result["sources"].append({"kind": "proposal_revision", "status": "available" if saved else "unavailable",
-                    "reason": "Exact saved proposal terms and conditions" if saved else "Captured proposal revision/conditions are unavailable; newer terms are not substituted",
-                    "data": {"id": expected["id"], **{key: copy.deepcopy(saved.get(key)) for key in ("revision", "policy_revision", "terms_sha256", "terms", "impact")}} if saved else None})
+            captured_atoms = evidence.get("atoms", [evidence])
+            for evidence in captured_atoms:
+                source, symbol = evidence["source"], evidence["rule"]["symbol"]
+                if evidence["rule"]["kind"] == "drawing":
+                    facts = evidence["evaluation"].get("facts", {})
+                    result["sources"].append({"kind": "drawing_revision", "status": "available", "data": {
+                        name: copy.deepcopy(facts.get(name)) for name in ("drawing", "geometry_sha256", "algorithm", "geometry_policy",
+                            "manual_time_mapping", "anchors", "field", "comparison", "previous_observation", "observation")}})
+                    for name in ("previous_observation", "observation"):
+                        observation = facts.get(name) or {}
+                        retained_source = observation.get("source") or {}
+                        reference = retained_source.get("artifact")
+                        if not reference:
+                            continue
+                        try:
+                            root = self.history_directory if retained_source.get("artifact_store") == "history" else self.store.directory
+                            data = read_artifact(root, reference) if root else None
+                            if not isinstance(data, dict) or data.get("symbol") != symbol:
+                                raise ValueError("Exact retained drawing source is unavailable")
+                            points = drawing_history_points(data.get("bars", []))
+                            index = next((i for i, point in enumerate(points) if point["t"] == observation.get("t")), None)
+                            if (index is None or points[index]["raw"] != observation.get("raw")
+                                    or points[index]["history_prefix_identity"] != observation.get("history_prefix_identity")
+                                    or decimal(observation.get("logical_index")) != Decimal(index)):
+                                raise ValueError("Captured logical index/history prefix differs from its actual retained axis")
+                            coordinates = drawing_coordinates(facts["drawing"], points)
+                            if coordinates != observation.get("anchors") or drawing_threshold(facts["drawing"], coordinates, Decimal(index), facts["geometry_policy"]) != decimal(observation.get("threshold")):
+                                raise ValueError("Captured drawing coordinates/threshold differ from the exact retained source")
+                            result["sources"].append({"kind": "drawing_" + name, "status": "available", "reference": reference, "data": data})
+                        except (ValueError, KeyError, TypeError, OSError, ArithmeticError):
+                            result["sources"].append({"kind": "drawing_" + name, "status": "unavailable", "reference": reference,
+                                "reason": "Exact retained bar, logical axis or geometry is missing/changed; retained drawing remains readable and current cache is not substituted"})
+                    for anchor in facts.get("drawing", {}).get("points", []):
+                        if anchor.get("basis") == "observed":
+                            try:
+                                detail = self.pinned_chart_source(anchor["source_pin"])
+                                result["sources"].append({"kind": "drawing_anchor", "status": "available", "source_pin": anchor["source_pin"], "data": detail})
+                            except (ValueError, KeyError, TypeError, OSError):
+                                result["sources"].append({"kind": "drawing_anchor", "status": "unavailable", "source_pin": anchor["source_pin"],
+                                    "reason": "Exact historical anchor input is unavailable; no current source was substituted"})
+                if source.get("artifact") and evidence["rule"]["kind"] != "drawing":
+                    try:
+                        reference = source["artifact"]
+                        next(references(reference, native_reconstruction=True))
+                        artifact_root = self.history_directory if source.get("artifact_store") == "history" else self.store.directory
+                        data = read_artifact(artifact_root, reference) if artifact_root else None
+                        if data is None or isinstance(data, dict) and (data.get("symbol", symbol) != symbol
+                                or evidence["rule"]["scope"] == "history" and data.get("key") != source.get("input_identity")):
+                            raise ValueError("Exact retained source is unavailable")
+                        result["sources"].append({"kind": evidence["rule"]["scope"], "status": "available", "reference": reference, "data": data})
+                    except (ValueError, KeyError, TypeError, OSError, StopIteration):
+                        result["sources"].append({"kind": evidence["rule"]["scope"], "status": "unavailable",
+                            "reason": "The occurrence's retained artifact is missing, changed or mismatched; newer same-key data is not substituted"})
+                if source.get("run_id"):
+                    try:
+                        run = self.run_detail(source["run_id"])
+                        saved = copy.deepcopy(next(item for item in run["results"] if item["symbol"] == symbol))
+                        saved.setdefault("revision", 0)
+                        if saved["revision"] != source.get("revision") or digest(saved) != source.get("result_sha256"):
+                            raise ValueError("Captured research revision differs")
+                        result["sources"].append({"kind": "research_result", "status": "available", "run_id": run["id"], "data": saved})
+                        if self._attention_market_signature(run, symbol) != source.get("market_source_sha256"):
+                            raise ValueError("Captured run market sources differ")
+                        from .market_evidence import recorded_market
+                        root = self.store.directory if any(item["id"] == run["id"] for item in self.store.data["runs"]) else self.history_directory
+                        market = recorded_market(root, run, symbol) if root else None
+                        result["sources"].append({"kind": "run_instrument", "status": "partial" if market and market.get("source") and market.get("problems") else "available" if market and market.get("source") else "unavailable",
+                            "reason": "; ".join(market.get("problems", [])) if market else "Retained run instrument sources are unavailable", "data": market})
+                    except (ValueError, KeyError, TypeError, OSError, StopIteration):
+                        result["sources"].append({"kind": "research_source", "status": "unavailable",
+                            "reason": "Exact captured run/result or market-source revision is unavailable; no newer report or instrument source is substituted"})
+                expected = evidence.get("proposal")
+                if expected:
+                    proposals = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
+                    proposal = next((item for item in proposals if item["id"] == expected["id"]), {})
+                    candidates = [proposal, *proposal.get("history", [])]
+                    saved = next((item for item in candidates if item.get("revision") == expected["revision"]
+                        and item.get("policy_revision") == expected["policy_revision"] and item.get("terms_sha256") == expected["terms_sha256"]
+                        and digest(item.get("terms")) == expected["terms_sha256"]
+                        and item.get("impact", {}).get("conditions") == expected["conditions"]), None)
+                    result["sources"].append({"kind": "proposal_revision", "status": "available" if saved else "unavailable",
+                        "reason": "Exact saved proposal terms and conditions" if saved else "Captured proposal revision/conditions are unavailable; newer terms are not substituted",
+                        "data": {"id": expected["id"], **{key: copy.deepcopy(saved.get(key)) for key in ("revision", "policy_revision", "terms_sha256", "terms", "impact")}} if saved else None})
             return result
 
     def save_attention(self, request):
@@ -389,22 +547,45 @@ class DeskService:
                 if source.get("status") != "completed" or source.get("revision", 0) != request.get("research_revision"):
                     raise ValueError("Review disposition must match the exact saved stock/run/revision")
                 context["research"][request["symbol"]] = {**source, "run_id": request["run_id"]}
-            self.store.database.update("attention", request.get("expected_revision"),
-                lambda saved: change(saved, request, context["symbols"], context["research"], self.review_source_bindings()), DEFAULT)
+            from .workspace import DEFAULT as WORKSPACE
+            bindings = self.review_source_bindings()
+            def save(records):
+                previous = copy.deepcopy(records["attention"]["rules"].get(request.get("id")))
+                change(records["attention"], request, context["symbols"], context["research"], bindings,
+                       records["workspace"], context["proposals"])
+                if previous:
+                    current = records["attention"]["rules"][previous["id"]]
+                    if current["revision"] != previous["revision"] or current["removed"]:
+                        for key, state in records["attention_observations"]["rule_states"].items():
+                            if state.get("rule_id") == previous["id"] or key == previous["id"]:
+                                state.update(monitoring="no_longer_monitored", removed_at=now(),
+                                    reason="Rule removed or its content revised; prior latch is historical, not cleared")
+                    elif current["active"] != previous["active"]:
+                        for key, state in records["attention_observations"]["rule_states"].items():
+                            if ((state.get("rule_id") == previous["id"] or key == previous["id"])
+                                    and state.get("monitoring") != "no_longer_monitored"):
+                                state["monitoring"] = "monitoring" if current["active"] else "paused"
+            self.store.database.transact({"attention": DEFAULT, "workspace": WORKSPACE, "attention_observations": OBSERVATIONS}, save,
+                                         expected={"attention": request.get("expected_revision")})
         return self.attention()
 
     def reconcile_commands(self):
         from .admission import DEFAULT as COMMAND_DEFAULT, TERMINAL
-        self.runtime.request("refresh")
+        with self.maintenance:
+            runtime, store = self.runtime, self.store
+        runtime.request("refresh")
         errors = {}
-        for identity, command in self.store.database.read("commands", COMMAND_DEFAULT)["data"]["commands"].items():
+        for identity, command in store.database.read("commands", COMMAND_DEFAULT)["data"]["commands"].items():
             if command["state"] in {"not_sent", "admitted_not_dispatched"} or command["state"] in TERMINAL and not command.get("native_pending_commitment"):
                 continue
             try:
-                self.runtime.request("reconcile_identity", command_id=identity)
+                runtime.request("reconcile_identity", command_id=identity)
             except ValueError as exc:
                 errors[identity] = str(exc)
-        return {**self.admission.reconcile(), "identity_errors": errors}
+        with self.maintenance:
+            if self.runtime is not runtime or self.store is not store:
+                raise ValueError("Application generation changed; refresh the current account again")
+            return {**self.admission.reconcile(), "identity_errors": errors}
 
     def state(self, *, compact=False, run_id=None):
         with self.lock:
@@ -474,32 +655,302 @@ class DeskService:
 
     def _saved_research_index(self, *, bind_attention=False):
         saved = {}
-        current = self.store.snapshot()["runs"]
-        for run in sorted(current + self.history.get("runs", []), key=lambda item: item.get("created_at") or "", reverse=True):
-            for result in run.get("results", []):
-                if result.get("status") == "completed" and result["symbol"] not in saved:
-                    completion = next((e.get("time") for e in reversed(run.get("events", []))
-                                       if e.get("kind") == "complete" and e.get("symbol") == result["symbol"]), None)
-                    observed = result.get("completed_at") or completion or run.get("completed_at")
-                    basis = "stock_completion" if result.get("completed_at") or completion else "run_completion" if observed else "analysis_date_only"
-                    saved.setdefault(result["symbol"], {"run_id": run["id"], "observed_at": observed, "time_basis": basis,
-                        **{key: result.get(key) for key in ("symbol", "status", "rating", "trade_date", "revision")}})
-                    if bind_attention:
-                        from .investor import digest
-                        bound = copy.deepcopy(result)
-                        bound.setdefault("revision", 0)
-                        saved[result["symbol"]].update(revision=bound["revision"], result_sha256=digest(bound),
-                            market_source_sha256=self._attention_market_signature(run, result["symbol"]))
+        with self.store.lock:
+            self.store._refresh()
+            current = self.store.data["runs"]
+            for run in sorted(current + self.history.get("runs", []), key=lambda item: item.get("created_at") or "", reverse=True):
+                for result in run.get("results", []):
+                    if result.get("status") == "completed" and result["symbol"] not in saved:
+                        completion = next((e.get("time") for e in reversed(run.get("events", []))
+                                           if e.get("kind") == "complete" and e.get("symbol") == result["symbol"]), None)
+                        observed = result.get("completed_at") or completion or run.get("completed_at")
+                        basis = "stock_completion" if result.get("completed_at") or completion else "run_completion" if observed else "analysis_date_only"
+                        saved.setdefault(result["symbol"], {"run_id": run["id"], "observed_at": observed, "time_basis": basis,
+                            **{key: result.get(key) for key in ("symbol", "status", "rating", "trade_date", "revision")}})
+                        if bind_attention:
+                            from .investor import digest
+                            bound = copy.deepcopy(result)
+                            bound.setdefault("revision", 0)
+                            saved[result["symbol"]].update(revision=bound["revision"], result_sha256=digest(bound),
+                                market_source_sha256=self._attention_market_signature(run, result["symbol"]))
         return saved
 
     def workspace(self):
         from .workspace import DEFAULT
         return self.store.database.read("workspace", DEFAULT)
 
+    def chart_analysis(self):
+        from .evaluation import chart_calculation_capabilities
+        from .market_history import DEFAULT
+        self._expire_charts()
+        record = self.workspace()
+        return {"workspace_revision": record["revision"], "capabilities": chart_calculation_capabilities(),
+            "definitions": list(record["data"].get("chart_definitions", {}).values()),
+            "history": record["data"].get("chart_definition_history", []),
+            "calculations": list(self.store.database.read("market_history", DEFAULT)["data"].get("chart_calculations", {}).values())}
+
+    def chart_calculation(self, identity):
+        from .approval_review import read_artifact
+        from .evaluation import validate_chart_calculation, validate_chart_result
+        from .market_history import DEFAULT
+        item = self.store.database.read("market_history", DEFAULT)["data"].get("chart_calculations", {}).get(identity)
+        if not item:
+            raise ValueError("Choose a retained chart calculation")
+        spec = read_artifact(self.store.directory, item["spec_artifact"])
+        result = read_artifact(self.store.directory, item["result_artifact"]) if item.get("result_artifact") else None
+        if not isinstance(spec, dict) or item.get("result_artifact") and not isinstance(result, dict):
+            raise ValueError("Exact chart calculation evidence is unavailable or changed")
+        validate_chart_calculation(spec)
+        if result is not None:
+            validate_chart_result(result, spec)
+        if (spec["spec_sha256"] != item["spec_sha256"] or result is not None and result["result_sha256"] != item["result_sha256"]
+                or spec["source_pin"] != item["source_pin"]):
+            raise ValueError("Chart calculation differs from its retained source binding")
+        return {**copy.deepcopy(item), "spec": spec, "result": result}
+
+    def chart_analysis_action(self, request):
+        from .app_database import StoreConflict
+        from .approval_review import read_artifact
+        from .investor import digest
+        from .evaluation import (
+            prepare_chart_calculation,
+            validate_chart_calculation,
+        )
+        from .market_history import DEFAULT as HISTORY, chart_calendar_coverage
+        from .workspace import (
+            DEFAULT,
+            chart_definition_dependencies,
+            import_chart_definitions,
+            save_chart_definition,
+        )
+        action, store = request.get("action"), self.store
+        if action in {"chart_calculation_open", "chart_calculation_cancel"}:
+            self._expire_charts()
+            if action == "chart_calculation_cancel":
+                self._interrupt_charts("cancelled", request.get("id"))
+            return {"calculation": self.chart_calculation(request.get("id")), "chart_analysis": self.chart_analysis()}
+        record = self.workspace()
+        if type(request.get("workspace_revision")) is not int or request["workspace_revision"] != record["revision"]:
+            raise StoreConflict(record["revision"])
+        if action in {"chart_definition_save", "chart_definition_import"}:
+            saved_id = None
+            def change(records):
+                nonlocal saved_id
+                if action == "chart_definition_save":
+                    saved_id = save_chart_definition(records["workspace"], request)
+                else:
+                    import_chart_definitions(records["workspace"], request.get("bundle"))
+            store.database.transact({"workspace": DEFAULT}, change, expected={"workspace": record["revision"]})
+            return {"chart_analysis": self.chart_analysis(), "saved_definition_id": saved_id}
+        history = record["data"].get("chart_definition_history", [])
+        if action == "chart_definition_export":
+            rows = history
+            if request.get("id"):
+                matching = [row for row in history if row["definition"]["id"] == request["id"]
+                    and row["definition"]["revision"] == request.get("revision") and row["sha256"] == request.get("sha256")]
+                if len(matching) != 1:
+                    raise ValueError("Export an exact retained definition revision")
+                keys = set()
+                def include(row):
+                    definition = row["definition"]
+                    key = (definition["id"], definition["revision"])
+                    if key in keys:
+                        return
+                    keys.add(key)
+                    dependencies = chart_definition_dependencies(record["data"], row["dependencies"])
+                    for candidate in history:
+                        value = candidate["definition"]
+                        if (value["id"] == definition["id"] and value["revision"] < definition["revision"]
+                                or any(value["id"] == dependency["id"] and value["revision"] <= dependency["revision"] for dependency in dependencies)):
+                            include(candidate)
+                include(matching[0])
+                rows = [row for row in history if (row["definition"]["id"], row["definition"]["revision"]) in keys]
+            return {"bundle": {"version": "chart-definitions-v1", "definitions": copy.deepcopy(rows)}}
+        if action != "chart_calculate":
+            raise ValueError("Choose a chart definition or exact retained calculation action")
+        seconds = request.get("budget_seconds", 60)
+        if type(seconds) is not int or not 1 <= seconds <= 600:
+            raise ValueError("Chart total budget must be a whole number of seconds from 1 through 600")
+        if self.simulation_closed:
+            raise ValueError("Calculation admission is closed")
+        matching = [row for row in history if row["definition"]["id"] == request.get("definition_id")
+            and row["definition"]["revision"] == request.get("definition_revision") and row["sha256"] == request.get("definition_sha256")]
+        if len(matching) != 1:
+            raise ValueError("Calculate an exact saved chart definition revision")
+        definition = matching[0]
+        value = {**self.pinned_chart_source(request.get("source_pin")), "artifact": copy.deepcopy(request["source_pin"]["artifact"])}
+        source = value.get("source") or {}
+        for key in ("captured_at", "currency", "session", "adjustment"):
+            value.setdefault(key, source.get(key))
+        value.setdefault("timeframe", request["source_pin"]["timeframe"])
+        source_path = (store.directory / value["artifact"]["path"]).resolve()
+        if (not source_path.is_relative_to(store.directory.resolve()) or not source_path.is_file()
+                or hashlib.sha256(source_path.read_bytes()).hexdigest() != value["artifact"]["sha256"]):
+            raise ValueError("The exact source belongs to external history; retain its original evidence in this profile before calculating")
+        provenance = value.get("required_coverage", {}).get("provenance", {})
+        calendar_ref = provenance.get("calendar_reference")
+        if calendar_ref:
+            value = {**value, "calendar": read_artifact(store.directory, calendar_ref), "calendar_artifact": calendar_ref}
+        value["calendar_coverage"] = chart_calendar_coverage(value)
+        spec = prepare_chart_calculation(value, {"definition": definition["definition"],
+            "dependencies": chart_definition_dependencies(record["data"], definition["dependencies"]),
+            "source_pin": request["source_pin"]})
+        validate_chart_calculation(spec)
+        identity = str(uuid4())
+        admitted, queued = time.monotonic(), datetime.now(UTC)
+        execution = {"budget_seconds": seconds, "queued_at": queued.isoformat(),
+            "deadline_at": (queued + timedelta(seconds=seconds)).isoformat(), "spec_sha256": spec["spec_sha256"]}
+        item = {"id": identity, "version": "chart-calculation-v1", "status": "queued", "execution": execution,
+            "execution_sha256": digest(execution),
+            "created_at": queued.isoformat(), "spec_sha256": spec["spec_sha256"],
+            "definition_id": definition["definition"]["id"], "definition_revision": definition["definition"]["revision"],
+            "definition_sha256": definition["sha256"], "source_pin": copy.deepcopy(request["source_pin"])}
+        with self.maintenance:
+            if store is not self.store:
+                raise ValueError("Application records changed during chart calculation; no current source was substituted")
+            with self.simulation_process_lock:
+                if len(self.chart_jobs) >= 2:
+                    raise ValueError("Chart worker busy: at most one running and one queued request; wait or cancel your selected chart job")
+            item["spec_artifact"] = store._write_json_artifact(identity, "chart-spec", spec)
+            store.database.transact({"market_history": HISTORY, "workspace": DEFAULT},
+                lambda records: records["market_history"].setdefault("chart_calculations", {}).update({identity: item}),
+                expected={"workspace": record["revision"]})
+            job = {"id": identity, "store": store, "session": self.simulation_session, "admitted": admitted,
+                "deadline": admitted + seconds, "stopped": threading.Event(), "processes": set(),
+                "execution_sha256": item["execution_sha256"], "reason": None}
+            with self.simulation_process_lock:
+                self.chart_jobs[identity] = job
+            try:
+                job["future"] = self.chart_executor.submit(self._run_chart, job, spec)
+            except RuntimeError:
+                self._finish_chart(job, "failed", "Executor rejected the queued calculation")
+                with self.simulation_process_lock:
+                    self.chart_jobs.pop(identity, None)
+            else:
+                def release(_):
+                    with self.simulation_process_lock:
+                        if not any(process.poll() is None for process in job["processes"]):
+                            self.chart_jobs.pop(identity, None)
+                job["future"].add_done_callback(release)
+        return {"calculation": self.chart_calculation(identity), "chart_analysis": self.chart_analysis()}
+
+    def _finish_chart(self, job, status, reason=None, *, result=None, termination=None):
+        from .market_history import DEFAULT
+        with self.maintenance:
+            if self.store is not job["store"] or job["session"] != self.simulation_session:
+                return
+            def finish(records):
+                item = records["market_history"]["chart_calculations"][job["id"]]
+                if item["execution_sha256"] != job["execution_sha256"]:
+                    return
+                if item["status"] not in {"queued", "running"}:
+                    if item["status"] == "interrupted" and termination is not None:
+                        item.setdefault("termination_history", []).append(copy.deepcopy(termination))
+                        if not item.get("termination", {}).get("termination_confirmed"):
+                            item["termination"] = copy.deepcopy(termination)
+                    return
+                if job["stopped"].is_set() or time.monotonic() >= job["deadline"]:
+                    status_value, why = "interrupted", job["reason"] or "deadline"
+                else:
+                    status_value, why = status, reason
+                item.update(status=status_value, finished_at=now(), reason=why,
+                    elapsed_seconds=max(0, time.monotonic() - job["admitted"]))
+                if termination is None and status_value == "interrupted":
+                    item["termination"] = copy.deepcopy(job.get("exit_evidence", {"termination_confirmed": False,
+                        "reason": "Worker exit has not been confirmed"}))
+                if termination is not None:
+                    item["termination"] = copy.deepcopy(termination)
+                if status_value in {"completed", "unavailable"}:
+                    item.update(result_artifact=job["store"]._write_json_artifact(job["id"], "chart-result", result),
+                        result_sha256=result["result_sha256"], derivation_identity=result["derivation_identity"])
+            job["store"].database.transact({"market_history": DEFAULT}, finish)
+
+    def _run_chart(self, job, spec):
+        from .evaluation import execute_chart_calculation, stop_calculation_process
+        from .market_history import DEFAULT
+        def stopped():
+            return (job["stopped"].is_set() or self.simulation_closed or self.store is not job["store"]
+                or self.simulation_session != job["session"] or time.monotonic() >= job["deadline"])
+        def process_state(process, active):
+            with self.simulation_process_lock:
+                if active:
+                    job["processes"].add(process)
+                    self.simulation_processes.add(process)
+                elif process.poll() is not None:
+                    job["processes"].discard(process)
+                    self.simulation_processes.discard(process)
+                    job["exit_evidence"] = {"pid": process.pid, "returncode": process.poll(), "observed_at": now(),
+                        "termination_confirmed": True, "descendants_confirmed": False}
+            if active and stopped():
+                stop_calculation_process(process)
+            if active:
+                with self.maintenance:
+                    if self.store is job["store"] and self.simulation_session == job["session"]:
+                        def dispatched(records):
+                            item = records["market_history"]["chart_calculations"][job["id"]]
+                            item.update(worker_pid=process.pid, worker_started_at=now())
+                        job["store"].database.transact({"market_history": DEFAULT}, dispatched)
+            if not active and job["stopped"].is_set():
+                self._finish_chart(job, "interrupted", job["reason"], termination={"processes": [{"pid": process.pid,
+                    "returncode": process.poll(), "termination_confirmed": process.poll() is not None}],
+                    "termination_confirmed": process.poll() is not None, "descendants_confirmed": False})
+        try:
+            with self.maintenance:
+                if stopped():
+                    self._finish_chart(job, "interrupted", job["reason"] or "deadline",
+                        termination={"dispatch_prevented": True, "termination_confirmed": True, "descendants_confirmed": False})
+                    return
+                def start(records):
+                    item = records["market_history"]["chart_calculations"][job["id"]]
+                    item.update(status="running", started_at=now(), queue_wait_seconds=time.monotonic() - job["admitted"])
+                job["store"].database.transact({"market_history": DEFAULT}, start)
+            result = execute_chart_calculation(spec, self.runtime.python, process_state=process_state,
+                cancelled=stopped, timeout=max(0, job["deadline"] - time.monotonic()))
+            self._finish_chart(job, result["status"], result.get("error"), result=result,
+                termination=result.get("termination"))
+        except Exception as error:
+            self._finish_chart(job, "failed", type(error).__name__ + ": " + str(error))
+
+    def _interrupt_charts(self, reason, identity=None):
+        from .evaluation import stop_calculation_process
+        with self.simulation_process_lock:
+            jobs = [job for key, job in self.chart_jobs.items() if identity is None or key == identity]
+            owned = []
+            for job in jobs:
+                job["reason"] = job["reason"] or reason
+                job["stopped"].set()
+                owned.append((job, list(job["processes"])))
+        for job, processes in owned:
+            future = job.get("future")
+            prevented = future.cancel() if future is not None else False
+            termination = [stop_calculation_process(process) for process in processes]
+            self._finish_chart(job, "interrupted", job["reason"], termination={"processes": termination,
+                "termination_confirmed": prevented or bool(termination) and all(row["termination_confirmed"] for row in termination),
+                "dispatch_prevented": prevented, "descendants_confirmed": False})
+
+    def _expire_charts(self):
+        with self.simulation_process_lock:
+            expired = [key for key, job in self.chart_jobs.items()
+                if not job["stopped"].is_set() and time.monotonic() >= job["deadline"]]
+        for identity in expired:
+            self._interrupt_charts("deadline", identity)
+
     def discovery(self, request=None):
-        from .market_discovery import DEFAULT, discover, metadata, seal
+        from .market_discovery import (
+            DEFAULT,
+            discover,
+            metadata,
+            option_state,
+            scan_action,
+            scan_state,
+            seal,
+        )
         if request is None:
-            return metadata()
+            return {**metadata(), "scanner": scan_state(self), "options": option_state(self)}
+        if request.get("action") in {"option_contracts", "option_select", "option_feed"}:
+            return self.option_discovery(request)
+        if str(request.get("action", "")).startswith("scan_"):
+            return scan_action(self, request)
         if request.get("action") == "add_to_universe":
             with self.maintenance:
                 if not isinstance(request.get("observation_id"), str) or not request["observation_id"]:
@@ -519,6 +970,61 @@ class DeskService:
             store.database.transact({"discovery": DEFAULT}, lambda records: records["discovery"]["observations"].update({result["id"]: result}))
         return result
 
+    def configure_symbols(self):
+        from .market_discovery import DEFAULT
+        selections = self.store.database.read("discovery", DEFAULT)["data"].get("option_selections", {})
+        symbols = list(dict.fromkeys([*self.store.data["config"]["universe"], *selections]))
+        feed = next(iter(selections.values()))["feed"] if selections else None
+        self.runtime.configure(symbols, **({"option_feed": feed} if feed else {}))
+
+    def option_discovery(self, request):
+        from .alpaca_readonly import AlpacaREST, ConnectionConfig
+        from .linked_orders import option_contract
+        from .market_discovery import DEFAULT, option_state, seal
+        store = self.store
+        if request["action"] == "option_contracts":
+            query = request.get("query")
+            if not isinstance(query, dict):
+                raise ValueError("Choose explicit option contract filters or an exact OCC symbol")
+            connection = ConnectionConfig.load(self.runtime.credentials_file)
+            result = AlpacaREST(self.runtime.credentials_file, connection=connection).option_contracts(query)
+            identity = str(uuid4())
+            reference = store._write_source_result(identity, str(uuid4()), result["raw"], prefix="option-contracts", allow_pagination_cursor=True)
+            observation = seal({"query": copy.deepcopy(query), "contracts": result["contracts"],
+                "received_at": result["received_at"], "next_page_token": result.get("next_page_token"), "artifact": reference})
+            with self.maintenance:
+                if self.store is not store:
+                    raise ValueError("Application records changed during option discovery")
+                store.database.transact({"discovery": DEFAULT}, lambda records: records["discovery"].setdefault("option_observations", {}).update({observation["id"]: observation}))
+            return {"option_observation": observation, "options": option_state(self)}
+        with self.maintenance, self.execution_lock:
+            if self.store is not store:
+                raise ValueError("Application records changed during option selection")
+            if type(request.get("expected_revision")) is not int:
+                raise ValueError("Reload retained option discovery before selecting a contract")
+            def select(records):
+                saved = records["discovery"]
+                feed = request.get("feed")
+                if feed not in {"opra", "indicative"}:
+                    raise ValueError("Choose OPRA or indicative explicitly; entitlement is not inferred")
+                selections = saved.setdefault("option_selections", {})
+                if request["action"] == "option_feed":
+                    if not selections:
+                        raise ValueError("Select a retained contract before changing its subscription feed")
+                    for item in selections.values():
+                        item.update(feed=feed, feed_changed_at=now())
+                    return
+                observation = saved.get("option_observations", {}).get(request.get("observation_id"), {})
+                envelope = next((item for item in observation.get("contracts", []) if item["raw"].get("symbol") == request.get("symbol")), None)
+                contract = option_contract(envelope)
+                if any(item["feed"] != feed for symbol, item in selections.items() if symbol != contract["symbol"]):
+                    raise ValueError("Existing selected contracts use a different feed; the native subscription uses one explicit feed")
+                selections[contract["symbol"]] = {"symbol": contract["symbol"], "contract": copy.deepcopy(envelope),
+                    "observation_id": observation["id"], "feed": feed, "selected_at": now()}
+            store.database.transact({"discovery": DEFAULT}, select, expected={"discovery": request.get("expected_revision")})
+            self.configure_symbols()
+        return {"options": option_state(self)}
+
     def discovery_detail(self, identity=None, symbol=None):
         from .market_discovery import DEFAULT
         values = self.store.database.read("discovery", DEFAULT)["data"]["observations"]
@@ -530,9 +1036,45 @@ class DeskService:
         return max(matches, key=lambda value: value["captured_at"]) if matches else None
 
     def save_workspace(self, request):
+        from .attention import DEFAULT as ATTENTION, OBSERVATIONS, sync_memberships
+        from .market_discovery import DEFAULT as DISCOVERY
         from .workspace import DEFAULT, change
-        return self.store.database.update("workspace", request.get("expected_revision"),
-                                          lambda saved: change(saved, request), DEFAULT)
+        def save(records):
+            self.validate_drawing_sources(request.get("changes", {}).get("drawings", {}))
+            view = request.get("changes", {}).get("preferences", {}).get("chartView", {})
+            if view.get("analysis") is not None:
+                analysis = view["analysis"]
+                retained = self.chart_calculation(analysis.get("calculation_id"))
+                if (retained["result_sha256"] != analysis.get("result_sha256")
+                        or any(retained["source_pin"][field] != view.get(field) for field in ("symbol", "context", "timeframe"))):
+                    raise ValueError("Chart preference differs from its exact retained analysis source")
+            change(records["workspace"], request)
+            sync_memberships(records["attention"], records["workspace"], records["attention_observations"])
+            sync_memberships({"rules": records["discovery"].get("definitions", {})}, records["workspace"], records["attention_observations"])
+        return self.store.database.transact({"workspace": DEFAULT, "attention": ATTENTION, "attention_observations": OBSERVATIONS, "discovery": DISCOVERY},
+            save, expected={"workspace": request.get("expected_revision")})["workspace"]
+
+    def validate_drawing_sources(self, drawings):
+        from .investor import decimal
+        if not isinstance(drawings, dict):
+            raise ValueError("Drawing changes must be keyed by saved identity")
+        for drawing in drawings.values():
+            if not isinstance(drawing, dict) or not isinstance(drawing.get("points"), list):
+                raise ValueError("Choose explicit drawing anchors")
+            if drawing.get("deleted") is True:
+                continue
+            for point in drawing["points"]:
+                if not isinstance(point, dict):
+                    raise ValueError("Choose a typed drawing anchor")
+                if point.get("basis") != "observed":
+                    continue
+                detail = self.pinned_chart_source(point.get("source_pin"))
+                scope = self.drawing_scope(detail)
+                bar = next((bar for bar in detail.get("bars", []) if bar["t"] == point.get("time")), {})
+                raw = (bar.get("raw") or {}).get(point.get("value_kind"))
+                if (drawing.get("scope") != scope or point.get("value_kind") not in {"o", "h", "l", "c"}
+                        or raw is None or decimal(raw) is None or decimal(raw) != decimal(point.get("price"))):
+                    raise ValueError("Observed drawing anchor differs from its exact retained scope/bar/OHLC source")
 
     def investor(self):
         from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version, working_commitments, decimal, contingent_group
@@ -561,8 +1103,11 @@ class DeskService:
                 broker_actions[order["id"]] = {"supported": True, "cancel_supported": True,
                     "replace_supported": replacement_reason is None, "replacement_reason": replacement_reason,
                     "order_version": order_version(order)}
+                if replacement_reason is None and order.get("order_class") == "mleg" and order.get("package_mapping"):
+                    broker_actions[order["id"]]["package_terms"] = copy.deepcopy(order["package_terms"])
             except (ValueError, KeyError, TypeError) as exc:
                 broker_actions[order.get("id")] = {"supported": False, "reason": str(exc)}
+        from .linked_orders import EXECUTION_PROFILES, PACKAGE_PROFILES
         available_instruments = instruments(runtime, self.store.data["config"]["universe"])
         commitments, known = working_commitments(runtime, commands)
         for symbol, instrument in available_instruments.items():
@@ -577,15 +1122,18 @@ class DeskService:
         return {**record, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
                 "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
                 "current_checks": checks, "broker_order_actions": broker_actions,
-                "instruments": available_instruments}
+                "instruments": available_instruments, "option_package_profiles": copy.deepcopy(PACKAGE_PROFILES),
+                "option_execution_profiles": copy.deepcopy(EXECUTION_PROFILES)}
 
     def health(self):
         import sqlite3
         runtime = self.runtime.state()
         try:
-            journal = self.store.database.read("journal")
+            with self.store.lock:
+                self.store._refresh()
+                revision = self.store.revision
             store = {"status": "available", "schema": self.store.database.VERSION,
-                     "journal_revision": journal["revision"], "sqlite_version": sqlite3.sqlite_version}
+                     "journal_revision": revision, "sqlite_version": sqlite3.sqlite_version}
         except (OSError, ValueError, sqlite3.Error):
             store = {"status": "unavailable", "message": "Local records could not be read; preserve the data directory and recovery files"}
         account = runtime.get("account") or {}
@@ -608,7 +1156,11 @@ class DeskService:
                 "research_provider": self.store.data["config"].get("llm_provider"),
                 "research_enabled": not self.browse_only, "history_status": "unavailable" if self.history_error else "available"}
 
-    def start_native(self):
+    def start_native(self, request=None):
+        selected = (request or {}).get("execution_profile")
+        current = self.runtime.state()
+        if current.get("status", "stopped") in {"stopped", "disconnected"} or selected is not None and selected != current.get("execution_profile"):
+            self.runtime.configure(self.runtime.symbols, execution_profile=selected if selected is not None else "long_only")
         return self.runtime.start()
 
     def recovery_action(self, request):
@@ -651,6 +1203,16 @@ class DeskService:
         outcomes = position_outcomes(captures, authority, investor)
         outcomes.update(current_native_epoch=runtime.get("native_epoch"), current_native_status=runtime["status"])
         for group in outcomes["groups"]:
+            represented = [capture["report"].get("native_reconstruction", {}).get(group["instrument_id"])
+                for capture in captures if capture["id"] in {source["capture_id"] for source in group["source_refs"]} and capture.get("report")]
+            represented = [value for value in represented if value]
+            if represented:
+                group.update(native_reconstruction=represented, native_economics_verified=False, actual_net=None)
+                limitation = "Native representation uses modeled reduction PnL, zero model commission and processing chronology; these are not actual broker execution economics"
+                group["accounting_basis"] += "; " + limitation
+                group["coverage"]["gaps"] = list(dict.fromkeys([*group["coverage"]["gaps"], limitation]))
+                if group["coverage"]["status"] != "ambiguous":
+                    group["coverage"]["status"] = "incomplete"
             group["freshness"] = {"status": "retained_capture", "captured_at": group["latest_capture_at"],
                 "native_epoch_matches_current": group["selected_source_ref"]["native_epoch"] == runtime.get("native_epoch"),
                 "native_status": runtime["status"], "mark_is_live": False,
@@ -663,7 +1225,7 @@ class DeskService:
         collection = next(c for c in record["data"]["collections"] if c["id"] == identity)
         def read(reference):
             from .recovery import references
-            relative, expected = next(references(reference))
+            relative, expected = next(references(reference, native_reconstruction=True))
             path = (self.store.directory / relative).resolve()
             if not path.is_relative_to(self.store.directory.resolve()):
                 raise ValueError("Saved account-history source escapes the application boundary")
@@ -779,6 +1341,8 @@ class DeskService:
             context.update(account_equity_source=account.get("equity"), account_long_market_value_source=account.get("long_market_value"),
                 totals_basis="Full-account broker totals remain separate from the selected rows", values_basis="Broker reported cost/P&L and exact quantities; discrepancies retained",
                 account_reconciliation=runtime.get("reconciliation", {}).get("status"), engine_state=runtime.get("status"))
+            if runtime.get("native_reconstruction"):
+                context["native_representation_economics"] = "Native reconstruction is modeled; CSV cost basis, cash and P&L remain broker-reported, not native reconstruction results"
             if not rows:
                 rows = [{"symbol": None, "qty": None, "import_error": "No rows selected" if symbols is not None else
                     "Confirmed zero positions" if runtime.get("status") == "connected" and runtime.get("reconciliation", {}).get("positions_reconciled") else "Holdings unavailable"}]
@@ -849,10 +1413,23 @@ class DeskService:
                               "basis": "Aggregate hypothetical legs; entered fee/slippage estimates and observed quote or exact human limit. Unknown costs are disclosed; missing required economics or failed configured checks block the affected operation. No approval or execution authority."}
         basket["policy_scenarios"] = results
 
+    def prepare_package_valuation(self, terms):
+        from .linked_orders import is_package
+        if is_package(terms):
+            self.runtime.prepare_package(terms)
+        return self.runtime.state()
+
     def save_investor(self, request):
         from .investor import DEFAULT, save
         from .admission import DEFAULT as COMMAND_DEFAULT, invalidate
+        if request.get("action") == "chart_source":
+            return {"chart_source": self.pinned_chart_source(request.get("pin"))}
+        if request.get("action") == "chart_copy":
+            return {"chart_copy": self.chart_price_copy(request.get("price_ref"), request.get("terms", {}))}
         if request.get("action") == "review":
+            saved = self.store.database.read("investor", DEFAULT)["data"]
+            proposal = next(p for p in saved["proposals"] if p["id"] == request["id"])
+            self.prepare_package_valuation(proposal["terms"])
             constraints = self.review_constraints(request.get("constraints"))
             self.admission.evaluate_review(request["id"], proposal_revision=request.get("proposal_revision"),
                 policy_revision=request.get("policy_revision"), constraints=constraints,
@@ -878,8 +1455,10 @@ class DeskService:
         if request.get("action") == "preview":
             record = self.store.database.read("investor", DEFAULT)
             updated = save(copy.deepcopy(record["data"]), {**request, "action": "draft"}, runtime,
-                           universe, self._proposal_research, commands=self.store.database.read("commands", COMMAND_DEFAULT)["data"])
+                           universe, self._proposal_research, commands=self.store.database.read("commands", COMMAND_DEFAULT)["data"],
+                           resolve_price_ref=self.chart_price_copy)
             proposal = next(p for p in updated["proposals"] if p["id"] == request.get("id")) if request.get("id") else updated["proposals"][0]
+            runtime = self.prepare_package_valuation(proposal["terms"])
             from .market_history import DEFAULT as HISTORY_DEFAULT
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
             records = {"investor": updated, "commands": self.store.database.read("commands", COMMAND_DEFAULT)["data"],
@@ -905,8 +1484,49 @@ class DeskService:
             from .baskets import save as save_basket
             update(lambda records: save_basket(records["investor"], request, runtime, universe, self._proposal_research, commands=records["commands"]))
             return self.investor()
-        update(lambda records: save(records["investor"], request, runtime, universe, self._proposal_research, commands=records["commands"]))
+        from .linked_orders import is_package
+        if request.get("action") == "draft" and is_package(request.get("terms", {})):
+            record = self.store.database.read("investor", DEFAULT)
+            normalized = save(copy.deepcopy(record["data"]), request, runtime, universe, self._proposal_research,
+                commands=self.store.database.read("commands", COMMAND_DEFAULT)["data"], resolve_price_ref=self.chart_price_copy)
+            proposal = next(p for p in normalized["proposals"] if p["id"] == request["id"]) if request.get("id") else normalized["proposals"][0]
+            runtime = self.prepare_package_valuation(proposal["terms"])
+        update(lambda records: save(records["investor"], request, runtime, universe, self._proposal_research,
+                                    commands=records["commands"], resolve_price_ref=self.chart_price_copy))
         return self.investor()
+
+    def pinned_chart_source(self, pin):
+        from .workspace import source_pin
+        pin = source_pin(pin)
+        if pin["context"] == "current":
+            detail = self.data_jobs.detail(pin["symbol"], pin["cache_key"], timeframe=pin["timeframe"], artifact=pin["artifact"])
+        else:
+            detail = self.chart(pin["symbol"], run_id=pin["run_id"])
+        source = detail.get("source") or {}
+        if (any(source.get(key) != pin["artifact"][key] for key in ("path", "sha256"))
+                or detail.get("symbol") != pin["symbol"] or detail.get("timeframe", "1Day") != pin["timeframe"]
+                or pin.get("derivation_identity") and detail.get("derivation_identity") != pin["derivation_identity"]):
+            raise ValueError("Exact pinned chart source is unavailable or changed; no latest source was substituted")
+        return detail
+
+    def chart_price_copy(self, reference, terms):
+        from .investor import normalize_chart_price
+        if not isinstance(reference, dict):
+            raise ValueError("Choose an exact retained chart price reference")
+        detail = self.pinned_chart_source(reference.get("pin"))
+        if reference.get("derived_origin") is not None:
+            from .investor import price_reference
+            reference = price_reference(reference, terms)
+            origin = reference["derived_origin"]
+            calculation = self.chart_calculation(origin["calculation_id"])
+            events = [event for event in calculation["result"]["events"] if event.get("output_ordinal") == origin["event_ordinal"]]
+            rows = [row for row in calculation["spec"]["rows"] if row.get("source_ordinal") == origin["source_ordinal"]]
+            if (calculation["result_sha256"] != origin["result_sha256"] or calculation["source_pin"] != reference["pin"]
+                    or len(events) != 1 or not isinstance(events[0].get("source_range"), list)
+                    or not events[0]["source_range"][0] <= origin["source_ordinal"] <= events[0]["source_range"][1]
+                    or len(rows) != 1 or not rows[0].get("raw") or rows[0]["t"] != reference.get("bar_time")):
+                raise ValueError("Derived selection does not resolve to that exact actual raw source bar")
+        return normalize_chart_price(reference, terms, self.runtime.state(), detail)
 
     @staticmethod
     def review_constraints(value):
@@ -939,7 +1559,7 @@ class DeskService:
         if str(UUID(identity)) != identity or not re.fullmatch(r"[0-9a-f]{64}", checksum):
             raise ValueError("Choose a recorded command receipt identity")
         command = self.admission.snapshot()["data"]["commands"][identity]
-        matching = [relative for relative, digest in references(command) if digest == checksum]
+        matching = [relative for relative, digest in references(command, native_reconstruction=True) if digest == checksum]
         if not matching:
             raise ValueError("Receipt is not referenced by this durable command")
         path = (self.store.directory / matching[0]).resolve()
@@ -958,10 +1578,33 @@ class DeskService:
         from .workspace import text
         actor = "local-session:" + self.instance_id
         reason = text(request.get("note", request.get("reason", "")), 20000, "optional action note")
+        if action == "option_instruction" and request.get("operation") == "preview":
+            return {"option_preview": self.admission.preview_instruction(request.get("kind"), request.get("symbol"), request.get("constraints")),
+                "commands": self.admission.snapshot()}
         if action == "block":
             self.admission.control(request.get("blocked"), actor=actor, reason=reason, expected=expected)
         elif self.browse_only:
             raise PermissionError("Browse-only mode does not permit command authorizations or dispatch")
+        elif action == "option_instruction":
+            operation = request.get("operation")
+            if operation == "submit":
+                from .app_database import StoreConflict
+                with self.maintenance:
+                    self.admission.enabled()
+                    if self.admission.snapshot()["revision"] != expected["commands"] or self.investor()["revision"] != expected["investor"]:
+                        raise StoreConflict(self.admission.snapshot()["revision"])
+                    runtime = self.runtime
+                runtime.request("option_instruction", instruction_id=request.get("instruction_id"))
+            elif operation in {"prepare", "review", "approve", "release_interlock"}:
+                prior_ids = set(self.admission.snapshot()["data"].get("option_instructions", {})) if operation == "prepare" else set()
+                self.admission.option_instruction(operation, actor=actor, instruction_id=request.get("instruction_id"),
+                    kind=request.get("kind"), symbol=request.get("symbol"), reason=reason, constraints=request.get("constraints"),
+                    expected=expected, binding_sha256=request.get("binding_sha256"), reviewed_unknowns=request.get("reviewed_unknowns", False))
+                if operation == "prepare":
+                    result = self.admission.snapshot()
+                    return {**result, "option_instruction_id": next(key for key in result["data"]["option_instructions"] if key not in prior_ids)}
+            else:
+                raise ValueError("Choose preview, prepare, review, approve, separate submit or audited interlock release")
         elif action == "exercise":
             self.admission.exercise({**request, "action": request.get("exercise_action", "authorize")}, expected=expected)
         elif action == "basket_admit":
@@ -1018,6 +1661,7 @@ class DeskService:
             proposal = next(p for p in self.investor()["data"]["proposals"] if p["id"] == request.get("id"))
             if request.get("terms_sha256") != proposal["terms_sha256"]:
                 raise ValueError("Approval terms changed; reload and inspect the exact saved revision")
+            self.prepare_package_valuation(proposal["terms"])
             self.admission.approve(proposal["id"], actor=actor, reason=reason or proposal["terms"]["rationale"],
                 constraints=self.review_constraints(request.get("constraints")), proposal_revision=request.get("proposal_revision"),
                 policy_revision=request.get("policy_revision"), evaluation_binding_sha256=request.get("evaluation_binding_sha256"),
@@ -1040,6 +1684,7 @@ class DeskService:
             return result
 
     def chart(self, symbol, *, force=False, run_id=None):
+        from .investor import digest
         from .market_evidence import recorded_market
         all_runs = self.store.data["runs"] + self.history.get("runs", [])
         run = next((r for r in all_runs if symbol in r.get("symbols", []) and
@@ -1047,11 +1692,17 @@ class DeskService:
         if run is None:
             raise ValueError("Select an existing research run containing this stock.")
         root = self.store.directory if any(r["id"] == run["id"] for r in self.store.data["runs"]) else self.history_directory
-        key = (run["id"], symbol)
         with self.chart_lock:
+            result = recorded_market(root, run, symbol)
+            result["derivation_identity"] = digest(sorted([
+                {"name": series["name"], "derivation_identity": series.get("derivation_identity") or digest(series)}
+                for series in result.get("indicators", [])], key=lambda item: (item["name"], item["derivation_identity"])))
+            key = (run["id"], symbol, digest({"source": result.get("source"), "problems": result.get("problems"),
+                "inputs": self._attention_market_signature(run, symbol), "indicators": [
+                    {key: series.get(key) for key in ("name", "definition", "derivation_identity")} for series in result.get("indicators", [])]}))
             if not force and key in self.chart_cache:
                 return copy.deepcopy(self.chart_cache[key])
-            result = recorded_market(root, run, symbol)
+            self.chart_cache = {k: v for k, v in self.chart_cache.items() if k[:2] != key[:2]}
             self.chart_cache[key] = result
             return copy.deepcopy(result)
 
@@ -1134,7 +1785,7 @@ class DeskService:
             self.store.data["config"] = config.model_dump()
             self.store.data["config_revision"] += 1
             self.store.save()
-            self.runtime.configure(config.universe)
+            self.configure_symbols()
         return self.state()
 
     def connection_context(self, runtime):
@@ -1216,15 +1867,24 @@ class DeskService:
         }
 
     def refresh_quotes(self):
-        self.runtime.request("refresh")
-        return self.state()
+        with self.maintenance:
+            runtime, store = self.runtime, self.store
+        runtime.request("refresh")
+        with self.maintenance:
+            if self.runtime is not runtime or self.store is not store:
+                raise ValueError("Application generation changed; refresh the current account again")
+            return self.state()
 
     def native_report(self, request):
         kind = request.get("report_kind")
         if not isinstance(kind, str) or kind not in {"orders", "order_fills", "fills", "positions", "account"}:
             raise ValueError("Choose an available native cached report")
         with self.maintenance:
-            report = self.runtime.request("native_report", report_kind=kind)["native_report"]
+            runtime, store = self.runtime, self.store
+        report = runtime.request("native_report", report_kind=kind)["native_report"]
+        with self.maintenance:
+            if self.runtime is not runtime or self.store is not store:
+                raise ValueError("Application generation changed; capture the current native report again")
             capture = None
             if kind == "positions":
                 from .decision_journal import DEFAULT
@@ -2005,13 +2665,27 @@ class DeskService:
     def evaluations(self, identity=None):
         from .approval_review import read_artifact
         from .decision_journal import DEFAULT as REPORTING_DEFAULT
-        record = self.store.database.read("reporting", REPORTING_DEFAULT)
+        store = self.store
+        record = store.database.read("reporting", REPORTING_DEFAULT)
+        if any(item.get("kind") == "experiment" and item.get("session_id") != self.simulation_session
+               and item["status"] in {"queued", "running", "cancelling"} for item in record["data"].get("simulations", {}).values()):
+            def interrupted(records):
+                for item in records["reporting"].get("simulations", {}).values():
+                    if item.get("kind") == "experiment" and item.get("session_id") != self.simulation_session and item["status"] in {"queued", "running", "cancelling"}:
+                        item.update(status="interrupted", interruption={"at": datetime.now(UTC).isoformat(),
+                            "reason": "Service generation changed; dispatched outcomes may be unknown. No automatic retry, continuation or RNG resume."})
+            with self.maintenance:
+                if self.store is not store:
+                    raise ValueError("Application generation changed; reopen the retained evaluation")
+                record = store.database.transact({"reporting": REPORTING_DEFAULT}, interrupted)["reporting"]
         items = copy.deepcopy(record["data"].get("simulations", {}))
         for item in items.values():
             if item.get("session_id") != self.simulation_session and item["status"] in {"queued", "running"}:
                 item.update(status="interrupted", error="Service stopped; this simulation is not resumed automatically")
         if identity:
             item = items[identity]
+            if item.get("kind") in {"experiment", "experiment_comparison"}:
+                return self.experiment_detail(item, record["revision"])
             for kind in ("preview", "result"):
                 if item.get(kind + "_artifact"):
                     value = read_artifact(self.store.directory, item[kind + "_artifact"])
@@ -2019,16 +2693,22 @@ class DeskService:
                         raise ValueError("Saved simulation evidence is unavailable or changed")
                     item[kind] = {key: val for key, val in value.items() if key != "bars"}
             return item
+        from .evaluation import digest, experiment_capabilities
         from .investor import DEFAULT as INVESTOR_DEFAULT
         from .market_history import DEFAULT as HISTORY_DEFAULT
         proposals = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
         histories = self.store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"]
-        return {"items": list(items.values()), "proposals": [{key: p[key] for key in
+        return {"revision": record["revision"], "capabilities": experiment_capabilities(),
+            "strategies": [{"definition": value, "strategy_sha256": digest(value)} for value in record["data"].get("strategy_definitions", {}).values()],
+            "strategy_history": copy.deepcopy(record["data"].get("strategy_history", [])),
+            "items": list(items.values()), "proposals": [{key: p[key] for key in
             ("id", "revision", "updated_at", "terms", "terms_sha256")} for p in proposals],
-            "histories": [{key: h.get(key) for key in ("key", "symbol", "start", "end", "captured_at", "adjustment", "complete")}
+            "histories": [{key: h.get(key) for key in ("key", "symbol", "start", "end", "captured_at", "adjustment", "complete", "pagination_complete", "error")}
                           for h in histories.values() if self.data_jobs.timeframe(h) == "1Day"]}
 
     def evaluation_action(self, request):
+        if request.get("action") in {"save_strategy", "preview_experiment", "run_experiment", "cancel_experiment", "repeat_experiment", "compare_experiments"}:
+            return self.experiment_action(request)
         from .approval_review import read_artifact
         from .decision_journal import DEFAULT as REPORTING_DEFAULT
         from .evaluation import execute, prepare, reference
@@ -2097,6 +2777,238 @@ class DeskService:
         self.simulation_executor.submit(run)
         return queued
 
+    def experiment_detail(self, item, revision):
+        from .approval_review import read_artifact
+        value = {**copy.deepcopy(item), "revision": revision, "evidence_errors": []}
+        for name in ("preview", "result", "comparison"):
+            reference = item.get(name + "_artifact")
+            if reference:
+                try:
+                    payload = read_artifact(self.store.directory, reference)
+                    if not isinstance(payload, dict) or name != "comparison" and payload.get("spec_sha256") != item["spec_sha256"]:
+                        raise ValueError("Retained experiment evidence differs")
+                    value[name] = {key: field for key, field in payload.items() if key != "bars"}
+                except (OSError, ValueError, KeyError, TypeError):
+                    value["evidence_errors"].append(name + " evidence is unavailable or changed; no newer result is substituted")
+        return value
+
+    def experiment_event(self, identity, event_id):
+        from .approval_review import read_artifact
+        from .decision_journal import validate_experiment_event
+        item = self.evaluations(identity)
+        entry = next((event for event in item.get("events", []) if event["id"] == event_id), None)
+        if not entry:
+            raise ValueError("Choose an exact retained event in this experiment")
+        payload = read_artifact(self.store.directory, entry["artifact"])
+        validate_experiment_event(item, entry, payload)
+        return {"experiment_id": identity, "event": payload, "reference": entry["artifact"], "revision": item["revision"]}
+
+    def experiment_action(self, request):
+        from .approval_review import read_artifact
+        from .decision_journal import DEFAULT as REPORTING
+        from .evaluation import (
+            prepare_experiment,
+            reference,
+            validate_experiment,
+            validate_strategy,
+        )
+        from .market_history import DEFAULT as HISTORY
+        if type(request.get("expected_revision")) is not int:
+            raise ValueError("Reload the exact reporting revision before changing experiment records")
+        store, action = self.store, request["action"]
+        record = store.database.read("reporting", REPORTING)
+        def update(writer):
+            def current(records):
+                if self.store is not store:
+                    raise ValueError("Application generation changed before experiment persistence")
+                writer(records["reporting"])
+            return store.database.transact({"reporting": REPORTING}, current,
+                expected={"reporting": request["expected_revision"]})["reporting"]
+        if action == "save_strategy":
+            identity = request.get("strategy_id") or str(uuid4())
+            old = record["data"].get("strategy_definitions", {}).get(identity)
+            if request.get("strategy_id") and (not old or request.get("strategy_revision") != old["revision"]):
+                raise ValueError("Choose the exact saved strategy revision")
+            definition = validate_strategy({**request.get("strategy", {}), "id": identity,
+                "revision": old["revision"] + 1 if old else 1, "updated_at": datetime.now(UTC).isoformat()})
+            def save_definition(saved):
+                saved.setdefault("strategy_definitions", {})[identity] = definition
+                saved.setdefault("strategy_history", []).append(copy.deepcopy(definition))
+            update(save_definition)
+            return {**self.evaluations(), "saved_strategy_id": identity}
+        if action == "preview_experiment":
+            strategy = record["data"].get("strategy_definitions", {}).get(request.get("strategy_id"))
+            if not strategy or strategy["revision"] != request.get("strategy_revision"):
+                raise ValueError("Select the exact saved reusable strategy revision")
+            entries = store.database.read("market_history", HISTORY)["data"]["entries"]
+            def history(key):
+                meta = entries.get(key)
+                if not meta or self.data_jobs.timeframe(meta) != "1Day":
+                    raise ValueError("Select an actual retained daily history cache")
+                ref = reference(meta.get("last_usable_artifact") or meta.get("artifact"))
+                value = read_artifact(store.directory, ref)
+                if not isinstance(value, dict):
+                    raise ValueError("Exact retained daily history is unavailable or changed")
+                return {**value, "artifact": ref}
+            value = history(request.get("history_key"))
+            provenance = value.get("required_coverage", {}).get("provenance", {})
+            calendar = read_artifact(store.directory, reference(provenance.get("calendar_reference")))
+            instrument = read_artifact(store.directory, reference(provenance.get("instrument_reference")))
+            if calendar is None or not isinstance(instrument, dict) or instrument.get("symbol") != strategy["symbol"] or instrument.get("class") != "us_equity":
+                raise ValueError("Exact retained calendar and equity instrument evidence are required")
+            benchmark = history(request["benchmark_history_key"]) if request.get("benchmark_history_key") else None
+            spec = prepare_experiment(strategy, value, request.get("experiment", {}), calendar=calendar, benchmark=benchmark, native_python=self.runtime.python)
+            parent = record["data"].get("simulations", {}).get(request.get("parent_id")) if request.get("parent_id") else None
+            if request.get("parent_id") and (not parent or parent.get("kind") != "experiment" or request.get("parent_spec_sha256") != parent["spec_sha256"]):
+                raise ValueError("A new experiment branch must identify its exact retained parent preview")
+        elif action == "repeat_experiment":
+            parent = record["data"].get("simulations", {}).get(request.get("id"))
+            if not parent or parent.get("kind") != "experiment" or request.get("spec_sha256") != parent["spec_sha256"]:
+                raise ValueError("Repeat only an exact retained experiment as a fresh branch")
+            spec = read_artifact(store.directory, parent["preview_artifact"])
+            if not isinstance(spec, dict):
+                raise ValueError("Exact parent preview is unavailable or changed")
+            validate_experiment(spec)
+        else:
+            spec = None
+        if spec is not None:
+            validate_experiment(spec)
+            identity = str(uuid4())
+            item = {"id": identity, "kind": "experiment", "version": spec["version"], "status": "preview", "created_at": datetime.now(UTC).isoformat(),
+                "spec_sha256": spec["spec_sha256"], "strategy_id": spec["strategy"]["id"], "strategy_revision": spec["strategy"]["revision"],
+                "strategy_sha256": spec["strategy_sha256"], "events": [], "cancel_requested": False,
+                "parent_id": parent["id"] if parent else None,
+                "parent_spec_sha256": parent["spec_sha256"] if parent else None,
+                "history_key": parent.get("history_key") if action == "repeat_experiment" else request.get("history_key"),
+                "benchmark_history_key": parent.get("benchmark_history_key") if action == "repeat_experiment" else request.get("benchmark_history_key"),
+                "lineage": "Fresh explicit branch; no trial, optimizer state or RNG continuation" if parent else "Explicit immutable preview",
+                "preview_artifact": store._write_json_artifact(identity, "experiment-preview", spec)}
+            update(lambda saved: saved.setdefault("simulations", {}).update({identity: item}))
+            return self.evaluations(identity)
+        if action == "compare_experiments":
+            ids = request.get("ids")
+            if not isinstance(ids, list) or len(ids) < 2 or len(set(ids)) != len(ids):
+                raise ValueError("Choose at least two distinct retained experiments")
+            members, rows = [], []
+            for identity in ids:
+                item = record["data"].get("simulations", {}).get(identity)
+                if not item or item.get("kind") != "experiment" or not item.get("result_artifact"):
+                    raise ValueError("Compare only experiments with exact retained results")
+                result = read_artifact(store.directory, item["result_artifact"])
+                if not result or result.get("spec_sha256") != item["spec_sha256"]:
+                    raise ValueError("Exact comparison result is unavailable or changed")
+                members.append({"experiment_id": identity, **{key: copy.deepcopy(item[key]) for key in ("spec_sha256", "preview_artifact", "result_artifact")}})
+                rows.append({"experiment_id": identity, **{key: copy.deepcopy(result.get(key)) for key in
+                    ("status", "analytical_outcome", "counts", "reasons", "comparison", "folds", "coverage")}})
+            identity = str(uuid4())
+            item = {"id": identity, "kind": "experiment_comparison", "status": "completed", "created_at": datetime.now(UTC).isoformat(), "members": members,
+                "comparison_artifact": store._write_json_artifact(identity, "experiment-comparison", {"kind": "experiment_comparison", "members": members, "rows": rows,
+                    "basis": "Side-by-side retained experiments; no aggregation, OOS re-selection or broker performance claim"})}
+            update(lambda saved: saved.setdefault("simulations", {}).update({identity: item}))
+            return self.evaluations(identity)
+        item = record["data"].get("simulations", {}).get(request.get("id"))
+        if not item or item.get("kind") != "experiment":
+            raise ValueError("Choose an exact saved experiment")
+        if action == "cancel_experiment":
+            def cancel(saved):
+                current = saved["simulations"][item["id"]]
+                if current["status"] not in {"preview", "queued", "running", "cancelling"}:
+                    raise ValueError("This experiment is already terminal")
+                current.update(cancel_requested=True, cancel_requested_at=datetime.now(UTC).isoformat(),
+                    status="cancelled" if current["status"] in {"preview", "queued"} else "cancelling")
+            update(cancel)
+            with self.simulation_process_lock:
+                for process in self.experiment_processes.get(item["id"], set()):
+                    if process.poll() is None:
+                        process.terminate()
+            return self.evaluations(item["id"])
+        if action != "run_experiment" or self.simulation_closed or request.get("spec_sha256") != item["spec_sha256"]:
+            raise ValueError("Run only the exact saved experiment preview explicitly")
+        spec = read_artifact(store.directory, item["preview_artifact"])
+        if not isinstance(spec, dict):
+            raise ValueError("Exact experiment preview is unavailable or changed")
+        validate_experiment(spec)
+        from .evaluation import experiment_capabilities
+        capability = experiment_capabilities()["optimizer"]
+        if not capability["available"]:
+            raise ValueError(capability["reason"])
+        session = self.simulation_session
+        def queue(saved):
+            current = saved["simulations"][item["id"]]
+            if current["status"] != "preview":
+                raise ValueError("This immutable preview has already been claimed; use an explicit fresh repeat branch")
+            current.update(status="queued", session_id=session, queued_at=datetime.now(UTC).isoformat())
+        update(queue)
+        self.simulation_executor.submit(self._run_experiment, store, session, item["id"], spec)
+        return self.evaluations(item["id"])
+
+    def _run_experiment(self, store, session, identity, spec):
+        from .decision_journal import DEFAULT as REPORTING, validate_experiment_record
+        from .evaluation import EXPERIMENT_VERSION, digest, execute_experiment
+        def current():
+            return self.store is store and not self.simulation_closed and session == self.simulation_session
+        def update(writer):
+            def write(records):
+                if not current():
+                    raise InterruptedError("Experiment source generation changed; no implicit continuation")
+                item = records["reporting"]["simulations"][identity]
+                writer(item)
+                validate_experiment_record(item)
+            return store.database.transact({"reporting": REPORTING}, write)
+        with self.maintenance:
+            if not current():
+                return
+            item = store.database.read("reporting", REPORTING)["data"]["simulations"][identity]
+            if item["status"] != "queued":
+                return
+            update(lambda value: value.update(status="running", started_at=datetime.now(UTC).isoformat()))
+        def cancelled():
+            return not current() or store.database.read("reporting", REPORTING)["data"]["simulations"][identity]["cancel_requested"]
+        def event(payload):
+            if payload.get("spec_sha256") != spec["spec_sha256"]:
+                raise ValueError("Experiment event belongs to a different immutable preview")
+            with self.maintenance:
+                def append(item):
+                    event_id, ordinal = str(uuid4()), len(item["events"]) + 1
+                    captured = {"experiment_id": identity, "event_id": event_id, "ordinal": ordinal,
+                        "at": datetime.now(UTC).isoformat(), "payload": copy.deepcopy(payload)}
+                    entry = {"id": event_id, "ordinal": ordinal, "at": captured["at"],
+                        **{key: copy.deepcopy(payload.get(key)) for key in ("type", "fold_id", "trial_id", "phase", "scenario_id", "execution", "source_trial", "source_event_id")},
+                        "native_spec_sha256": payload.get("native_spec_sha256") or (payload.get("result") or {}).get("spec_sha256"),
+                        "payload_sha256": digest(payload),
+                        "artifact": store._write_json_artifact(event_id, "experiment-event", captured)}
+                    item["events"].append(entry)
+                update(append)  # Commit ASK/RESULT and their bytes before optimizer/dispatch proceeds.
+        def process_state(process, active):
+            with self.simulation_process_lock:
+                owned = self.experiment_processes.setdefault(identity, set())
+                if active and current():
+                    owned.add(process)
+                    self.simulation_processes.add(process)
+                else:
+                    owned.discard(process)
+                    self.simulation_processes.discard(process)
+                should_stop = active and (not current() or cancelled())
+                if should_stop and process.poll() is None:
+                    process.terminate()
+        try:
+            result = execute_experiment(spec, self.runtime.python, event=event, process_state=process_state, cancelled=cancelled)
+        except Exception as error:
+            result = {"kind": "experiment", "version": EXPERIMENT_VERSION, "spec_sha256": spec["spec_sha256"],
+                "status": "interrupted" if isinstance(error, InterruptedError) else "failed",
+                "error": type(error).__name__ + ": " + str(error),
+                "limitations": ["A dispatch without a durably retained result remains unknown; no automatic retry or optimizer resume"]}
+        with self.maintenance:
+            if not current():
+                return
+            def finish(item):
+                if result.get("spec_sha256") != item["spec_sha256"]:
+                    raise ValueError("Experiment result differs from its immutable preview")
+                item.update(status=result["status"], finished_at=datetime.now(UTC).isoformat(),
+                    **{key: copy.deepcopy(result.get(key)) for key in ("analytical_outcome", "counts", "reasons")},
+                    result_artifact=store._write_json_artifact(identity, "experiment-result", result))
+            update(finish)
+
     def _simulation_process(self, process, active, store, session):
         with self.simulation_process_lock:
             if active and not self.simulation_closed and self.store is store and session == self.simulation_session:
@@ -2107,15 +3019,20 @@ class DeskService:
                     process.terminate()
 
     def _stop_simulations(self, *, closing=False):
-        with self.simulation_process_lock:
+        from .evaluation import stop_calculation_process
+        with self.maintenance:
             self.simulation_closed = closing
-            self.simulation_session = str(uuid4())
-            for process in self.simulation_processes:
+            self._interrupt_charts("shutdown" if closing else "restore")
+            with self.simulation_process_lock:
+                self.simulation_session = str(uuid4())
+                processes = list(self.simulation_processes)
+            for process in processes:
                 if process.poll() is None:
-                    process.terminate()
+                    stop_calculation_process(process)
 
     def close(self):
         self._stop_simulations(closing=True)
+        self.chart_executor.shutdown(wait=False, cancel_futures=True)
         self.simulation_executor.shutdown(wait=False, cancel_futures=True)
         self.attention_monitor.close()
         self.data_jobs.close()

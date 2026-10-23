@@ -10,7 +10,7 @@ from .recovery import references
 
 
 def guard(value):
-    list(references(value))
+    list(references(value, native_reconstruction=True))
     if re.search(r"(?i)bearer\s+\S+|sk-(?:proj-)?[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY|(?:api[_ -]?key|secret[_ -]?key|password)\s*[=:]\s*\S+", json.dumps(value)):
         raise ValueError("Selected export may contain a credential; export stopped")
 

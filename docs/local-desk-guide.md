@@ -160,7 +160,7 @@ verification does not establish a live connection or live execution acceptance.
 1. Open `C:\src\TradingAgents\Start-TradingDesk.cmd`, or run:
 
    ```powershell
-   rtk proxy C:\src\TradingAgents\.venv\Scripts\python.exe C:\src\TradingAgents\Launch-TradingDesk.py
+   rtk proxy .\Start-TradingDesk.cmd
    ```
 
 2. Open <http://127.0.0.1:8098>. The launcher reuses a matching running service
@@ -713,3 +713,400 @@ this as completed trading-execution UAT.
   fails; do not invent balances or weaken order approval.
 - Treat dated prices, missing data and unavailable fees according to their UI
   labels. Use saved evidence for existing research; do not silently start a run.
+
+### Selected US options and manual premium proposals
+
+The Universe discovery section includes an Alpaca contract query and exact OCC inspection. Each explicit request retains the complete returned page, source URL, timestamps, contract hashes and raw-response artifact. Request subsequent pages explicitly with the returned cursor. Contract status, tradability and supported mapping are separate observations; unsupported deliverables remain inspectable but cannot be selected for this supported preparation profile.
+
+Select a retained contract with an explicit OPRA or indicative feed. Entitlement is not assumed. Selected envelopes and their feed are validated in the existing discovery record and restored into native desired symbols after restart; they are not added to the stock research universe. The native subscription uses one option feed. The separate Apply chosen feed action explicitly changes all retained selected subscriptions and persists the new feed; choosing a contract cannot silently switch other subscriptions. A subscription failure remains visible as unavailable native evidence; saved selection is not proof of a working quote.
+
+Open its manual premium ticket and choose buy to open or sell to close, whole contracts and an instrument-supported order type and duration. The documented long single-leg profile supports MARKET, LIMIT, STOP and STOP_LIMIT, each with DAY or GTC, regular session only. Enter the exact USD premium limit for LIMIT/STOP_LIMIT and trigger for STOP/STOP_LIMIT; MARKET has no fixed broker premium limit. Premium times the observed contract deliverable size times quantity is distinct from an underlying share price. Preview binds current server-observed metadata and feed; saving grants no approval or submission authority. Any linked research is an explicitly selected exact underlying report, labeled underlying analysis only, not an option recommendation.
+
+Option BUY stops retain the actual stop type; the equity BUY stop-to-stop-limit rule is not applied. A stop-market can fill beyond its trigger, and a stop-limit may not fill. Dated side-specific option premium evidence supports estimates. A reviewed maximum execution price bounds local review/reservation only; it is not a broker market/stop-market execution guarantee. GTC remains subject to contract expiration and broker rules.
+
+For an eligible broker order in new, partially_filled or done_for_day state, select its exact predecessor in the manual ticket. Amendment keeps the contract, intent and order type, and permits total quantity, applicable prices and DAY/GTC changes. Total quantity includes actual prior fills. Preview and obtain renewed exact approval, then use the separate Replace control. The native successor is the actual broker successor with its own identity and duration; ancestor fill offsets require retained execution proof rather than a fabricated duration update. Pending or otherwise nonreplaceable broker states remain blocked.
+
+Options buying power is displayed separately from cash, with account observation time and the exact local-unsubmitted commitment / replacement basis in preview. Missing or stale observations remain unavailable; equity cash is not an options-buying-power substitute. Exercise readiness compares dated funding or deliverable shares after the applicable local commitments; it is not a permanent reserve, future funding guarantee or exercise instruction.
+
+This is source implementation, not executed broker/native acceptance. Short opening, short-containing packages, full expiry/share/cash settlement acceptance and complete native lifecycle acceptance remain open. Exercise and DNE use the separate explicit instruction workflow below. Raw broker non-trade activities and dated current account facts alone do not establish full lifecycle acceptance.
+
+Broker capability and app implementation are separate. The [Alpaca options guide](https://docs.alpaca.markets/docs/options-trading) documents broker capabilities; this table does not promise every combination.
+
+| Profile | Current boundary |
+| --- | --- |
+| Whole-contract long single-leg BTO/STC, MARKET/LIMIT/STOP/STOP_LIMIT, each DAY/GTC, regular | Current source workflow; broker/native execution unexercised |
+| Fractional, notional, extended-hours options | Broker unsupported |
+| Naked/unbounded or otherwise unsupported short-containing packages | Outside supported profiles |
+| Selected bounded-risk same-expiry option spreads | Separate source profile below; current eligibility/balance mapping must be proven, runtime unexercised |
+| Long-only atomic combinations, 2–4 BTO/STC legs, MARKET/LIMIT DAY/GTC regular | Current source workflow below; runtime acceptance unexercised |
+| Exercise and DNE | Separate preview/review/approval/submission source workflow; broker acceptance unexercised |
+| Full settlement/native reconstruction acceptance | Open; no lifecycle acceptance claim |
+
+### Atomic long-only option packages
+
+Select exact retained option contracts in discovery, then choose **Prepare atomic long-only package**. The manual ticket accepts 2–4 distinct BTO/STC legs with one underlying, compatible observed deliverables/multiplier, positive whole ratios with greatest common divisor 1, and positive whole strategy units. Each leg quantity is strategy units × ratio. Opening, closing and long-only rolls use this same explicit package path; no independent leg submissions are synthesized. Server-observed contracts and public native spread identity bind the complete revision.
+
+Choose MARKET or LIMIT, DAY or GTC, regular session only. LIMIT requires a nonzero signed net price: positive debit or negative credit. Zero/even price remains unsupported and is never changed into MARKET. For MARKET, select expected debit/credit intent explicitly; estimates cannot guarantee price or actual debit/credit direction. An explicit local net debit review bound covers possible worsening/sign change; it is not a broker limit. Review exact leg quantities, current holdings/STC availability, premiums, fees, one package net debit obligation and configured portfolio/leg checks. BTO leg premium is not reserved again, STC claims are counted once, and expected credit is not spendable. Missing required calculations cannot pass.
+
+Preview, save, check and approve the exact complete package revision. Submit remains a separate action sending one atomic MLeg request. Prepared proposals and approval alone reserve nothing. The separate D55 exercise/DNE interlock does not grant or block ordinary package authority. For an eligible observed parent, amendments preserve contracts, legs, ratios, intents and order type; only total strategy quantity, applicable signed limit and supported duration change under fresh complete-package approval and the separate Replace action. Cancel remains explicit; acknowledgement is not final cancellation.
+
+Monitoring retains actual parent versus leg broker IDs, internal native IDs, predecessor/successor identity and raw source evidence. Actual leg executions supply prices, quantities, fees and cash flows. Parent net average or status never substitutes for missing leg economics. Pending, partial, corrected and unknown outcomes retain obligations and recovery restrictions without automatic resubmission. This is source implementation only: package execution, amendments, cancel/fill/recovery and broader P01 acceptance have not been exercised. Other short-containing profiles remain open; the separate bounded-risk source profile below has its own requirements.
+
+The public native spread-quote aggregator source path uses actual leg quotes with vega disabled and quote-driven updates. It retains exact contracts, ratios, observed multiplier/feed, real bid/ask prices and sizes, timestamps, receipt IDs/hashes, source generation, calculation settings and derived output hash. Missing or materially changed required inputs invalidate the valuation under the existing configured freshness/material-change rules; unrelated stale ticks or a trade fallback cannot substitute. This derived valuation is not a broker spread quote, fill, fee or atomic-liquidity guarantee.
+
+Native signed-price risk checks and original configured instrument caps remain intact. A configured cap can additionally produce a supplemental application ABS premium check with the original cap/provenance retained; absent caps remain absent. This does not claim that the native margin balance branch, which can return early, validates all collateral/price-dependent risk. Source/static implementation and runtime acceptance remain separate.
+
+### Selectable bounded-risk spread profile
+
+The package ticket has a separate **bounded-risk spread** execution profile; the existing long-only profile remains the default and historical records keep their original profile. This selected source capability accepts 2–4 compatible option legs on one underlying and expiration, positive whole normalized ratios, whole strategy units and explicit signed nonzero net LIMIT, DAY/GTC regular only. Four intents are explicit: BTO, STO, BTC and STC. A new STO requires protection from BTO within that complete package; retained long positions alone do not establish the opening profile. This does not establish naked, unbounded, equity-leg, calendar or unsupported roll support.
+
+Use the existing native controls to stop the session, select its execution profile, then explicitly Start to revalidate actual account identity, endpoint, current permissions, balances, margins, options buying power and native balance-mapping basis. An active session cannot change profile. Source selection does not enable the account or permissions and does not mutate its legal type. [Alpaca paper trading](https://docs.alpaca.markets/us/docs/paper-trading) documents margin simulation; the PAPER profile is explicitly that simulation, not a legal classification. The [account-plans statement](https://docs.alpaca.markets/us/docs/account-plans) about brokerage margin accounts is scoped to LIVE and cannot prove PAPER legal type or LIVE eligibility for this application. LIVE requires its own verified current broker contract/account evidence. Native Portfolio.equity can add unrealized P/L to the projected equity balance and is therefore not broker actual equity; application performance/equity curves and configured rules continue to use actual broker fields. Captured native report/download labels retain their own profile and basis, never the latest session as a substitute. The versioned alpaca-paper-equity-initial-v1 projection uses actual broker equity as native total, actual initial_margin as locked, and equity minus initial_margin as free, with calculate_account_state=false. Signed negative excess is preserved. Maintenance margin and local commitments are not deducted again. This is a derived diagnostic projection, not spendable cash, unrestricted funds, a pending reservation or broker legal classification. Actual broker cash, equity, margins, options buying power and restrictions retain authority; missing inputs are never zero or substituted by buying power. Historical long-only records retain their cash basis.
+
+Preview exposes modeled intrinsic collateral and expiry maximum loss separately from actual broker margins, available options buying power, fees and per-leg signed holdings/close claims. The modeled package obligation before costs is the nonnegative result of intrinsic collateral increase plus signed package LIMIT premium, with declared costs counted once. Same-package credit may offset that obligation; no expected credit funds unrelated commitments, and no duplicate leg premium or full-delivery reserve is added. A modeled finite expiry loss is not a broker margin figure or an assignment/exercise guarantee. Early assignment can break protection; closing/removing protective legs re-reviews resulting retained exposure, commitments and current evidence. Required unsupported/missing calculations remain unverified and block their applicable checks.
+
+Opening, closing, amendment and cancel use the existing exact complete-package revision review, approval and separate send actions. Amendments preserve profile, contracts, intents, ratios and order type. Actual signed legs, parent/control identities, partial/unknown outcomes, corrections and recovery history remain distinct from modeled maximum loss. This is unexercised source capability, not broker acceptance or activated account support. D58 MARKET runtime acceptance remains open. The derived-valuation source path below requires complete actual leg inputs; it does not establish an executed native risk pass or broker acceptance.
+
+### Bounded package replacement reservation review
+
+A newly saved/revised supported bounded MLeg replacement can record the explicit routing version alpaca-bounded-incremental-v1. Historical proposals/approvals do not acquire it automatically. It applies only to the exact bound account, predecessor/client/version and immutable bounded option package replacement; ordinary new orders and configured hard limits retain their existing rules.
+
+Review exact old/current predecessor evidence, proposed full terms, actual account options buying power/margins and known fee assumptions. Required local facts, commitments, collateral and policy checks still must pass. Only the broker's incremental reservation validation is broker-owned and **not observed at approval**, with reservation credit null/unknown. The neutral check has passed=null and required=false; this is not a generic funding pass or permission to skip another missing required input. Local routing eligibility is shown separately. No old-order credit or released funds are invented, and preserved pending/cash commitments are not removed.
+
+Fresh exact approval precedes the existing separate Replace action and one native PATCH path. The broker can reject after its own buying-power/margin validation. Approval-time not_observed is immutable review evidence; actual submitted/rejected/unknown/pending outcomes are separately retained in the command/order lifecycle. An acknowledgement or pending replacement is not final completion or permission to release obligations, retry or resubmit. This source workflow and broker behavior remain unexercised.
+
+### Native position reconstruction and global recovery
+
+Current broker cash, positions, cost basis and activity receipts remain source facts. Native position reconstruction represents quantities through official native objects, with immutable receipt pointers, source hashes, account, instrument and worker epoch. Its reduction P&L, zero model commissions and processing chronology are modeled; they do not establish actual historical broker economics. Captured native tables/JSON preserve that qualification, and affected position outcomes do not claim actual net. Broker CSV values remain broker-reported.
+
+Prepared, ambiguous or causally unproven reconstruction keeps the existing global reconciliation restriction. There is no per-instrument bypass. A new local command can carry an exact confirmed current-epoch baseline receipt; historical receipt membership or timestamps alone cannot prove a later actual fill belongs outside that baseline. Unknown/open/external executions require reconstruction rather than a blind native increment.
+
+Use the existing explicit Stop Nautilus, then Start Nautilus controls when reconstruction is required. Rebuild uses current broker facts and retained causal receipts; reconnect does not replay commands or grant approval. Successful reconciliation returns to the normal existing admission checks. Missing metadata, basis or source evidence can leave the global restriction unresolved. Old epochs are historical evidence, not current native proof.
+
+This source work has not exercised native reconstruction, broker expiry settlement or reconnect acceptance. Full lifecycle acceptance remains open.
+
+### Saved price annotations
+
+Retained OHLC charts support horizontal lines, two-anchor trend lines and text. Choose a tool and place its anchor(s) with the pointer, or Create numeric draft and enter exact prices/times. Select a drawing to drag its handles or edit numeric fields; keyboard users can tab through the same controls. Ctrl/Cmd+S saves the selected annotation; Delete on a selected chart drawing stages removal, and Escape ends placement. Save and Remove use the existing workspace revision flow. Reopen saved annotations from the list; unsaved drafts survive ordinary polling and source refresh, and remain separate from saved immutable revisions.
+
+Pointer coordinates are manual approximations. Use selected retained OHLC explicitly for an observed anchor: the exact artifact/hash, bar time, OHLC field and raw decimal are validated on save. Editing that anchor price/time converts it to manual provenance. Manual times between retained bars are annotation coordinates; unavailable/out-of-range coordinates are disclosed. Projected bar offsets retain an actual origin plus an explicit logical offset, without inventing future market bars or timestamps. Drawings use exact instrument/currency/feed/adjustment/session/interval context; incompatible or indexed-comparison panes do not convert percentage coordinates into prices. Replay cannot reveal future observed anchors.
+
+Saving an annotation alone does not create an alert. Numeric lines can be explicitly linked to the separate crossing-rule flow below; text remains nonnumeric. This is source implementation; pointer/browser execution and save/reopen acceptance have not been exercised.
+
+External broker equity SHORT positions and negative cash are represented as signed source facts. Short options remain outside the supported native representation, and new short or margin-opening authority is not granted. The existing negative-holdings policy can still block cover proposals; that is a separate admission limitation, not an unknown actual holding.
+
+### Saved drawing crossing alerts
+
+Save a horizontal level or trendline, then choose **Create alert from this saved geometry**. The draft is inactive: select the retained OHLC field, cross-above/cross-below comparison, positive maximum source age and retained input context, then explicitly Save the rule and its evaluation choice. The rule binds the server-provided drawing UUID, revision, geometry hash, full typed anchors and exact instrument/currency/provider/feed/session/adjustment/interval scope. Text annotations are not numeric predicates. Drawing rules use a fixed symbol; they can join existing flat ALL/ANY conditions without changing that symbol identity.
+
+Horizontal levels remain constant across the actual retained logical-bar axis. Trendlines require defined nonvertical geometry and an explicit segment or extrapolation policy. Manual times can locate an actual retained timestamp or interpolate between adjacent actual bar times; projected anchors retain an actual origin plus explicit logical offset. No synthetic future bars/calendar are invented. Observed anchors retain their exact OHLC artifact/hash/value provenance. Saved research is static evidence/baseline and cannot advance to future bars; current-history rules can observe compatible eligible retained appends without collecting provider data themselves.
+
+Cross-above requires previous residual ≤0 and current residual >0; cross-below uses the inverse. Both observations must be eligible/comparable and advance time. Repeated/older bars and corrected history prefixes/source basis reset continuity without retroactive crossings or rearming. Unavailable inputs, acknowledgment and pause do not rearm; only an eligible opposite-side clear does. Drawing edit/delete leaves an existing pinned rule unavailable. Edit the rule, choose a saved current revision, explicitly Bind it and Save a new rule revision to establish a fresh baseline; old occurrences retain their old geometry and latch history.
+
+Older drawings with missing or changed scope stay inspectable. **Stage explicit rebind to this retained source scope** copies only actual retained scope evidence (including the provider asset ID), keeps anchors/original observed pins, and requires Save of a new drawing revision. It never silently upgrades history. Then explicitly bind the desired rule revision. Missing current scope/provenance stays unavailable.
+
+**Open exact alert evidence** opens the captured occurrence with immutable geometry/algorithm, typed anchors, both observations/residuals and separately hash-verified previous/current source artifacts and observed-anchor pins. Missing historical evidence is disclosed; current geometry or latest history is never substituted. This is source implementation only; chart-to-alert, monitoring/corrections, save/rebind/reopen and external delivery acceptance have not been exercised in this batch.
+
+### Explicit option exercise and DNE
+
+Use the option contract view or Orders to choose Exercise all available or Request DNE. Enter explicit positive account-observation age and approval-lifetime bounds, preview current facts, prepare a saved intent, review its exact current evidence/history, approve that review, then separately Submit. Prepared and approved intents hold no resources. There is no partial-quantity field: exercise targets all contracts available when processed. The observed count/time, exact contract/deliverable, account/mode/session/epoch, commitments, configured policy applicability and prior requests remain visible. Material evidence changes require renewed review/approval. Research tools receive no instruction authority.
+
+Exercise readiness is a dated funding/delivery comparison, not a new permanent reserve. Existing evidenced hard restrictions remain blocking; unsupported models do not claim a passing check. DNE does not inherit exercise funding requirements. Ordinary BTO/STC/orders retain their existing controls and are not blocked by another contract instruction. Only an in-flight or transport-unknown instruction interlocks the same account/contract.
+
+Pause blocks exercise admission and the final pre-HTTP boundary. Separately approved DNE and ordinary authorized cancellation remain available; review/approval are separate. Pause cannot recall an already-started request or working broker order. A 200 submission is a known request result, not settlement. DNE is not guaranteed to undo prior exercise or govern later acquisitions; published timing guidance does not establish a universal cutoff. Broker changes can race the final preflight because no fixed-quantity or idempotency contract is available.
+
+Unknown outcomes have no blind-retry control. Actual attributable evidence or a separate reasoned human release can resolve the local interlock. Release preserves the original unknown outcome and grants no retry authority. A later request needs fresh authority and explicit review of the unresolved prior request; known submitted requests also remain in history and are not atomic reversals.
+
+### Reusable strategy experiments (D61 source integration)
+
+In **Decision journal → Reusable strategy experiments**, load the saved definitions and retained daily data. Use the guided entry/exit condition editor, matching operand units and finite integer/decimal parameter domains; save an immutable strategy revision before preview. The supported account scope is one USD equity, whole shares and empty starting holdings. Choose MARKET, LIMIT or STOP_LIMIT and DAY/GTC, with optional linked take-profit and stop/stop-limit protection. Applicable price operands freeze at the completed decision bar as exact positive USD cents, without rounding. Native FULL-entry protection may leave partial entry exposure unprotected; rule exit cancels the working entry and its live protection, waits for actual native terminal events/late fills, then exits actual residual holdings. No pyramiding or duplicate exits. Wider assets remain open.
+
+Selected timing is native OHLC-path next modeled open: public TradeTickDataWrangler, fixed 100 ms compressed OHLC offsets and seed None, with trade execution enabled and bar execution disabled. A close tick precedes the completed decision bar; the next generated open tick updates the native book before a queued intent. This is not an actual session open, tick/BBO or liquidity reconstruction. DAY uses the declared session boundary. Converter/path, source identity, volume allocation/floor, precision and model flags remain bound in the immutable preview.
+
+Configure rolling/expanding windows, sourced-calendar session counts, expected-calendar-session gaps at both train→validation and validation→OOS boundaries, and untouched OOS periods. Clock-duration embargo is unavailable; later-captured history/benchmark requires the explicit hindsight basis. The visible starting preset is 126/21/1/21 sessions with a 21-session step. Dynamic warmup is separate from trading; each fold resets. Boundary orders cancel and retained positions are marked without fabricated closing fills. Choose objective/direction, secondary metric/direction, positive minimum closed trades in both training and validation, scenario cash, explicit fees/fill/slippage assumptions and native-run budgets. Each experiment/trial deadline needs a positive value or its explicit no-time-cap checkbox. Actual fees remain unknown.
+
+**Save immutable experiment preview** records the exact strategy, data artifacts, full grid manifest or adaptive configuration, folds, scenarios, costs and search identity. Grid is complete or rejected for insufficient budget. Adaptive binds TPESampler, NopPruner, seed 0 and a visible editable 64-ask preset per outer fold, including failures/repeats. No qualifying candidate means no winner. **Run this exact experiment** is separate. Optional service-only Optuna 5.0.0 must be available; an absent/different version disables Run without a fallback optimizer or installation. The optional dependency declaration does not establish installation.
+
+Inspect execution status separately from analytical outcome: finished with no eligible strategy or selection gaps is explicit, and an unselected fold has no performed OOS. Required selected-stage failure/missing evidence prevents an unqualified completion; a valid negative OOS result is not failure or a reason to reselect. Inspect fold/trial comparison tables, coverage, exact native events/reports, source fingerprints and any reused source-trial identity. OOS equity/benchmark paths use retained actual timestamps and remain separate by fold/scenario; they are not compounded, rebased to conceal differences or presented as actual account performance. Missing curves or benchmarks remain unavailable. **Request cancellation** preserves completed evidence; interruption does not resume. A repeat/branch receives a new preview ID and still requires Run. Exact resume, pruning, carry, overlapping OOS and wider profiles remain open. Source integration has not been exercised here; no experiment, provider request, native session or broker action was run.
+
+
+### Retained chart analysis (D63 source integration)
+
+Chart jobs use a separate single-worker queue from simulation and optimization.
+At most one chart runs and one waits; another request receives a busy response
+without displacing existing work. The visible total budget defaults to 60 seconds,
+editable in whole seconds from 1 through 600. It starts at accepted admission,
+includes the chart queue wait and uses a live monotonic deadline. Expired or
+canceled queued work is not dispatched. The panel shows queued/running/terminal
+state and supports cancellation and reopening the exact retained record.
+
+Admission saves the actual timestamps, immutable inputs and budget before dispatch.
+Cancellation, timeout and shutdown interrupt owned chart work; restart
+marks unfinished jobs interrupted without replay. Stop evidence is saved before
+session invalidation, and late results cannot replace an interrupted record.
+Failed/interrupted jobs have no invented numerical result artifact. Historical
+valid calculations and their actual result artifacts remain readable.
+
+Stopping uses exact owned process handles: terminate and wait up to one second,
+then kill and wait up to one second. Worker pipe draining is separately bounded
+to one second. These are containment limits, not a promise of graceful native
+cleanup or descendant termination. Unconfirmed exit/cleanup remains explicit;
+temporary files can remain after a failed cleanup. No TradingNode, BacktestEngine,
+broker session or Optuna is started by a chart job. This lifecycle implementation
+has source/static evidence only until separately authorized runtime observation.
+
+#### Acceptance debt
+
+| Ready source slice | Exact frozen version | Still unobserved | Smallest real observation |
+| --- | --- | --- | --- |
+| D63 chart analysis | `1212fab985c19a257350aca01c295da4edbad54a` includes D63 | Numerical output, rendering, saved reopening and positive seasonality | One isolated visible-browser batch using real Intel daily history with production-ingested calendar provenance |
+| D66 multi-timeframe program | `1212fab985c19a257350aca01c295da4edbad54a` | Actual minute aggregation, original-axis formulas and alignment evidence | One bounded real minute collection and one retained program observation; unknown coverage stays unavailable |
+| D69 chart lifecycle | Not checkpointed; working delta over `1212fab985c19a257350aca01c295da4edbad54a` | Independent queue, capacity, deadline, cancel, shutdown and restart behavior | Bind its accepted checkpoint, then observe real chart jobs and honest interrupted outcomes in an isolated copy |
+
+Static checks do not close these rows. D67 staging must bind the subsequently
+accepted D69 checkpoint. Provider/calculation activation and trading-lifecycle
+observations require their separate explicit assignments; neither has run here.
+
+Open **Chart analysis** below an existing raw OHLC chart. Load saved definitions, choose transform/study/seasonality/formula, edit its applicable parameters and Save an immutable revision. **Calculate exact saved revision** is a separate explicit action against the pinned retained source. It uses the isolated pure calculation worker; no Optuna, trading session, BacktestEngine, provider collection or broker action is required. Load a prior calculation by its immutable ID/hash; chart preferences retain that exact reference. Import/export uses validated versioned definition bundles and pinned transitive dependency revisions, without overwriting collisions or executing scripts.
+
+All five transformed families are separate derived displays: seeded recursive Heikin Ashi; configurable traditional fixed-size Renko; fixed/percentage Kagi with shoulder/waist thickness changes; N-Line Break; and fixed-grid Point & Figure. The calculation retains seeds, equality/reversal/rounding rules, segment initialization prefixes and exact rational coordinates. Kagi renders stepped thick/thin geometry and P&F renders X/O columns with configured-box glyph height centered on the exact box level; that height is derived display geometry, not observed OHLC. Logical event/column positions are not fabricated market dates; several outputs may share one actual source timestamp. Gaps break continuity, incomplete outputs remain provisional, and generated event volume is not observed volume to sum. The installed native one-brick Renko is not substituted for the selected traditional/configurable reversal contract. ATR/log/high-low variants remain explicitly outside this selected construction contract.
+
+KAMA uses N actual changes and squared smoothing, first-source-close seed held unchanged until N+1 closes, and ER=0 for a flat window. This is an explicit app convention, without an identical-TradingView-output claim. The official [KAMA calculation](https://www.tradingview.com/support/solutions/43000773012-kaufman-s-adaptive-moving-average-kama/) specifies full-window ER and squared smoothing but does not settle this seed/zero/readiness convention. Installed native source anchors are .venv-nautilus-v1/Lib/site-packages/nautilus_trader/indicators/averages.pyx:627,692 and momentum.pyx:675–676,717–718; the rolling N-input/N-change mismatch prevents simply relabeling native AMA. Native CCI, Donchian and qualified public Ichimoku composition retain implementation/source/binary hashes. Initialization is not convergence proof; native binary64 and exact rational outputs retain their distinct precision basis.
+
+Full Ichimoku displays current conversion/base lines, forward leading cloud and backward actual-close Chikou with separate origin, closure evidence, source availability, calculation time and display offset. Zero displacement does not use an invalid zero-offset native constructor. Public current Tenkan/Kijun and parallel Donchian midpoint supply leading components; no private queues or fake future bars are used. Numerical seed/warmup values remain inspectable but are omitted from ready plots. Raw price overlays use only the calculation's actual retained source rows.
+
+Seasonality requires complete expected calendar/session coverage and each prior-year December anchor. Completed month returns are prior-month-end → month-end; all eligible complete years share the frequency denominator, including flats. Whole-sample means and conditional gain/loss means retain separate counts; empty samples stay unavailable. Yearly comparisons offer calendar/session alignment and raw/normalized values, with selectable common or separately labeled per-year value scales on the same aligned x domain. MTD/YTD remain separate and excluded. A proven complete current-year prefix may appear as a dashed partial comparison, explicitly excluded from monthly samples; it never changes the completed-year denominator. Exact adjustment/dividend basis is disclosed; price returns do not imply reinvested-dividend total return, and missing sessions are never invented zeros.
+
+Formulas use the allowlisted parsed AST and typed causal series operations, not eval, imports, arbitrary Python/JavaScript or application actions. Choose line, histogram or price overlay; add exact typed scalar parameters and pin reusable formula/study revisions. Formula-call arguments follow alphabetical parameter-name order; study references use DefinitionName__component. Units, lookback, initialization, gaps, cycles and availability are validated. Display displacement never creates earlier availability. For example sma(close,20) is a causal price series; its rendering choice is separate from its calculation. External scripts and transform-event-to-raw-axis coercion are unavailable.
+
+Selecting derived geometry cannot copy its price into a ticket. Choose a real contributing source row, **Open this actual bar in the raw chart**, then explicitly review the original raw O/H/L/C and existing normalization. The reference binds calculation/result hash, event/source ordinal and raw source identity where applicable. No quantity, account, session, order approval or submission changes. Full-history analysis is hidden during retained playback to prevent future summary leakage; ending playback restores it.
+
+Peer-reference catalog: [Heikin Ashi](https://www.tradingview.com/support/solutions/43000619436-understanding-heikin-ashi-charts/), [Renko/Kagi/Line Break/P&F](https://www.tradingview.com/support/solutions/43000758617-advanced-intraday-chart-types/), [CCI](https://www.tradingview.com/support/solutions/43000502001-commodity-channel-index-cci/), [Donchian](https://www.tradingview.com/support/solutions/43000502253-donchian-channels-dc/), [Ichimoku](https://www.tradingview.com/support/solutions/43000589152-ichimoku-cloud/). These identify capabilities, not numerical parity or acceptance. This source integration has not been visually or numerically exercised here; no chart calculation or runtime activation was performed.
+
+
+## Compound and watchlist attention rules
+
+The existing alert editor accepts one condition or a flat group of 1–16 existing
+conditions. Use **Keep condition in group** to add another condition and choose
+**ALL** or **ANY**. ALL clears when any condition clears, triggers when every
+condition triggers, and otherwise remains unavailable. ANY triggers when any
+condition triggers, clears only when every condition clears, and otherwise remains
+unavailable. Every condition's evaluated facts and exact captured source bindings
+remain in the occurrence evidence, including unavailable conditions.
+
+Choose one stock, a watchlist **Snapshot**, or **Follow watchlist**. Snapshot keeps
+the membership at rule save. Follow records membership transitions atomically
+with workspace saves, including removal and re-addition between monitor passes.
+Continuous members keep their own active latch; unrelated list edits do not
+rearm them. Removal is **no longer monitored**, never a false clear; re-addition
+creates a new membership identity. Each member has its own occurrences and latch.
+Account conditions evaluate once globally. Fixed-policy conditions bind once to
+one saved proposal and its symbol; incompatible account/stock/proposal/watchlist
+mixtures are rejected.
+
+The first eligible matching observation can trigger a new or revised rule/member.
+These conditions are state comparisons, not a two-observation crossing detector.
+Only a valid aggregate clear rearms an active latch; unavailable observations and
+acknowledgment do not. Pause/resume preserves rule revision and active latches and
+records the monitoring gap without backfill. Changing rule content creates a new
+revision. The rule view shows membership histories, per-member results, condition
+evidence and gaps. Existing single-condition rules remain readable and usable.
+
+This source batch has static verification only; it has not been activated or
+accepted through live monitoring, workspace edits, notifications or browser UAT.
+
+
+## Retained bar playback and exact historical price copying
+
+The chart's **Pin these retained inputs for playback** freezes the source artifact
+and SHA-256, interval, symbol and calculation identity. Existing compatible
+comparisons pin both artifacts and keep their fixed common anchor. Seek,
+previous/next and play/pause advance through actual recorded bars, including gaps;
+the default speed is one actual bar per second. Candles, volume, indicators,
+comparison values and selectors stop at the playback cutoff. A future comparison
+anchor remains unavailable until reached; it is not rebased or read from later
+bars. Agent report claims are hidden during playback.
+
+The existing workspace preferences retain the pins, cutoff, anchor and speed.
+Restoration is paused and reads the exact retained sources. Missing or changed
+artifacts/calculations are unavailable; current data is never substituted.
+Navigation, closing the stock, changing symbol/interval/source or leaving playback
+pauses its timer. Playback is retained-bar hindsight using the displayed source
+capture, not a backtest, live market, strategy replay or execution simulator.
+
+For the selected actual bar, **Recorded value** defaults to Close; explicitly
+choose Open, High or Low if wanted. This uses exact source numeric text, not chart
+coordinates, comparison indexes or rounded display prices. Choose a compatible
+existing manual ticket limit, stop trigger, stop limit or linked exit field.
+**Review price normalization** validates the exact source, instrument, USD currency
+and observed native price increment. Raw and normalized prices, increment,
+rounding and the declared nearest-increment `ROUND_HALF_UP` preparation method are
+shown before **Copy reviewed historical price into ticket** becomes available.
+Unknown source currency, instrument mapping or increment leaves copying unavailable.
+
+Copy changes only that price and its retained reference. It preserves quantity,
+session, account and live quotes, and invalidates the ticket preview. Cursor
+movement and playback never update a ticket automatically. Manual edits remove the
+affected price receipt. An existing paired SELL target has two names for the same
+price: order limit and linked target. Both are shown before copy and changed
+together; editing either invalidates their shared receipt. Preview and save use the existing exact-revision flow and
+revalidate the source/reference; approval and submission remain separate actions.
+This source batch has no browser, playback or broker acceptance.
+
+
+## Indicator evidence and attention
+
+Saved research full OHLCV frames and current-history collections use the installed
+Stockstats calculation boundary for all 13 research indicators. Retained output
+text without full inputs remains display evidence with initialization unverified.
+The chart shows exact calculation values and units, definitions, library/source
+hashes, history identity, excluded times and separate numerical, warmup,
+interval-closed, source-fresh and calculation-failure states. RSI uses 0–100;
+MFI uses 0–1. EWM `adjust=True` describes smoothing weights, not corporate-action
+price adjustment. The latter remains an independently recorded source field.
+
+**Prepare indicator alert** copies the chart's symbol and exact retained run or
+current-history cache into the existing rule editor. Choose **indicator** scope,
+an above/below threshold or cross-above/cross-below comparison, and an explicit
+maximum source age. A blank current-history cache key follows the latest retained
+cache for the chosen interval; selecting or monitoring it never queues collection.
+Use the existing history request controls to collect fresh inputs explicitly.
+These conditions also participate in ALL/ANY groups and Snapshot/Follow lists.
+Fixed saved-run inputs retain their date and do not become fresh market inputs.
+
+A threshold needs an eligible numerical, initialized, closed-as-of, fresh point.
+A crossing additionally needs two eligible observations seen by the monitor at
+increasing bar times, with matching calculation/source comparability and unchanged
+exact history through the prior observation. Initial observation, formula/source
+replacement or retained correction establishes a baseline without manufacturing a
+crossing. Unavailable observations affect their own condition; they do not clear
+an active aggregate latch. Occurrences retain the unrounded evaluated values,
+prior crossing observation, definition and exact hashed input references. Opening
+an occurrence resolves those retained inputs without substituting current data.
+
+Alpaca daily aggregation uses New York midnight to the following midnight.
+Closed-as-of requires capture after that bucket end; regular-session close alone
+does not close the daily bucket. This is not immutable finality: later corrections
+remain possible. Freshness, calendar/instrument coverage, pagination and sufficient
+warmup remain separate checks. Intraday or legacy data without the needed closure
+and coverage evidence remains visible and unavailable to indicator alerts.
+Source: [Alpaca market-data FAQ](https://docs.alpaca.markets/us/docs/market-data-faq#how-are-bars-aggregated),
+accessed 21 October 2026. This batch has no live monitoring or browser acceptance.
+
+
+## Saved declarative data scans
+
+Open the existing Yahoo discovery section and **Saved declarative data scans**.
+Use **Add programmable multi-timeframe conditions** to name inputs, select the
+anchor input, add typed threshold parameters and build ALL/ANY comparisons with
+the condition controls. Each input selects its own timeframe, session, exact
+source profile, raw field or immutable chart formula/study revision and component,
+and explicit allowed stale-bucket count. All six timeframes remain visible.
+1Min/regular uses actual provider minute bars; 5Min, 15Min, 30Min and 1Hour/regular
+use public native BarBuilder aggregates of retained minute OHLCV on the actual
+calendar session-open grid, clipping the final bucket at session close. Derived
+aggregate provenance remains distinct from provider coarse bars. Missing minute
+coverage, incompatible native price precision or noninteger volume remains
+unavailable; no empty bars are invented. 1Day/provider_day closes at the next
+New York midnight. Other combinations remain unavailable with a reason.
+App qualification is separate from provider entitlement.
+
+Edit reusable formula expressions and typed formula parameters in the existing
+**Chart analysis** editor, save a new immutable revision, then refresh scanner
+metadata and select that exact UUID/revision/hash/component. Programs reuse the
+D63 allowlisted AST engine; no Pine code, arbitrary scripts or second engine is
+supported. Formula rolling calculations run on each original input axis before
+backward closed-bar alignment. Program crossings require two actual anchor
+observations. Existing D42 observed-run crossings keep their original behavior.
+The advanced JSON editor retains Yahoo queries, targets, collection bounds and
+existing typed conditions; **Apply advanced JSON to program controls** refreshes
+the controls after a manual edit.
+
+Export the selected revision or full scan library; import validates the bundle
+and exact transitive chart definitions. Imported definitions receive fresh scan
+identities with scheduling and attention authority off, requiring explicit review.
+Saving and importing do not run a scan. Select a saved revision before Run.
+An optional historical UTC cutoff is retrospective unless original availability
+evidence establishes historical knowledge. **known_then** is unavailable without
+that evidence; actual capture, knowledge and calculation times stay separate.
+Inspect an exact retained run, select its symbol and actual anchor observation,
+then inspect selected source identities, ordinals, expected buckets, ages,
+availability, condition values and prior/current crossing evidence. Calculation
+artifacts retain exact dependencies, implementation and source hashes. A true or
+false aggregate can still have partial coverage; failed, canceled and unprocessed
+work remain separately recorded. Source integration has not been exercised here;
+no scan, chart calculation, collection, schedule or runtime activation was run.
+
+Save an immutable definition revision before running it. Its target is an explicit
+fixed symbol list, saved watchlist Snapshot/Follow, or provider query. Each run
+retains its exact definition and frozen membership/provider selection, cutoff and
+source evidence. Edits do not rewrite old runs. Provider captures after the cutoff
+remain separately dated; a dispatch cutoff is not a claim of historical knowledge.
+Each interval requires its own eligible closed-as-of/fresh observations; another
+interval cannot supply its freshness. Missing or incompatible data stays unavailable.
+With a query plus fixed/watchlist target, only their intersection is evaluated.
+Omitted members have no new predicate result and do not clear an existing latch.
+Re-entry is not a membership reset; another occurrence needs an evaluated clear
+first. Partial query enumeration cannot prove omitted symbols are non-matches.
+
+The selected saved revision exposes source mode, IEX feed, adjustment, lookback,
+symbol/page/interval/request-work bounds and the time limit. Retained mode reads
+saved inputs; provider queries and fresh history require explicit collection mode
+and the separate collection-consent checkbox before Run or schedule opt-in.
+Bounds stop future dispatch, not a provider call already in flight; inspect actual
+budget counters and partial-universe coverage in the retained run. Canceled or
+unprocessed work is separate from evaluated missing/failed data.
+`max_requests` counts explicit provider dispatch operations; yfinance can make or
+retry additional HTTP calls internally. It is not a strict HTTP-call count.
+
+New and edited definitions have scheduling off. **Explicitly opt in selected saved
+schedule** is a separate action using the displayed immutable revision, cadence,
+America/New_York timezone and session gate. Only one run per definition is active;
+durable schedule slots, skipped overlaps and restart gaps remain inspectable.
+Cadence uses elapsed UTC minutes; the regular-session gate follows the recorded
+New York calendar and daylight-saving rules, rather than a local-time cron promise.
+Stopped/restarted intervals are not backfilled. Disable scheduling or cancel future
+work explicitly; old results retain their original source and revision.
+Scheduling while the app is stopped requires a separate capability and is not
+provided by saving or opting in to an in-app schedule.
+
+ALL clears when any condition clears, otherwise is unavailable if any input is
+unknown, otherwise matches. ANY matches when any condition matches, otherwise is
+unavailable if any input is unknown, otherwise clears. Partial evidence remains
+visible even with a conclusive aggregate. Only conclusive clear rearms an optional
+deduplicated attention event; unknown and acknowledgment do not. Exact per-symbol,
+per-interval evidence is retained for inspection. Scanning grants no trade, agent
+research or notification authority. These source changes have not been activated
+or accepted through an actual scan, schedule, provider collection or browser run.
+
+
+## Broker update-stream recovery
+
+Settings shows the latest broker trade-stream state separately from account/order
+reconciliation. A listening socket can still have unresolved commands; their IDs,
+reasons, pending checks and last attempt times remain visible. Those commands keep
+their commitments and applicable order blocks. Use **Refresh account and order
+status** for an explicit reconciliation attempt. A historical, disconnected or
+unavailable worker snapshot does not establish current update coverage.
+
+
+## Dated FRED availability observation
+
+A CPIAUCSL observations request returned HTTP 200 on 21 October 2026 at
+23:41:12 PDT. This supersedes only the earlier CPI maintenance failure for that
+request. It does not establish availability, completeness or correctness of every
+macro series, or acceptance of a new research run. Broader macro collection and
+research acceptance remain open; no new report was generated for this check.
+
+
+## Unsupported broker instruments and order groups
+
+Broker observations retain unsupported asset classes, multi-leg parents and their
+actual nested legs. Missing parent symbols, quantities, fills and commitments stay
+unavailable or unknown; they are not reconstructed as an equity order. Open orders
+and holdings expose the retained broker identity, class, legs and import assessment
+as JSON. Source-reported numeric fields remain readable beside supported equities.
+Unsupported rows have no stock-inspection action, native conversion or management
+eligibility; their remaining exposure, reservations and account weight are unknown.
+Their presence does not hide supported equity facts or make unknown commitments
+zero. This source integration has static verification only, without broker requests
+or browser/runtime acceptance.

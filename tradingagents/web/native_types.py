@@ -3,13 +3,80 @@ from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.model.identifiers import (AccountId, ClientId, ClientOrderId,
     InstrumentId, Symbol, TradeId, TraderId, Venue, VenueOrderId)
 from nautilus_trader.model.enums import (AccountType, AggressorSide, LiquiditySide,
-    OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce)
-from nautilus_trader.model.objects import AccountBalance, Currency, Money, Price, Quantity
+    OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce, AssetClass, OptionKind)
+from nautilus_trader.model.objects import AccountBalance, Currency, MarginBalance, Money, Price, Quantity
 from nautilus_trader.model.data import QuoteTick, TradeTick
 from nautilus_trader.model.events import OrderFilled
 from nautilus_trader.model.instruments import Equity as _Equity
 from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.instruments import OptionContract as _OptionContract
+from nautilus_trader.model.instruments import OptionSpread as _OptionSpread
 from nautilus_trader.execution import reports as _reports
+
+
+def OptionContract(metadata, ts_init):
+    from datetime import UTC, datetime
+
+    from .linked_orders import option_contract
+    raw = option_contract(metadata)
+    expiry = int(datetime.fromisoformat(raw["expiration_date"]).replace(tzinfo=UTC).timestamp()) * 1_000_000_000
+    observed = int(datetime.fromisoformat(metadata["received_at"].replace("Z", "+00:00")).timestamp() * 1_000_000_000)
+    return _OptionContract(instrument_id=InstrumentId.from_str(raw["symbol"] + ".ALPACA"), raw_symbol=Symbol(raw["symbol"]),
+        asset_class=AssetClass.EQUITY, currency=Currency.from_str("USD"), price_precision=2, price_increment=Price.from_str("0.01"),
+        multiplier=Quantity.from_str(raw["size"]), lot_size=Quantity.from_str("1"), underlying=raw["underlying_symbol"],
+        option_kind=OptionKind.CALL if raw["type"] == "call" else OptionKind.PUT, strike_price=Price.from_str(raw["strike_price"]),
+        activation_ns=0, expiration_ns=expiry, ts_event=observed, ts_init=ts_init,
+        info={"option_contract": metadata, "activation_time": None, "expiration_time": None,
+              "native_time_semantics": "Activation=operational lower bound; expiry=UTC date carrier. Not listing/expiry instants; no native chains/Greeks/simulation.",
+              "currency_basis": "US equity-option dollar premium product mapping; absent broker currency remains absent in raw metadata",
+              "price_step_basis": "Cent representation only; ppind quoting tiers and conditional broker routing are separate"})
+
+
+def reported_margin_projection(value):
+    if (value.get("version") != "alpaca-paper-equity-initial-v1" or value.get("currency") != "USD"
+            or value.get("calculate_account_state") is not False):
+        raise ValueError("Identified noncalculated native margin projection is unavailable")
+    from decimal import Decimal
+
+    source, projected = value["source_fields"], value["derived"]
+    if (Decimal(projected["total"]) != Decimal(str(source["equity"]))
+            or Decimal(projected["locked"]) != Decimal(str(source["initial_margin"]))
+            or Decimal(projected["free"]) != Decimal(str(source["equity"])) - Decimal(str(source["initial_margin"]))):
+        raise ValueError("Declared margin projection differs from actual reported equity/initial requirement")
+    def money(raw):
+        amount = Decimal(str(raw))
+        result = Money.from_str(format(amount, "f") + " USD")
+        if not amount.is_finite() or result.as_decimal() != amount:
+            raise ValueError("Actual margin balance is not exactly representable in native USD")
+        return result
+    balance = AccountBalance(money(projected["total"]), money(projected["locked"]), money(projected["free"]))
+    margin = MarginBalance(money(source["initial_margin"]), money(source["maintenance_margin"]))
+    return [balance], [margin]
+
+def OptionSpread(terms, ts_init):
+    from datetime import UTC, datetime
+
+    from nautilus_trader.model.identifiers import new_generic_spread_id
+
+    from .linked_orders import package_terms
+
+    package = package_terms(terms)
+    identity = new_generic_spread_id([(InstrumentId.from_str(leg["instrument_id"]),
+        int(leg["ratio_qty"]) * (1 if leg["side"] == "BUY" else -1)) for leg in terms["legs"]])
+    if str(identity) != package["instrument_id"]:
+        raise ValueError("Public native spread identity differs from exact approved leg ratios")
+    expiry = min(int(datetime.fromisoformat(raw["expiration_date"]).replace(tzinfo=UTC).timestamp()) * 1_000_000_000 for raw in package["contracts"])
+    observed = max(int(datetime.fromisoformat(leg["option_contract"]["received_at"].replace("Z", "+00:00")).timestamp() * 1_000_000_000) for leg in terms["legs"])
+    return _OptionSpread(instrument_id=identity, raw_symbol=identity.symbol, asset_class=AssetClass.EQUITY,
+        currency=Currency.from_str("USD"), price_precision=2, price_increment=Price.from_str("0.01"),
+        multiplier=Quantity.from_str(str(package["multiplier"])), lot_size=Quantity.from_str("1"), underlying=package["underlying"],
+        strategy_type="atomic_bounded_risk_option_spread" if terms.get("execution_profile") == "bounded_risk_spread_v1" else "atomic_long_option_package",
+        activation_ns=0, expiration_ns=expiry, ts_event=observed, ts_init=ts_init,
+        info={"package_legs": terms["legs"], "execution_profile": terms.get("execution_profile", "long_only"), "internal_control": True, "broker_symbol": None,
+              "native_time_semantics": "Earliest leg UTC date carrier only; not a broker expiry instant or exercise schedule",
+              "economics": "Actual leg executions only; parent control never establishes leg prices, fees or positions",
+              "price_step_basis": "Cent package representation; not an inferred leg quoting tier"})
+
 
 def Equity(instrument_id, raw_symbol, currency, price_precision, price_increment, ts_event, ts_init, *, lot_size,
            fractional_precision=False, info=None):

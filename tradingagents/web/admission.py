@@ -8,9 +8,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 from .investor import DEFAULT as INVESTOR_DEFAULT, RULES, decimal, digest, execution_costs, price_evidence, validated_replacement, remaining_quantity, broker_action_order, order_version, native_quantity_offset
-from .linked_orders import native_type
+from .linked_orders import native_type, contract_multiplier
 
 DEFAULT = {"approvals": {}, "revocations": {}, "commands": {}, "account_versions": {},
+           "native_reconstructions": {}, "option_instructions": {},
            "new_orders_blocked": False, "control_history": [], "exercise_authorizations": {}, "basket_executions": {},
            "recovery_required": True, "recovery_reason": "Fresh account reconciliation and outstanding-command rebuild required"}
 ACTIVE = {"admitted_not_dispatched", "dispatch_intent", "submitting", "outcome_unknown", "accepted",
@@ -30,6 +31,7 @@ def instant(value):
 
 
 def account_version(runtime, symbols=()):
+    from .investor import native_balance_binding
     def stable(value, path=()):
         if isinstance(value, dict):
             if "binding_native" in value and value.get("reconciliation_status") == "reconciled":
@@ -43,11 +45,17 @@ def account_version(runtime, symbols=()):
     account, reconciliation = runtime.get("account") or {}, runtime.get("reconciliation") or {}
     position_keys = ("asset_id", "symbol", "asset_class", "exchange", "qty", "qty_available", "side")
     inputs = {
-        "account": {key: account.get(key) for key in ("id", "status", "currency", "cash", "trading_blocked", "multiplier", "shorting_enabled")},
+        "account": {key: account.get(key) for key in ("id", "status", "currency", "cash", "equity", "initial_margin", "maintenance_margin", "trading_blocked", "multiplier", "shorting_enabled", "options_approved_level", "options_trading_level", "options_buying_power", "account_blocked", "trade_suspended_by_user")},
+        "profile_transition": {key: (runtime.get("profile_transition") or {}).get(key) for key in
+            ("selected_profile", "native_account_type", "account_id", "endpoint", "native_epoch", "eligibility", "mapping_scope", "cash_balance_basis", "reported_account")},
+        "native_epoch": runtime.get("native_epoch"),
+        "native_balance_projection": native_balance_binding(runtime),
         "positions": sorted(({key: row.get(key) for key in position_keys} for row in runtime.get("positions") or []),
                             key=lambda row: (str(row["symbol"]), str(row["asset_id"]))),
-        "orders": sorted(({key: row.get(key) for key in ("id", "client_order_id", "symbol", "asset_class", "side", "qty", "filled_qty", "type", "order_type", "order_class", "limit_price", "stop_price", "trail_price", "trail_percent", "time_in_force", "extended_hours", "status", "replaces", "replaced_by", "group_parent_id", "group_class", "group_role", "group_entry_status", "exit_reserved")} for row in runtime.get("orders") or []), key=lambda row: str(row["id"])),
+        "orders": sorted(({key: row.get(key) for key in ("id", "client_order_id", "symbol", "asset_class", "position_intent", "side", "qty", "filled_qty", "type", "order_type", "order_class", "limit_price", "stop_price", "trail_price", "trail_percent", "time_in_force", "extended_hours", "status", "replaces", "replaced_by", "group_parent_id", "group_class", "group_role", "group_entry_status", "exit_reserved", "package_terms", "package_parent_id", "legs")} for row in runtime.get("orders") or []), key=lambda row: str(row["id"])),
         "reconciliation": {key: reconciliation.get(key) for key in ("status", "gaps", "positions_reconciled", "orders_reconciled", "broker_cash", "native_cash")},
+        "option_contracts": {symbol: {key: item.get("option_contract", {}).get(key) for key in ("sha256", "mapping_version")}
+            for symbol, item in runtime.get("market_data", {}).items() if item.get("option_contract")},
         "endpoint": runtime.get("endpoint"), "connection_session": runtime.get("connection_session")}
     if symbols:
         inputs["market_data"] = {symbol: runtime.get("market_data", {}).get(symbol) for symbol in sorted(set(symbols))}
@@ -98,6 +106,172 @@ class CommandAdmission:
     def review_allowed(self):
         if not self.review_enabled:
             raise PermissionError("Browse-only mode does not permit approval or revocation records")
+
+    def instruction_review(self, records, kind, symbol, constraints, identity=None):
+        from .investor import exercise_readiness, working_commitments
+        from .linked_orders import broker_position_quantity, option_contract
+        if kind not in {"exercise", "do_not_exercise"}:
+            raise ValueError("Choose Exercise all available or Request DNE")
+        if not isinstance(constraints, dict):
+            raise ValueError("Current configured instruction constraints are required")
+        if any(decimal(constraints.get(key)) is None or decimal(constraints[key]) <= 0
+               for key in ("account_max_age_seconds", "approval_max_age_seconds")):
+            raise ValueError("Configured positive account and approval age limits are required")
+        runtime = self.checked_observation(constraints)
+        position = next((row for row in runtime.get("positions", []) if row.get("symbol") == symbol), None)
+        if not position or position.get("asset_class") != "us_option" or position.get("import_error"):
+            raise ValueError("An identified reconciled long option position is required")
+        envelope = position.get("option_contract") or runtime.get("market_data", {}).get(symbol, {}).get("option_contract")
+        contract = option_contract(envelope)
+        if not envelope["source"].startswith(runtime.get("endpoint", "") + "/v2/options/contracts"):
+            raise ValueError("Option metadata belongs to a different account mode/origin")
+        quantity, available = broker_position_quantity(position), decimal(position.get("qty_available"))
+        if contract["symbol"] != symbol or quantity <= 0 or quantity % 1 or available is None or available <= 0 or available > quantity or available % 1:
+            raise ValueError("Current available whole long contracts are required")
+        account, state = runtime["account"], records["commands"]
+        if not runtime.get("connection_session") or not runtime.get("native_epoch") or not runtime.get("endpoint"):
+            raise ValueError("Current account connection and native epoch are required")
+        history = [{key: copy.deepcopy(row.get(key)) for key in ("id", "kind", "symbol", "account_id", "created_at", "state", "approval", "attempt", "interlock_release", "restore_uncertainty", "timeline")}
+                   for key, row in state.setdefault("option_instructions", {}).items()
+                   if key != identity and row["account_id"] == account["id"] and row["symbol"] == symbol]
+        history.sort(key=lambda row: (row["created_at"], row["id"]))
+        commitments, complete = working_commitments(runtime, state)
+        local_sells = sum((item["remaining"] for item in commitments if item["symbol"] == symbol
+            and item["side"] == "SELL" and item["command_ids"] and not item["order_ids"]), Decimal(0))
+        blockers = []
+        if kind == "exercise" and available - local_sells <= 0:
+            blockers.append("Available long position is exhausted by known local sell commitments")
+        if account.get("status") != "ACTIVE" or any(account.get(key) is True for key in ("account_blocked", "trade_suspended_by_user")):
+            blockers.append("Broker account restrictions prohibit this instruction")
+        if any(row["state"] in {"transport_intent", "transport_unknown"} and not row.get("interlock_release") for row in history):
+            blockers.append("A prior instruction has an in-flight or unknown transport outcome")
+        terms = {"asset_class": "us_option", "option_contract": envelope, "quantity": str(available)}
+        readiness = exercise_readiness(terms, runtime, commands=state) if kind == "exercise" else None
+        policy = records["investor"]["policy"]
+        policy_review = {key: {"state": rule.get("state"), "applicability": "No supported instruction-specific model; no passing claim"}
+                         for key, rule in policy.get("rules", {}).items() if rule.get("state") == "enabled"}
+        if kind == "exercise":
+            risk = runtime.get("native_risk", {})
+            if risk.get("values", {}).get("trading_state") == "HALTED":
+                blockers.append("Native trading is halted")
+            loss_rule = policy.get("rules", {}).get("loss_limit_pct", {})
+            pnl = [decimal(row.get("unrealized_pl")) for row in runtime.get("positions", [])]
+            costs = [decimal(row.get("cost_basis")) for row in runtime.get("positions", [])]
+            if loss_rule.get("state") == "enabled" and all(value is not None for value in pnl + costs) and sum(costs) > 0:
+                if -sum(pnl) / sum(costs) * 100 > Decimal(loss_rule["value"]):
+                    blockers.append("Configured current broker loss limit is exceeded")
+                policy_review["loss_limit_pct"]["applicability"] = "Current broker aggregate unrealized loss / reported cost"
+            reserve = policy.get("rules", {}).get("cash_reserve_pct", {})
+            equity = decimal(account.get("equity"))
+            cash = decimal(readiness.get("available")) if contract["type"] == "call" else decimal(account.get("cash"))
+            if contract["type"] == "put" and cash is not None:
+                cash -= sum((item["cash"] for item in commitments), Decimal(0))
+            if reserve.get("state") == "enabled" and equity is not None and equity > 0 and cash is not None:
+                remaining_cash = cash - Decimal(readiness["required"]) if contract["type"] == "call" else cash
+                policy_review["cash_reserve_pct"].update(applicability="Call delivery or current put cash after known commitments, without crediting put proceeds", cash=str(remaining_cash))
+                if remaining_cash / equity * 100 < Decimal(reserve["value"]):
+                    blockers.append("Configured minimum cash reserve would be violated")
+            # Reuse broker valuations and existing classification artifacts; unknown components are not zero.
+            values = {row["symbol"]: decimal(row.get("market_value")) for row in runtime.get("positions", [])}
+            delivery_values = dict(values)
+            underlying = contract["underlying_symbol"]
+            held = next((row for row in runtime.get("positions", []) if row["symbol"] == underlying), None)
+            mark = decimal(held.get("current_price")) if held else None
+            if mark is not None and mark > 0:
+                delta = available * Decimal(contract["size"]) * mark * (1 if contract["type"] == "call" else -1)
+                delivery_values[underlying] = (values.get(underlying) or Decimal(0)) + delta if not held or values.get(underlying) is not None else None
+                delivery_values[symbol] = values.get(symbol) * (quantity - available) / quantity if values.get(symbol) is not None else None
+            else:
+                delivery_values[underlying] = None
+            for key in ("max_position_pct", "max_gross_exposure_pct", "max_sector_pct"):
+                rule = policy.get("rules", {}).get(key, {})
+                if rule.get("state") != "enabled" or equity is None or equity <= 0:
+                    continue
+                scopes, references = [], {}
+                for exposures in (values, delivery_values):
+                    known_values = [abs(value) for value in exposures.values() if value is not None]
+                    if key == "max_position_pct":
+                        scopes.append(max(known_values, default=Decimal(0)))
+                    elif key == "max_gross_exposure_pct":
+                        scopes.append(sum(known_values))
+                    else:
+                        from .approval_review import read_artifact
+                        sectors = {}
+                        for name, value in exposures.items():
+                            meta = records.get("stock_evidence", {}).get("observations", {}).get(name, {}).get("classification", {})
+                            maximum = decimal(rule.get("max_classification_age_seconds"))
+                            age = (datetime.now(UTC) - instant(meta["captured_at"])).total_seconds() if meta.get("captured_at") else None
+                            source = read_artifact(self.database.path.parent, meta.get("artifact", {}))
+                            sector = next((item.get("value") for item in (source or {}).get("records", []) if item.get("name") == "Sector"), None)
+                            if value is not None and sector and rule.get("classification") == "provider_sector" and meta.get("status") == "available" and age is not None and maximum is not None and 0 <= age <= maximum:
+                                sectors[sector] = sectors.get(sector, Decimal(0)) + abs(value)
+                                references[name] = meta["artifact"]
+                        scopes.append(max(sectors.values(), default=Decimal(0)))
+                policy_review[key].update(applicability="Known current/delivery valuation lower bounds; incomplete inputs are not a passing claim", lower_bounds=[str(value) for value in scopes], source_references=references)
+                if any(value / equity * 100 > Decimal(rule["value"]) for value in scopes):
+                    blockers.append("Configured " + RULES[key] + " is exceeded by evidenced current/delivery exposure")
+        facts = {"kind": kind, "symbol": symbol, "account_id": account["id"], "endpoint": runtime["endpoint"],
+            "mode": runtime.get("connection_identity", {}).get("configured_mode"), "connection_session": runtime["connection_session"],
+            "native_epoch": runtime["native_epoch"], "intent": "all_available", "option_contract": copy.deepcopy(envelope),
+            "observed_quantity": str(quantity), "broker_available_quantity": str(available), "local_sell_commitment": str(local_sells),
+            "review_available_quantity": str(available - local_sells), "observed_at": runtime["account_at"],
+            "exercise_readiness": readiness, "policy": copy.deepcopy(policy), "policy_review": policy_review, "history": history,
+            "commitments": json.loads(json.dumps(commitments, default=str)), "commitments_complete": complete,
+            "limits": "No fixed-quantity broker parameter, atomic undo, cutoff guarantee or settlement confirmation; broker changes may race preflight"}
+        history_hash = digest([row for row in history if row.get("attempt") or row["state"] == "transport_unknown"])
+        binding = {"kind": kind, "symbol": symbol, "account_version": account_version(runtime), "native_epoch": runtime["native_epoch"],
+            "contract_sha256": envelope["sha256"], "policy": policy, "constraints": constraints, "history_sha256": history_hash,
+            "commitments": facts["commitments"], "policy_review": policy_review, "blockers": blockers}
+        return {"facts": facts, "binding_sha256": digest(binding), "history_sha256": history_hash, "blockers": blockers}
+
+    def preview_instruction(self, kind, symbol, constraints):
+        from .stock_evidence import DEFAULT as EVIDENCE
+        records = {"commands": self.database.read("commands", DEFAULT)["data"],
+                   "investor": self.database.read("investor", INVESTOR_DEFAULT)["data"],
+                   "stock_evidence": self.database.read("stock_evidence", EVIDENCE)["data"]}
+        return self.instruction_review(records, kind, symbol, constraints)
+
+    def option_instruction(self, action, *, actor, instruction_id=None, kind=None, symbol=None, reason="", constraints=None,
+                           expected=None, binding_sha256=None, reviewed_unknowns=False):
+        self.review_allowed()
+        if not isinstance(expected, dict) or any(type(expected.get(key)) is not int for key in ("commands", "investor")):
+            raise ValueError("Reload exact commands and investor revisions before changing instruction authority")
+        if not actor or action not in {"prepare", "review", "approve", "release_interlock"}:
+            raise ValueError("Explicit initiating session and instruction action are required")
+        def change(records):
+            instructions = records["commands"].setdefault("option_instructions", {})
+            if action == "prepare":
+                review = self.instruction_review(records, kind, symbol, constraints)
+                facts, identity = review["facts"], str(uuid4())
+                instructions[identity] = {key: facts[key] for key in ("kind", "symbol", "account_id", "endpoint", "mode", "connection_session", "native_epoch", "intent")}
+                instructions[identity].update(id=identity, constraints=copy.deepcopy(constraints), created_at=stamp(), actor=actor,
+                    reason=reason, state="prepared", review=None, approval=None, attempt=None, timeline=[])
+                row = instructions[identity]
+            else:
+                row = instructions[instruction_id]
+                if action == "release_interlock":
+                    if row["state"] != "transport_unknown" or row.get("interlock_release") or not reason.strip():
+                        raise ValueError("Only an unknown outcome permits a separate reasoned interlock release")
+                    row["interlock_release"] = {"actor": actor, "reason": reason, "at": stamp()}
+                else:
+                    if row["state"] != "prepared":
+                        raise ValueError("Instruction authority is one-shot; prepare a fresh instruction")
+                    review = self.instruction_review(records, row["kind"], row["symbol"], row["constraints"], row["id"])
+                    if any(row[key] != review["facts"][key] for key in ("account_id", "endpoint", "connection_session", "native_epoch")):
+                        raise ValueError("Instruction account/session changed; prepare fresh authority")
+                    if action == "review":
+                        row["review"] = review
+                    else:
+                        if review["blockers"] or not row["review"] or binding_sha256 != row["review"]["binding_sha256"] or review["binding_sha256"] != binding_sha256:
+                            raise ValueError("Review the exact current instruction facts and restrictions again")
+                        unknowns = any(prior["state"] == "transport_unknown" for prior in review["facts"]["history"])
+                        if unknowns and reviewed_unknowns is not True:
+                            raise ValueError("Explicit review of prior unknown outcomes is required")
+                        row.update(state="approved", approval={"actor": actor, "at": stamp(), "binding_sha256": binding_sha256,
+                            "history_sha256": review["history_sha256"], "reviewed_unknowns": reviewed_unknowns,
+                            "expires_at": (datetime.now(UTC) + timedelta(seconds=float(row["constraints"]["approval_max_age_seconds"]))).isoformat()})
+            row["timeline"].append({"action": action, "actor": actor, "reason": reason, "at": stamp()})
+        return self.transaction(change, expected=expected, evidence=True)
 
     def enabled(self):
         if self.execution_enabled is not True:
@@ -285,7 +459,16 @@ class CommandAdmission:
         if cap is None or quantity is None:
             raise ValueError("Required price or remaining quantity is unavailable")
         validated_replacement(terms, runtime)
-        reserve = (quantity * cap if terms["side"] == "BUY" else Decimal(0)) + (fees if fees is not None else Decimal(0))
+        reserve = (quantity * cap * contract_multiplier(terms) if terms["side"] == "BUY" else Decimal(0)) + (fees if fees is not None else Decimal(0))
+        collateral = Decimal(0)
+        if terms.get("execution_profile") == "bounded_risk_spread_v1":
+            from .investor import spread_risk
+            spread = spread_risk(terms, runtime, state)
+            obligation = decimal(spread["net_package_obligation_before_costs"])
+            if spread["blockers"] or obligation is None:
+                raise ValueError("Current bounded-risk collateral/protection evidence is unavailable")
+            collateral = max(Decimal(0), obligation - quantity * cap * contract_multiplier(terms))
+            reserve += collateral
         if (terms.get("replacement") or {}).get("contingent_group"):
             reserve = Decimal(0)
         identity = str(uuid4())
@@ -301,6 +484,32 @@ class CommandAdmission:
             "price_cap": str(cap), "fee_commitment": str(fees) if fees is not None else None,
             "cash_commitment_basis": "Principal plus known/configured fee amount; unknown actual fees are excluded, not zero", "broker_order_ids": [], "fill_ids": [], "event_ids": [],
             "timeline": [{"at": stamp(), "state": "admitted_not_dispatched", "reason": "Resources reserved transactionally; transport has not been called"}]}
+        if terms.get("execution_profile") == "bounded_risk_spread_v1":
+            from .investor import native_balance_binding
+            state["commands"][identity].update(collateral_commitment=str(collateral), collateral_evidence=spread,
+                native_balance_projection=native_balance_binding(runtime),
+                cash_commitment_basis="One modeled same-package net collateral/premium obligation plus declared costs; not broker-reported margin")
+        if terms.get("replacement_funding_basis"):
+            from .investor import replacement_funding_route
+
+            route = replacement_funding_route(terms)
+            material = evaluation["bindings"].get("broker_reservation_validation")
+            if not material or material.get("route_eligible") is not True or any(material.get(key) != value for key, value in route.items()):
+                raise ValueError("Exact approved broker-owned incremental reservation route is unavailable")
+            state["commands"][identity].update(replacement_funding_basis=route["version"], broker_reservation_validation=copy.deepcopy(material))
+        baseline = state.get("native_reconstructions", {}).get(terms["instrument_id"])
+        if baseline and baseline.get("state") == "confirmed" and baseline.get("native_epoch") == state.get("native_epoch"):
+            state["commands"][identity]["reconstruction_parent"] = {key: copy.deepcopy(baseline[key])
+                for key in ("receipt", "account_id", "native_epoch", "instrument_id")}
+        if terms.get("order_class") == "mleg":
+            from .linked_orders import package_valuation_key
+            state["commands"][identity].update(
+                package_valuation_binding_sha256=package_valuation_key(evaluation["bindings"]["native_package_valuation"]),
+                package_valuation_receipt=copy.deepcopy(evaluation["policy_scenarios"]["native_package_valuation"]["receipt"]))
+            state["commands"][identity]["reconstruction_parents"] = {
+                leg["instrument_id"]: {key: copy.deepcopy(baseline[key]) for key in ("receipt", "account_id", "native_epoch", "instrument_id")}
+                for leg in terms["legs"] for baseline in [state.get("native_reconstructions", {}).get(leg["instrument_id"], {})]
+                if baseline.get("state") == "confirmed" and baseline.get("native_epoch") == state.get("native_epoch")}
         if terms.get("replacement"):
             parent = next((c for c in state["commands"].values() if c["id"] != identity and
                 terms["replacement"]["order_id"] in c.get("broker_order_ids", [])), None)
@@ -376,6 +585,8 @@ class CommandAdmission:
                     "rationale": "", "research": None}
                 if order.get("type") == "trailing_stop":
                     terms.update({key: order[key] for key in ("trail_price", "trail_percent") if order.get(key) is not None})
+                if order.get("asset_class") == "us_option":
+                    terms.update(asset_class="us_option", currency="USD", option_contract=copy.deepcopy(order["option_contract"]), position_intent=order.get("position_intent"))
                 cap = price_evidence(terms, runtime)["price"]
                 remaining = decimal(order["qty"]) - decimal(order["filled_qty"])
                 command = {"id": identity, "origin": "external_broker", "submission_authority": False,
@@ -390,7 +601,7 @@ class CommandAdmission:
                     "dispatch_intent_at": None, "transport_attempt": {"version": 1, "state": "external_submission"},
                     "filled_quantity": str(order["filled_qty"]), "remaining_quantity": str(remaining),
                     "price_cap": str(cap) if cap is not None else None, "fee_commitment": None,
-                    "cash_commitment": str(remaining * cap) if terms["side"] == "BUY" and cap is not None else "0" if terms["side"] == "SELL" else None,
+                    "cash_commitment": str(remaining * cap * contract_multiplier(terms)) if terms["side"] == "BUY" and cap is not None else "0" if terms["side"] == "SELL" else None,
                     "cash_commitment_basis": "Retained broker order principal estimate; unknown actual fees excluded",
                     "broker_order_ids": [broker_order_id], "fill_ids": [], "event_ids": [],
                     "source_observation": {"order": copy.deepcopy(order), "order_version": order_version(order),
@@ -548,12 +759,16 @@ class CommandAdmission:
                 evaluation = self.assess(records, proposal, runtime, approval["constraints"])
                 if not evaluation["passed"] or evaluation["binding_sha256"] != approval.get("evaluation_binding_sha256"):
                     raise ValueError("Required current order conditions changed before transport")
+                if (target.get("replacement_funding_basis") != target["terms"].get("replacement_funding_basis")
+                        or target.get("broker_reservation_validation") != evaluation["bindings"].get("broker_reservation_validation")):
+                    raise ValueError("Exact broker reservation validation basis changed before transport")
                 cap, fee = execution_costs(target["terms"], runtime, approval["constraints"])
                 remaining = remaining_quantity(target["terms"])
                 if cap is None or remaining is None:
                     raise ValueError("Current price or remaining quantity is unavailable before transport")
                 target.update(price_cap=str(cap), cash_commitment=str(
-                    (remaining * cap if target["side"] == "BUY" else Decimal(0)) + (fee if fee is not None else Decimal(0))))
+                    (remaining * cap * contract_multiplier(target["terms"]) if target["side"] == "BUY" else Decimal(0)) + (fee if fee is not None else Decimal(0))
+                    + Decimal(target.get("collateral_commitment", "0"))))
                 if (target["terms"].get("replacement") or {}).get("contingent_group"):
                     target["cash_commitment"] = "0"
                 if operation == "submit" and target["terms"].get("replacement"):
@@ -702,9 +917,9 @@ class CommandAdmission:
                 status = "partially_filled"
             remaining = total - filled
             price, fee = decimal(command.get("price_cap")), decimal(command.get("fee_commitment"))
-            principal = remaining * price if command["side"] == "BUY" and price is not None else Decimal(0) if command["side"] == "SELL" else None
+            principal = remaining * price * contract_multiplier(command["terms"]) if command["side"] == "BUY" and price is not None else Decimal(0) if command["side"] == "SELL" else None
             command.update(state=status, filled_quantity=str(filled), remaining_quantity=str(remaining),
-                           cash_commitment=str(principal + (fee if fee is not None else Decimal(0))) if principal is not None else None)
+                           cash_commitment=str(principal + (fee if fee is not None else Decimal(0)) + Decimal(command.get("collateral_commitment", "0"))) if principal is not None else None)
             if status in TERMINAL:
                 command.update(remaining_quantity="0", cash_commitment="0")
             if report.get("broker_order_id") and report["broker_order_id"] not in command["broker_order_ids"]:
