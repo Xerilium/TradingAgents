@@ -6,7 +6,7 @@ actual installation, saved data and permitted smoke test.
 
 ## UI delivery: local Git issues, sprints and required skills
 
-The approved UI design and delivery plan are in
+The UI design references and delivery plan are in
 [printerv2 UI delivery](C:/src/printerv2/docs/ui/approved-20261022/README.md).
 Local issue files in printerv2 own status, dependencies, decisions and acceptance. Work in
 the planned sprints and integrate complete batches; do not create one-control
@@ -22,8 +22,12 @@ hold. No remote repository or publication is authorized.
 Every UI implementer and reviewer must load the Impeccable skill at session
 start: C:/Users/brett/.agents/skills/impeccable/SKILL.md (or its installed location
 on another host). Run its context setup once, follow the applicable playbook,
-and read the craft floor immediately before UI edits. Use Operate mode and the
-approved design; do not restart design exploration. Use the Microsoft writing
+and read the craft floor immediately before UI edits. Use Operate mode; the
+design suggests how to refactor and does not mandate exact layouts, labels,
+workspaces, or screen count. Explicit user requirements and existing capabilities
+take precedence. Abandon unbacked business elements and actions; do not fabricate
+data or add backend functionality to justify a mockup. Preserve supported
+functionality and follow the current issue criteria. Use the Microsoft writing
 style guide for UI copy and reports. Record applied skill guidance in the issue
 handback. Verify the rendered integrated result at the specified sizes.
 
@@ -38,7 +42,7 @@ No new automated tests, mocks, backend-scripted UAT or unrelated scope.
 - The primary assistant owns issue/PR administration and acceptance; the user
   does not operate them. A fresh agent independent of the authors reviews issue
   scope and integrated changes before primary-assistant sign-off. Check scope
-  creep, alignment with the stated trading goal and approved UI, missing
+  creep, alignment with the stated trading goal and explicit UI requirements, missing
   requirements, unnecessary work, changed financial semantics and unsupported
   completion claims. Record the reviewer, exact revision, findings and decision
   in the local issue. The primary assistant signs off only after evaluating a
@@ -60,7 +64,9 @@ No new automated tests, mocks, backend-scripted UAT or unrelated scope.
 
 ## Local operation and preservation
 
-- Work in `C:\src\TradingAgents`; current application branch is `nautilus`.
+- Work in the branch and isolated worktree assigned by the local issue. Check
+  the actual Git branch and status before editing; do not switch to the primary
+  checkout or infer a runtime path from an old branch name.
 - The single canonical startup command is `rtk proxy .\Start-TradingDesk.cmd`.
   Use it unchanged; do not wrap or patch the launcher or start the server directly.
   Read `tradingdesk.launch.json` for current paths; never substitute an empty
