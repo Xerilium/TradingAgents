@@ -24,7 +24,18 @@ class SourceEvidenceError(ValueError):
     """A bounded, safe-to-display receipt-capture failure."""
 
 
-def source_attempt_failed(attempt):
+def source_attempt_failed(attempt, attempts=()):
+    if (attempt.get("operation") == "reddit_rss" and attempt.get("vendor") == "reddit"
+            and attempt.get("origin") == "http_response_bytes" and attempt.get("outcome") == "error"
+            and not attempt.get("capture_error") and attempt.get("arguments", {}).get("ticker")
+            and attempt.get("ended_at") and any(
+                other.get("outcome") == "success" and other.get("capture") == "recorded"
+                and not other.get("capture_error") and not other.get("late")
+                and (other.get("started_at") or "") >= attempt["ended_at"]
+                and all(other.get(key) == attempt.get(key) for key in
+                        ("symbol", "operation", "vendor", "origin", "arguments", "parent_attempt_id"))
+                for other in attempts)):
+        return False  # Retain the failed receipt; the same input was acquired by its retry.
     return bool(attempt.get("capture_error") or (
         (attempt.get("outcome") != "success" or attempt.get("data_status") in {"unavailable", "partial"})
         and not (attempt.get("requirement") == "supplemental"
@@ -76,7 +87,7 @@ class DeskStore:
                 self.checkpoint_request(request, "recovery_unknown")
         for run in self.data["runs"]:
             for result in run.get("results", []):
-                source_incomplete = any(source_attempt_failed(a)
+                source_incomplete = any(source_attempt_failed(a, run.get("source_evidence", {}).get("attempts", []))
                     for a in run.get("source_evidence", {}).get("attempts", [])
                     if a.get("symbol") in {None, result["symbol"]})
                 if (result.get("status") == "completed"

@@ -2583,7 +2583,7 @@ class DeskService:
                             self.store._call_counts(evidence, origin)
                             evidence_by_origin[origin] = evidence
                     failures = [a["operation"] for a in evidence_by_origin["source"]["attempts"]
-                                if source_attempt_failed(a)]
+                                if source_attempt_failed(a, evidence_by_origin["source"]["attempts"])]
                     if failures or not evidence_by_origin["source"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
                     if any(not evidence_by_origin[origin].get("capture_complete", False) for origin in ("gateway", "jev")):
