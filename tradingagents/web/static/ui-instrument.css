@@ -31,6 +31,11 @@
 .chart-inspectors textarea{box-sizing:border-box;width:100%;min-width:0}
 @media(max-width:1000px),(max-height:650px){#instrument-chart .saved-evidence{grid-template-columns:1fr;grid-template-rows:minmax(180px,1fr) auto minmax(100px,1fr)}.chart-inspectors{grid-column:1;grid-row:3;border-left:0;border-top:1px solid var(--line,#34414d)}.chart-inspectors .instrument-tabs{flex-wrap:nowrap;overflow:auto}.instrument-quote{padding:8px 12px}}
 @media(max-width:1000px),(max-height:650px){#instrument-chart .saved-evidence.analysis-visible{grid-template-rows:minmax(0,1fr) auto minmax(0,1fr) minmax(0,1fr)}#instrument-chart .analysis-visible .chart-inspectors{grid-column:1;grid-row:4}}
+@media(max-height:650px){
+ #universe-review #instrument-chart>.evidence:has(.saved-evidence){overflow:auto}
+ #instrument-chart .saved-evidence{height:auto;min-height:100%;grid-template-rows:240px auto 320px}
+ #instrument-chart .saved-evidence.analysis-visible{grid-template-rows:240px auto 360px 320px}
+}
 @media(max-width:1400px){
  #universe-review.markets-workspace:has(#workspace.detail-open)>.app-header{display:none}
  #universe-review.markets-workspace:has(#workspace.detail-open)>#workspace-save-status{padding:4px 8px;font-size:12px}
