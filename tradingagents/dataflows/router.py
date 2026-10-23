@@ -127,7 +127,7 @@ def _gateway_failure_details(error):
                 r"certificate verify failed|SSL handshake failed|unsupported protocol|"
                 r"MCP operation failed|unhandled errors in a TaskGroup|invalid JSON|"
                 r"JSON Schema|schema validation failed|Missing required argument|"
-                r"CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
+                r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
                 r"no news articles tagged|maintenance|rate limited|temporarily unavailable")
     while pending and len(details) < 6:
         current = pending.pop(0)

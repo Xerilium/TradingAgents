@@ -73,6 +73,10 @@ class GatewayTimeout(GatewayError):
     """The operation timed out; an upstream mutation may have completed."""
 
 
+class GatewayRejected(GatewayError):
+    """The upstream explicitly rejected the request before applying it."""
+
+
 def retry_after_seconds(value=None):
     """Preserve the server's required delay; only automatic backoff is capped."""
     try:
@@ -200,6 +204,15 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
         # Do not echo arbitrary upstream payloads: system configuration results
         # can contain secrets. Callers receive a stable, non-secret error.
         error = value.get("error")
+        errors = [error]
+        for block in value.get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text":
+                with suppress(ValueError, TypeError):
+                    parsed = json.loads(block.get("text", ""))
+                    if isinstance(parsed, dict):
+                        errors.append(parsed.get("error"))
+        if any(isinstance(item, dict) and item.get("code") == "SESSION_MISSING" for item in errors):
+            raise GatewayRejected("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; continue using the returned sessionId.")
         if limited := reported_rate_limit(value):
             raise limited
         for block in value.get("content") or []:
@@ -694,6 +707,9 @@ def build_langchain_tools(
                             if selected.name not in live:
                                 raise GatewayError(f"Gateway command is unavailable: {selected.domain}.{selected.name}.")
                             validate_parameters(bounded, live[selected.name].schema)
+                            if (selected.domain == "maenifold.thinking" and selected.name == "SequentialThinking"
+                                    and not bounded.get("sessionId") and bounded.get("thoughtNumber", 0) != 0):
+                                raise GatewayRejected("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; continue using the returned sessionId.")
                             dispatch = lambda on_dispatch=None: gateway.execute(
                                 selected.domain, selected.name, bounded, on_dispatch=on_dispatch)
                             if research_effect is not None:

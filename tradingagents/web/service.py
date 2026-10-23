@@ -28,6 +28,7 @@ from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
     GatewayError,
     GatewayRateLimited,
+    GatewayRejected,
     MaenifoldGateway,
     build_langchain_tools,
 )
@@ -2277,6 +2278,8 @@ class DeskService:
                 reason = "Analysis stopped by operator; cancellation remains in force."
             if not reason and prior and prior["arguments_sha256"] != arguments:
                 reason = "A retained external call identity has different arguments."
+            elif not reason and prior and prior["outcome"] == "rejected":
+                raise GatewayRejected(prior["error"])
             elif not reason and prior and prior["outcome"] == "confirmed":
                 retained_arguments = read_artifact(self.store.directory, prior["arguments"])
                 if (retained_arguments is None or retained_arguments != parameters
@@ -2320,12 +2323,15 @@ class DeskService:
                 attempt.update(outcome="confirmed", ended_at=now())
                 self.store.save()
             return value
-        except BaseException:
+        except BaseException as exc:
             if attempt is None:
                 raise
             with self.store.lock:
-                attempt.update(outcome="unknown" if stateful else "error", ended_at=now())
-                if stateful:
+                rejected = isinstance(exc, GatewayRejected)
+                attempt.update(outcome="rejected" if rejected else "unknown" if stateful else "error", ended_at=now())
+                if rejected:
+                    attempt["error"] = str(exc)
+                if stateful and not rejected:
                     run["continuation"]["blocked_reason"] = f"{command} has an uncertain outcome; automatic replay is blocked."
                 self.store.save()
             raise
