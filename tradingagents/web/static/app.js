@@ -2243,19 +2243,19 @@ function bindBaskets(root){
 }
 async function investorAction(request){
  if(investorBusy||investorConflict)return;investorBusy=true;investorError='';
- const isBasket=request.action.startsWith('basket_'),form=isBasket?basketForm:request.terms&&proposalForms.get(proposalKey(request.terms.symbol)),snapshot=JSON.stringify(form),generation=state.store_generation;
+ const isBasket=request.action.startsWith('basket_'),draftKey=request.terms?proposalKey(request.terms.symbol):null,form=isBasket?basketForm:draftKey&&proposalForms.get(draftKey),snapshot=JSON.stringify(form),generation=state.store_generation;
  request=structuredClone(request);
- const current=()=>state.store_generation===generation&&(!form||form===(isBasket?basketForm:proposalForms.get(proposalKey(request.terms.symbol)))&&JSON.stringify(form)===snapshot);
+ const current=()=>state.store_generation===generation&&(!form||form===(isBasket?basketForm:proposalForms.get(draftKey))&&JSON.stringify(form)===snapshot),active=()=>!draftKey||proposalKey(request.terms.symbol)===draftKey;
  try{
   const result=await api('/api/investor',{...request,expected_revision:investorRecord.revision});
   if(state.store_generation!==generation)return;
   if(request.action==='basket_preview'){if(current())basketPreview=result.preview;}
-  else if(request.action==='preview'){if(current())proposalPreviews.set(proposalKey(request.terms.symbol),result.preview);}
+  else if(request.action==='preview'){if(current())proposalPreviews.set(draftKey,result.preview);}
   else{
-   investorRecord=result;state.investor=result;if(current())investorDirty=false;
+   investorRecord=result;state.investor=result;if(current()&&active())investorDirty=false;
    if(isBasket){const item=result.data.baskets.find(b=>b.id===request.id)||result.data.baskets[0];if(current())loadBasket(item);else if(form===basketForm&&item)form.id=item.id;}
    else if(request.action==='policy'){policyDraft=null;policyReason='';}
-   else{const item=result.data.proposals.find(p=>p.id===request.id)||result.data.proposals[0];if(current()){if(item){proposalForms.set(proposalKey(item.terms.symbol),{...item.terms,id:item.id});proposalPreviews.set(proposalKey(item.terms.symbol),item);}proposalReason='';}else if(form===proposalForms.get(proposalKey(request.terms.symbol))&&item)form.id=item.id;}
+   else{const item=result.data.proposals.find(p=>p.id===request.id)||result.data.proposals[0];if(current()){if(item){proposalForms.set(draftKey,{...item.terms,id:item.id});proposalPreviews.set(draftKey,item);}preparationReasons.delete(draftKey);if(active())proposalReason='';}else if(form===proposalForms.get(draftKey)&&item)form.id=item.id;}
   }
  }catch(e){if(current()||!['preview','basket_preview'].includes(request.action)){investorError=e.message;investorConflict=e.status===409;}}
  finally{investorBusy=false;render();}
