@@ -1080,6 +1080,7 @@ def execute_experiment(spec, native_python, *, event, process_state=None, cancel
             if stopped():
                 return {"status": "interrupted", "scenarios": outputs, "metrics": None}
             native_spec = {"kind": "strategy_trial", "version": EXPERIMENT_VERSION, "engine_version": spec["engine_version"],
+                "metrics_version": "native-closed-lifecycles-v1",
                 "experiment_sha256": spec["spec_sha256"], "strategy": spec["strategy"], "parameters": parameters,
                 "segment": fold[phase], "starting_cash": config["starting_cash"], "starting_holdings": [],
                 "assumptions": scenario, "representation": spec["representation"], "input_artifacts": spec["input_artifacts"],
