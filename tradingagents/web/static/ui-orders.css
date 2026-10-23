@@ -25,3 +25,11 @@
 #instrument-position:has(.shared-ticket){display:flex;flex-direction:column;overflow:hidden}#instrument-position>.shared-ticket{flex:1;min-height:0}#instrument-position>h3,#instrument-position>dl,#instrument-position>p{flex-shrink:0}
 @media(max-width:1100px){.order-master-detail{grid-template-columns:1fr;grid-template-rows:minmax(180px,1fr) minmax(180px,1fr)}}
 @media(max-width:900px),(max-height:650px){.orders-workspace:has(#workspace.detail-open) .orders-panels{display:none}.orders-workspace #workspace.detail-open{width:100%;min-width:0}.ticket-actions{max-height:140px}.ticket-actions button{flex:1}.orders-body{gap:0}}
+@media(max-height:650px){
+ .app-shell>.workspace>#main[data-page=orders]:has(#workspace.detail-open)>.page-heading{display:none}
+ #universe-review.orders-workspace>.orders-tabs{margin:0 0 4px}
+ #universe-review.orders-workspace #stock-detail .detail-header,.orders-workspace .ticket-steps,.orders-workspace .ticket-actions{padding:4px 8px;gap:4px}
+ #universe-review.orders-workspace .orders-tabs button,#universe-review.orders-workspace .ticket-steps button,#universe-review.orders-workspace #close-detail,#universe-review.orders-workspace .ticket-actions button{padding:4px 8px;min-height:32px}
+ .orders-workspace .ticket-actions{flex-wrap:nowrap;max-height:72px}
+ .orders-workspace .ticket-actions button{flex:0 0 auto;max-width:260px;white-space:normal}
+}
