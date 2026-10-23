@@ -1202,7 +1202,7 @@ def execute_experiment(spec, native_python, *, event, process_state=None, cancel
             break
         if oos["status"] != "completed":
             overall_status = "failed"
-    if overall_status == "completed" and not any(row.get("winner") for row in completed):
+    if overall_status == "completed" and not any(row.get("winner") is not None for row in completed):
         overall_status = "no_qualifier"
     selected_count = sum(row.get("winner") is not None for row in completed)
     gaps = sum(row["status"] == "no_qualifier" for row in completed)
