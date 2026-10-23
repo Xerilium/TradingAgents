@@ -462,12 +462,22 @@ def scan_formula_bindings(workspace, program):
 
 
 def scan_source_pin(jobs, symbol, input):
+    from .approval_review import read_artifact
     from .market_history import DEFAULT as HISTORY
     timeframe = "1Min" if input["session"] == "regular" else input["timeframe"]
+    def matches(row):
+        if row["symbol"] != symbol:
+            return False
+        if input["history_key"]:
+            return row["key"] == input["history_key"]
+        profile = row
+        if any(key not in row for key in ("timeframe", "feed", "adjustment")):
+            retained = read_artifact(jobs.service.store.directory, row["artifact"])
+            profile = {**retained, **row} if isinstance(retained, dict) else row
+        return profile.get("timeframe") == timeframe and all(profile.get(key) == input["source_profile"][key]
+            for key in ("feed", "adjustment"))
     candidates = [row for row in jobs.database.read("market_history", HISTORY)["data"]["entries"].values()
-        if row["symbol"] == symbol and (row["key"] == input["history_key"] if input["history_key"] else
-            row.get("timeframe") == timeframe and all(row.get(key) == input["source_profile"][key]
-                for key in ("feed", "adjustment")))]
+        if matches(row)]
     meta = max(candidates, key=lambda row: row["captured_at"], default=None)
     return {"key": meta["key"], "artifact": copy.deepcopy(meta["artifact"])} if meta else {"error": "No matching retained source for this named interval/profile"}
 
