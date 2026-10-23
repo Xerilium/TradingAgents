@@ -50,8 +50,9 @@ actual installation, saved data and permitted smoke test.
   paper integration operational. Do not build a second trading engine.
 - Complete the approved UI-01–UI-09 issues first in their planned waves, then
   stabilize existing functionality. The user explicitly confirmed this order.
-  Other backlog work stays frozen except bug fixes. UI issues reorganize
-  existing capabilities; no new backend features or invented data/actions.
+  Backlog frozen means no new work on backlog features, not stopping the work
+  already planned. Bug fixes remain allowed. UI issues reorganize existing
+  capabilities; no new backend features or invented data/actions.
 - No standalone INTC walkthrough: the user banned that repeated demo. Complete
   the UI issues and verify their integrated criteria and changed workflows.
 - The user's restriction on agents placing trades is not permission to disable
