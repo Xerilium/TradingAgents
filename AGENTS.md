@@ -27,6 +27,8 @@ instructed the primary to implement the research concurrency setting directly.
 Finish only that change and its live UI demonstration. No coded tests, builds,
 experiments, broad audits or broker actions. Earlier delegation/review rules
 below do not authorize restarting workers for this assignment.
+Do not rerun full research batches to verify narrow repairs. Reuse retained
+evidence and inspect the affected code. No paid research runs for testing.
 The latest user-supplied operating rules make the primary assistant PM only:
 never edit application code. The primary leads a user-requested guided UI
 walkthrough; an independent read-only repository session validates documentation

@@ -186,7 +186,7 @@ class DeskStore:
 
     @staticmethod
     def result_summary(result):
-        summary = {key: value for key, value in result.items() if key not in {"reports", "laya", "social_sentiment"}}
+        summary = {key: value for key, value in result.items() if key not in {"reports", "laya", "social_sentiment", "continuation"}}
         summary["report_keys"] = list(result.get("reports", {}))
         summary["revision"] = result.get("revision", 0)
         laya = result.get("laya") or {}
@@ -231,7 +231,10 @@ class DeskStore:
                               for status in ("completed", "failed", "cancelled", "running")}
                     counts["queued"] = max(0, len(run["symbols"]) - len(results))
                     summary = {key: copy.deepcopy(value) for key, value in run.items()
-                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence", "jev_evidence"}}
+                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence", "jev_evidence", "continuation"}}
+                    if "continuation" in run:
+                        summary["continuation"] = {key: run["continuation"].get(key)
+                                                   for key in ("version", "revision", "blocked_reason")}
                     for name in ("gateway_evidence", "jev_evidence"):
                         if name in run:
                             summary[name] = {
