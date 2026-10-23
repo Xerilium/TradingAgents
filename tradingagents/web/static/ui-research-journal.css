@@ -1,0 +1,43 @@
+.research-workspace,.strategy-workspace,.journal-workspace-page{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.workspace-tabs{display:flex;flex-direction:row;flex:none;gap:4px;overflow-x:auto;margin:0 0 8px;padding:0 0 4px}
+.workspace-tabs button{flex:none;white-space:nowrap}
+.workspace-tabs button,.research-report-index button,.strategy-workspace button,.journal-note-list button,.research-workspace #research-review button{border:1px solid var(--line);border-radius:3px;background:var(--control,var(--paper));color:var(--ink);padding:7px 10px;min-height:32px}
+.workspace-tabs button:hover,.research-report-index button:hover,.strategy-workspace button:hover{border-color:var(--accent)}
+.research-report-index button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.strategy-workspace input,.strategy-workspace select,.strategy-workspace textarea,.research-workspace #research-review textarea,.research-workspace #research-review select{background:var(--field,var(--ground));color:var(--ink);border:1px solid var(--line);padding:8px;max-width:100%}
+.research-workspace>.run-toolbar{flex:none;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.research-workspace #run-select{flex:1;min-width:180px;max-width:650px}
+.research-workspace .research-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,2fr);overflow:hidden;gap:12px}
+.research-workspace .symbol-list{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.research-workspace .research-rows{flex:1;min-height:60px;overflow:auto}
+.research-workspace .queue-progress{flex:none;max-height:190px;overflow:auto}
+.research-workspace .research-detail-panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.research-workspace .result-top{flex:none;padding:12px}
+.research-workspace .research-detail-panel>.workspace-tabs{padding:0 12px 8px}
+.research-workspace #research-detail-scroll{min-height:0;height:auto;max-height:none;flex:1;overflow:auto;padding:12px}
+.research-workspace .report-content{max-width:88ch}
+.research-report-index{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px}
+.research-workspace .events-panel{border:0;margin:0}
+.research-workspace .event-list{max-height:none}
+.research-workspace .research-setup>section{margin-top:16px}
+.research-workspace #research-review{border-top:1px solid var(--line);margin-top:16px;padding-top:8px}
+.research-workspace #research-review textarea{width:100%}
+.workspace-reading{min-height:0;flex:1;overflow:auto}
+.strategy-workspace .journal-workspace{margin:0}
+.strategy-workspace [data-strategy-panel][hidden]{display:none}
+.strategy-workspace .strategy-status{flex:none;min-height:24px;color:var(--muted)}
+.strategy-workspace .proposal-fields{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.strategy-workspace pre,.journal-workspace-page pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.strategy-workspace table,.journal-workspace-page table{font-variant-numeric:tabular-nums}
+.journal-layout{height:100%;min-height:0;display:grid;grid-template-columns:minmax(300px,1.2fr) minmax(300px,1fr);gap:12px}
+.journal-layout>.panel{min-height:0;overflow:auto;margin:0}
+.decision-inspector{display:flex;flex-direction:column;min-height:0}
+.decision-inspector>.panel-header,.decision-inspector>.workspace-tabs{flex:none}
+.decision-reading{flex:1;min-height:0;overflow:auto;padding:12px}
+.decision-reading textarea{width:100%}
+.decision-reading label{display:grid;gap:6px;margin:12px 0}
+.decision-reading textarea,.decision-reading input{color:var(--ink);background:var(--field,var(--ground));border:1px solid var(--line);padding:8px}
+.journal-note-list{display:flex;flex-wrap:wrap;gap:8px}
+.journal-note-list h2{width:100%}
+@media(max-width:850px){.journal-layout{grid-template-columns:minmax(250px,1fr) minmax(250px,1fr)}.research-workspace .research-layout{grid-template-columns:190px minmax(0,1fr)}}
+@media(max-width:600px){.research-workspace .research-layout{display:flex;flex-direction:column}.research-workspace .symbol-list{max-height:240px;flex:none;overflow:auto}.research-workspace .research-detail-panel{flex:1}.research-workspace .queue-progress{max-height:90px;overflow:auto}.journal-layout{height:auto;min-height:100%;display:flex;flex-direction:column}.journal-layout>.panel{max-height:70vh;min-height:180px;overflow:auto}}
