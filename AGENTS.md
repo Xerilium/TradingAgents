@@ -22,6 +22,11 @@ Read [printerv2 operating rules](C:/src/printerv2/AGENTS.md), the
 [local issue tracker](C:/src/printerv2/issues/2026-10-22-ui-delivery.md), and the
 [delivery plan](C:/src/printerv2/docs/ui/approved-20261022/delivery.md).
 Current user instructions and issue criteria supersede historical guidance.
+Current exception: the user banned agents, archived the worker sessions and
+instructed the primary to implement the research concurrency setting directly.
+Finish only that change and its live UI demonstration. No coded tests, builds,
+experiments, broad audits or broker actions. Earlier delegation/review rules
+below do not authorize restarting workers for this assignment.
 The latest user-supplied operating rules make the primary assistant PM only:
 never edit application code. The primary leads a user-requested guided UI
 walkthrough; an independent read-only repository session validates documentation

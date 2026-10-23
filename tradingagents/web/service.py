@@ -12,7 +12,7 @@ import os
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager, suppress
 from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
@@ -2143,8 +2143,10 @@ class DeskService:
             continuation["revision"] += 1
         self.store.save()
 
-    def _evidence_recorder(self, owner_id):
+    def _evidence_recorder(self, owner_id, symbol=None):
         def record(receipt, output):
+            if symbol is not None:
+                receipt = {**receipt, "symbol": symbol}
             try:
                 self.store.record_source_attempt(owner_id, receipt, output)
             except Exception:
@@ -2352,12 +2354,14 @@ class DeskService:
                     for p in market["positions"]
                 ],
             )
-            for symbol in run["symbols"]:
-                if run_id in self.cancelled:
-                    break
+            stop_dispatch = threading.Event()
+
+            def run_symbol(symbol):
+                if stop_dispatch.is_set() or run_id in self.cancelled:
+                    return
                 result = next((item for item in run["results"] if item["symbol"] == symbol), None)
                 if result and result["status"] == "completed":
-                    continue
+                    return
                 with self.store.lock:
                     for origin in ("source", "gateway", "jev"):
                         evidence = run.get(f"{origin}_evidence", {})
@@ -2569,7 +2573,15 @@ class DeskService:
                     missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
                     if missing:
                         raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
-                    failures = [a["operation"] for a in run["source_evidence"]["attempts"]
+                    with self.store.lock:
+                        evidence_by_origin = {}
+                        for origin in ("source", "gateway", "jev"):
+                            evidence = copy.deepcopy(run.get(f"{origin}_evidence", {}))
+                            evidence["attempts"] = [a for a in evidence.get("attempts", [])
+                                                    if a.get("symbol") in {None, symbol}]
+                            self.store._call_counts(evidence, origin)
+                            evidence_by_origin[origin] = evidence
+                    failures = [a["operation"] for a in evidence_by_origin["source"]["attempts"]
                                 if a.get("capture_error") or ((a.get("outcome") != "success"
                                     or a.get("data_status") in {"unavailable", "partial"}) and not (
                                         a.get("requirement") == "supplemental" and a.get("operation") == "read_research_source"
@@ -2577,9 +2589,9 @@ class DeskService:
                                         and a.get("outcome") == "error" and a.get("error_class") == "HTTPError"
                                         and type(a.get("http_status")) is int and 400 <= a["http_status"] <= 599
                                         and a.get("capture") == "error_class_only"))]
-                    if failures or not run["source_evidence"].get("capture_complete"):
+                    if failures or not evidence_by_origin["source"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
-                    if any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False) for origin in ("gateway", "jev")):
+                    if any(not evidence_by_origin[origin].get("capture_complete", False) for origin in ("gateway", "jev")):
                         raise ValueError("Research incomplete: Gateway or Jev evidence capture failed.")
                     social = result["social_sentiment"]
                     if (set(social["sources"]) != {"stocktwits", "reddit"}
@@ -2588,8 +2600,9 @@ class DeskService:
                                    for s in social["sources"].values())):
                         raise ValueError("Research incomplete: not all fetched social posts were screened; inspect social coverage and errors.")
                     for origin in ("source", "gateway", "jev"):
-                        self.store.finalize_call_evidence(run, origin, reason="symbol_terminal")
-                    if any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False)
+                        with self.store.lock:
+                            self.store._snapshot_call_evidence(run, f"symbol_terminal:{symbol}", origin)
+                    if any(run.get(f"{origin}_evidence", {}).get("persistence_error")
                            for origin in ("source", "gateway", "jev")):
                         raise ValueError("Research incomplete: terminal evidence publication failed.")
                     effect("local", "Record decision", "record-decision", {"final": {key: value for key, value in final.items() if key != "messages"}},
@@ -2612,11 +2625,13 @@ class DeskService:
                         symbol,
                     )
                 except InterruptedError as exc:
+                    stop_dispatch.set()
                     with self.store.lock:
                         result.update(status="cancelled", error=str(exc))
                         self.store.save()
-                    break
+                    return
                 except Exception as exc:
+                    stop_dispatch.set()
                     with self.store.lock:
                         resumable = bool(result.get("continuation", {}).get("thread_id"))
                         result.update(status="interrupted" if resumable else "failed", error=str(exc)[:600])
@@ -2628,9 +2643,9 @@ class DeskService:
                         with self.store.lock:
                             run["error"] = str(exc)
                             run["retry_at"] = (datetime.now(UTC) + timedelta(seconds=exc.retry_after)).isoformat()
-                        break
+                        return
                     if resumable:
-                        break
+                        return
                 finally:
                     if graph is not None:
                         graph.end_checkpoint()
@@ -2639,6 +2654,30 @@ class DeskService:
                         result["elapsed_seconds"] = round((datetime.now(UTC) - started).total_seconds(), 3)
                         run["measurements"]["callbacks"] = stats.get_measurements()
                         self.store.save()
+
+            def research_symbol(symbol):
+                with capture_vendor_evidence(self._evidence_recorder(run_id, symbol)):
+                    run_symbol(symbol)
+
+            pending_symbols = iter(run["symbols"])
+            with ThreadPoolExecutor(max_workers=config.get("research_concurrency", 1),
+                                    thread_name_prefix="stock-research") as workers:
+                active = set()
+
+                def fill_slots():
+                    while (len(active) < config.get("research_concurrency", 1)
+                           and not stop_dispatch.is_set() and run_id not in self.cancelled):
+                        symbol = next(pending_symbols, None)
+                        if symbol is None:
+                            break
+                        active.add(workers.submit(copy_context().run, research_symbol, symbol))
+
+                fill_slots()
+                while active:
+                    finished, active = wait(active, return_when=FIRST_COMPLETED)
+                    for future in finished:
+                        future.result()
+                    fill_slots()
             with self.store.lock:
                 run["status"] = (
                     "cancelled"

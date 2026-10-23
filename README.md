@@ -197,9 +197,14 @@ saved provider rather than configuring an unrelated service.
 4. Choose **Run research (N)** and review the workload dialog.
 5. Choose **Start N-stock research**.
 
-The desk processes batch symbols sequentially. Selected analyst roles can work
-concurrently within a symbol. The workload dialog displays models and date;
-duration is an estimate from observed runs, and cost may be unavailable.
+Set **Settings → Research → Concurrent stocks** to 1–8 (default 1).
+New batches use that limit; changing it does not resize an existing run.
+Each stock has its own graph, checkpoints, reports and evidence attribution.
+Selected analyst roles can also work concurrently within a stock. A failure,
+rate limit or stop prevents further stock dispatch; in-flight work settles first.
+The workload dialog displays the limit, models and date. Duration estimates use
+observed stock durations and the selected limit; shared-service load can increase
+the actual time. Cost may be unavailable.
 
 **Stop run** is a research control, not an order cancellation. Completed reports
 are retained. Do not start duplicate batches because a long-running screen
@@ -292,10 +297,10 @@ mean neutral; a classification contract never supplies trading authority.
 
 Source acquisition failures, unavailable/partial source data and capture failures
 can block completion. One explicit exception is an app-marked supplemental
-public-document read rejected with HTTP 403: its failed receipt remains saved,
+public-document read rejected with a captured HTTP error (400–599): its failed receipt remains saved,
 the analyst receives a not-retrieved/unverified disclosure, and otherwise
 complete required evidence may proceed. This does not bypass publisher access,
-required data, other errors, capture or unknown-outcome checks. Legacy failures
+required data, transport/internal/security errors, capture or unknown-outcome checks. Legacy failures
 without that explicit contract remain blocking.
 
 Gateway capture completeness is different from every
