@@ -41,18 +41,20 @@ def research_memory_guidance(tools):
     return "".join(guidance)
 
 
-def request_inputs(state, report_key, calls):
+def request_inputs(state, report_key, calls, *, required=None):
+    required = {name for name, _ in calls} if required is None else set(required)
     message_id = f"required-{report_key}-inputs"
     requested = next((message for message in state["messages"] if getattr(message, "id", None) == message_id), None)
     if requested is not None:
         replies = {message.tool_call_id: message for message in state["messages"] if isinstance(message, ToolMessage)}
         missing = [call["name"] for call in requested.tool_calls if call["id"] not in replies
-                   or getattr(replies[call["id"]], "status", None) == "error"
-                   or str(replies[call["id"]].content).lstrip().startswith(("DATA_UNAVAILABLE", "NO_DATA_AVAILABLE", "DATA_PARTIAL:", "Error:"))]
+                   or call["name"] in required and (
+                       getattr(replies[call["id"]], "status", None) == "error"
+                       or str(replies[call["id"]].content).lstrip().startswith(("DATA_UNAVAILABLE", "NO_DATA_AVAILABLE", "DATA_PARTIAL:", "Error:")))]
         if missing:
             raise ValueError(f"Research inputs incomplete for {report_key}: {', '.join(sorted(set(missing)))}")
         return None
-    return {"messages": [AIMessage(content="", id=message_id, tool_calls=[
+    return {"messages": [AIMessage(content="Request these inputs once. Disclose unavailable enrichment and its cause; distinguish failed collection from no matches. Use retained evidence, limit unsupported conclusions, and do not fabricate missing values.", id=message_id, tool_calls=[
         {"name": name, "args": args, "id": f"{message_id}-{index}"}
         for index, (name, args) in enumerate(calls)
     ])], report_key: ""}

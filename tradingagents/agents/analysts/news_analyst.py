@@ -33,7 +33,7 @@ def create_news_analyst(llm, tools=None):
             *[(get_macro_indicators.name, {"indicator": indicator, "curr_date": current_date})
               for indicator in ("cpi", "core_pce", "unemployment", "fed_funds_rate", "10y_treasury", "yield_curve", "real_gdp", "vix")
               if any(tool.name == get_macro_indicators.name for tool in tools)],
-        ])
+        ], required=())
         if required:
             return required
         asset_type = state.get("asset_type", "stock")

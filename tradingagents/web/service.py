@@ -36,7 +36,7 @@ from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
 from .config import DeskConfig
 from .alpaca_readonly import DEFAULT_CREDENTIALS
 from .nautilus_runtime import NautilusRuntime
-from .store import DeskStore, source_attempt_failed
+from .store import DeskStore, call_evidence_failed, source_attempt_failed
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
 OWNED_TERMINAL = {"filled", "canceled", "expired", "rejected"}
@@ -2183,10 +2183,10 @@ class DeskService:
                 reason = "Execution source or installed persistence versions changed; start a new run."
             elif continuation.get("blocked_reason"):
                 reason = continuation["blocked_reason"]
-            elif any(not run.get(f"{origin}_evidence", {}).get("capture_complete", False)
-                     for origin in ("source", "gateway", "jev")):
+            elif (not run.get("source_evidence", {}).get("capture_complete", False)
+                  or any(call_evidence_failed(run.get(f"{origin}_evidence", {})) for origin in ("gateway", "jev"))):
                 reason = "Interrupted evidence capture is incomplete; continuation cannot verify prior outcomes."
-            elif any(attempt.get("outcome") != "success" or attempt.get("data_status") in {"partial", "unavailable"}
+            elif any(source_attempt_failed(attempt, run.get("source_evidence", {}).get("attempts", []))
                      for attempt in run.get("source_evidence", {}).get("attempts", [])):
                 reason = "Original source collection is incomplete; retained failures cannot be silently replaced by continuation."
             symbols = []
@@ -2210,6 +2210,8 @@ class DeskService:
                         reason = f"The original {symbol} social screening time budget expired."
                     elif unfinished_social and budget.get("remaining") == 0:
                         reason = f"The original {symbol} social screening post budget is exhausted."
+                    elif unfinished_social and budget.get("remaining_seconds") == 0:
+                        reason = f"The original {symbol} social processing allowance is exhausted."
                 symbols.append({"symbol": symbol, "status": result.get("status", "not_started"),
                     "remaining_posts": budget.get("remaining", run["config"].get("social_screen_max_posts", 100)),
                     "expires_at": datetime.fromtimestamp(budget["expires_at"], UTC).isoformat() if budget.get("expires_at") else None,
@@ -2328,6 +2330,57 @@ class DeskService:
                 self.store.save()
             raise
 
+    def _publish_research_coverage(self, run, result):
+        run_id = run["id"]
+        symbol = result["symbol"]
+        with self.store.lock:
+            evidence_by_origin = {}
+            for origin in ("source", "gateway", "jev"):
+                evidence = copy.deepcopy(run.get(f"{origin}_evidence", {}))
+                evidence["attempts"] = [a for a in evidence.get("attempts", [])
+                                        if a.get("symbol") in {None, symbol}]
+                self.store._call_counts(evidence, origin)
+                evidence_by_origin[origin] = evidence
+        social = result["social_sentiment"]
+        result["coverage_gaps"] = [
+            {key: a.get(key) for key in ("attempt_id", "operation", "vendor", "arguments", "outcome", "data_status", "error_class",
+                                        "failure_kind", "error_details", "http_status", "attempt", "ordinal", "retry_action", "retry_after_seconds", "capture_error", "artifact", "receipts") if key in a}
+            for origin in ("source", "gateway", "jev") for a in evidence_by_origin[origin]["attempts"]
+            if a.get("capture_error") or a.get("outcome") != "success" or a.get("data_status") in {"partial", "unavailable", "no_usable_coverage"}
+        ] + [{"source": name, "status": s.get("status"), "classified_count": s.get("classified_count"),
+              "total_count": s.get("total_count"), "stop_reason": s.get("stop_reason"), "error": s.get("error")}
+             for name, s in social["sources"].items() if s.get("status") not in {"completed", "empty"}]
+        result["coverage_gaps"] += [{"source": origin, "error": evidence["persistence_error"], "status": "persistence_failed"}
+                                    for origin, evidence in evidence_by_origin.items() if evidence.get("persistence_error")]
+        if result["coverage_gaps"]:
+            grouped = {}
+            for gap in result["coverage_gaps"]:
+                cause = (gap.get("capture_error") or gap.get("error") or ("HTTP " + str(gap["http_status"]) if gap.get("http_status") else "")
+                         or "; ".join(dict.fromkeys(detail["message"] for detail in gap.get("error_details", [])
+                                                   if detail.get("message") and detail["message"] != "Exception details withheld"))
+                         or "Cause not captured" + (" (" + gap["error_class"] + ")" if gap.get("error_class") else ""))
+                coverage = (str(gap.get("classified_count", 0)) + "/" + str(gap.get("total_count", "unknown")) + " posts classified"
+                            if "total_count" in gap else gap.get("data_status") or gap.get("status") or gap.get("outcome", "unknown"))
+                line = (f"{gap.get('operation') or gap.get('source')} / {gap.get('vendor') or ('Laya' if gap.get('source') in {'reddit', 'stocktwits'} else 'local capture')}: {cause}. "
+                        f"Coverage: {coverage}. Attempt: {gap.get('attempt', gap.get('ordinal', 'not captured'))}; "
+                        f"retry decision: {gap.get('retry_action', 'not captured')}. "
+                        "Use retained evidence only; do not infer missing values or neutral sentiment.")
+                grouped[line] = grouped.get(line, 0) + 1
+            limitations = ("Source failures and screening limits remain part of this research. "
+                           "Workflow completion does not establish complete data coverage. "
+                           "Unknown optional outcomes are not replayed. Full receipts remain in Sources.\n\n"
+                           + "\n".join(f"- {line}" + (f" ({count} matching receipts)" if count > 1 else "")
+                                       for line, count in grouped.items()))
+            with self.store.lock:
+                changed = result["reports"].get("source_coverage") != limitations
+                if changed:
+                    result["reports"]["source_coverage"] = limitations
+                    result["revision"] += 1
+                    self.store.save()
+            if changed:
+                self._event(run_id, "coverage", f"{len(result['coverage_gaps'])} source/screening limitations retained. Read Source coverage in Reports and the exact receipts in Sources.", symbol)
+        return evidence_by_origin
+
     def _run_with_evidence(self, run_id, market, request_started, queued_at):
         stats = StatsCallbackHandler()
         with self.store.lock:
@@ -2418,6 +2471,8 @@ class DeskService:
                     )
                     saved = result.setdefault("continuation", {"thread_id": f"{run_id}:{symbol}", "effects": {},
                         "social_budget": {"remaining": config.get("social_screen_max_posts", 100),
+                                          "time_policy": "active_lane_v1",
+                                          "remaining_seconds": config.get("social_screen_timeout_seconds", 600),
                                           "max_seconds": config.get("social_screen_timeout_seconds", 600)}})
                     def effect(domain, command, call_id, parameters, dispatch, *, stateful=True, current=result, interruptible=True):
                         return self._research_effect(run, current, domain, command, call_id, parameters, dispatch,
@@ -2433,6 +2488,7 @@ class DeskService:
                         retained = copy.deepcopy(current["social_sentiment"]["sources"].get(source))
                         def record(evidence):
                             with self.store.lock:
+                                current["continuation"]["social_budget"] = {key: value for key, value in budget.items() if key != "deadline"}
                                 social = current["social_sentiment"]
                                 social["sources"][source] = evidence
                                 statuses = [s["status"] for s in social["sources"].values()]
@@ -2571,29 +2627,16 @@ class DeskService:
                                     result["reports"][key] = content
                                     result["revision"] += 1
                         self.store.save()
+                    evidence_by_origin = self._publish_research_coverage(run, result)
                     missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
                     if missing:
                         raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
-                    with self.store.lock:
-                        evidence_by_origin = {}
-                        for origin in ("source", "gateway", "jev"):
-                            evidence = copy.deepcopy(run.get(f"{origin}_evidence", {}))
-                            evidence["attempts"] = [a for a in evidence.get("attempts", [])
-                                                    if a.get("symbol") in {None, symbol}]
-                            self.store._call_counts(evidence, origin)
-                            evidence_by_origin[origin] = evidence
                     failures = [a["operation"] for a in evidence_by_origin["source"]["attempts"]
                                 if source_attempt_failed(a, evidence_by_origin["source"]["attempts"])]
                     if failures or not evidence_by_origin["source"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
-                    if any(not evidence_by_origin[origin].get("capture_complete", False) for origin in ("gateway", "jev")):
+                    if any(call_evidence_failed(evidence_by_origin[origin]) for origin in ("gateway", "jev")):
                         raise ValueError("Research incomplete: Gateway or Jev evidence capture failed.")
-                    social = result["social_sentiment"]
-                    if (set(social["sources"]) != {"stocktwits", "reddit"}
-                            or any(s.get("status") not in {"completed", "empty"}
-                                   or s.get("classified_count") != s.get("total_count")
-                                   for s in social["sources"].values())):
-                        raise ValueError("Research incomplete: not all fetched social posts were screened; inspect social coverage and errors.")
                     for origin in ("source", "gateway", "jev"):
                         with self.store.lock:
                             self.store._snapshot_call_evidence(run, f"symbol_terminal:{symbol}", origin)
@@ -2616,7 +2659,7 @@ class DeskService:
                     self._event(
                         run_id,
                         "complete",
-                        f"{rating} · Research completed",
+                        f"{rating} · Research completed" + (" with coverage gaps; inspect Source coverage and Activity" if result["coverage_gaps"] else ""),
                         symbol,
                     )
                 except InterruptedError as exc:
@@ -2632,6 +2675,7 @@ class DeskService:
                         result.update(status="interrupted" if resumable else "failed", error=str(exc)[:600])
                         run["error"] = str(exc)[:600]
                         self.store.save()
+                    self._publish_research_coverage(run, result)
                     self._event(run_id, "error", str(exc)[:600], symbol)
                     if isinstance(exc, GatewayRateLimited):
                         # Stop the sweep. Keep completed evidence and leave later stocks unstarted.

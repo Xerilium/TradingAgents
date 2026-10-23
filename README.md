@@ -202,8 +202,11 @@ New batches use that limit; changing it does not resize an existing run.
 Each stock has its own graph, checkpoints, reports and evidence attribution.
 Selected analyst roles can also work concurrently within a stock. A failure,
 rate limit or stop prevents further stock dispatch; in-flight work settles first.
-Laya social screening shares a serial lane across stocks; waiting for that lane
-is cancellable and counts against each stock's existing screening time limit.
+Laya social screening shares a FIFO lane in five-post chunks across stocks.
+Each post retains its own typed result and full-input evidence. New batches
+charge the screening time limit for processing, including model/transport waits,
+not time queued behind other stocks. Waiting remains cancellable; older saved
+wall-clock budgets retain their original expiry. Partial screening stays partial.
 The workload dialog displays the limit, models and date. Duration estimates use
 observed stock durations and the selected limit; shared-service load can increase
 the actual time. Cost may be unavailable.
@@ -250,7 +253,17 @@ there is no holding to reduce. Read the actual action, quantities, rationale and
 portfolio context; missing order terms must not be invented from the label.
 
 A final text answer can exist while a run remains interrupted. Completion
-requires the app's record/evidence requirements, not merely a model response.
+requires the app's required-input/report and evidence-persistence requirements,
+not merely a model response. Company/global news, macro, prediction markets and
+social classification are enrichment. A captured failure or unknown optional
+request does not by itself mean evidence was lost. Gaps remain in the saved
+Source coverage report and Activity, with qualified completion; they are not
+changed to empty successes or silently retried. Required price/fundamental inputs,
+cancellation, corrupt/missing capture and unknown stateful effects stay blocking.
+Transient FRED and Reddit reads can retry once within their existing bounded
+time allowance and Retry-After. Empty, invalid, access and unconfigured results
+are not retried; successful inputs are retained. A completed workflow does not
+claim every source or every fetched post was available or classified.
 Inspect the saved run's status and errors before treating it as complete.
 
 ### Tools and failures

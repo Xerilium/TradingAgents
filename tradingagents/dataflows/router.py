@@ -1,11 +1,14 @@
 import asyncio
 import inspect
 import logging
+import math
 import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from urllib.error import HTTPError as UrlHTTPError
 from uuid import uuid4
 
 from requests import HTTPError
@@ -53,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 _evidence_recorder = ContextVar("vendor_evidence_recorder", default=None)
 _evidence_parent = ContextVar("vendor_evidence_parent", default=None)
+_source_requirement = ContextVar("source_requirement", default="required")
 
 
 @contextmanager
@@ -122,7 +126,9 @@ def _gateway_failure_details(error):
                 r"timed out|timeout|name resolution failed|No such host is known|"
                 r"certificate verify failed|SSL handshake failed|unsupported protocol|"
                 r"MCP operation failed|unhandled errors in a TaskGroup|invalid JSON|"
-                r"JSON Schema|schema validation failed|Missing required argument")
+                r"JSON Schema|schema validation failed|Missing required argument|"
+                r"CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
+                r"no news articles tagged|maintenance|rate limited|temporarily unavailable")
     while pending and len(details) < 6:
         current = pending.pop(0)
         if id(current) in seen:
@@ -144,7 +150,9 @@ def _gateway_failure_details(error):
             detail["schema_rule"] = rule
         details.append(detail)
         cause = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
-        pending.extend(([cause] if cause else []) + list(getattr(current, "exceptions", ()))[:6])
+        reason = getattr(current, "reason", None)
+        pending.extend(([cause] if cause else []) + ([reason] if isinstance(reason, BaseException) else [])
+                       + list(getattr(current, "exceptions", ()))[:6])
     return details
 
 
@@ -188,11 +196,7 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
 
 
 def _error_class(error):
-    for kind in (VendorUnavailableError, VendorNotConfiguredError, NoMarketDataError,
-                 TimeoutError, ConnectionError, ValueError, TypeError):
-        if isinstance(error, kind):
-            return kind.__name__
-    return "UnexpectedError"
+    return type(error).__name__[:80]
 
 
 def _logged_error(error):
@@ -221,17 +225,57 @@ def _safe_source_arguments(bound):
     return selected
 
 
-def observe_source_call(operation, vendor, origin, acquire, *, requirement="required", **arguments):
+def observe_source_call(operation, vendor, origin, acquire, *, requirement=None, retry=None, **arguments):
     """Observe one existing acquisition, without adding calls or changing its return.
 
     These boundaries can nest inside router attempts; they are not additional
     provider requests. Origins describe the consumed representation, not HTTP
     internals hidden by a cache parser or SDK.
     """
-    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments, requirement=requirement)
+    if requirement is None and operation in {"reddit_rss", "stocktwits_stream"}:
+        requirement = "supplemental"
+    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments, requirement=requirement, retry=retry)
 
 
-def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None, requirement="required"):
+def source_failure_details(error):
+    details = _gateway_failure_details(error)
+    status = getattr(error, "http_status", None) or getattr(error, "code", None) or getattr(getattr(error, "response", None), "status_code", None)
+    names = {item["class"] for item in details}
+    kind = ("unconfigured" if isinstance(error, VendorNotConfiguredError) else
+            "no_usable_coverage" if isinstance(error, NoMarketDataError) else
+            "authentication_or_access" if status in {401, 403} else
+            "invalid_request" if status in {400, 422} else
+            "not_found" if status == 404 else
+            "rate_limited" if status == 429 or "YFRateLimitError" in names else
+            "transient_server" if status in {500, 502, 503, 504} else
+            "transient_transport" if names.intersection({"Timeout", "TimeoutError", "ReadTimeout", "ConnectTimeout", "ConnectionError", "ConnectionResetError", "RemoteDisconnected", "IncompleteRead"}) else
+            "invalid_response" if names.intersection({"ParseError", "JSONDecodeError", "UnicodeDecodeError"}) else
+            "invalid_request" if isinstance(error, (ValueError, TypeError)) else "source_unavailable")
+    return {"failure_kind": kind, "error_details": details,
+            **({"http_status": status} if type(status) is int else {})}
+
+
+def source_retry_plan(error, *, attempt, remaining):
+    details = source_failure_details(error)
+    value = getattr(error, "retry_after", None)
+    if value is None:
+        headers = getattr(error, "headers", None) or getattr(getattr(error, "response", None), "headers", {})
+        value = headers.get("Retry-After") if headers else None
+    try:
+        delay = float(value)
+    except (TypeError, ValueError):
+        try:
+            delay = parsedate_to_datetime(value).timestamp() - time.time()
+        except (TypeError, ValueError, OverflowError):
+            delay = 60.0 if details["failure_kind"] == "rate_limited" else 1.0
+    delay = max(0.0, delay) if math.isfinite(delay) else 60.0
+    eligible = details["failure_kind"] in {"rate_limited", "transient_server", "transient_transport"}
+    return {"attempt": attempt, **details, "retry_after_seconds": delay,
+            "retry_action": "retry" if eligible and attempt == 1 and delay < remaining and delay <= 60 else "defer" if eligible else "stop"}
+
+
+def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None, requirement=None, retry=None):
+    requirement = requirement or _source_requirement.get()
     recorder = _evidence_recorder.get()
     if recorder is None:
         return function(*args, **kwargs)
@@ -260,16 +304,20 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
     started = time.monotonic()
     output = None
     parent_token = _evidence_parent.set(receipt["attempt_id"])
+    requirement_token = _source_requirement.set(requirement)
     try:
         output = function(*args, **kwargs)
         receipt["outcome"] = "success"
         if isinstance(output, str):
-            receipt["data_status"] = ("unavailable" if re.match(
-                r"(?is)\s*(?:DATA_UNAVAILABLE|NO_DATA_AVAILABLE|<[^>]*unavailable|Polymarket data is currently unavailable|.*?are withheld for)", output)
+            receipt["data_status"] = ("no_usable_coverage" if output.lstrip().startswith("NO_DATA_AVAILABLE") else "empty" if re.match(
+                r"(?is)\s*(?:No (?:news|articles|posts|markets) found|<no .*posts found)", output) else "unavailable" if re.match(
+                r"(?is)\s*(?:DATA_UNAVAILABLE|<[^>]*unavailable|Polymarket data is currently unavailable|.*?are withheld for)", output)
                 else "partial" if "DATA_PARTIAL:" in output else "returned_unvalidated")
         return output
     except Exception as exc:
-        receipt.update(outcome="error", error_class=_error_class(exc))
+        receipt.update(outcome="error", error_class=_error_class(exc), retry_action="stop", **source_failure_details(exc))
+        if isinstance(exc, (HTTPError, UrlHTTPError)):
+            receipt["error_class"] = "HTTPError"
         if isinstance(exc, HTTPError) and exc.response is not None:
             status = exc.response.status_code
             if type(status) is int and 100 <= status <= 599:
@@ -279,6 +327,8 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
         raise
     finally:
         _evidence_parent.reset(parent_token)
+        _source_requirement.reset(requirement_token)
+        receipt.update(retry or {})
         receipt.update(ended_at=datetime.now(UTC).isoformat(), elapsed_seconds=time.monotonic() - started)
         emit(output)
 
@@ -441,6 +491,7 @@ def no_data_available(error: NoMarketDataError) -> str:
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""
     category = get_category_for_method(method)
+    optional = category in OPTIONAL_CATEGORIES or method in {"get_news", "get_global_news"}
     vendor_config = get_vendor(category, method)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]
 
@@ -474,7 +525,8 @@ def route_to_vendor(method: str, *args, **kwargs):
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return _invoke_vendor(method, vendor, impl_func, args, kwargs)
+            return _invoke_vendor(method, vendor, impl_func, args, kwargs,
+                                  requirement="supplemental" if optional else "required")
         except VendorUnavailableError as e:
             logger.warning("Vendor %r unavailable for %s: %s; trying next vendor.", vendor, method, _logged_error(e))
             # Kept so an all-unavailable chain can say the vendor was the
@@ -527,7 +579,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     # enrichment categories degrade to a sentinel instead, so flavour data can't
     # abort the run.
     if first_error is not None:
-        if category in OPTIONAL_CATEGORIES:
+        if optional:
             logger.warning("Optional %s unavailable for %s: %s", category, method, _logged_error(first_error))
             return (
                 f"DATA_UNAVAILABLE: optional {category} could not be retrieved "

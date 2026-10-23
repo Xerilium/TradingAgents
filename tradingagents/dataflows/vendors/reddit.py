@@ -3,7 +3,7 @@
 Reads Reddit's public Atom/RSS search feed, searching all subreddits in one
 combined request. The JSON search endpoint is WAF-blocked (``HTTP 403``) for
 anonymous clients (#862), so RSS is the only path; it carries no score or comment
-counts. On a 429 we back off once, honouring ``Retry-After``.
+counts. Transient reads retry once, honouring ``Retry-After`` within the budget.
 
 A fetch that fails is reported as ``<unavailable>``, never as "no posts found":
 the two are different claims, and passing a rate-limited fetch off as silence
@@ -20,7 +20,6 @@ import hashlib
 import html
 import http.client
 import logging
-import random
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -138,32 +137,8 @@ def _strip_html(content: str) -> str:
 # Headerless-429 backoff when Reddit gives no Retry-After. Measured against
 # /r/{sub}/search.rss, a retry still 429s at 8s, 10s and 30s of spacing and
 # succeeds at 60s, so a shorter wait spends the one retry on a request that
-# cannot succeed (#1295). Jittered so several analyses sharing an IP don't
-# retry in lockstep and re-collide on the limit.
+# cannot succeed (#1295). Longer server-directed waits are deferred, not shortened.
 _RETRY_FALLBACK_SECONDS = 60.0
-
-
-def _jitter(seconds: float, frac: float = 0.2) -> float:
-    """Return ``seconds`` with +/-``frac`` random jitter, to desynchronize
-    concurrent runs pacing against the same per-IP limit."""
-    return seconds * (1.0 + random.uniform(-frac, frac))
-
-
-def _retry_after_seconds(exc: HTTPError) -> float | None:
-    """Seconds to wait from a 429's ``Retry-After`` header, capped at 60s.
-
-    The cap matches ``_RETRY_FALLBACK_SECONDS``: honouring less than we would
-    wait on our own would spend the one retry on a request we already know is
-    too early.
-
-    Returns ``None`` only when the header is absent or unparseable; a valid
-    ``Retry-After: 0`` returns ``0.0`` (retry at once), not ``None``.
-    """
-    try:
-        val = exc.headers.get("Retry-After") if getattr(exc, "headers", None) else None
-        return min(float(val), 60.0) if val is not None else None
-    except (ValueError, TypeError, AttributeError):
-        return None
 
 
 # Reddit search feeds are small (a page of results); cap the read so a
@@ -203,23 +178,33 @@ def _fetch_subreddit_rss(
     """
     url = _RSS.format(sub=sub, qs=_search_qs(ticker, limit))
     req = Request(url, headers={"User-Agent": _UA})
-    from tradingagents.dataflows.router import observe_source_call
+    from tradingagents.dataflows.router import observe_source_call, source_retry_plan
+    retry = {"attempt": 1 if _retry else 2, "retry_action": "not_needed"}
 
     def read_response():
-        with urlopen(req, timeout=timeout) as resp:
-            return _read_capped(resp)
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                raw = _read_capped(resp)
+            return raw
+        except (OSError, http.client.HTTPException, ET.ParseError) as exc:
+            retry.update(source_retry_plan(exc, attempt=retry["attempt"], remaining=timeout + _RETRY_FALLBACK_SECONDS))
+            raise
 
     try:
-        raw = observe_source_call("reddit_rss", "reddit", "http_response_bytes", read_response, ticker=ticker)
-        root = ET.fromstring(raw)
+        raw = observe_source_call("reddit_rss", "reddit", "http_response_bytes", read_response, retry=retry, ticker=ticker)
+        root = None
+        def parse_response():
+            nonlocal root
+            root = ET.fromstring(raw)
+            return {"root_tag": root.tag, "entry_count": len(root.findall("atom:entry", _ATOM_NS))}
+        observe_source_call("reddit_rss_parse", "reddit", "parsed_feed_metadata", parse_response,
+                            requirement="supplemental", ticker=ticker)
     except HTTPError as exc:
-        if exc.code == 429 and _retry:
-            # Honour a server-supplied Retry-After exactly (including 0); jitter
-            # only our own fallback so concurrent runs don't retry in lockstep.
-            retry_after = _retry_after_seconds(exc)
-            wait = retry_after if retry_after is not None else min(60.0, _jitter(_RETRY_FALLBACK_SECONDS))
+        if retry["retry_action"] == "retry":
+            # Honour Retry-After exactly; defer waits beyond the bounded allowance.
+            wait = retry["retry_after_seconds"]
             logger.warning(
-                "Reddit RSS 429 for r/%s · %s — backing off %.1fs then retrying once",
+                "Reddit RSS transient HTTP failure for r/%s · %s — backing off %.1fs then retrying once",
                 sub, ticker, wait,
             )
             time.sleep(wait)
@@ -227,6 +212,9 @@ def _fetch_subreddit_rss(
         logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
         return None
     except (OSError, http.client.HTTPException, ET.ParseError) as exc:
+        if retry["retry_action"] == "retry":
+            time.sleep(retry["retry_after_seconds"])
+            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _retry=False)
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
         logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)

@@ -26,6 +26,8 @@ import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import deque
+from contextlib import contextmanager
 from contextvars import copy_context
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -38,7 +40,8 @@ from tradingagents.dataflows.router import observe_jev_call, queued_jev_job
 logger = logging.getLogger(__name__)
 
 # Social classification is evidence, never permission to place an order.
-_LAYA_LOCK = threading.Lock()
+_LAYA_LANE = threading.Condition()
+_LAYA_QUEUE = deque()
 SOCIAL_ADMISSION_VERSION = "stance-contract-v2"
 LAYA_QUESTIONS = {
     "about": {"kind": "yes_no", "instructions": "Is this post about {instrument}: the company, its stock, products or outlook?",
@@ -68,13 +71,45 @@ def _distribution(answer, labels):
     return values
 
 
+@contextmanager
+def _laya_turn(budget, max_seconds, cancelled):
+    """FIFO chunks; charge processing time, not time waiting behind other stocks."""
+    ticket, queued_at, started = object(), time.monotonic(), None
+    active_time = budget.setdefault("time_policy", "wall_clock_v1" if budget.get("expires_at") else "active_lane_v1") == "active_lane_v1"
+    if not active_time and budget.get("deadline") is None:
+        budget["deadline"] = time.monotonic() + max(0, budget.setdefault("expires_at", time.time() + max_seconds) - time.time())
+    with _LAYA_LANE:
+        _LAYA_QUEUE.append(ticket)
+    try:
+        with _LAYA_LANE:
+            while _LAYA_QUEUE[0] is not ticket:
+                if cancelled():
+                    raise InterruptedError("Social screening stopped by operator")
+                if not active_time and time.monotonic() >= budget["deadline"]:
+                    raise TimeoutError("Original social screening time budget expired while queued")
+                _LAYA_LANE.wait(.25)
+        started = time.monotonic()
+        budget["queue_wait_seconds"] = budget.get("queue_wait_seconds", 0) + started - queued_at
+        if active_time:
+            budget["deadline"] = started + budget.setdefault("remaining_seconds", max_seconds)
+        yield
+    finally:
+        if active_time and started is not None:
+            budget["remaining_seconds"] = max(0, budget["deadline"] - time.monotonic())
+            budget["deadline"] = None
+        with _LAYA_LANE:
+            _LAYA_QUEUE.remove(ticket)
+            _LAYA_LANE.notify_all()
+
+
 def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=None,
                 source="social", cancelled=lambda: False, instrument=None, retained=None, on_progress=None):
     """Existing fetcher hook, with serial SDK calls and an honest unclassified remainder.
 
     One symbol shares a configurable 100-post / 600-second budget across sources.
-    Calls share that configured deadline, including model loading and transport.
-    Unknown outcomes remain unscreened and prevent research completion.
+    Five-post chunks share a FIFO lane. Processing includes model loading and
+    transport; waiting for other stocks does not consume a new run's allowance.
+    Unknown outcomes remain unscreened and are never replayed.
     """
     if max_posts is not None and (type(max_posts) is not int or max_posts < 0):
         raise ValueError("max_posts must be a nonnegative integer or None")
@@ -133,96 +168,93 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
         def progress():
             if on_progress:
                 on_progress(copy.deepcopy(evidence), budget)
-        acquired = False
         try:
-            if budget["deadline"] is None:
-                expiry = budget.setdefault("expires_at", datetime.now(UTC).timestamp() + max_seconds)
-                budget["deadline"] = time.monotonic() + max(0, expiry - datetime.now(UTC).timestamp())
-            while posts and not acquired:
-                if cancelled():
-                    evidence["stop_reason"] = "operator_cancelled"
-                    raise InterruptedError("Social screening stopped by operator")
-                remaining = budget["deadline"] - time.monotonic()
-                if remaining <= 0:
-                    evidence["stop_reason"] = "time_budget_exhausted"
-                    raise TimeoutError("Social screening time budget expired while queued")
-                acquired = _LAYA_LOCK.acquire(timeout=min(.25, remaining))
             progress()
-            for index, post in enumerate(posts):
-                if rows[index]["status"] == "classified":
+            for start in range(0, len(posts), 5):
+                if all(row["status"] == "classified" for row in rows[start:start + 5]):
                     continue
-                if cancelled():
-                    evidence["stop_reason"] = "operator_cancelled"
+                with _laya_turn(budget, max_seconds, cancelled):
+                    for index in range(start, min(start + 5, len(posts))):
+                        post = posts[index]
+                        if rows[index]["status"] == "classified":
+                            continue
+                        if cancelled():
+                            evidence["stop_reason"] = "operator_cancelled"
+                            break
+                        if ((max_posts is not None and index >= max_posts)
+                                or (budget["remaining"] is not None and budget["remaining"] <= 0)):
+                            evidence["stop_reason"] = "post_budget_exhausted"
+                            break
+                        if time.monotonic() >= budget["deadline"]:
+                            evidence["stop_reason"] = "time_budget_exhausted"
+                            break
+                        parameters = {"state": post,
+                                      "questions": copy.deepcopy(LAYA_QUESTIONS), "model": "multilingual"}
+                        for question in parameters["questions"].values():
+                            question["instructions"] = question["instructions"].format(instrument=instrument)
+                        if budget["remaining"] is not None:
+                            budget["remaining"] -= 1
+                        rows[index]["status"] = "pending"
+                        progress()
+                        response = execute("decide", parameters)
+                        counts = response.get("usage", {}).get("context_budget", {}) if isinstance(response, dict) else {}
+                        tokens = counts.get("sequence_tokens", {}) if isinstance(counts, dict) else {}
+                        if (not isinstance(counts, dict) or counts.get("model") != "multilingual"
+                                or type(counts.get("effective_max_tokens")) is not int or counts["effective_max_tokens"] <= 0
+                                or counts.get("questions_complete") is not True or counts.get("state_complete") is not True
+                                or set(tokens) != set(LAYA_QUESTIONS)
+                                or any(type(n) is not int or not 0 < n <= counts["effective_max_tokens"] for n in tokens.values())):
+                            rows[index].update(error="Full input could not be verified; original post retained", result=response)
+                            continue
+                        rows[index].update(token_budget=counts, result=response)
+                        answers = response.get("answers", {}) if isinstance(response, dict) else {}
+                        if (not isinstance(answers, dict) or not isinstance(answers.get("about"), dict)
+                                or answers["about"].get("kind") != "yes_no"
+                                or not isinstance(answers.get("stance"), dict) or answers["stance"].get("kind") != "choice"):
+                            raise ValueError("invalid typed social answers")
+                        about = _distribution(answers.get("about"), ("true", "false"))["true"]
+                        stance = answers.get("stance")
+                        probabilities = _distribution(stance, ("bullish", "bearish", "neutral"))
+                        choice = stance.get("value")
+                        if choice not in probabilities or probabilities[choice] != max(probabilities.values()):
+                            raise ValueError("invalid winning stance")
+                        about_answer = answers["about"]
+                        # Dropping evidence is an action: only the relevance answer's
+                        # own confident contract may exclude it. Reconsider/absent
+                        # contracts keep the post, even if P(about) is below .3.
+                        relevance_certain = about_answer.get("grade") == "auto_execute"
+                        # Classifier mistakes must not remove source evidence from the analyst.
+                        keep[index] = True
+                        stance_grade = stance.get("grade", "unknown")
+                        label = (choice if stance_grade == "auto_execute" and probabilities[choice] >= _STANCE_CONFIDENCE
+                                 else "unclear")
+                        rows[index].update(status="classified", relevance_prediction="off_topic" if about < _OFF_TOPIC_BELOW and relevance_certain else "retained",
+                                           about_probability=about, relevance_uncertain=not relevance_certain,
+                                           relevance_grade=about_answer.get("grade", "unknown"),
+                                           stance=label, raw_prediction=choice, stance_grade=stance_grade,
+                                           stance_probability=probabilities[choice])
+                        progress()
+                if evidence.get("stop_reason"):
                     break
-                if ((max_posts is not None and index >= max_posts)
-                        or (budget["remaining"] is not None and budget["remaining"] <= 0)):
-                    evidence["stop_reason"] = "post_budget_exhausted"
-                    break
-                if time.monotonic() >= budget["deadline"]:
-                    evidence["stop_reason"] = "time_budget_exhausted"
-                    break
-                parameters = {"state": post,
-                              "questions": copy.deepcopy(LAYA_QUESTIONS), "model": "multilingual"}
-                for question in parameters["questions"].values():
-                    question["instructions"] = question["instructions"].format(instrument=instrument)
-                if budget["remaining"] is not None:
-                    budget["remaining"] -= 1
-                rows[index]["status"] = "pending"
-                progress()
-                response = execute("decide", parameters)
-                counts = response.get("usage", {}).get("context_budget", {}) if isinstance(response, dict) else {}
-                tokens = counts.get("sequence_tokens", {}) if isinstance(counts, dict) else {}
-                if (not isinstance(counts, dict) or counts.get("model") != "multilingual"
-                        or type(counts.get("effective_max_tokens")) is not int or counts["effective_max_tokens"] <= 0
-                        or counts.get("questions_complete") is not True or counts.get("state_complete") is not True
-                        or set(tokens) != set(LAYA_QUESTIONS)
-                        or any(type(n) is not int or not 0 < n <= counts["effective_max_tokens"] for n in tokens.values())):
-                    rows[index].update(error="Full input could not be verified; original post retained", result=response)
-                    continue
-                rows[index].update(token_budget=counts, result=response)
-                answers = response.get("answers", {}) if isinstance(response, dict) else {}
-                if (not isinstance(answers, dict) or not isinstance(answers.get("about"), dict)
-                        or answers["about"].get("kind") != "yes_no"
-                        or not isinstance(answers.get("stance"), dict) or answers["stance"].get("kind") != "choice"):
-                    raise ValueError("invalid typed social answers")
-                about = _distribution(answers.get("about"), ("true", "false"))["true"]
-                stance = answers.get("stance")
-                probabilities = _distribution(stance, ("bullish", "bearish", "neutral"))
-                choice = stance.get("value")
-                if choice not in probabilities or probabilities[choice] != max(probabilities.values()):
-                    raise ValueError("invalid winning stance")
-                about_answer = answers["about"]
-                # Dropping evidence is an action: only the relevance answer's
-                # own confident contract may exclude it. Reconsider/absent
-                # contracts keep the post, even if P(about) is below .3.
-                relevance_certain = about_answer.get("grade") == "auto_execute"
-                # Classifier mistakes must not remove source evidence from the analyst.
-                keep[index] = True
-                stance_grade = stance.get("grade", "unknown")
-                label = (choice if stance_grade == "auto_execute" and probabilities[choice] >= _STANCE_CONFIDENCE
-                         else "unclear")
-                rows[index].update(status="classified", relevance_prediction="off_topic" if about < _OFF_TOPIC_BELOW and relevance_certain else "retained",
-                                   about_probability=about, relevance_uncertain=not relevance_certain,
-                                   relevance_grade=about_answer.get("grade", "unknown"),
-                                   stance=label, raw_prediction=choice, stance_grade=stance_grade,
-                                   stance_probability=probabilities[choice])
-                progress()
         except Exception as exc:
             from tradingagents.integrations.maenifold import GatewayTimeout
             evidence["error_class"] = type(exc).__name__
             if isinstance(exc, (TimeoutError, GatewayTimeout)):
                 expired = (getattr(exc, "social_budget_expired", False)
+                           or budget.get("remaining_seconds") == 0
                            or budget.get("deadline") is not None and time.monotonic() >= budget["deadline"])
                 evidence["stop_reason"] = "time_budget_exhausted" if expired else "inference_timeout"
                 evidence["error"] = (
                     "Social screening time budget expired; remaining posts are unscreened. "
                     if expired else "Laya request timed out; remaining posts are unscreened. "
-                ) + "The in-flight result is unknown and will not be replayed."
+                ) + ("The in-flight result is unknown and will not be replayed." if any(row["status"] == "pending" for row in rows)
+                     else "No inference was dispatched for the remaining posts.")
             else:
+                if isinstance(exc, InterruptedError):
+                    evidence["stop_reason"] = "operator_cancelled"
                 evidence["error"] = str(exc).strip()[:300] or type(exc).__name__
         finally:
-            if acquired:
-                _LAYA_LOCK.release()
+            progress()
         for row in rows:
             key = row["stance"] if row["status"] == "classified" else "unscreened"
             evidence["counts"][key] += 1
@@ -241,6 +273,7 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                 + f"{uncertain_relevance} retained posts have uncertain relevance. "
                 + "All fetched posts are retained for analyst review, including classifier off-topic predictions. Classifier relevance and stance are fallible annotations; correct them from the original text. Uncertain or missing stance contracts count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a separate signal. "
                 + (f"Screening deferred: {evidence['stop_reason']}; fetched posts remain available, not a source failure. " if evidence.get("stop_reason") else "")
+                 + (f"Screening error: {evidence['error']} " if evidence.get("error") else "")
                 + "Unscreened is not neutral. Classification is evidence, not trade approval.")
         evidence.update(note=note, completed_at=datetime.now(UTC).isoformat())
         screen.evidence = evidence

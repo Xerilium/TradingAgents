@@ -25,6 +25,11 @@ class SourceEvidenceError(ValueError):
 
 
 def source_attempt_failed(attempt, attempts=()):
+    if (attempt.get("requirement") == "supplemental" and not attempt.get("capture_error")
+            and attempt.get("ended_at") and not attempt.get("late")
+            and attempt.get("capture") in {"recorded", "error_class_only"}
+            and attempt.get("outcome") in {"success", "error"}):
+        return False
     if (attempt.get("operation") == "reddit_rss" and attempt.get("vendor") == "reddit"
             and attempt.get("origin") == "http_response_bytes" and attempt.get("outcome") == "error"
             and not attempt.get("capture_error") and attempt.get("arguments", {}).get("ticker")
@@ -37,13 +42,25 @@ def source_attempt_failed(attempt, attempts=()):
                 for other in attempts)):
         return False  # Retain the failed receipt; the same input was acquired by its retry.
     return bool(attempt.get("capture_error") or (
-        (attempt.get("outcome") != "success" or attempt.get("data_status") in {"unavailable", "partial"})
+        (attempt.get("outcome") != "success" or attempt.get("data_status") in {"unavailable", "partial", "no_usable_coverage"})
         and not (attempt.get("requirement") == "supplemental"
                  and attempt.get("operation") == "read_research_source"
                  and attempt.get("vendor") == "public_source" and attempt.get("origin") == "source_document_text"
                  and attempt.get("outcome") == "error" and attempt.get("error_class") == "HTTPError"
                  and type(attempt.get("http_status")) is int and 400 <= attempt["http_status"] <= 599
                  and attempt.get("capture") == "error_class_only")))
+
+
+def call_evidence_failed(evidence):
+    """Unknown optional read outcomes are gaps, not missing durable receipts."""
+    optional = {
+        "laya": {"decide"},
+        "maenifold.memory": {"SearchMemories", "ReadMemory", "ListMemories", "ExtractConceptsFromFile"},
+        "maenifold.graph": {"BuildContext", "FindSimilarConcepts", "Visualize", "AnalyzeConceptCorruption"},
+    }
+    return (not evidence.get("persistence_complete", evidence.get("capture_complete", False))
+            or any(a.get("outcome") == "unknown" and a.get("operation") not in optional.get(a.get("vendor"), ())
+                   for a in evidence.get("attempts", [])))
 
 
 class DeskStore:
@@ -90,9 +107,8 @@ class DeskStore:
                 source_incomplete = any(source_attempt_failed(a, run.get("source_evidence", {}).get("attempts", []))
                     for a in run.get("source_evidence", {}).get("attempts", [])
                     if a.get("symbol") in {None, result["symbol"]})
-                if (result.get("status") == "completed"
-                        and (source_incomplete or result.get("social_sentiment", {}).get("status") in {"partial", "unavailable"})):
-                    result.update(status="failed", error="Research incomplete: source collection or social screening failed. Saved reports are retained.")
+                if result.get("status") == "completed" and source_incomplete:
+                    result.update(status="failed", error="Research incomplete: required source collection or evidence capture failed. Saved reports are retained.")
                     result["revision"] = result.get("revision", 0) + 1
                     if run["status"] == "completed":
                         run["status"] = "failed"
@@ -427,6 +443,11 @@ class DeskStore:
         evidence["capture_complete"] = not (
             evidence["pending_count"] or evidence["unknown_count"] or evidence["late_count"]
             or evidence.get("persistence_error") or any(a.get("capture_error") for a in attempts)
+        )
+        evidence["persistence_complete"] = not (
+            evidence["pending_count"] or evidence["late_count"] or evidence.get("persistence_error")
+            or any(a.get("capture_error") or a.get("capture") not in {"recorded", "metadata_only", "error_class_only"}
+                   for a in attempts)
         )
 
     def _record_call_attempt(self, run_id, receipt, output):

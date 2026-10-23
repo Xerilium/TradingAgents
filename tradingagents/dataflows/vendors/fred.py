@@ -8,14 +8,16 @@ A free API key (https://fred.stlouisfed.org/docs/api/api_key.html) is read from
 ``FRED_API_KEY``; if it is unset the vendor raises ``FredNotConfiguredError`` so
 the routing layer treats it as "unavailable" rather than a hard crash.
 """
+import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 
 import pytz
+import requests
 
 from tradingagents.dataflows.errors import NoMarketDataError, VendorNotConfiguredError, VendorUnavailableError
-from tradingagents.dataflows.net import get_scrubbed
 
 logger = logging.getLogger(__name__)
 
@@ -143,25 +145,45 @@ def _fred_today() -> str:
 def _request(path: str, params: dict) -> dict:
     """GET a FRED endpoint, surfacing FRED's JSON error body on a bad request."""
     api_key = get_api_key()
-    response = get_scrubbed(
-        f"{FRED_API_BASE}/{path}",
-        params={**params, "api_key": api_key, "file_type": "json"},
-        timeout=REQUEST_TIMEOUT,
-        secret=api_key,
-        passthrough=(400,),
-    )
+    from tradingagents.dataflows.router import observe_source_call, source_retry_plan
+    deadline = time.monotonic() + REQUEST_TIMEOUT
+    for attempt in (1, 2):
+        retry = {"attempt": attempt, "retry_action": "not_needed"}
+        def acquire():
+            try:
+                with requests.get(f"{FRED_API_BASE}/{path}",
+                                  params={**params, "api_key": api_key, "file_type": "json"},
+                                  timeout=max(.01, deadline - time.monotonic())) as received:
+                    if received.status_code != 400:
+                        received.raise_for_status()
+                    return {"status": received.status_code, "body": received.content.decode("utf-8")}
+            except requests.RequestException as exc:
+                error = type(exc)(str(exc).replace(api_key, "***"))
+                error.http_status = getattr(getattr(exc, "response", None), "status_code", None)
+                error.retry_after = getattr(getattr(exc, "response", None), "headers", {}).get("Retry-After")
+                retry.update(source_retry_plan(error, attempt=attempt, remaining=deadline - time.monotonic()))
+            raise error from None
+        try:
+            received = observe_source_call("fred_" + path.replace("/", "_"), "fred", "http_response_bytes", acquire,
+                                           retry=retry, indicator=params.get("series_id", ""))
+            break
+        except requests.RequestException:
+            if retry["retry_action"] != "retry":
+                raise
+            time.sleep(retry["retry_after_seconds"])
+    body = received["body"]
     # FRED returns 400 with a JSON {"error_message": ...} for unknown series IDs
     # or malformed params; turn that into a clear, actionable error.
-    if response.status_code == 400:
+    if received["status"] == 400:
         try:
-            message = response.json().get("error_message", response.text)
+            message = json.loads(body).get("error_message", body)
         except ValueError:
-            message = response.text
-        raise ValueError(f"FRED request failed: {message}")
+            message = body
+        raise ValueError(f"FRED request failed: {str(message).replace(api_key, '***')}")
     try:
-        return response.json()
+        return json.loads(body)
     except ValueError:
-        reason = "provider maintenance" if "maintenance" in response.text.lower() else "a non-JSON response"
+        reason = "provider maintenance" if "maintenance" in body.lower() else "a non-JSON response"
         raise VendorUnavailableError(f"FRED returned {reason}; no macro observations were received") from None
 
 
