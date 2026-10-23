@@ -2413,7 +2413,7 @@ document.addEventListener('scroll',event=>{if(event.target.matches?.(instrumentS
 let instrumentOptionExpiry='',instrumentOptionSide='';
 function instrumentView(){if(!instrumentViews.has(symbol))instrumentViews.set(symbol,{tab:optionEnvelope()?'Options':'Chart',inspector:'Source data'});return instrumentViews.get(symbol);}
 function instrumentMarkup(){
- const view=instrumentView(),template=document.createElement('template');template.innerHTML=evidence()+research();
+ const view=instrumentView(),template=document.createElement('template');if(activePage==='orders')view.tab='Position';template.innerHTML=evidence()+research();
  const equity=template.content.querySelector('.evidence'),report=template.content.querySelector('.research'),s=stock(),q=s?.quote||{},option=optionEnvelope();
  const panes=Object.fromEntries(['Chart','Research','Options','Position'].map(name=>{const el=document.createElement('section');el.className='instrument-pane';el.id='instrument-'+name.toLowerCase();el.dataset.instrumentPane=name;el.hidden=view.tab!==name;return [name,el];}));
  if(equity)panes[option?'Options':'Chart'].append(equity);
