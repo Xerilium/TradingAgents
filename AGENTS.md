@@ -52,6 +52,8 @@ actual installation, saved data and permitted smoke test.
   stabilize existing functionality. The user explicitly confirmed this order.
   Other backlog work stays frozen except bug fixes. UI issues reorganize
   existing capabilities; no new backend features or invented data/actions.
+- No standalone INTC walkthrough: the user banned that repeated demo. Complete
+  the UI issues and verify their integrated criteria and changed workflows.
 - The user's restriction on agents placing trades is not permission to disable
   the integration. Preserve per-order approval and separate submission.
 - Until explicitly authorized otherwise: no trades, order approvals, broker
