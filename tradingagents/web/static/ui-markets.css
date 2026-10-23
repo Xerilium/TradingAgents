@@ -1,0 +1,34 @@
+.markets-workspace,.portfolio-workspace{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.markets-workspace>.app-header{padding:0 0 8px;border:0;background:transparent}
+.markets-workspace .app-header .balances,.markets-workspace .app-header .snapshot-strip,.markets-workspace .portfolio-tabs,.markets-workspace>#investor-policy,.markets-workspace>#investor-proposals,.markets-workspace>#allocation-workspace,.markets-workspace>#attention-workspace{display:none}
+.markets-workspace>.workspace{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:0}
+.markets-workspace #universe-view{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.markets-workspace #markets-tabs,.markets-workspace .scan-tabs{flex:none;display:flex;gap:4px;overflow-x:auto;margin:0 0 8px}
+.markets-workspace #markets-tabs button,.markets-workspace .scan-tabs button{white-space:nowrap}
+.markets-workspace #markets-lists{min-height:0;flex:1;display:flex;flex-direction:column;overflow:auto}
+.markets-workspace #markets-lists[hidden],.markets-workspace [data-scan-panel][hidden],.markets-workspace #market-discovery[hidden],.markets-workspace #saved-data-scans[hidden]{display:none}
+.markets-workspace #markets-lists>.section-heading{display:none}
+.markets-workspace #universe-views{flex:none;display:flex;flex-wrap:wrap;gap:4px}
+.markets-workspace .filters,.markets-workspace .bulk-toolbar{flex:none;gap:8px;padding:8px 0}
+.markets-workspace .filters label{min-width:130px}
+.markets-workspace #table-scroll{min-height:140px;flex:1;overflow:auto;max-height:none}
+.markets-workspace th{position:sticky;top:0;background:var(--table-header,var(--paper));z-index:1}
+.markets-workspace #market-discovery{min-height:0;flex:1;display:grid;grid-template-columns:minmax(240px,.7fr) minmax(360px,2fr);gap:12px;overflow:hidden;margin:0;padding:0;border:0}
+.markets-workspace #market-discovery>summary,.markets-workspace #saved-data-scans>summary{display:none}
+.markets-workspace .markets-criteria,.markets-workspace .markets-results{min-height:0;min-width:0;overflow:auto;border:1px solid var(--line);background:var(--paper);padding:12px}
+.markets-workspace .markets-criteria .filters{display:flex;flex-direction:column;align-items:stretch}
+.markets-workspace .markets-criteria label,.markets-workspace .markets-criteria input,.markets-workspace .markets-criteria select{width:100%}
+.markets-workspace .markets-results .table-scroll{overflow:auto;max-height:50vh}
+.markets-workspace #saved-data-scans{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0;border:0}
+.markets-workspace [data-scan-panel]{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);background:var(--paper);padding:12px}
+.markets-workspace [data-scan-panel=runs] article{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:8px 0}
+.markets-workspace [data-scan-panel=runs] article p{flex:1;min-width:220px}
+.markets-workspace #workspace-save-status{flex:none;min-height:24px}
+.markets-workspace #workspace.detail-open{display:grid;grid-template-rows:auto minmax(0,1fr);grid-template-columns:minmax(0,1fr) minmax(360px,1fr);gap:12px}
+.markets-workspace #workspace.detail-open #markets-tabs{grid-column:1/-1}
+.markets-workspace #stock-detail{min-height:0;overflow:hidden}
+.markets-workspace #detail-content{height:100%;min-height:0;overflow:auto}
+.portfolio-workspace>.workspace{flex:1;min-height:0;overflow:auto}
+.markets-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:800px){.markets-workspace #market-discovery{grid-template-columns:minmax(220px,.8fr) minmax(280px,1fr);overflow:auto}.markets-workspace #workspace.detail-open{display:flex}.markets-workspace #workspace.detail-open #universe-view{display:none}.markets-workspace #stock-detail{flex:1}.markets-workspace .bulk-toolbar{flex-wrap:wrap}}
+@media(max-width:560px){.markets-workspace #market-discovery{display:block;overflow:auto}.markets-workspace .markets-criteria,.markets-workspace .markets-results{overflow:visible;margin-bottom:8px}}
