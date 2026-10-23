@@ -7,6 +7,14 @@
 .orders-panels{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}.orders-pane{flex:1;min-height:0;overflow:auto}.orders-pane[hidden]{display:none!important}
 .orders-workspace #workspace{display:none}.orders-workspace #workspace.detail-open{display:flex;align-items:stretch;width:46%;min-width:340px;min-height:0;padding:0}.orders-workspace #universe-view,.orders-workspace #holdings-view{display:none!important}
 .orders-workspace #stock-detail{flex:1;min-width:0;min-height:0;margin:0}.orders-workspace #close-detail{font-size:12px}
+#universe-review.orders-workspace #stock-detail .detail-header{padding:8px 12px}
+#universe-review.orders-workspace #stock-detail .detail-header h2{font-size:14px}
+#universe-review.orders-workspace .instrument-workspace>.instrument-quote,#universe-review.orders-workspace .instrument-workspace>.instrument-tabs,#universe-review.orders-workspace #instrument-position>:not(.shared-ticket){display:none}
+#universe-review.orders-workspace #instrument-position{padding:0}
+#universe-review.orders-workspace #investor-proposals table{table-layout:fixed}
+#universe-review.orders-workspace #investor-proposals th:first-child{width:50%}
+#universe-review.orders-workspace #investor-proposals td,#universe-review.orders-workspace #investor-proposals td button{white-space:normal;overflow-wrap:anywhere}
+#universe-review.orders-workspace #investor-proposals pre{white-space:pre-wrap;overflow-wrap:anywhere}
 .orders-workspace #investor-proposals>summary,.orders-workspace #allocation-workspace>summary{font-size:14px}
 .order-master-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,32%);height:100%;min-height:0;gap:12px}.order-master-detail>.panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}.order-master-detail .table-scroll{flex:1;min-height:0;overflow:auto}
 .order-inspector{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--line,#34414d);padding:12px;background:var(--paper,#1b252f)}.order-inspector-body{flex:1;min-height:0;overflow:auto}.order-inspector pre{white-space:pre-wrap;overflow-wrap:anywhere}
