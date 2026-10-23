@@ -1202,7 +1202,8 @@ def simulate_strategy(spec):
             "spec_sha256": spec["spec_sha256"], "experiment_sha256": spec["experiment_sha256"],
             "engine_version": "1.231.0", "native_risk_config": engine_config.risk_engine.json_primitives(),
             "metrics": {"net_return_pct": str((ending - cash) / cash * 100), "total_pnl": str(ending - cash),
-                "max_drawdown_pct": str(drawdown), "closed_trades": len(engine.cache.positions_closed())},
+                "max_drawdown_pct": str(drawdown), "closed_trades": len(engine.cache.positions_closed())
+                    + sum(position.is_closed for position in engine.cache.position_snapshots())},
             "equity_curve": strategy.curve, "benchmark_curve": benchmark_curve, "benchmark_unavailable": benchmark_error or spec["benchmark"].get("reason"),
             "metric_basis": "Independent reset-capital source-close equity including actual native marked inventory; modeled costs, not broker performance",
             "coverage": {"complete": not unresolved and not strategy.unavailable and len(strategy.curve) == segment["scored_sessions"],
