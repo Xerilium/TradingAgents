@@ -203,16 +203,22 @@ def main():
                     metadata = self.option_metadata[symbol]
                     result = self.observations[symbol] = {"option_contract": metadata, "market_feed": startup.get("option_feed"),
                         "source": "Alpaca option quote", "contract_observed_at": metadata["received_at"]}
+                    response, stage = None, "request"
                     try:
                         response = await asyncio.to_thread(transport.option_quote, symbol, startup.get("option_feed"))
+                        stage = "decode_quote"
                         quote = response["data"].get("quotes", {}).get(symbol) or {}
+                        stage = "validate_bid_ask"
                         if not 0 <= Decimal(str(quote["bp"])) <= Decimal(str(quote["ap"])) or Decimal(str(quote["ap"])) <= 0:
                             raise ValueError("Option bid/ask is unavailable or crossed")
+                        stage = "construct_native_tick"
                         tick = QuoteTick(instrument_id(symbol), Price.from_str(str(quote["bp"])), Price.from_str(str(quote["ap"])),
                             Quantity.from_str(str(quote["bs"])), Quantity.from_str(str(quote["as"])), timestamp(quote["t"]), self.clock.timestamp_ns())
+                        stage = "verify_native_precision"
                         if any(getattr(tick, field).as_decimal() != Decimal(str(quote[key])) for field, key in
                                 (("bid_price", "bp"), ("ask_price", "ap"), ("bid_size", "bs"), ("ask_size", "as"))):
                             raise ValueError("Native quote price/size precision differs from actual option quote")
+                        stage = "cache_native_tick"
                         response_hash = hashlib.sha256(response["raw"]).hexdigest()
                         prior = self.quote_sources.get(symbol)
                         cached = self.cache.quote_tick(instrument_id(symbol))
@@ -241,7 +247,12 @@ def main():
                         self.quote_sources.pop(symbol, None)
                         self.spread_valuations = {key: value for key, value in self.spread_valuations.items()
                             if not any(item["instrument_id"] == str(instrument_id(symbol)) for item in value["inputs"])}
-                        result["error"] = "Option quote unavailable (" + type(exc).__name__ + ")"
+                        message = " ".join(str(exc).split())[:300] if stage != "request" and not isinstance(exc, (HTTPError, URLError)) else "Quote request failed"
+                        result["quote_diagnostic"] = {"stage": stage, "exception_type": type(exc).__name__, "message": message}
+                        if response is not None:
+                            result["quote_diagnostic"].update(received_at=response["received_at"],
+                                raw_response=response["raw"].decode(errors="replace"), raw_response_sha256=hashlib.sha256(response["raw"]).hexdigest())
+                        result["error"] = "Option quote unavailable (" + type(exc).__name__ + "; " + stage + "): " + message
                 for symbol in set(symbols) - self.assets:
                     self.observations[symbol] = {"error": "No active US equity instrument in Alpaca"}
                 for offset in range(0, len(eligible), 100):
