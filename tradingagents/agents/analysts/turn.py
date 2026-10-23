@@ -23,7 +23,7 @@ def research_memory_guidance(tools):
         ("maenifold_graph__FindSimilarConcepts", "Before BuildContext, discover an existing anchor using conceptName and maxResults=5. Use only a directly relevant returned concept; if none exists or resolution fails, disclose no relevant memory and continue primary-source research. Never invent an anchor or force an unrelated match; similarity is not evidence."),
         ("maenifold_memory__SearchMemories", "Search relevant company or domain notes, especially when graph context is unavailable; avoid indiscriminate retrieval."),
         ("maenifold_memory__ReadMemory", "Read the strongest directly relevant source notes returned by retrieval before relying on them."),
-        ("maenifold_thinking__SequentialThinking", "Use concise persistent reasoning for nontrivial research steps: record material assumptions, source-linked evidence, decisions and unresolved gaps; complete each reasoning session using its returned session ID and nextThoughtNeeded=false."),
+        ("maenifold_thinking__SequentialThinking", "Use concise persistent reasoning for nontrivial research steps. Put material assumptions, source-linked evidence, decisions and unresolved gaps in response. Start with thoughtNumber=0, response, nextThoughtNeeded=true and no sessionId. Continue with the actual returned sessionId, incremented thoughtNumber, response and nextThoughtNeeded=true. Complete with that sessionId, incremented thoughtNumber, response, nextThoughtNeeded=false and a conclusion string containing the completion report (ConfessionReport) covering outcomes and gaps. Do not send top-level thought or ConfessionReport fields."),
     ):
         if name in names:
             guidance.append(f" Use {name}: {instruction}")

@@ -740,10 +740,13 @@ def build_langchain_tools(
                 )
             if domain == "maenifold.thinking":
                 description += (
-                    " Record concise research decisions, evidence, and open questions. Start at "
-                    "thoughtNumber=0 without sessionId; continue with the returned sessionId and "
-                    "incremented thoughtNumber. Complete with nextThoughtNeeded=false and a "
-                    "structured conclusion/ConfessionReport covering outcomes and gaps."
+                    " Put concise research decisions, evidence, and open questions in response. "
+                    "Start with thoughtNumber=0, response, and nextThoughtNeeded=true; omit sessionId. "
+                    "Continue with the actual returned sessionId, incremented thoughtNumber, "
+                    "response, and nextThoughtNeeded=true. Complete using that sessionId, "
+                    "incremented thoughtNumber, response, nextThoughtNeeded=false, and a conclusion "
+                    "string containing the completion report (ConfessionReport) covering outcomes and gaps. "
+                    "Do not send top-level thought or ConfessionReport fields."
                 )
             if symbol and domain == "alpaca":
                 for key in ("symbols", "symbol", "symbol_or_asset_id"):
