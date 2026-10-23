@@ -11,7 +11,7 @@
 .research-workspace .symbol-list{min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .research-workspace .research-rows{flex:1;min-height:60px;overflow:auto}
 .research-workspace .queue-progress{flex:none;max-height:190px;overflow:auto}
-.research-workspace .research-detail-panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.research-workspace .research-detail-panel{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
 .research-workspace .result-top{flex:none;padding:12px}
 .research-workspace .research-detail-panel>.workspace-tabs{padding:0 12px 8px}
 .research-workspace #research-detail-scroll{min-height:0;height:auto;max-height:none;flex:1;overflow:auto;padding:12px}
@@ -43,4 +43,5 @@
 .journal-note-list{display:flex;flex-wrap:wrap;gap:8px}
 .journal-note-list h2{width:100%}
 @media(max-width:850px){.journal-layout{grid-template-columns:minmax(250px,1fr) minmax(250px,1fr)}.research-workspace .research-layout{grid-template-columns:190px minmax(0,1fr)}}
-@media(max-width:600px){.research-workspace .research-layout{display:flex;flex-direction:column}.research-workspace .symbol-list{max-height:240px;flex:none;overflow:auto}.research-workspace .research-detail-panel{flex:1}.research-workspace .queue-progress{max-height:90px;overflow:auto}.journal-layout{height:auto;min-height:100%;display:flex;flex-direction:column}.journal-layout>.panel{max-height:70vh;min-height:180px;overflow:auto}}
+@media(max-width:600px){.research-workspace .research-layout{display:flex;flex-direction:column;overflow:auto}.research-workspace .symbol-list{max-height:240px;flex:none;overflow:auto}.research-workspace .research-detail-panel{flex:none;min-height:320px}.research-workspace .queue-progress{max-height:90px;overflow:auto}.journal-layout{height:auto;min-height:100%;display:flex;flex-direction:column}.journal-layout>.panel{max-height:70vh;min-height:180px;overflow:auto}}
+@media(max-height:650px){.research-workspace{overflow:auto}.research-workspace .research-layout{flex:none;height:360px}}

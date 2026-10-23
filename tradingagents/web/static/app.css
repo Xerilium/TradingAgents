@@ -155,7 +155,8 @@ body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); hei
 .app-shell > .sidebar .paper-identity { display:flex; flex-wrap:wrap; max-width:100%; padding:0; }
 .app-shell > .sidebar .paper-identity span:not(.status-dot),.app-shell > .sidebar .sidebar-footer { font-size:11px; overflow-wrap:anywhere; }
 .app-shell > .workspace { display:flex; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
-.app-shell > .workspace > .topbar { flex:0 0 auto; min-height:40px; padding:8px 16px; }
+.app-shell > .workspace > .topbar { flex:0 0 auto; height:auto; min-height:40px; flex-wrap:wrap; padding:8px 16px; }
+.breadcrumb { min-width:0; overflow-wrap:anywhere; }
 .app-shell > .workspace > #main { flex:1 1 auto; min-height:0; min-width:0; padding:12px; overflow:auto; overscroll-behavior:contain; }
 .app-shell > .workspace > #main[data-page="overview"] { display:flex; flex-direction:column; overflow:hidden; gap:12px; }
 .app-shell > .workspace > .workspace-footer { flex:0 0 auto; padding:4px 12px; font-size:11px; }
