@@ -662,7 +662,7 @@ def _restore_quiescent(service, token, confirmation):
         except (OSError, KeyError, csv.Error):
             continue
     service.chart_cache.clear()
-    service.runtime.configure(service.store.data["config"]["universe"])
+    service.configure_symbols()
     service.restore_candidates.clear()
     return {"restored": True, "generation": generation, "prior_state_backup": retained["id"],
             "checkpoint_coverage": reviewed["checkpoint_coverage"], "checkpoint_warning": reviewed["checkpoint_warning"],
