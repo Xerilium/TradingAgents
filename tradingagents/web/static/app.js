@@ -2810,6 +2810,7 @@ function layoutMarkets(){
    for(const node of nodes.slice(start,end))if(node.tagName!=='SUMMARY'&&node!==picker&&node.id!=='scanner-refresh')panel.append(node);
    if(key==='runs'&&!panel.querySelector('article'))panel.insertAdjacentHTML('beforeend','<p>No retained scan runs. Select a saved definition and use Run selected saved revision once when ready.</p>');
    if(!panel.children.length)panel.innerHTML='<p>No retained run is open. Choose Runs, then inspect an existing run. Opening a run does not rerun it.</p>';
+   if(key==='definition'){const fields=document.createElement('div'),actions=panel.querySelector('.scanner-actions');fields.className='scan-definition-fields';for(const node of [...panel.children])if(node!==actions)fields.append(node);panel.append(fields);if(actions)panel.append(actions);}
    editor.append(panel);
   }
   scanner.querySelector('.scan-tabs').addEventListener('click',event=>{const button=event.target.closest('[data-scan-tab]');if(button){scanTab=button.dataset.scanTab;updateMarketsTabs();}});
