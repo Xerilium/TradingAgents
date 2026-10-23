@@ -397,3 +397,30 @@ This objective is not achieved by the completed-social-only pass above.
   failed capture operations in completion errors. Original evidence is preserved;
   no retrospective success claim. Full workflow not rerun after this correction.
 - No tests created. Code score -650. Macro coverage remains unverified.
+
+### G11 source correction batch — 21 October 2026
+
+- `dataflows/vendors/yahoo/snapshot.py` now computes dated, signed changes and
+  up/down/unchanged directions between adjacent available closes. It identifies
+  excluded incomplete bars between observations and insufficient close history;
+  exchange-session completeness remains explicitly unverified. The market analyst
+  prompt requires movement and streak claims to cite these dates and closes.
+- `agents/post_screen.py` now returns compact source/text-SHA256-to-existing-label
+  annotations to the sentiment analyst. Reddit and StockTwits rendering includes
+  the matching exact screened-text hashes without duplicating post bodies. The
+  mapping preserves status, admitted stance, raw prediction and stance grade.
+  The analyst must match individual label claims to this identity and distinguish
+  a recorded label from its own interpretation. Uncertainty thresholds and
+  retained evidence are unchanged. The sentiment docstring now says structured,
+  rather than deterministic, output.
+- One bounded offline check passed: six changed Python files parsed; the closes
+  92.03 → 91.69 → 92.96 produced down (-0.34) then up (+1.27); an excluded
+  middle bar was marked nonconsecutive; one close reported insufficient history.
+  A fake Laya receipt preserved unclear/bearish raw prediction/reconsider, and
+  exact input hashes matched both vendor renderings, including multiline text.
+  No test files or functions were created; no live feed or model was called.
+- Changes reduce known input ambiguity; they do not establish analytical
+  accuracy, correct historical reports, resolve headline-only evidence, or prove
+  a new complete run. Retained reports, provider settings and evidence remain
+  intact. No restart or research rerun was performed. This batch adds 29
+  production lines and zero test lines (score delta -29; documentation excluded).

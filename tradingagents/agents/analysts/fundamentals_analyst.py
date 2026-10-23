@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from tradingagents.agents.analysts.turn import _as_text, request_inputs, take_turn
+from tradingagents.agents.analysts.turn import _as_text, request_inputs, research_memory_guidance, take_turn
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
 from tradingagents.agents.tools import (
     get_balance_sheet,
@@ -44,6 +44,7 @@ def create_fundamentals_analyst(llm, tools=None):
             + " Read filing notes and cash-flow reconciliations before calling an earnings or funding gap unexplained. Use read_research_source to resolve material missing context from primary sources. Distinguish parent equity from consolidated equity and GAAP from adjusted measures; compare matching fiscal periods."
             + " State total liabilities and reconcile total assets to liabilities plus consolidated equity. Explain material cash-flow and financing bridges, including partner distributions; distinguish company-adjusted free cash flow from simple operating cash flow less capital spending."
             + " SEC statement tools supply the full quarterly and annual filings, including all statements and notes. Do not spend a source-reading call reopening the same filing. Follow material references to issuer releases or other primary documents when reconciliation is still missing."
+            + research_memory_guidance(tools)
             + get_language_instruction()
         )
 

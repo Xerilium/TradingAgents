@@ -69,7 +69,7 @@ def _distribution(answer, labels):
 
 
 def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=None,
-                source="social", cancelled=lambda: False, instrument=None):
+                source="social", cancelled=lambda: False, instrument=None, retained=None, on_progress=None):
     """Existing fetcher hook, with serial SDK calls and an honest unclassified remainder.
 
     One symbol shares a configurable 100-post / 600-second budget across sources.
@@ -123,13 +123,27 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
             rows.append({"text": post, "text_sha256": hashlib.sha256(post.encode()).hexdigest(),
                          "provenance": "complete fetched Reddit title/body" if source == "reddit" else "source message body",
                          "status": "unscreened", "model": "multilingual"})
+        if retained is not None:
+            if [row["text_sha256"] for row in rows] != [row["text_sha256"] for row in retained["posts"]]:
+                raise ValueError("Saved social inputs differ from the resumed source; original labels cannot be reassigned.")
+            rows[:] = copy.deepcopy(retained["posts"])
+            if any(row["status"] == "pending" for row in rows):
+                raise ValueError("A prior social request has an unknown outcome and cannot be replayed.")
+
+        def progress():
+            if on_progress:
+                on_progress(copy.deepcopy(evidence), budget)
         acquired = bool(posts) and _LAYA_LOCK.acquire(blocking=False)
         try:
             if posts and not acquired:
                 raise ValueError("another social classification is active")
             if budget["deadline"] is None:
-                budget["deadline"] = time.monotonic() + max_seconds
+                expiry = budget.setdefault("expires_at", datetime.now(UTC).timestamp() + max_seconds)
+                budget["deadline"] = time.monotonic() + max(0, expiry - datetime.now(UTC).timestamp())
+            progress()
             for index, post in enumerate(posts):
+                if rows[index]["status"] == "classified":
+                    continue
                 if cancelled():
                     evidence["stop_reason"] = "operator_cancelled"
                     break
@@ -146,6 +160,8 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                     question["instructions"] = question["instructions"].format(instrument=instrument)
                 if budget["remaining"] is not None:
                     budget["remaining"] -= 1
+                rows[index]["status"] = "pending"
+                progress()
                 response = execute("decide", parameters)
                 counts = response.get("usage", {}).get("context_budget", {}) if isinstance(response, dict) else {}
                 tokens = counts.get("sequence_tokens", {}) if isinstance(counts, dict) else {}
@@ -183,6 +199,7 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                                    relevance_grade=about_answer.get("grade", "unknown"),
                                    stance=label, raw_prediction=choice, stance_grade=stance_grade,
                                    stance_probability=probabilities[choice])
+                progress()
         except Exception as exc:
             from tradingagents.integrations.maenifold import GatewayTimeout
             evidence["error_class"] = type(exc).__name__
@@ -200,7 +217,7 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
             if acquired:
                 _LAYA_LOCK.release()
         for row in rows:
-            key = row["stance"] if row["status"] == "classified" else row["status"]
+            key = row["stance"] if row["status"] == "classified" else "unscreened"
             evidence["counts"][key] += 1
         counts = evidence["counts"]
         evidence["status"] = ("empty" if not posts else "unavailable" if counts["unscreened"] == len(posts)
@@ -222,7 +239,12 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
         screen.evidence = evidence
         if on_evidence:
             on_evidence(copy.deepcopy(evidence))
-        return keep, note
+        annotations = ["Classifier annotations (ID = source:SHA256 of exact screened text; labels are fallible):"]
+        for row in rows:
+            annotations.append(f"{source}:{row['text_sha256']} | status={row['status']} | "
+                               f"stance={row.get('stance', 'unknown')} | raw_prediction={row.get('raw_prediction', 'unknown')} | "
+                               f"stance_grade={row.get('stance_grade', 'unknown')}")
+        return keep, note + "\n" + "\n".join(annotations)
 
     screen.evidence = None
     return screen

@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from tradingagents.agents.analysts.turn import request_inputs, take_turn
+from tradingagents.agents.analysts.turn import request_inputs, research_memory_guidance, take_turn
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
 from tradingagents.agents.tools import (
     get_global_news,
@@ -46,6 +46,7 @@ def create_news_analyst(llm, tools=None):
             + " Use read_research_source for primary confirmation of material headlines and catalysts. Search matches are not verified news; do not infer earnings dates from prediction-market resolution dates. State publication dates and distinguish full article evidence from headline-only evidence."
             + " If a syndicated article is blocked, follow the issuer's own investor-relations/news pages or the original regulator statement; one blocked URL does not establish that primary evidence is unavailable."
             + " Before discussing an upcoming earnings event in the final report, retrieve its official issuer calendar or reporting-date announcement. Resolve material primary-source checks while tools remain available; distinguish a failed request from a check you did not perform."
+            + research_memory_guidance(tools)
             + get_language_instruction()
         )
 

@@ -9,6 +9,7 @@ from tradingagents.agents.context import (
     get_instrument_context_from_state,
     get_language_instruction,
     get_portfolio_context_from_state,
+    get_verified_market_context_from_state,
 )
 from tradingagents.agents.schemas import DeskTraderProposal, TraderProposal, render_trader_proposal
 from tradingagents.agents.structured import (
@@ -36,9 +37,9 @@ def create_trader(llm):
 
         if market_report:
             grounding = (
-                "Ground concrete price levels (entry, stop-loss, position sizing) in the technical "
-                "market report's price structure -- current price, support/resistance, ATR, and "
-                "volatility -- and use the research plan for direction and strategy. "
+                "Ground concrete price levels (entry, stop-loss, position sizing) in the collected "
+                "market snapshot's dated values. Treat the technical report as interpretation, "
+                "and use the research plan for direction and strategy. "
             )
             report_section = f"Technical Market Report:\n{market_report}\n\n"
         else:
@@ -68,6 +69,7 @@ def create_trader(llm):
                 "content": (
                     f"Here is the research team's investment plan for {company_name}. "
                     f"{instrument_context}\n\n"
+                    f"{get_verified_market_context_from_state(state)}\n\n"
                     f"{report_section}"
                     f"{portfolio_context}\n\n"
                     f"Proposed Investment Plan:\n{investment_plan}\n\n"

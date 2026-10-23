@@ -2,6 +2,7 @@ from tradingagents.agents.context import (
     get_instrument_context_from_state,
     get_language_instruction,
     get_portfolio_context_from_state,
+    get_verified_market_context_from_state,
     opponent_argument_or_opening,
     report_or_absent,
 )
@@ -37,6 +38,7 @@ Your task is to create a compelling case for the trader's decision by questionin
 
 {instrument_context}
 {portfolio_context}
+{get_verified_market_context_from_state(state)}
 Market Research Report: {market_research_report}
 Social Media Sentiment Report: {sentiment_report}
 Latest World Affairs Report: {news_report}

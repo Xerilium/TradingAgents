@@ -652,6 +652,7 @@ def build_langchain_tools(
     domains: tuple[str, ...] | None = None,
     symbol: str | None = None,
     trade_date: str | None = None,
+    research_effect=None,
 ) -> list[Any]:
     """Bind only reviewed analysis commands, retaining each live JSON Schema."""
     from langchain_core.tools import StructuredTool, ToolException
@@ -683,18 +684,30 @@ def build_langchain_tools(
                 continue
 
             def bind(selected: GatewayCommand) -> Callable[..., str]:
-                def invoke(**parameters: Any) -> str:
+                def invoke(runtime=None, **parameters: Any) -> str:
                     with gateway_observation(selected.domain, selected.name, "gateway_invocation",
                                              purpose="analyst_tool") as observed:
                         try:
                             bounded = _bound_parameters(selected, parameters, symbol, trade_date)
                             observed["parameters"] = bounded
-                            value = gateway.execute(selected.domain, selected.name, bounded)
+                            dispatch = lambda: gateway.execute(selected.domain, selected.name, bounded)
+                            if research_effect is not None:
+                                if runtime is None:
+                                    raise ValueError("Checkpointed research requires the native tool-call identity.")
+                                namespace = runtime.config.get("configurable", {}).get("checkpoint_ns", "")
+                                value = research_effect(selected.domain, selected.name,
+                                    f"{namespace}:{runtime.tool_call_id}", bounded, dispatch,
+                                    stateful=selected.name in _STATEFUL_RESEARCH_COMMANDS)
+                            else:
+                                value = dispatch()
                         except GatewayError as exc:
                             raise ToolException(str(exc)) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 
+                if research_effect is not None:
+                    from langgraph.prebuilt import ToolRuntime
+                    invoke.__annotations__["runtime"] = ToolRuntime
                 return invoke
 
             description = command.description

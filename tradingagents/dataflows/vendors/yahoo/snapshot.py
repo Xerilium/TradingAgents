@@ -13,11 +13,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 import pandas as pd
-from stockstats import wrap
 
 from tradingagents.dataflows.errors import NoMarketDataError
 from tradingagents.dataflows.symbols import normalize_symbol
-from tradingagents.dataflows.vendors.yahoo.market import INDICATOR_DESCRIPTIONS
+from tradingagents.dataflows.vendors.yahoo.market import (
+    INDICATOR_DESCRIPTIONS,
+    calculate_stockstats,
+)
 from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
@@ -71,9 +73,8 @@ def build_verified_market_snapshot(
     # Volume); stockstats `wrap()` lowercases columns and adds indicator
     # columns, so read raw prices from `df` and indicators from `stock_df`.
     df = _verified_rows(symbol, as_of_date)
-    stock_df = wrap(df.copy())
-
     selected = tuple(indicators or DEFAULT_SNAPSHOT_INDICATORS)
+    stock_df = calculate_stockstats(df, selected)
     indicator_values: dict[str, str] = {}
     for name in selected:
         try:
@@ -116,6 +117,20 @@ def build_verified_market_snapshot(
               "| Date | Close |", "|---|---:|"]
     for _, row in recent.iterrows():
         lines.append(f"| {_fmt(row['Date'])} | {_fmt(row.get('Close'))} |")
+
+    lines += ["", "### Dated close-to-close movements", "",
+              "Adjacent available rows only; exchange-session completeness is not independently verified.",
+              "| From | To | Close change | Direction | Coverage |", "|---|---|---:|---|---|"]
+    if len(recent) < 2:
+        lines.append("Insufficient observed closes to establish a session movement.")
+    for index in range(1, len(recent)):
+        previous, current = recent.iloc[index - 1], recent.iloc[index]
+        start, end = _fmt(previous["Date"]), _fmt(current["Date"])
+        gaps = [day for day in df.attrs.get("incomplete_ohlcv_dates", []) if start < day <= end]
+        change = current["Close"] - previous["Close"]
+        direction = "up" if change > 0 else "down" if change < 0 else "unchanged"
+        coverage = "not consecutive: incomplete bars " + ", ".join(gaps) if gaps else "no known excluded bar between rows"
+        lines.append(f"| {start} | {end} | {change:+.2f} | {direction} | {coverage} |")
 
     lines += [
         "",

@@ -6,11 +6,12 @@ import argparse
 import json
 import mimetypes
 import secrets
+import sys
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from zipfile import BadZipFile, LargeZipFile
 
 from dotenv import load_dotenv
 
@@ -64,6 +65,8 @@ class DeskHandler(BaseHTTPRequestHandler):
             return False
 
     def _send(self, status, body, content_type="application/json; charset=utf-8", *, headers=None):
+        if getattr(self, "quote_diagnostic", None) is not None:
+            self.quote_diagnostic["status"] = status
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode("utf-8")
         self.send_response(status)
@@ -78,15 +81,27 @@ class DeskHandler(BaseHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         )
-        self.end_headers()
+        try:
+            self.end_headers()
+        except (ConnectionError, TimeoutError) as exc:
+            if getattr(self, "quote_diagnostic", None) is not None:
+                self.quote_diagnostic.update(transport_exception=type(exc).__name__, response_stage="headers")
+            raise
         try:
             self.wfile.write(body)
-        except (ConnectionError, TimeoutError):
+            if getattr(self, "quote_diagnostic", None) is not None:
+                self.quote_diagnostic["response_stage"] = "written"
+        except (ConnectionError, TimeoutError) as exc:
+            if getattr(self, "quote_diagnostic", None) is not None:
+                self.quote_diagnostic.update(transport_exception=type(exc).__name__, response_stage="body")
             # A cancelled browser request does not invalidate the operation
             # already journaled by the service, and must not trigger a retry.
             self.close_connection = True
 
     def do_GET(self):
+        if not urlsplit(self.path).path.startswith("/api/"):
+            self._get()
+            return
         with self.server.service.maintenance:
             self._get()
 
@@ -114,6 +129,20 @@ class DeskHandler(BaseHTTPRequestHandler):
         if path == "/api/workspace":
             self._send(200, self.server.service.workspace())
             return
+        if path == "/api/runs/continuation":
+            try:
+                self._send(200, self.server.service.continuation_status(parse_qs(url.query).get("run_id", [None])[0]))
+            except (KeyError, StopIteration, ValueError):
+                self._send(400, {"error": "Saved research continuation is unavailable."})
+            return
+        if path == "/api/discovery":
+            query = parse_qs(url.query)
+            try:
+                result = self.server.service.discovery_detail(query.get("observation", [None])[0], query.get("symbol", [None])[0]) if query else self.server.service.discovery()
+                self._send(200, result)
+            except (ValueError, KeyError):
+                self._send(400, {"error": "Retained discovery observation is unavailable"})
+            return
         elif path == "/api/investor":
             self._send(200, self.server.service.investor())
             return
@@ -133,6 +162,14 @@ class DeskHandler(BaseHTTPRequestHandler):
             except (ValueError, KeyError, OSError):
                 self._send(400, {"error": "Saved command receipt is unavailable or changed"})
             return
+        if path.startswith("/api/attention/occurrences/"):
+            try:
+                identity = path.removeprefix("/api/attention/occurrences/")
+                result = self.server.service.attention_occurrence(identity, parse_qs(url.query).get("generation", [None])[0])
+                self._send(200, result)
+            except (OSError, ValueError, KeyError, TypeError):
+                self._send(400, {"error": "Saved alert evidence is unavailable or the application generation changed"})
+            return
         if path == "/api/attention":
             self._send(200, self.server.service.attention())
             return
@@ -140,10 +177,18 @@ class DeskHandler(BaseHTTPRequestHandler):
             try:
                 query = parse_qs(url.query)
                 symbol = query.get("symbol", [None])[0]
-                result = self.server.service.data_jobs.detail(symbol, query.get("key", [None])[0]) if symbol else self.server.service.data_jobs.state()
+                result = self.server.service.data_jobs.detail(symbol, query.get("key", [None])[0], timeframe=query.get("timeframe", ["1Day"])[0]) if symbol else self.server.service.data_jobs.state()
                 self._send(200, result)
             except (OSError, ValueError, KeyError):
                 self._send(400, {"error": "Saved current-market history is unavailable or changed"})
+            return
+        if path == "/api/evaluations":
+            try:
+                query = parse_qs(url.query)
+                identity, event = query.get("id", [None])[0], query.get("event_id", [None])[0]
+                self._send(200, self.server.service.experiment_event(identity, event) if event else self.server.service.evaluations(identity))
+            except (OSError, ValueError, KeyError):
+                self._send(400, {"error": "Saved simulation evidence is unavailable or changed"})
             return
         if path == "/api/stock-evidence":
             try:
@@ -165,13 +210,6 @@ class DeskHandler(BaseHTTPRequestHandler):
                     self._send(404, {"error": "Saved reporting route was not found"})
             except (ValueError, KeyError, StopIteration, IndexError, OSError):
                 self._send(400, {"error": "Saved account-history source is missing, changed or unavailable"})
-            return
-        if path.startswith("/api/backups/"):
-            try:
-                payload = self.server.service.backup_download(path.removeprefix("/api/backups/"))
-                self._send(200, payload, "application/zip", headers={"Content-Disposition": 'attachment; filename="tradingagents-backup.zip"'})
-            except (ValueError, OSError):
-                self._send(404, {"error": "Saved application backup was not found"})
             return
         if path.startswith("/api/runs/") or path.startswith("/api/instruments/"):
             try:
@@ -208,6 +246,14 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/lists.js": "lists.js",
             "/static/nautilus.js": "nautilus.js",
             "/static/command-controls.js": "command-controls.js",
+            "/static/market-chart.js": "market-chart.js",
+            "/static/vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js": "vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js",
+            "/static/vendor/lightweight-charts-drawing/0.6.2/LICENSE": "vendor/lightweight-charts-drawing/0.6.2/LICENSE",
+            "/static/vendor/lightweight-charts-drawing/0.6.2/SOURCE.txt": "vendor/lightweight-charts-drawing/0.6.2/SOURCE.txt",
+            "/static/vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js": "vendor/lightweight-charts/5.2.1/lightweight-charts.standalone.production.js",
+            "/static/vendor/lightweight-charts/5.2.1/LICENSE": "vendor/lightweight-charts/5.2.1/LICENSE",
+            "/static/vendor/lightweight-charts/5.2.1/NOTICE": "vendor/lightweight-charts/5.2.1/NOTICE",
+            "/static/vendor/lightweight-charts/5.2.1/SOURCE.txt": "vendor/lightweight-charts/5.2.1/SOURCE.txt",
             "/static/styles.css": "styles.css",
             "/static/app.css": "app.css",
             "/static/recovery.js": "recovery.js",
@@ -226,7 +272,27 @@ class DeskHandler(BaseHTTPRequestHandler):
         self._send(200, file.read_bytes(), f"{content_type}; charset=utf-8", headers=headers)
 
     def do_POST(self):
-        self._post()
+        self.quote_diagnostic = None
+        if urlsplit(self.path).path == "/api/quotes/refresh":
+            request_id = self.headers.get("X-Request-ID", "")
+            if len(request_id) != 32 or any(c not in "0123456789abcdef" for c in request_id):
+                request_id = secrets.token_hex(16)
+            self.quote_diagnostic = {"request_id": request_id, "method": "POST", "path": "/api/quotes/refresh"}
+            self._quote_log("admitted")
+        try:
+            self._post()
+        except Exception as exc:
+            if self.quote_diagnostic is not None:
+                self.quote_diagnostic["exception"] = type(exc).__name__
+            raise
+        finally:
+            if self.quote_diagnostic is not None:
+                self._quote_log("finished")
+            self.quote_diagnostic = None
+
+    def _quote_log(self, event):
+        print(json.dumps({"time": datetime.now(timezone.utc).isoformat(), "event": event,
+                          **self.quote_diagnostic}), file=sys.stderr, flush=True)
 
     def _post(self):
         if (
@@ -242,10 +308,8 @@ class DeskHandler(BaseHTTPRequestHandler):
             return
         maintenance_guard = None
         try:
-            request_path = urlsplit(self.path).path
             length = int(self.headers.get("Content-Length", "0"))
-            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else 65536
-            if not 0 < length <= maximum or self.headers.get("Transfer-Encoding"):
+            if not 0 < length <= 65536 or self.headers.get("Transfer-Encoding"):
                 raise ValueError("Request body exceeds the supported endpoint size boundary.")
             if self.headers.get_content_type() != "application/json":
                 raise ValueError("Send application/json.")
@@ -262,22 +326,22 @@ class DeskHandler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be a JSON object.")
             service = self.server.service
             path = urlsplit(self.path).path
-            if not (path == "/api/reporting" and data.get("action") == "collect" or
-                    path == "/api/recovery" and data.get("action") in {"preview", "backup"}):
+            if not (path in {"/api/discovery", "/api/quotes/refresh", "/api/commands/reconcile", "/api/native-report"} or path == "/api/reporting" and data.get("action") == "collect" or
+                    path == "/api/commands" and data.get("action") == "option_instruction" and data.get("operation") == "submit"):
                 service.maintenance.acquire()
                 maintenance_guard = service.maintenance
-            if getattr(service, "recovery_only", False) and path != "/api/recovery":
-                self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
+            if getattr(service, "recovery_only", False):
+                self._send(503, {"error": "Saved records are unavailable. Startup diagnostics are read-only."})
                 return
             if service.browse_only and path not in {
-                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history"}:
+                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
                 self._send(400, {"error": "Legacy direct-order submission is unsupported. Use exact proposal approval, admission and Nautilus commands through /api/commands."})
                 return
             if path == "/api/nautilus/start":
-                result = service.start_native()
+                result = service.start_native(data)
             elif path == "/api/nautilus/stop":
                 result = service.runtime.stop()
             elif path == "/api/quotes/refresh":
@@ -288,28 +352,16 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.save_config(data)
             elif path == "/api/workspace":
                 result = service.save_workspace(data)
+            elif path == "/api/discovery":
+                result = service.discovery(data)
             elif path == "/api/investor":
                 result = service.save_investor(data)
+            elif path == "/api/evaluations":
+                result = service.evaluation_action(data)
             elif path == "/api/approvals":
                 result = service.approval_action(data)
             elif path == "/api/admission":
                 result = service.approval_action(data, admission=True)
-            elif path == "/api/recovery":
-                result = service.recovery_action(data)
-                if getattr(service, "recovery_only", False) and result.get("restored"):
-                    service.close()
-                    try:
-                        replacement = DeskService(service.application_root, runtime=service.runtime,
-                                                  browse_only=service.launch_browse_only)
-                        replacement.launch_browse_only = service.launch_browse_only
-                    except Exception:
-                        from .recovery import writer_lease
-                        service.writer_lease = writer_lease(service.application_root)
-                        raise
-                    replacement.launch_root = service.original_root
-                    self.server.service = replacement
-                    result.update(promoted=True, restart_required=False,
-                        message="Application records restored in a retained sibling generation. Native cache is in memory and is not restored; new orders remain blocked pending fresh reconciliation and review.")
             elif path == "/api/reporting":
                 result = service.save_reporting(data)
             elif path == "/api/commands":
@@ -320,6 +372,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.reconcile_commands()
             elif path == "/api/attention":
                 result = service.save_attention(data)
+            elif path == "/api/native-report":
+                result = service.native_report(data)
             elif path == "/api/market-history":
                 result = service.data_jobs.request(data)
             elif path == "/api/runs":
@@ -330,6 +384,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                 )
             elif path == "/api/runs/cancel":
                 result = service.cancel_run(data["run_id"])
+            elif path == "/api/runs/resume":
+                result = service.resume_run(data["run_id"], data.get("continuation_revision"))
             elif path in {"/api/proposals", "/api/drafts"}:
                 raise ValueError("Legacy native draft creation was retired. Save validated BUY/SELL proposals through the investor workspace.")
             elif path == "/api/trading/pause":
@@ -342,16 +398,16 @@ class DeskHandler(BaseHTTPRequestHandler):
             self._send(403, {"error": str(exc)})
         except StoreConflict as exc:
             self._send(409, {"error": str(exc), "current_revision": exc.revision})
-        except WriterBusy as exc:
-            self._send(409, {"error": str(exc), "recovery_cutover_blocked": True})
         except GatewayRateLimited as exc:
             self._send_rate_limit(exc)
-        except (BadZipFile, LargeZipFile):
-            self._send(400, {"error": "Invalid or damaged backup ZIP. Choose an intact TradingAgents backup archive and inspect it again."})
         except (ValueError, KeyError, StopIteration) as exc:
+            if self.quote_diagnostic is not None:
+                self.quote_diagnostic["exception"] = type(exc).__name__
             self.close_connection = True
             self._send(400, {"error": str(exc) or "Requested item was not found."})
-        except Exception:
+        except Exception as exc:
+            if self.quote_diagnostic is not None:
+                self.quote_diagnostic["exception"] = type(exc).__name__
             self._send(
                 502,
                 {

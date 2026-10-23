@@ -1,6 +1,7 @@
 from tradingagents.agents.context import (
     get_instrument_context_from_state,
     get_language_instruction,
+    get_verified_market_context_from_state,
     opponent_argument_or_opening,
     report_or_absent,
 )
@@ -41,6 +42,7 @@ Key points to focus on:
 Resources available:
 
 {instrument_context}
+{get_verified_market_context_from_state(state)}
 Market research report: {market_research_report}
 Social media sentiment report: {sentiment_report}
 Latest world affairs news: {news_report}

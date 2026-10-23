@@ -13,6 +13,12 @@ METHOD = "modified-dietz-recorded-flow-time-v1"
 EXTERNAL = {"CSD", "CSW", "ACATC"}
 INCOME = {"DIV", "CGD", "INT", "PTR"}
 COST = {"FEE", "CFEE", "DIVFEE", "DIVNRA", "INTNRA", "INTTW", "PTC"}
+OPTION_ACTIVITY = {"OPEXP", "OPASN", "OPXRC", "OPEXC", "OPTRD"}
+
+
+def activity_key(row):
+    """Internal component key; paired broker NTAs can share the unchanged raw id."""
+    return json.dumps([row.get("activity_type"), row.get("id"), row.get("symbol"), row.get("side")], separators=(",", ":")) if row.get("activity_type") in OPTION_ACTIVITY else row.get("id")
 
 
 def instant(value):
@@ -53,7 +59,7 @@ def modified_dietz(beginning, ending, start, end, flows, *, complete):
 
 def classify(row):
     kind = row.get("activity_type")
-    category = "external_flow" if kind in EXTERNAL else "investment_income" if kind in INCOME else "investment_cost" if kind in COST else "trade" if kind == "FILL" else "unclassified"
+    category = "external_flow" if kind in EXTERNAL else "investment_income" if kind in INCOME else "investment_cost" if kind in COST else "trade" if kind == "FILL" else "option_lifecycle" if kind in OPTION_ACTIVITY else "unclassified"
     amount = decimal(row.get("net_amount"))
     issues = []
     if row.get("status") not in (None, "executed"):
@@ -69,12 +75,14 @@ def classify(row):
     else:
         stamp = row.get("transaction_time") or row.get("date")
     if category == "unclassified":
-        issues.append("Activity type has unresolved cash/capital treatment")
+        issues.append("Cash journal needs source/destination and purpose evidence to establish external versus internal treatment, plus an effective flow time; creation time is not substituted" if kind == "JNLC" else "Activity type has unresolved cash/capital treatment")
+    if category == "option_lifecycle":
+        issues.append("Broker option expiry/exercise/assignment activity; cash and deliverable reconciliation requires its actual linked records, never an inferred fill")
     if category in {"investment_income", "investment_cost"} and amount is None:
         issues.append("Investment activity amount is unavailable")
     if category == "trade" and decimal(row.get("commission")) is None:
         issues.append("Fill commission is not present in this Trading API activity receipt")
-    return {"id": row.get("id"), "activity_type": kind, "category": category, "amount": str(amount) if amount is not None else None,
+    return {"id": row.get("id"), "component_key": activity_key(row), "activity_type": kind, "category": category, "amount": str(amount) if amount is not None else None,
             "time": stamp, "date": row.get("date"), "symbol": row.get("symbol"), "order_id": row.get("order_id"), "issues": issues}
 
 
@@ -123,7 +131,7 @@ def collect(client, store, start, end, expected_account):
     except Exception as exc:
         issues.append("Valuation calendar unavailable (" + type(exc).__name__ + ")")
         calendar = []
-    unique, page_token, tokens, complete = {}, None, set(), False
+    unique, page_token, tokens, complete, revisions = {}, None, set(), False, []
     try:
         for _ in range(20):
             query = {"after": interval_start, "until": interval_end, "direction": "asc", "page_size": 100}
@@ -135,9 +143,15 @@ def collect(client, store, start, end, expected_account):
             for row in page:
                 if not isinstance(row.get("id"), str) or not row["id"]:
                     raise ValueError("Activity has no stable identity")
-                if row["id"] in unique and unique[row["id"]] != row:
-                    raise ValueError("Activity identity returned with conflicting contents")
-                unique[row["id"]] = row
+                key = activity_key(row)
+                if key in unique and unique[key] != row:
+                    if row.get("activity_type") not in OPTION_ACTIVITY:
+                        raise ValueError("Activity identity returned with conflicting contents")
+                    if not any(item["component_key"] == key and item["observed"] == row for item in revisions):
+                        revisions.append({"component_key": key, "previous": unique[key], "observed": row, "receipt": receipts[-1]})
+                        issues.append("Option activity has unresolved component revisions; raw broker id is preserved")
+                    continue
+                unique[key] = row
             if len(page) < 100:
                 complete = True
                 break
@@ -181,7 +195,7 @@ def collect(client, store, start, end, expected_account):
     issues.extend(covered["coverage"]["issues"])
     result = {"id": identity, "account_id": before["id"], "currency": before.get("currency"),
         "requested_start": start, "requested_end": end, "collected_at": datetime.now(UTC).isoformat(),
-        "source": "Alpaca paper Trading API", "receipts": receipts, "activities": activities,
+        "source": "Alpaca paper Trading API", "receipts": receipts, "activities": activities, "activity_revisions": revisions,
         "pagination_complete": complete, **covered, "points": points,
         "broker_base_value": portfolio.get("base_value") if isinstance(portfolio, dict) else None,
         "broker_base_value_asof": portfolio.get("base_value_asof") if isinstance(portfolio, dict) else None,
