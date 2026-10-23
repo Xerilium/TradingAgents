@@ -178,8 +178,8 @@ function detailNotice(result,run){
   const key=`${run?.id}:${selectedSymbol}`;
   if(detailErrors.has(key))return `<div class="detail-note negative">${esc(detailErrors.get(key))}<button class="button button-small" data-action="retry-detail">Try loading reports again</button></div>`;
   if(['queued','running','cancelling','cancel_requested'].includes(run?.status)){
-    const summary=run.results?.find(item=>item.symbol===selectedSymbol),loaded=resultDetails.get(key)||(summary?.reports?summary:null);
-    return '<div class="detail-note" role="status">Research '+esc(run.status.replaceAll('_',' '))+'. Loaded report revision '+esc(loaded?.revision??'not yet available')+'; run snapshot revision '+esc(summary?.revision??'not yet available')+'. Saved reports remain visible while updates load.</div>';
+    const message=run.status==='queued'?'Research is queued. Saved reports will update as results arrive.':run.status==='running'?'Research is running. Saved reports update as results arrive.':'Research is stopping. Saved reports remain available.';
+    return '<div class="detail-note" role="status">'+message+'</div>';
   }
   if(result&&!result.reports)return '<div class="detail-note" role="status">Loading the selected stock’s research reports…</div>';
   if(result?._updating)return '<div class="detail-note" role="status">A newer report is pending. The previous version remains visible. <button class="link-button" data-action="retry-detail">Refresh this report</button></div>';
