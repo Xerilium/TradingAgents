@@ -53,6 +53,8 @@ actual installation, saved data and permitted smoke test.
   Backlog frozen means no new work on backlog features, not stopping the work
   already planned. Bug fixes remain allowed. UI issues reorganize existing
   capabilities; no new backend features or invented data/actions.
+- All ten UI-00–UI-09 issues are required. Do not omit, defer or narrow any
+  package; finish all eight implementation packages and integrated acceptance.
 - No standalone INTC walkthrough: the user banned that repeated demo. Complete
   the UI issues and verify their integrated criteria and changed workflows.
 - The user's restriction on agents placing trades is not permission to disable
