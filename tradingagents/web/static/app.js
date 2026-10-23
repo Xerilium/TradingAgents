@@ -440,6 +440,10 @@ function renderSettingsDiagnostics(){
  const restriction=reconciliation.querySelector('.negative');if(restriction)native.before(restriction);
  const gaps=reconciliation.querySelector('ul');if(gaps?.children.length)native.before(gaps);
  let node=reconciliation;while(node&&!(node.tagName==='H3'&&node.textContent==='Broker trade updates')){const next=node.nextElementSibling;native.append(node);node=next;}
+ const stream=document.createElement('details');stream.className='settings-diagnostics-details';stream.id='settings-broker-update-details';stream.innerHTML='<summary>Broker trade update details</summary>';
+ node=node.nextElementSibling.nextElementSibling;node.before(stream);while(node&&!(node.tagName==='H3'&&node.textContent==='Application backup')){const next=node.nextElementSibling;stream.append(node);node=next;}
+ const records=document.createElement('details');records.className='settings-diagnostics-details';records.id='settings-local-records';records.innerHTML='<summary>Local records</summary>';
+ node.before(records);while(node&&!(node.tagName==='DETAILS'&&node.querySelector('summary')?.textContent==='Launch and restart')){const next=node.nextElementSibling;records.append(node);node=next;}
  health.insertAdjacentHTML('afterbegin','<p>Engine: '+esc(stateErrorMessage?'Unconfirmed · last snapshot':state.health?.engine||'Unknown')+' · account import: '+esc(state.health?.reconciliation?.status||'unknown')+' · local store: '+esc(state.health?.store?.status||'unknown')+'</p>');
  if(state.nautilus?.error)health.insertAdjacentHTML('afterbegin','<p class="negative">'+esc(state.nautilus.error)+'</p>');
  return renderDiagnostics()+health.outerHTML;
