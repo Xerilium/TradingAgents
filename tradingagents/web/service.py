@@ -36,7 +36,7 @@ from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
 from .config import DeskConfig
 from .alpaca_readonly import DEFAULT_CREDENTIALS
 from .nautilus_runtime import NautilusRuntime
-from .store import DeskStore
+from .store import DeskStore, source_attempt_failed
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
 OWNED_TERMINAL = {"filled", "canceled", "expired", "rejected"}
@@ -1873,7 +1873,8 @@ class DeskService:
         with self.maintenance:
             if self.runtime is not runtime or self.store is not store:
                 raise ValueError("Application generation changed; refresh the current account again")
-            return self.state()
+            market = self._runtime_market()
+            return {key: market[key] for key in ("quotes", "clock", "quotes_updated_at")}
 
     def native_report(self, request):
         kind = request.get("report_kind")
@@ -2582,13 +2583,7 @@ class DeskService:
                             self.store._call_counts(evidence, origin)
                             evidence_by_origin[origin] = evidence
                     failures = [a["operation"] for a in evidence_by_origin["source"]["attempts"]
-                                if a.get("capture_error") or ((a.get("outcome") != "success"
-                                    or a.get("data_status") in {"unavailable", "partial"}) and not (
-                                        a.get("requirement") == "supplemental" and a.get("operation") == "read_research_source"
-                                        and a.get("vendor") == "public_source" and a.get("origin") == "source_document_text"
-                                        and a.get("outcome") == "error" and a.get("error_class") == "HTTPError"
-                                        and type(a.get("http_status")) is int and 400 <= a["http_status"] <= 599
-                                        and a.get("capture") == "error_class_only"))]
+                                if source_attempt_failed(a)]
                     if failures or not evidence_by_origin["source"].get("capture_complete"):
                         raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
                     if any(not evidence_by_origin[origin].get("capture_complete", False) for origin in ("gateway", "jev")):

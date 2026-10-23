@@ -24,6 +24,17 @@ class SourceEvidenceError(ValueError):
     """A bounded, safe-to-display receipt-capture failure."""
 
 
+def source_attempt_failed(attempt):
+    return bool(attempt.get("capture_error") or (
+        (attempt.get("outcome") != "success" or attempt.get("data_status") in {"unavailable", "partial"})
+        and not (attempt.get("requirement") == "supplemental"
+                 and attempt.get("operation") == "read_research_source"
+                 and attempt.get("vendor") == "public_source" and attempt.get("origin") == "source_document_text"
+                 and attempt.get("outcome") == "error" and attempt.get("error_class") == "HTTPError"
+                 and type(attempt.get("http_status")) is int and 400 <= attempt["http_status"] <= 599
+                 and attempt.get("capture") == "error_class_only")))
+
+
 class DeskStore:
     def __init__(self, directory: Path, defaults: dict, *, migrate_legacy=False):
         self.directory = Path(directory)
@@ -64,9 +75,10 @@ class DeskStore:
             if interrupted or recovered_calls:
                 self.checkpoint_request(request, "recovery_unknown")
         for run in self.data["runs"]:
-            source_incomplete = any(a.get("outcome") != "success" or a.get("data_status") in {"unavailable", "partial"}
-                                    for a in run.get("source_evidence", {}).get("attempts", []))
             for result in run.get("results", []):
+                source_incomplete = any(source_attempt_failed(a)
+                    for a in run.get("source_evidence", {}).get("attempts", [])
+                    if a.get("symbol") in {None, result["symbol"]})
                 if (result.get("status") == "completed"
                         and (source_incomplete or result.get("social_sentiment", {}).get("status") in {"partial", "unavailable"})):
                     result.update(status="failed", error="Research incomplete: source collection or social screening failed. Saved reports are retained.")
