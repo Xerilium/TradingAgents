@@ -48,8 +48,9 @@ actual installation, saved data and permitted smoke test.
 
 - Keep TradingAgents for research, NautilusTrader as the engine, and the Alpaca
   paper integration operational. Do not build a second trading engine.
-- Feature freeze: make only requested, surgical fixes. Every product change
-  needs a user requirement; do not invent blockers or expand the specification.
+- Backlog frozen except bug fixes. An open issue, design or existing plan does
+  not authorize features or discretionary refactoring. Establish a concrete
+  failure in existing behavior, then make a surgical fix and verify the result.
 - The user's restriction on agents placing trades is not permission to disable
   the integration. Preserve per-order approval and separate submission.
 - Until explicitly authorized otherwise: no trades, order approvals, broker
