@@ -32,8 +32,8 @@
 ## Paper trading desk
 
 This checkout contains our local browser app: TradingAgents research, NautilusTrader
-as the trading engine, and an Alpaca paper adapter. The current saved universe is
-503 S&P 500 stocks. Account, prices, watchlists, reports, order preparation and
+as the trading engine, and an Alpaca paper adapter. The stock universe is
+configurable; a fresh store starts with FANGMAN. Account, prices, watchlists, reports, order preparation and
 the decision journal are available in one browser workspace.
 
 **Start here: [launch and user guide](docs/local-desk-guide.md).**
@@ -49,7 +49,7 @@ rtk proxy C:\src\TradingAgents\.venv\Scripts\python.exe C:\src\TradingAgents\Lau
 ```
 
 The only TradingAgents UI port is **8098**; do not launch an alternate-port instance.
-Open <http://127.0.0.1:8098>. Expand **Nautilus connection** and choose
+Open <http://127.0.0.1:8098>. Go to **Settings > Account** and choose
 **Start Nautilus** if stopped. Every order requires approval of its exact terms
 and a separate Submit action. The app remains capable of paper trading;
 research runs needed for authorized development and UAT do not require another
@@ -58,6 +58,46 @@ permission request. Broker trades and approvals remain separately controlled.
 The upstream research framework documentation continues below. Older desk setup
 instructions in [paper-trading.md](docs/paper-trading.md) are explicitly marked
 as superseded; use the linked local guide for this installation.
+
+### Clear local saved data
+
+Saved data has two locations, both configured in `tradingdesk.launch.json`:
+
+- `application`: current settings, lists, drafts, research and local journal.
+- `history`: additional retained research and its report files. Clearing only
+  `application` leaves these old reports visible.
+
+This installation keeps both folders under
+`C:/src/TradingAgents/.local-workspace/evidence/runtime-staging/20261017T024233Z-e3f9548d/`.
+Read the configuration before cleanup; do not assume this path on another machine.
+
+To clear retained research while keeping current settings and drafts:
+
+1. Stop Nautilus in **Settings > Account**, then stop the app server owning port
+   8098. Confirm its native workers have exited. Do not stop unrelated Python processes.
+2. Resolve and verify the exact configured `history` directory. Reject junctions
+   or symbolic links. Delete that directory and recreate it empty. This permanently
+   removes its local reports, journal and legacy development artifacts.
+3. Restart the existing app with the same configured paths and port. Reload
+   **Research** and confirm no retained runs appear. Start Nautilus in
+   **Settings > Account** to reconnect.
+
+For a full local reset, stop the app first and clear both configured directories.
+This also removes local settings, drafts, lists and current research. An empty
+`application` requires initialization: the normal launcher deliberately rejects
+a missing SQLite store. Use the existing server entry point once with all five
+configured paths/options, then return to the normal launcher:
+
+```powershell
+rtk proxy .\.venv\Scripts\python.exe -m tradingagents.web.server --port 8098 --data-dir <application> --history-dir <history> --nautilus-python <native_python> --alpaca-credentials-file <credentials_file>
+```
+
+Replace placeholders with the exact values from `tradingdesk.launch.json`.
+Do not delete credentials, environments, source code or broker records. A local
+reset does not cancel broker orders, close positions or erase broker history.
+Browser preferences are separate; do not import old browser lists/preferences
+into a fresh workspace unless wanted. Verify the empty state in the UI after
+restart; a directory deletion alone does not clear the running app's memory.
 
 ## News
 
