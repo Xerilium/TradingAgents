@@ -112,6 +112,40 @@ def observe_jev_call(boundary, *, parameters=None, ordinal=None, observation=Non
                                 origin="jev", observation=observation)
 
 
+def _gateway_failure_details(error):
+    """Retain bounded cause diagnostics without arbitrary exception/source text."""
+    pending, seen, details = [error], set(), []
+    messages = (r"All connection attempts failed|Connection refused|actively refused it|"
+                r"connection reset|connection aborted|connection closed|server disconnected|"
+                r"timed out|timeout|name resolution failed|No such host is known|"
+                r"certificate verify failed|SSL handshake failed|unsupported protocol|"
+                r"MCP operation failed|unhandled errors in a TaskGroup|invalid JSON|"
+                r"JSON Schema|schema validation failed|Missing required argument")
+    while pending and len(details) < 6:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        text = current.args[0][:512] if current.args and isinstance(current.args[0], str) else ""
+        # Extract known diagnostic phrases only: never serialize URLs, quoted inputs,
+        # HTTP fields, response bodies, schema instances, or arbitrary message suffixes.
+        phrases = re.findall(messages, text, flags=re.IGNORECASE)
+        detail = {"class": type(current).__name__[:80],
+                  "message": "; ".join(dict.fromkeys(phrases))[:256] or "Exception details withheld"}
+        for name, value in (("errno", getattr(current, "errno", None)),
+                            ("winerror", getattr(current, "winerror", None)),
+                            ("http_status", getattr(getattr(current, "response", None), "status_code", None))):
+            if type(value) is int:
+                detail[name] = value
+        rule = getattr(current, "validator", None)
+        if isinstance(rule, str) and rule in {"required", "additionalProperties", "type", "enum", "const", "minimum", "maximum", "oneOf", "anyOf", "allOf", "format"}:
+            detail["schema_rule"] = rule
+        details.append(detail)
+        cause = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+        pending.extend(([cause] if cause else []) + list(getattr(current, "exceptions", ()))[:6])
+    return details
+
+
 @contextmanager
 def observe_gateway_call(domain, command, boundary, *, eligible=False, parameters=None,
                          purpose=None, ordinal=None, origin="gateway", observation=None):
@@ -140,6 +174,8 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
                        receipt["outcome"] if receipt["outcome"] in {"deferred", "unknown"} else "error",
                        error_class=kind if kind in {"GatewayError", "GatewayTimeout", "GatewayRateLimited",
                                                    "CancelledError", "TimeoutError", "TypeSafeError"} else "UnexpectedError")
+        if origin == "gateway":
+            receipt["error_details"] = _gateway_failure_details(exc)
         if kind == "GatewayRateLimited":
             receipt["retry_after_seconds"] = exc.retry_after
         raise
