@@ -124,7 +124,7 @@ body{font-size:12px}h1{font-size:21px;font-weight:600;letter-spacing:-.015em}h2{
 .settings-content .settings-category-form { display:flex; flex-direction:column; }
 .settings-content .form-actions { position:sticky; bottom:0; background:var(--paper); border-top:1px solid var(--line); padding:12px; z-index:2; }
 .settings-content .settings-note { max-width:none; }
-#main[data-page="settings"],#main[data-page="alerts"] { display:flex; flex-direction:column; overflow:hidden; }
+.app-shell > .workspace > #main[data-page="settings"],.app-shell > .workspace > #main[data-page="alerts"],.app-shell > .workspace > #main[data-page="portfolio"],.app-shell > .workspace > #main[data-page="markets"] { display:flex; flex-direction:column; overflow:hidden; }
 #universe-review.settings-policy { background:transparent; font:inherit; }
 #universe-review.alerts-workspace { display:flex; flex:1; min-height:0; overflow:hidden; font:inherit; }
 #universe-review.alerts-workspace #attention-workspace { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; margin:0; }
@@ -141,14 +141,15 @@ body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); hei
 .app-shell > .sidebar { position:static; display:flex; flex-direction:column; width:auto; height:100%; min-width:0; min-height:0; padding:12px 8px; overflow-x:hidden; overflow-y:auto; }
 .app-shell > .sidebar .sidebar-button { width:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; height:auto; }
 .app-shell > .sidebar .sidebar-bottom > * { min-width:0; max-width:100%; }
-.view-tabs { display:flex; flex:0 0 auto; gap:4px; overflow:auto; }
+.view-tabs { display:flex; flex-direction:row; flex:0 0 auto; gap:4px; overflow:auto; }
 .view-tabs > button { flex:0 0 auto; width:auto; min-height:32px; padding:7px 10px; color:var(--ink); background:var(--control,var(--paper)); border:1px solid var(--line); border-radius:3px; }
 .app-shell > .sidebar .brand { padding:8px; margin:0 0 16px; }
 .app-shell > .sidebar #navigation { display:flex; flex-direction:column; gap:4px; width:100%; overflow:visible; }
 .app-shell > .sidebar .nav-link { min-height:36px; padding:8px; border:1px solid transparent; white-space:normal; }
+.app-shell > .sidebar .nav-link > span { display:inline; }
 .app-shell > .sidebar .nav-link[aria-current] { border-color:var(--accent); }
 .app-shell > .sidebar .sidebar-bottom { display:flex; flex-direction:column; gap:8px; margin-top:auto; padding-top:16px; }
-.app-shell > .sidebar .paper-identity { max-width:100%; padding:0; }
+.app-shell > .sidebar .paper-identity { display:flex; flex-wrap:wrap; max-width:100%; padding:0; }
 .app-shell > .sidebar .paper-identity span:not(.status-dot),.app-shell > .sidebar .sidebar-footer { font-size:11px; overflow-wrap:anywhere; }
 .app-shell > .workspace { display:flex; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
 .app-shell > .workspace > .topbar { flex:0 0 auto; min-height:40px; padding:8px 16px; }
@@ -185,11 +186,13 @@ body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); hei
 }
 @media(max-width:790px) {
  body > .app-shell { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
- .app-shell > .sidebar { height:auto; max-height:24vh; padding:4px 8px; overflow:auto; }
+ .app-shell > .sidebar { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto; gap:4px; height:auto; max-height:none; padding:4px 8px; overflow:hidden; }
  .app-shell > .sidebar .brand { display:none; }
- .app-shell > .sidebar #navigation { flex-direction:row; flex-wrap:nowrap; overflow:auto; }
- .app-shell > .sidebar .nav-link { flex:0 0 auto; white-space:nowrap; }
- .app-shell > .sidebar .sidebar-bottom { flex-direction:row; align-items:center; margin:0; padding:4px; }
+ .app-shell > .sidebar #navigation { order:0; min-width:0; flex-direction:row; flex-wrap:nowrap; overflow:auto; }
+ .app-shell > .sidebar .nav-link { flex:0 0 auto; min-height:32px; padding:6px; white-space:nowrap; font-size:11px; }
+ .app-shell > .sidebar .nav-link svg { display:none; }
+ .app-shell > .sidebar .sidebar-bottom { order:1; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; margin:0; padding:4px; }
+ .app-shell > .sidebar .sidebar-button { flex:0 0 auto; width:auto; padding:5px 8px; }
  .sidebar-bottom .paper-identity span:not(.status-dot),.sidebar-bottom .sidebar-footer { display:none; }
  .app-shell > .sidebar .paper-identity .compact-account { display:inline; font-size:11px; }
  .app-shell > .sidebar .gateway-status { display:flex; font-size:11px; }
