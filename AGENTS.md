@@ -12,12 +12,12 @@ Read [printerv2 operating rules](C:/src/printerv2/AGENTS.md), the
 [local issue tracker](C:/src/printerv2/issues/2026-10-22-ui-delivery.md), and the
 [delivery plan](C:/src/printerv2/docs/ui/approved-20261022/delivery.md).
 Current user instructions and issue criteria supersede historical guidance.
-The primary assistant owns planning, documentation, local Git, and issue/PR
-administration; it never edits application code or resolves code conflicts.
-Implementation agents work from scoped issues with explicit worktree/file
-ownership; one integration agent owns shared files. Agents report through the
-primary assistant. Use only the latest available Sol, Terra, or Luna models at
-default reasoning unless the task warrants more; never Astra. Git stays local.
+For the current UI completion task, the user assigns all code changes and local
+Git to the primary assistant in this checkout. The primary is forbidden from
+testing/UAT. One read-only repository session performs the integrated UI sweep,
+reports defects, then rechecks the correction batch. No coding agents or new
+worktrees. Use only the latest Sol, Terra, or Luna models at default reasoning;
+never Astra or priority processing. Git stays local.
 
 Load Microsoft writing style and Maenifold skills at session start. Use
 SequentialThinking during multi-step problem solving and BuildContext to find
