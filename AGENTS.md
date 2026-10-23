@@ -1,5 +1,45 @@
 # Working on this TradingAgents checkout
 
+## Primary repository and UI delivery
+
+`C:/src/TradingAgents` is the primary repository and product checkout. Temporary
+worktrees isolate issue-scoped implementation; they do not replace the primary.
+Inspect its actual branch, working changes, and launch configuration before
+assigning work. Do not treat an older candidate worktree as the current product
+or overwrite primary changes with it.
+
+Read [printerv2 operating rules](C:/src/printerv2/AGENTS.md), the
+[local issue tracker](C:/src/printerv2/issues/2026-10-22-ui-delivery.md), and the
+[delivery plan](C:/src/printerv2/docs/ui/approved-20261022/delivery.md).
+Current user instructions and issue criteria supersede historical guidance.
+The primary assistant owns planning, documentation, local Git, and issue/PR
+administration; it never edits application code or resolves code conflicts.
+Implementation agents work from scoped issues with explicit worktree/file
+ownership; one integration agent owns shared files. Agents report through the
+primary assistant. Use only the latest available Sol, Terra, or Luna models at
+default reasoning unless the task warrants more; never Astra. Git stays local.
+
+Load Microsoft writing style and Maenifold skills at session start. Use
+SequentialThinking during multi-step problem solving and BuildContext to find
+related source memories, reading relevant sources before relying on them.
+Keep delivery status in local issues, not duplicate documents or this file.
+
+Every UI implementer and reviewer must load
+[Impeccable](C:/Users/brett/.agents/skills/impeccable/SKILL.md), run context setup
+once, use the appropriate playbook in Operate mode, and read the craft floor
+before UI edits. Use Microsoft writing style for UI copy and reports.
+The design suggests how to refactor; exact layouts, labels, and screen counts
+are not mandates. Preserve explicit user requirements and existing functionality.
+Abandon business elements/actions without real data sources or capabilities;
+do not fabricate them or add backend functionality to justify the design.
+Existing export/import remains unchanged and outside this UI assignment.
+
+Integrate and verify sprint batches, collect failures together, then recheck
+affected paths after coordinated corrections. A fresh independent agent reviews
+scope and goal alignment before the primary assistant personally signs off.
+Record the reviewed revision, findings, and decision. Do not ask the user to
+manage issues or reviews, repeat passing cycles, or claim unobserved acceptance.
+
 Read the [local desk launch and user guide](docs/local-desk-guide.md) and
 [README](README.md) first. The guide links acceptance records and describes the
 actual installation, saved data and permitted smoke test.
