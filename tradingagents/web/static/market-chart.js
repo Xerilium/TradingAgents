@@ -150,7 +150,7 @@ window.DeskMarketChart=(()=>{
       const library=window.LightweightCharts,style=getComputedStyle(element);
       const chart=library.createChart(element,{autoSize:true,height:280,
         layout:{background:{color:style.getPropertyValue('--surface').trim()||'#1c2933'},textColor:style.getPropertyValue('--fg').trim()||'#c7d1d9'},
-        grid:{vertLines:{color:'#2c3d49'},horzLines:{color:'#2c3d49'}},timeScale:{timeVisible:timeframe!=='1Day',secondsVisible:false},
+        grid:{vertLines:{color:'#2c3d49'},horzLines:{color:'#2c3d49'}},timeScale:{timeVisible:timeframe!=='1Day',secondsVisible:false,lockVisibleTimeRangeOnResize:true},
         localization:{priceFormatter:value=>Number(value).toFixed(2),timeFormatter:time=>formatTime(time,timeframe)}});
       mounted.set(element,{chart,key,onDispose});
       if(comparison){
