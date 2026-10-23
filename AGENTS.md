@@ -35,6 +35,17 @@ No new automated tests, mocks, backend-scripted UAT or unrelated scope.
 
 ## Product and scope
 
+- The primary assistant owns issue/PR administration and acceptance; the user
+  does not operate them. A fresh agent independent of the authors reviews issue
+  scope and integrated changes before primary-assistant sign-off. Check scope
+  creep, alignment with the stated trading goal and approved UI, missing
+  requirements, unnecessary work, changed financial semantics and unsupported
+  completion claims. Record the reviewer, exact revision, findings and decision
+  in the local issue. The primary assistant signs off only after evaluating a
+  passing review and adequate evidence. Review sprint batches, not every small
+  edit; source review never substitutes for integration UAT. Local branch-diff
+  reviews replace remote PRs while publication remains unauthorized.
+
 - Keep TradingAgents for research, NautilusTrader as the engine, and the Alpaca
   paper integration operational. Do not build a second trading engine.
 - Feature freeze: make only requested, surgical fixes. Every product change
