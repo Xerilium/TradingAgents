@@ -1,7 +1,7 @@
 #universe-review.markets-workspace,#universe-review.portfolio-workspace{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 #universe-review.markets-workspace>.app-header{padding:0 0 8px;border:0;background:transparent}
 #universe-review.markets-workspace .app-header .balances,#universe-review.markets-workspace .app-header .snapshot-strip,#universe-review.markets-workspace .portfolio-tabs,#universe-review.markets-workspace>#investor-policy,#universe-review.markets-workspace>#investor-proposals,#universe-review.markets-workspace>#allocation-workspace,#universe-review.markets-workspace>#attention-workspace{display:none}
-#universe-review.markets-workspace>.workspace{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:0}
+#universe-review.markets-workspace>.workspace{flex:1;min-height:0;display:flex;flex-direction:column;align-items:stretch;overflow:hidden;padding:0}
 #universe-review.markets-workspace #universe-view{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
 #universe-review.markets-workspace #markets-tabs,#universe-review.markets-workspace .scan-tabs{flex:none;display:flex;gap:4px;overflow-x:auto;margin:0 0 8px}
 #universe-review.markets-workspace #markets-tabs button,#universe-review.markets-workspace .scan-tabs button{white-space:nowrap}
