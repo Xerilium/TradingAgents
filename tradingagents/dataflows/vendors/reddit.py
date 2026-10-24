@@ -134,11 +134,8 @@ def _strip_html(content: str) -> str:
     return " ".join(html.unescape(text).split())
 
 
-# Headerless-429 backoff when Reddit gives no Retry-After. Measured against
-# /r/{sub}/search.rss, a retry still 429s at 8s, 10s and 30s of spacing and
-# succeeds at 60s, so a shorter wait spends the one retry on a request that
-# cannot succeed (#1295). Longer server-directed waits are deferred, not shortened.
-_RETRY_FALLBACK_SECONDS = 60.0
+# Reddit 429 waits are bounded to 1..30 seconds, including the parser's fallback.
+_RETRY_MAX_SECONDS = 30.0
 
 
 # Reddit search feeds are small (a page of results); cap the read so a
@@ -187,7 +184,16 @@ def _fetch_subreddit_rss(
                 raw = _read_capped(resp)
             return raw
         except (OSError, http.client.HTTPException, ET.ParseError) as exc:
-            retry.update(source_retry_plan(exc, attempt=retry["attempt"], remaining=timeout + _RETRY_FALLBACK_SECONDS))
+            retry.update(source_retry_plan(exc, attempt=retry["attempt"], remaining=timeout + 60))
+            if isinstance(exc, HTTPError) and exc.code == 429:
+                delay = retry["retry_after_seconds"]
+                value = getattr(exc, "retry_after", None)
+                if value is None:
+                    value = exc.headers.get("Retry-After") if exc.headers else None
+                retry.update(server_retry_after=str(value)[:128] if value is not None else None,
+                    unclamped_retry_after_seconds=delay,
+                    retry_after_seconds=max(1.0, min(_RETRY_MAX_SECONDS, delay)),
+                    retry_action="retry" if _retry else "stop")
             raise
 
     try:
@@ -201,7 +207,7 @@ def _fetch_subreddit_rss(
                             requirement="supplemental", ticker=ticker)
     except HTTPError as exc:
         if retry["retry_action"] == "retry":
-            # Honour Retry-After exactly; defer waits beyond the bounded allowance.
+            # The receipt retains the server header and the effective Reddit 429 clamp.
             wait = retry["retry_after_seconds"]
             logger.warning(
                 "Reddit RSS transient HTTP failure for r/%s · %s — backing off %.1fs then retrying once",
