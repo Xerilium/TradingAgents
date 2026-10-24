@@ -1,7 +1,7 @@
-"""Per-post social screening: Maenifold Laya for the desk, optional Jev for CLI.
+"""Per-post social screening: local Laya for the desk, optional Jev for CLI.
 
-``laya_screen`` uses the injected MCP SDK gateway, a shared timed serial
-screen, and exact multilingual token receipts. Its labels are sentiment
+``laya_screen`` uses the injected app-owned local batch adapter in the desk.
+Existing external callers can still supply the MCP SDK gateway. Labels are sentiment
 evidence, never research approval or trading authority.
 
 Jev answers typed questions with calibrated probabilities. Each StockTwits or
@@ -72,22 +72,23 @@ def _distribution(answer, labels):
 
 
 @contextmanager
-def _laya_turn(budget, max_seconds, cancelled):
+def _laya_turn(budget, max_seconds, cancelled, lane=None):
     """FIFO chunks; charge processing time, not time waiting behind other stocks."""
+    condition, queue = lane or (_LAYA_LANE, _LAYA_QUEUE)
     ticket, queued_at, started = object(), time.monotonic(), None
     active_time = budget.setdefault("time_policy", "wall_clock_v1" if budget.get("expires_at") else "active_lane_v1") == "active_lane_v1"
     if not active_time and budget.get("deadline") is None:
         budget["deadline"] = time.monotonic() + max(0, budget.setdefault("expires_at", time.time() + max_seconds) - time.time())
-    with _LAYA_LANE:
-        _LAYA_QUEUE.append(ticket)
+    with condition:
+        queue.append(ticket)
     try:
-        with _LAYA_LANE:
-            while _LAYA_QUEUE[0] is not ticket:
+        with condition:
+            while queue[0] is not ticket:
                 if cancelled():
                     raise InterruptedError("Social screening stopped by operator")
                 if not active_time and time.monotonic() >= budget["deadline"]:
                     raise TimeoutError("Original social screening time budget expired while queued")
-                _LAYA_LANE.wait(.25)
+                condition.wait(.25)
         started = time.monotonic()
         budget["queue_wait_seconds"] = budget.get("queue_wait_seconds", 0) + started - queued_at
         if active_time:
@@ -97,18 +98,19 @@ def _laya_turn(budget, max_seconds, cancelled):
         if active_time and started is not None:
             budget["remaining_seconds"] = max(0, budget["deadline"] - time.monotonic())
             budget["deadline"] = None
-        with _LAYA_LANE:
-            _LAYA_QUEUE.remove(ticket)
-            _LAYA_LANE.notify_all()
+        with condition:
+            queue.remove(ticket)
+            condition.notify_all()
 
 
 def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=None,
                 source="social", cancelled=lambda: False, instrument=None, retained=None, on_progress=None):
-    """Existing fetcher hook, with serial SDK calls and an honest unclassified remainder.
+    """Existing fetcher hook, with bounded batches and an honest unclassified remainder.
 
     One symbol shares a configurable 100-post / 600-second budget across sources.
-    Five-post chunks share a FIFO lane. Processing includes model loading and
-    transport; waiting for other stocks does not consume a new run's allowance.
+    Five-post batches share the local adapter's device lane; legacy Gateway
+    callers use their serial lane. Processing includes model loading;
+    waiting for other stocks does not consume a new run's allowance.
     Unknown outcomes remain unscreened and are never replayed.
     """
     if max_posts is not None and (type(max_posts) is not int or max_posts < 0):
@@ -186,30 +188,72 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
             for start in range(0, len(posts), 5):
                 if all(row["status"] == "classified" for row in rows[start:start + 5]):
                     continue
-                with _laya_turn(budget, max_seconds, cancelled):
+                with _laya_turn(budget, max_seconds, cancelled, getattr(gateway, "lane", None)):
+                    batch_results = None
+                    if hasattr(gateway, "predict_batch"):
+                        indices = [i for i in range(start, min(start + 5, len(posts)))
+                                   if rows[i]["status"] != "classified" and (max_posts is None or i < max_posts)]
+                        if budget["remaining"] is not None:
+                            indices = indices[:max(0, budget["remaining"])]
+                        if cancelled():
+                            evidence["stop_reason"] = "operator_cancelled"
+                            break
+                        if not indices:
+                            evidence["stop_reason"] = "post_budget_exhausted"
+                            break
+                        questions = copy.deepcopy(LAYA_QUESTIONS)
+                        for question in questions.values():
+                            question["instructions"] = question["instructions"].format(instrument=instrument)
+                        def dispatched():
+                            # Save the exact pending set before the one real batch dispatch.
+                            for i in indices:
+                                rows[i]["status"] = "pending"
+                            if budget["remaining"] is not None:
+                                budget["remaining"] -= len(indices)
+                            progress()
+                        from tradingagents.dataflows.router import observe_gateway_call
+                        with observe_gateway_call("laya", "predict_batch", "local_batch", eligible=True,
+                                origin="local_laya", purpose="social_sentiment",
+                                parameters={"posts": [posts[i] for i in indices], "questions": questions,
+                                            "model_identity": gateway.state()}) as observed:
+                            responses = gateway.predict_batch([posts[i] for i in indices], questions,
+                                cancelled=cancelled, deadline=budget["deadline"], on_dispatch=dispatched)
+                            observed.update(output=responses, result_available=True)
+                        batch_results = dict(zip(indices, responses, strict=True))
+                        for i, response in batch_results.items():
+                            rows[i].update(status="unscreened", result=response)
+                        progress()
                     for index in range(start, min(start + 5, len(posts))):
                         post = posts[index]
                         if rows[index]["status"] == "classified":
                             continue
-                        if cancelled():
+                        if batch_results is not None:
+                            if index not in batch_results:
+                                evidence["stop_reason"] = "post_budget_exhausted"
+                                break
+                        elif cancelled():
                             evidence["stop_reason"] = "operator_cancelled"
                             break
-                        if ((max_posts is not None and index >= max_posts)
+                        if batch_results is None and ((max_posts is not None and index >= max_posts)
                                 or (budget["remaining"] is not None and budget["remaining"] <= 0)):
                             evidence["stop_reason"] = "post_budget_exhausted"
                             break
-                        if time.monotonic() >= budget["deadline"]:
+                        if batch_results is None and time.monotonic() >= budget["deadline"]:
                             evidence["stop_reason"] = "time_budget_exhausted"
                             break
                         parameters = {"state": post,
                                       "questions": copy.deepcopy(LAYA_QUESTIONS), "model": "multilingual"}
                         for question in parameters["questions"].values():
                             question["instructions"] = question["instructions"].format(instrument=instrument)
-                        if budget["remaining"] is not None:
-                            budget["remaining"] -= 1
-                        rows[index]["status"] = "pending"
-                        progress()
-                        response = execute("decide", parameters)
+                        if batch_results is None:
+                            if budget["remaining"] is not None:
+                                budget["remaining"] -= 1
+                            rows[index]["status"] = "pending"
+                            progress()
+                            response = execute("decide", parameters)
+                        else:
+                            response = batch_results[index]
+                            rows[index]["status"] = "unscreened"
                         counts = response.get("usage", {}).get("context_budget", {}) if isinstance(response, dict) else {}
                         tokens = counts.get("sequence_tokens", {}) if isinstance(counts, dict) else {}
                         if (not isinstance(counts, dict) or counts.get("model") != "multilingual"

@@ -185,6 +185,8 @@ class DeskService:
         DeskConfig.model_validate(self.store.data["config"])
         self.configure_symbols()
         self.gateway = gateway or MaenifoldGateway(timeout=90)
+        from tradingagents.integrations.laya import LocalLaya
+        self.local_laya = LocalLaya()
         self.graph_factory = graph_factory
         self.lock = threading.RLock()
         self.execution_lock = threading.Lock()
@@ -1152,7 +1154,7 @@ class DeskService:
                 "prices_checked_at": runtime.get("prices_checked_at"), "runtime_heartbeat_at": runtime.get("updated_at"),
                 "reconciliation": copy.deepcopy(runtime.get("reconciliation", {"status": "unknown"})),
                 "store": store, "execution_enabled": self.admission.execution_enabled, "new_orders_blocked": commands.get("new_orders_blocked", False),
-                "native_cache_mode": "memory",
+                "native_cache_mode": "memory", "local_laya": self.local_laya.state(),
                 "native_durability": {"state": "in_memory", "durable_writes_confirmed": False,
                     "reason": "Native cache runs in memory. SQLite application records remain saved."},
                 "capabilities": {"saved_research": True, "workspace_records": True, "human_proposals": True,
@@ -2545,9 +2547,7 @@ class DeskService:
                         symbol=symbol, trade_date=run["trade_date"], research_effect=effect
                     )
                     social_budget = {**saved["social_budget"], "deadline": None}
-                    social_gateway = (MaenifoldGateway(self.gateway.endpoint, timeout=social_budget["max_seconds"])
-                                      if isinstance(self.gateway, MaenifoldGateway) else self.gateway)
-                    def screen_factory(ticker, source, current=result, budget=social_budget, gateway=social_gateway, *, instrument_context=""):
+                    def screen_factory(ticker, source, current=result, budget=social_budget, gateway=self.local_laya, *, instrument_context=""):
                         retained = copy.deepcopy(current["social_sentiment"]["sources"].get(source))
                         def record(evidence):
                             with self.store.lock:
@@ -3196,6 +3196,7 @@ class DeskService:
                     stop_calculation_process(process)
 
     def close(self):
+        self.local_laya.close()
         self._stop_simulations(closing=True)
         self.chart_executor.shutdown(wait=False, cancel_futures=True)
         self.simulation_executor.shutdown(wait=False, cancel_futures=True)

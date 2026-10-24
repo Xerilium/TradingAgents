@@ -38,9 +38,9 @@ a broker order.
 | TradingAgents + LangGraph/LangChain | Runs market, social, news and fundamentals analysts, research debate, trader planning and final risk review. Routes model-requested tools through the app. | A recommendation is not an executed portfolio allocation. |
 | Codex adapter | Uses the installed Codex app-server and existing sign-in for model responses and native function calls. The adapter returns calls to LangGraph for controlled execution. | It does not give the research model unrestricted computer or broker access. |
 | OpenAI-compatible provider / Unsloth | Alternative model endpoint selected in Research settings. Requires a working compatible server and loaded model. | Installing or opening Unsloth does not load a model. It is not the active provider when Codex is selected. |
-| Maenifold Gateway | MCP transport and schema discovery for tools. Research agents receive the configured memory and graph commands plus SequentialThinking; the app also uses selected data and Laya commands. | Gateway availability is separate from model availability and the broker connection. |
+| Maenifold Gateway | MCP transport and schema discovery for tools. Research agents receive the configured memory and graph commands plus SequentialThinking; the app also uses selected data commands. | Gateway availability is separate from model availability and the broker connection. |
 | Maenifold memory / graph / thinking | Durable notes, related-context retrieval, concept navigation and structured reasoning. Commands are discovered and validated against their schemas. | Research memory is separate from the app's saved research and SQLite records. |
-| Laya | Screens social posts for relevance and bullish/bearish/neutral sentiment through the Gateway. Retains classifications and uncertainty as research evidence. | A screening result is not a trade signal, approval or order. |
+| Laya | One app-owned local Python Router batches original social posts for relevance and bullish/bearish/neutral sentiment. Retains raw probabilities, model identity, token coverage and uncertainty as research evidence. | The Python API supplies no Gateway contract grades: missing grades remain unknown and stance counts remain unclear. Screening is not a trade signal, approval or order. |
 | Jev | Optional framework/CLI social screening through TypeSafe/OpenRouter settings. The browser desk injects Laya instead. | It is not a selectable desk fallback, the same service as Laya, or implied to have run by a generic evidence message. |
 | NautilusTrader | Native trading node, instruments, orders/events, cache, risk engine, portfolio accounting and isolated historical evaluation. Runs in the separate native Python environment. | Having the engine installed does not expose every upstream feature in this app. |
 | Custom Alpaca integration | App-owned market-data and execution clients connect Nautilus interfaces to Alpaca REST and trading updates. Handles source observations, mappings and reconciliation. | This is not an assertion that Nautilus ships or configures the whole application workflow automatically. |
@@ -202,11 +202,18 @@ New batches use that limit; changing it does not resize an existing run.
 Each stock has its own graph, checkpoints, reports and evidence attribution.
 Selected analyst roles can also work concurrently within a stock. A failure,
 rate limit or stop prevents further stock dispatch; in-flight work settles first.
-Laya social screening shares a FIFO lane in five-post chunks across stocks.
-Each post retains its own typed result and full-input evidence. New batches
+Local Laya social screening packs up to five independent posts into each
+`Router.predict_batch` call, with one bounded device lane across stocks.
+It does not call the Gateway or concatenate posts into one state.
+Each post retains its original text/hash, ordered result and measured input
+coverage. Inputs that exceed the 8,192-token sequence or question-head limits
+remain unscreened. Raw probabilities remain available; absent contract grades
+remain uncertain. New research batches
 charge the screening time limit for processing, including model/transport waits,
 not time queued behind other stocks. Waiting remains cancellable; older saved
 wall-clock budgets retain their original expiry. Partial screening stays partial.
+Local inference already on the device settles before a stop or expired budget
+prevents the next batch; it cannot be interrupted mid-forward-pass.
 The workload dialog displays the limit, models and date. Duration estimates use
 observed stock durations and the selected limit; shared-service load can increase
 the actual time. Cost may be unavailable.
@@ -306,13 +313,15 @@ missing help is surfaced rather than replaced with invented instructions.
 Social source retrieval, Laya classification, model inference and evidence
 persistence are separate stages. Posts can remain unclassified after failure or
 screening-budget exhaustion; unscreened fetched posts prevent desk research
-completion. The default shared serial screening budget is 100 posts / 600 seconds
+completion. The default per-stock shared screening budget is 100 posts / 600 seconds
 across StockTwits and Reddit. Limit exhaustion is distinct from transport or
 schema failure. A missing source is not a fabricated neutral result. Inspect the specific saved error:
 connection failure, invalid arguments and missing evidence are different faults.
 
-Laya records original post text/hashes, probabilities, contract grades and
-coverage. Classifier off-topic predictions do not discard original posts from
+Laya records original post text/hashes, raw probabilities, model identity and
+measured coverage. Direct Python results have no contract grades; these remain
+unknown and stance counts remain unclear, with raw predictions retained.
+Classifier off-topic predictions do not discard original posts from
 analyst review. StockTwits user Bullish/Bearish tags, Laya classifications and the
 analyst's sentiment report are different signals. Unclear/unscreened does not
 mean neutral; a classification contract never supplies trading authority.
@@ -640,6 +649,87 @@ of the workflow. Configuring one does not configure all three. A connected
 status alone does not establish order readiness or every feature's acceptance.
 
 ## Operations and storage
+
+### Local Laya setup and portability
+
+The desk owns one background-loaded [Laya Python Router](https://github.com/NandhaKishorM/laya)
+in its existing `.venv`; no classifier server, extra port or Gateway Laya process
+is required. `pyproject.toml` pins Laya **0.4.14**, torch **2.14.1**,
+transformers **5.20.2**, tokenizers **0.23.3**, huggingface-hub **2.3.0** and
+safetensors **0.8.0** in the `paper` extra. The standalone
+[`convaiinnovations/laya-multilingual`](https://huggingface.co/convaiinnovations/laya-multilingual/tree/1720e3e3357cfe1e281542e223f8273b0890ca34)
+checkpoint is fixed at revision `1720e3e3357cfe1e281542e223f8273b0890ca34`.
+
+For an existing checkout/environment, use the already-installed `uv` to freeze
+the installed versions, inspect the missing-only resolution, then install the
+same pinned classifier dependencies. Run these commands from the checkout:
+
+```powershell
+rtk proxy uv pip freeze --python .venv/Scripts/python.exe > laya-existing-constraints.txt
+rtk proxy uv pip install --python .venv/Scripts/python.exe --constraint laya-existing-constraints.txt --dry-run laya==0.4.14 torch==2.14.1 transformers==5.20.2 tokenizers==0.23.3 huggingface-hub==2.3.0 safetensors==0.8.0
+rtk proxy uv pip install --python .venv/Scripts/python.exe --constraint laya-existing-constraints.txt laya==0.4.14 torch==2.14.1 transformers==5.20.2 tokenizers==0.23.3 huggingface-hub==2.3.0 safetensors==0.8.0
+```
+
+Keep the generated constraints local; they can contain checkout-specific
+package references. A conflict needs resolution before installation; do not
+remove constraints or upgrade unrelated packages to force success. The existing
+`requirements.txt` delegates to `.[paper,evaluation]` in `pyproject.toml`: one
+dependency authority for the desktop service, MCP, local Laya and Optuna.
+It is a component manifest, not a complete frozen lock of all transitive versions.
+For initial setup on another machine with Python 3.12 and `uv` already installed,
+create only that checkout's normal app environment if it does not exist, then
+install the manifest:
+
+```powershell
+rtk proxy uv venv .venv --python 3.12
+rtk proxy uv pip install --python .venv/Scripts/python.exe -r requirements.txt
+```
+
+Skip `uv venv` when `.venv` already exists. Do not run the unconstrained initial
+install against an established installation: use its frozen constraints and
+inspect conflicts first. In this installation, the retained websockets **16.1.1**
+differs from the existing `paper` extra's **15.0.1** pin; the local Laya addition
+preserved 16.1.1 and every other pre-existing package. No dependency installation
+runs at app startup.
+
+NautilusTrader **1.231.0** belongs in the separate `.venv-nautilus-v1`, not the
+app environment. That native installation, the installed Codex app-server and
+sign-in, the existing Maenifold Gateway/MCP service, Alpaca account access and
+credentials are separate prerequisites; the app's pip manifest does not provision
+them. Copy/configure `tradingdesk.launch.json` locally with its five fields:
+`application`, `history`, `native_python`, `credentials_file` and `port` (8098).
+Paths resolve against the checkout containing that file; absolute paths also
+work. Retain the migrated SQLite application/history stores and keep credentials
+external. The launcher rejects missing stores rather than creating replacement
+records. Portability here provides the app dependency/model setup; it is not
+an automatic broker, native-runtime or data migration.
+
+The default weight cache is `.cache/laya` relative to the checkout. Reuse it
+across app restarts; set `TRADINGAGENTS_LAYA_CACHE` to another cache directory
+if needed (relative paths also resolve against the checkout). Prefetching is
+optional; first startup downloads the same fixed revision in the background:
+
+```powershell
+rtk proxy .venv/Scripts/hf.exe download convaiinnovations/laya-multilingual --revision 1720e3e3357cfe1e281542e223f8273b0890ca34 --include rl_agent_config.json --include model.safetensors --include "tokenizer/*" --include "encoder/*" --cache-dir .cache/laya
+rtk proxy .\Start-TradingDesk.cmd
+```
+
+`TRADINGAGENTS_LAYA_DEVICE=cpu` is the default. Set it to `cuda` or `cuda:0`
+before launching only when the environment's PyTorch build and existing GPU
+runtime support CUDA. This setup installs no drivers or system components;
+select an appropriate official PyTorch build separately if GPU support is
+needed. Loading failure remains visible rather than selecting a remote fallback.
+The loader uses the eager backend, without model compilation or warmup inference.
+
+In **Settings → Diagnostics → Service and observation details**, **Local Laya**
+shows actual loading, ready, failed or stopped status and the device/error.
+**Download diagnostics** includes the package/model revision, cache and batch
+size. Ready means weights loaded, not verified inference or completed research.
+Resolve the reported missing dependency, cache/network permission, model/config
+or device error, then use the normal app restart. Browser refresh alone does
+not restart a failed loader. App shutdown stops queued screening and releases
+the model after an in-flight batch settles. Maenifold memory/graph/thinking
+still use their existing Gateway tools and canonical GetHelp instructions.
 
 ### Existing installation
 

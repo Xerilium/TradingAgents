@@ -31,6 +31,12 @@ dependencies = [
 [project.optional-dependencies]
 evaluation = ["optuna==5.0.0"]
 paper = [
+    "laya==0.4.14",
+    "torch==2.14.1",
+    "transformers==5.20.2",
+    "tokenizers==0.23.3",
+    "huggingface-hub==2.3.0",
+    "safetensors==0.8.0",
     "mcp>=1.26,<2",
     "jsonschema>=4.23,<5",
     "websockets==15.0.1",

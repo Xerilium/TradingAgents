@@ -22,7 +22,7 @@ def main():
     keys = {"application", "history", "native_python", "credentials_file", "port"}
     if set(config) != keys or type(config["port"]) is not int or not 1 <= config["port"] <= 65535:
         raise ValueError("tradingdesk.launch.json must contain the five documented fields and a valid local port")
-    paths = {name: Path(config[name]).resolve() for name in keys - {"port"}}
+    paths = {name: (ROOT / config[name]).resolve() for name in keys - {"port"}}
     for name, path in paths.items():
         if not path.exists():
             raise ValueError("Configured " + name + " is missing. Correct tradingdesk.launch.json; no fallback store or installation is used.")
