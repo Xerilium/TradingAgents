@@ -1674,15 +1674,15 @@ class DeskService:
         return {"investor": self.investor(), "commands": self.admission.snapshot()}
 
     def run_detail(self, run_id, symbol=None):
-        with self.store.lock:
-            run = next((r for r in self.store.data["runs"] if r["id"] == run_id), None)
-            if run is None:
-                run = next(r for r in self.history.get("runs", []) if r["id"] == run_id)
-            if symbol is None:
-                return copy.deepcopy(run)
-            result = copy.deepcopy(next(r for r in run["results"] if r["symbol"] == symbol))
-            result.setdefault("revision", 0)
-            return result
+        journal = self.store.database.read("journal")["data"]
+        run = next((r for r in journal["runs"] if r["id"] == run_id), None)
+        if run is None:
+            run = next(r for r in self.history.get("runs", []) if r["id"] == run_id)
+        if symbol is None:
+            return copy.deepcopy(run)
+        result = copy.deepcopy(next(r for r in run["results"] if r["symbol"] == symbol))
+        result.setdefault("revision", 0)
+        return result
 
     def chart(self, symbol, *, force=False, run_id=None):
         from .investor import digest
