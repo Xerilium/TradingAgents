@@ -156,6 +156,38 @@ def _rate_limit_exception(exc):
     return None
 
 
+def _transient_exception(exc):
+    """Retry only typed transport failures; every grouped cause must qualify."""
+    try:
+        import anyio
+        import httpx
+    except ImportError:
+        return None
+
+    pending, seen, failures = [exc], set(), []
+    while pending:
+        error = pending.pop()
+        if id(error) in seen:
+            continue
+        seen.add(id(error))
+        if isinstance(error, (GatewayTimeout, GatewayRejected, asyncio.CancelledError, TimeoutError)):
+            return None
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        if (status in {500, 502, 503, 504} or (status is None and isinstance(error, (
+                ConnectionError, httpx.NetworkError, httpx.RemoteProtocolError,
+                anyio.EndOfStream, anyio.BrokenResourceError, anyio.ClosedResourceError)))):
+            failures.append(error)
+        else:
+            nested = getattr(error, "exceptions", ())
+            cause = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+            if status is not None or not (nested or cause):
+                return None
+            pending.extend(nested or (cause,))
+    return max(failures, key=lambda error: retry_after_seconds(
+        getattr(getattr(error, "response", None), "headers", {}).get("Retry-After", 1)
+    )) if failures else None
+
+
 @dataclass(frozen=True)
 class GatewayCommand:
     domain: str
@@ -440,6 +472,21 @@ class MaenifoldGateway:
                                 raise GatewayRateLimited(max(delay, remaining)) from exc
                             self._retrying = owns_retry = True
                         observed["receipt"].update(retry_action="retry", scheduled_wait_seconds=delay)
+                    except GatewayError as exc:
+                        from tradingagents.dataflows.router import _gateway_failure_details
+
+                        transient = _transient_exception(exc)
+                        receipt = observed["receipt"]
+                        receipt.update(outcome="error" if observed["result_available"] else "unknown", error_class=type(exc).__name__,
+                                       error_details=_gateway_failure_details(exc), retry_action="stop")
+                        if transient is None or not safe or attempt == 3:
+                            raise
+                        response = getattr(transient, "response", None)
+                        delay = retry_delay(response.headers.get("Retry-After", 1) if response is not None else 1, attempt)
+                        if delay > 60:
+                            receipt["retry_action"] = "defer"
+                            raise
+                        receipt.update(retry_action="retry", scheduled_wait_seconds=delay)
                 await asyncio.sleep(delay)
         finally:
             if owns_retry:
