@@ -260,6 +260,8 @@ request does not by itself mean evidence was lost. Gaps remain in the saved
 Source coverage report and Activity, with qualified completion; they are not
 changed to empty successes or silently retried. Required price/fundamental inputs,
 cancellation, corrupt/missing capture and unknown stateful effects stay blocking.
+Recorded failures of read-only GatewayIndex discovery remain disclosed coverage
+gaps; they do not imply that the research record was lost.
 Transient FRED and Reddit reads can retry once within their existing bounded
 time allowance and Retry-After. Empty, invalid, access and unconfigured results
 are not retried; successful inputs are retained. A completed workflow does not
