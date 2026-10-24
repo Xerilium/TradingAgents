@@ -23,6 +23,7 @@
 .research-workspace #research-review{border-top:1px solid var(--line);margin-top:16px;padding-top:8px}
 .research-workspace #research-review textarea{width:100%}
 .workspace-reading{min-height:0;flex:1;overflow:auto}
+.proposed-portfolio{padding:12px;border:1px solid var(--line)}.proposed-portfolio>p,.proposed-portfolio>section,.proposed-portfolio>details{margin-top:12px}.proposed-portfolio td{vertical-align:top}.proposed-portfolio td small{display:block}.proposed-portfolio td:last-child{min-width:260px;max-width:440px;white-space:normal}.proposed-portfolio pre{white-space:pre-wrap;overflow-wrap:anywhere}.proposed-portfolio label{display:flex;flex-direction:column;gap:4px}.proposed-portfolio input{max-width:180px}
 .experiment-curve-scroll{max-width:100%;min-width:0;overflow:auto}
 .experiment-curve-scroll>.experiment-equity-curve{display:block;width:100%;height:auto;min-width:640px;max-height:360px}
 .experiment-equity-curve text{font-size:14px;stroke:none}

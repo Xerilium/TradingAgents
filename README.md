@@ -466,6 +466,22 @@ history. Empty positions mean no observed holdings; a saved basket preview
 does not populate them. Unrealized results, realized outcomes and performance
 series depend on their actual retained inputs and reconciliation.
 
+**Portfolio → Proposed** offers **Model portfolio**, a single joint deep-model
+allocation from the configured universe's latest completed research and cached,
+dated reference prices. Model capital defaults to $10,000 with zero model
+holdings; it is separate from the broker balance. The model chooses stock weights,
+including zero allocations or all cash, with research-backed reasons and entry
+conditions. The app computes whole shares and residual cash using Decimal.
+Failed/missing research and missing dated prices are explicitly excluded.
+Eligible, excluded and configured counts show actual coverage; configuring 504
+symbols does not imply 504 completed research results. Full final decisions and
+source-coverage notes are supplied without truncation; evidence over 120,000
+characters fails before dispatch. This is synthesis, not new stock research,
+historical simulation, an order or approval. The per-stock Portfolio Manager
+remains a research role; human basket previews remain separate. Only the current
+joint job/result exists in memory, replaced by the next explicit action and lost
+on restart. Provider failures remain visible without fallback allocations.
+
 Journal connects saved decisions with proposals, commands and recorded outcomes.
 A simulation result remains separate from account returns.
 

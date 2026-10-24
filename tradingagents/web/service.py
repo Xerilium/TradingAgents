@@ -161,6 +161,7 @@ class DeskService:
         self.maintenance = threading.RLock()
         self.restore_candidates = {}
         self.research_futures = set()
+        self.portfolio_model_job = {"status": "idle"}
         self.instance_id, self.state_sequence = str(uuid4()), 0
         self.company_names = {}
         for filename in ("constituents.csv", "sp500-constituents.csv"):
@@ -593,6 +594,7 @@ class DeskService:
         data.pop("paper_account_id", None)
         data["workspace"] = self.workspace()
         data["saved_research"] = self._saved_research_index(current=journal["data"]["runs"])
+        data["portfolio_model"] = self.proposed_portfolio()
         data["investor"] = self.investor()
         data["health"] = self.health(journal_revision=journal["revision"])
         data["reporting"] = self.reporting(compact=True)
@@ -657,6 +659,71 @@ class DeskService:
                             saved[result["symbol"]].update(revision=bound["revision"], result_sha256=digest(bound),
                                 market_source_sha256=self._attention_market_signature(run, result["symbol"]))
         return saved
+
+    def proposed_portfolio(self):
+        with self.lock:
+            return copy.deepcopy(self.portfolio_model_job)
+
+    def model_portfolio(self, request):
+        from uuid import UUID
+        from .portfolio_model import capital_amount, model_portfolio
+        from tradingagents.integrations.laya import local_failure_details
+        identity = str(UUID(request["request_id"]))
+        capital = capital_amount(request.get("capital", "10000"))
+        with self.lock:
+            if self.portfolio_model_job.get("id") == identity:
+                return copy.deepcopy(self.portfolio_model_job)
+            if self.portfolio_model_job["status"] in {"queued", "running"}:
+                raise ValueError("A joint portfolio model is already running")
+            with self.store.lock:
+                config = copy.deepcopy(self.store.data["config"])
+                runs = copy.deepcopy(self.store.data["runs"])
+            quotes = self._runtime_market()["quotes"]
+            latest = {}
+            for run in sorted(runs, key=lambda row: row.get("created_at") or "", reverse=True):
+                for result in run.get("results", []):
+                    latest.setdefault(result["symbol"], (run, result))
+            inputs, exclusions = [], []
+            for symbol in config["universe"]:
+                run, result = latest.get(symbol, ({}, {}))
+                binding = {"symbol": symbol, "run_id": run.get("id"), "revision": result.get("revision"),
+                           "trade_date": result.get("trade_date"), "status": result.get("status", "missing")}
+                decision = result.get("reports", {}).get("final_trade_decision")
+                reference = quotes.get(symbol, {})
+                price = _number(reference.get("price"))
+                if result.get("status") != "completed" or not decision:
+                    exclusions.append({**binding, "reason": result.get("error") or "Completed research with a final decision is unavailable"})
+                elif price is None or price <= 0 or not reference.get("timestamp"):
+                    exclusions.append({**binding, "reason": "A positive dated cached reference price is unavailable"})
+                else:
+                    inputs.append({**binding, "rating": result.get("rating"), "reference": reference,
+                        "final_decision": decision, "source_coverage": result.get("reports", {}).get("source_coverage")})
+            job = {"id": identity, "status": "queued", "created_at": now(), "capital": str(capital),
+                   "configured_universe": config["universe"], "inputs": inputs, "exclusions": exclusions,
+                   "provider": config["llm_provider"], "model": config["deep_think_llm"]}
+            self.portfolio_model_job = job
+
+            def work():
+                started = time.monotonic()
+                with self.lock:
+                    job.update(status="running", started_at=now())
+                try:
+                    if not inputs:
+                        raise ValueError("No eligible completed research with dated reference prices; no model call made")
+                    output = model_portfolio(config, inputs, capital)
+                    with self.lock:
+                        job.update(status="completed", result=output)
+                except Exception as error:
+                    with self.lock:
+                        job.update(status="failed", error=local_failure_details(error))
+                finally:
+                    with self.lock:
+                        job.update(completed_at=now(), elapsed_seconds=round(time.monotonic() - started, 3))
+
+            future = self.executor.submit(work)
+            self.research_futures.add(future)
+            future.add_done_callback(self.research_futures.discard)
+            return copy.deepcopy(job)
 
     def workspace(self):
         from .workspace import DEFAULT

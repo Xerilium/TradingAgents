@@ -127,6 +127,9 @@ class DeskHandler(BaseHTTPRequestHandler):
                 state = self.server.service.state()
             self._send(200, {**state, "csrf_token": self.server.csrf_token})
             return
+        if path == "/api/portfolio-model":
+            self._send(200, self.server.service.proposed_portfolio())
+            return
         if path == "/api/workspace":
             self._send(200, self.server.service.workspace())
             return
@@ -343,7 +346,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
                 return
             if service.browse_only and path not in {
-                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya"}:
+                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
@@ -359,6 +362,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.refresh()
             elif path == "/api/config":
                 result = service.save_config(data)
+            elif path == "/api/portfolio-model":
+                result = service.model_portfolio(data)
             elif path == "/api/workspace":
                 result = service.save_workspace(data)
             elif path == "/api/discovery":

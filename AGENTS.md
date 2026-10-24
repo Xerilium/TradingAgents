@@ -9,6 +9,12 @@ maintain a competing local decision log. Settings, authored lists/rules/notes,
 draft and basket terms, and broker approval semantics remain separate. This
 supersedes historical research-preservation or resume guidance below.
 
+Portfolio → Proposed performs one joint deep-model synthesis of eligible latest
+research and cached dated prices, with separate model capital and deterministic
+whole-share sizing. Keep this session-only proposal separate from per-stock
+research, human baskets, historical simulation and broker authority. Never
+silently replace failed research, truncate candidates or invent allocations.
+
 ## Cold start: understand the product before operating it
 
 Read [README.md](README.md) first. It is the component map and operating guide

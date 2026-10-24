@@ -413,7 +413,7 @@ function renderWorkspace(){
  $('#context-symbols').innerHTML=marketSymbols().map(symbol=>`<option value="${esc(symbol)}">${esc(companyName(symbol))}</option>`).join('');
  if(activePage==='overview')return renderOverview();
  if(activePage==='markets')return (UniverseReview.renderMarkets||UniverseReview.render)(state);
- if(activePage==='portfolio')return `<nav class="view-tabs" aria-label="Portfolio views"><button data-portfolio-tab="holdings" aria-pressed="${portfolioTab==='holdings'}">Positions</button><button data-portfolio-tab="performance" aria-pressed="${portfolioTab==='performance'}">Performance</button></nav>`+(portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
+ if(activePage==='portfolio')return `<nav class="view-tabs" aria-label="Portfolio views"><button data-portfolio-tab="holdings" aria-pressed="${portfolioTab==='holdings'}">Positions</button><button data-portfolio-tab="proposed" aria-pressed="${portfolioTab==='proposed'}">Proposed</button><button data-portfolio-tab="performance" aria-pressed="${portfolioTab==='performance'}">Performance</button></nav>`+(portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
  if(activePage==='research')return renderResearch();
  if(activePage==='orders')return renderOrders();
  if(activePage==='journal')return renderJournal();
@@ -422,6 +422,23 @@ function renderWorkspace(){
  return renderSettings();
 }
 let portfolioTab='holdings';
+let portfolioModelCapital='10000';
+function renderProposedPortfolio(){
+ const job=state.portfolio_model||{status:'idle'},running=['queued','running'].includes(job.status),result=job.result;
+ const asText=value=>typeof value==='string'?value:JSON.stringify(value,null,2);
+ const pct=value=>`${(Number(value)*100).toFixed(2)}%`;
+ const bindings=(job.inputs||[]).map(row=>`<tr><td>${esc(row.symbol)}</td><td>${esc(row.run_id)} · revision ${esc(row.revision??'unreported')}</td><td>${esc(row.trade_date||'Unreported')}</td><td>${esc(asText(row.source_coverage||'No additional coverage note reported'))}</td></tr>`).join('');
+ return `<section class="workspace-reading proposed-portfolio" aria-label="Proposed portfolio">
+ <div class="page-heading"><div><h1>Proposed portfolio</h1><p>One joint allocation from the configured universe’s latest completed research and cached reference prices. Starts with cash and zero model holdings.</p></div><div class="button-group"><label for="portfolio-model-capital">Model capital (USD)<input id="portfolio-model-capital" type="number" min="0.01" step="0.01" value="${esc(portfolioModelCapital)}" ${running?'disabled':''}></label><button class="button button-primary" data-action="model-portfolio" ${running||busy.has('portfolio-model')?'disabled':''}>${running?'Modeling…':'Model portfolio'}</button></div></div>
+ <p class="muted">No source refresh, new stock research or broker action. Model capital is separate from the broker account${state.account?.cash!=null?` (observed cash ${money(state.account.cash)})`:''}. This proposal does not approve an order.</p>
+ <p role="status">${esc(job.status==='idle'?'No joint portfolio modeled in this app session.':`${job.status} · ${job.provider||'Provider unavailable'} / ${job.model||'Model unavailable'} · ${job.inputs?.length||0} eligible of ${job.configured_universe?.length||0} configured stocks${job.elapsed_seconds!=null?` · ${job.elapsed_seconds}s`:''}`)}</p>
+ ${job.error?`<div class="notice error"><strong>Portfolio model failed</strong><pre>${esc(asText(job.error))}</pre></div>`:''}
+ ${result?`<section class="panel"><div class="panel-header"><h2>Joint proposed allocation</h2><span>${esc(result.provider)} / ${esc(result.model)}</span></div><p>Model capital ${money(Number(result.capital))} · reference stock value ${money(Number(result.reference_value))} · residual cash ${money(Number(result.cash))} · target cash ${pct(result.target_cash_weight)}</p><p>${esc(result.cash_rationale)}</p><p class="muted">Whole shares are rounded down from target weights. Residual cash includes rounding. Dated reference prices are not executable or live quotes; entry conditions still apply.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Target weight</th><th>Whole shares</th><th>Reference price</th><th>Reference value</th><th>Rationale and entry conditions</th></tr></thead><tbody>${result.allocations.map(row=>`<tr><td>${esc(row.symbol)}</td><td>${pct(row.weight)}</td><td>${esc(row.shares)}</td><td>${money(Number(row.reference.price))}<small class="muted">${fullTime(row.reference.timestamp)} · ${esc(row.reference.basis)}${row.reference.stale?' · stale':''}</small></td><td>${money(Number(row.reference_value))}</td><td><details><summary>Allocation rationale and conditions</summary><p>${esc(row.rationale)}</p><h3>Entry conditions</h3><p>${esc(row.entry_conditions)}</p></details></td></tr>`).join('')}</tbody></table></div></section>`:''}
+ ${(job.exclusions||[]).length?`<details open><summary>Excluded stocks (${job.exclusions.length})</summary><ul>${job.exclusions.map(row=>`<li><strong>${esc(row.symbol)}</strong> · ${esc(row.status)} · ${esc(asText(row.reason))}${row.run_id?` · run ${esc(row.run_id)} / revision ${esc(row.revision??'unreported')}`:''}</li>`).join('')}</ul></details>`:''}
+ ${bindings?`<details><summary>Saved research bindings and source coverage</summary><table class="data-table"><thead><tr><th>Stock</th><th>Saved result</th><th>Research date</th><th>Source coverage</th></tr></thead><tbody>${bindings}</tbody></table><p>Inputs were captured ${fullTime(job.created_at)}. The next explicit model action replaces this session result.</p></details>`:''}</section>`;
+}
+document.addEventListener('input',event=>{if(event.target.id==='portfolio-model-capital')portfolioModelCapital=event.target.value;});
+document.addEventListener('click',async event=>{if(!event.target.closest('[data-action="model-portfolio"]'))return;try{await act('portfolio-model','/api/portfolio-model',{request_id:crypto.randomUUID(),capital:portfolioModelCapital},'Joint portfolio model queued.');}catch{}});
 let performanceView='equity';
 function performancePlot(){
  if(journalCollectionErrors.has(journalCollection))return '<div class="empty-chart"><h3>Saved interval unavailable</h3><p>'+esc(journalCollectionErrors.get(journalCollection))+'</p><button class="button" id="retry-history-source">Retry saved source</button></div>';
