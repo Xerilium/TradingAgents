@@ -17,6 +17,9 @@ def research_memory_guidance(tools):
         " During tool-enabled research, make a small, proportionate retrieval pass; stop if results are irrelevant."
         " Follow the available tools' schemas. Once tool rounds are exhausted, or during tool-free review,"
         " do not call tools; use only retained results and disclose unperformed checks.",
+        " Before using any tool, read its description and schema. Gateway tools include canonical GetHelp text"
+        " fetched before this turn; read that guidance first. Use GetHelp to reread it when needed."
+        " Never guess a command's session lifecycle, required fields or completion rules.",
     ]
     for name, instruction in (
         ("maenifold_graph__BuildContext", "Use only a relevant existing concept returned by retrieval, with depth=1, maxEntities=5, includeContent=true. On CONCEPT_NOT_FOUND, resolve the anchor once with FindSimilarConcepts if available; never retry the missing anchor or mutate the corpus to make retrieval succeed."),

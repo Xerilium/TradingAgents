@@ -38,6 +38,7 @@ _STATEFUL_RESEARCH_COMMANDS = frozenset({
 # Capture policy is narrower than model-call permission. Account/configuration,
 # order and unknown commands are metadata-only, even if their results look safe.
 _EVIDENCE_COMMANDS = {
+    "gateway": frozenset({"GetHelp"}),
     "alpaca": frozenset({"get_asset", "get_clock", "get_calendar", "get_portfolio_history",
                          "get_stock_bars", "get_stock_latest_quote", "get_stock_latest_trade",
                          "get_stock_snapshot", "get_news"}),
@@ -168,6 +169,8 @@ class Gateway(Protocol):
     """Small injectable interface used by analysis and deterministic execution."""
 
     def discover(self, domain: str) -> dict[str, GatewayCommand]: ...
+
+    def get_help(self, tool_name: str) -> str: ...
 
     def execute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any: ...
 
@@ -381,6 +384,8 @@ class MaenifoldGateway:
         self._domains: set[str] | None = None
         self._domains_at = 0.0
         self._lock = threading.RLock()
+        self._help_lock = threading.Lock()
+        self._help: dict[str, str] = {}
         self._limited_until = 0.0
         self._retrying = False
 
@@ -390,7 +395,7 @@ class MaenifoldGateway:
             retrying = self._retrying
         if remaining > 0 or retrying:
             raise GatewayRateLimited(remaining)
-        safe = name == "GatewayIndex" or (
+        safe = name in {"GatewayIndex", "GetHelp"} or (
             name == "GatewayExecute" and (
                 (arguments.get("command") in ANALYSIS_COMMANDS.get(arguments.get("domain"), ())
                  and arguments.get("command") not in _STATEFUL_RESEARCH_COMMANDS)
@@ -407,7 +412,7 @@ class MaenifoldGateway:
                     if remaining > 0 or (self._retrying and not owns_retry):
                         raise GatewayRateLimited(remaining)
                 domain = arguments.get("domain") if name == "GatewayExecute" else "gateway"
-                command = arguments.get("command") if name == "GatewayExecute" else "GatewayIndex"
+                command = arguments.get("command") if name == "GatewayExecute" else name
                 with gateway_observation(domain, command, "gateway_transport",
                                          parameters=arguments.get("parameters"), ordinal=attempt + 1) as observed:
                     try:
@@ -500,6 +505,19 @@ class MaenifoldGateway:
 
     def discover(self, domain: str) -> dict[str, GatewayCommand]:
         return _run_sync(lambda: self.adiscover(domain))
+
+    def get_help(self, tool_name: str) -> str:
+        with gateway_observation("gateway", "GetHelp", "gateway_help",
+                                 parameters={"toolName": tool_name}) as observed:
+            with self._help_lock:
+                if tool_name not in self._help:
+                    value = _run_sync(lambda: self._call("GetHelp", {"toolName": tool_name}))
+                    if not value:
+                        raise GatewayError(f"GetHelp returned no guidance for {tool_name}.")
+                    self._help[tool_name] = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                text = self._help[tool_name]
+            observed.update(output=text, result_available=True)
+            return text
 
     async def aexecute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any:
         with gateway_observation(domain, command, "gateway_logical", parameters=parameters) as observed:
@@ -682,7 +700,7 @@ def build_langchain_tools(
             raise GatewayError("Analysis date must be YYYY-MM-DD.") from exc
         if date.fromisoformat(trade_date) > datetime.now(ZoneInfo("America/New_York")).date():
             raise GatewayError("The analysis date cannot be in the future.")
-    tools = []
+    tools, help_names = [], []
     for domain in domains if domains is not None else tuple(ANALYSIS_COMMANDS):
         if domain not in ANALYSIS_COMMANDS:
             raise GatewayError(f"Domain is not permitted for analysis tools: {domain}.")
@@ -733,7 +751,9 @@ def build_langchain_tools(
                     invoke.__annotations__["runtime"] = ToolRuntime
                 return invoke
 
-            description = command.description
+            help_name = name if domain.startswith("maenifold.") else f"{domain}.{name}"
+            help_names.append(help_name)
+            description = command.description + "\n\nRead before use — canonical GetHelp guidance:\n" + gateway.get_help(help_name)
             schema = copy.deepcopy(command.schema)
             if domain in RESEARCH_COMMANDS:
                 description += (
@@ -785,6 +805,20 @@ def build_langchain_tools(
                     handle_tool_error=True,
                 )
             )
+    if tools:
+        def get_help(toolName):
+            if toolName not in help_names:
+                raise ToolException("GetHelp is limited to the offered Gateway commands.")
+            return gateway.get_help(toolName)
+
+        tools.append(StructuredTool.from_function(
+            func=get_help,
+            name="GetHelp",
+            description="Reread canonical help for an offered Gateway command. Its help is already loaded in the command description; read it before use. This tool cannot execute commands.",
+            args_schema={"type": "object", "properties": {"toolName": {"type": "string", "enum": help_names}},
+                         "required": ["toolName"], "additionalProperties": False},
+            handle_tool_error=True,
+        ))
     return tools
 
 

@@ -295,6 +295,11 @@ adapter rejects unadvertised functions or unexpected built-in tool activity.
 Gateway commands use discovered schemas. SequentialThinking uses `response`
 for thought content and a `conclusion` string when completing; unsupported
 top-level fields are validation errors, not evidence of a network outage.
+Before an analyst receives Gateway tools, the app loads canonical `GetHelp`
+for each offered command into its tool description. Analysts must read this
+guidance before use. A read-only `GetHelp` tool lets them reread help for only
+those commands. Help is cached across concurrent stocks and retained as evidence;
+missing help is surfaced rather than replaced with invented instructions.
 
 Social source retrieval, Laya classification, model inference and evidence
 persistence are separate stages. Posts can remain unclassified after failure or
