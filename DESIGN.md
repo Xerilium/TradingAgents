@@ -63,9 +63,15 @@ typography:
     fontSize: "14px"
     fontWeight: 600
     lineHeight: 1.5
+  code:
+    fontFamily: 'ui-monospace, Consolas, monospace'
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.45
 rounded:
   control: "3px"
   badge: "2px"
+  compact: "4px"
   dialog: "5px"
 spacing:
   chip-gap: "5px"
@@ -187,9 +193,13 @@ The palette uses cool charcoal layers for long reading sessions, with a pale gre
 
 **The Labeled State Rule.** Pair semantic color with readable status, numeric signs, or a selected-state attribute; color alone does not establish meaning.
 
+## Color palettes
+
+Success, error, warning and information states use distinct foreground, border and surface tones across the workstation. These component-specific tones intentionally extend the base semantic colors while preserving the same status meaning. Compact cards and fields share the 4px radius documented as `rounded.compact`.
+
 ## Typography
 
-**Typeface:** Segoe UI Variable Text, Segoe UI, then the platform sans-serif fallbacks recorded in the frontmatter. There is no separate display or monospace family.
+**Typeface:** Segoe UI Variable Text, Segoe UI, then the platform sans-serif fallbacks recorded in the frontmatter. There is no separate display family. Code and raw evidence use the CSS `--font-mono` token.
 
 The typography resembles a native trading workstation. Compact labels remain subordinate to instrument symbols and account values; reports gain breathing room through line height rather than a new font.
 
@@ -321,7 +331,7 @@ Workspace styles consume these properties; do not add local copies of the type o
 | Standard control height | `--control-height` | 36px |
 
 Keep the established system-font stack, dark palette and semantic colors.
-The canvas chart reads its type, background, text, grid and candle colors from the same CSS properties.
+The chart and its drawing annotations read type from the shared CSS font; chart surfaces, text, grid and candle colors use the corresponding CSS properties.
 Use tight spacing for related controls and larger spacing between sections.
 Prose fills its available panel or cell width, as requested; do not reintroduce narrow paragraph caps.
 Desktop workspaces retain bounded scrolling within data, reading and form panes.
