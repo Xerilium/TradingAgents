@@ -1,8 +1,6 @@
-import hashlib
 import json
 import logging
 import os
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +19,6 @@ from tradingagents.memory import TradingMemoryLog, settlement
 from tradingagents.memory.reflection import Reflector
 from tradingagents.reporting import write_report_tree
 
-from .checkpointer import clear_checkpoint, get_checkpointer, thread_id
 from .conditional_logic import ConditionalLogic
 from .propagation import Propagator
 from .setup import GraphSetup
@@ -43,13 +40,6 @@ def _validate_trade_date(trade_date) -> str:
     return value
 
 
-# Config keys that do not change what a run writes: where it keeps its files,
-# whether it checkpoints, and how often it retries a provider.
-_NOT_IN_SIGNATURE = frozenset({
-    "results_dir", "data_cache_dir", "memory_log_path", "checkpoint_enabled", "llm_max_retries",
-})
-
-
 class TradingAgentsGraph:
     """Main class that orchestrates the trading agents framework."""
 
@@ -61,7 +51,6 @@ class TradingAgentsGraph:
         callbacks: list | None = None,
         supplemental_tools: list[BaseTool] | None = None,
         social_screen_factory=None,
-        research_effect=None,
         local_memory=True,
     ):
         """Initialize the trading agents graph and components.
@@ -79,7 +68,6 @@ class TradingAgentsGraph:
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
         self.supplemental_tools = tuple(supplemental_tools or ())
-        self.research_effect = research_effect
 
         set_config(self.config)
 
@@ -119,14 +107,10 @@ class TradingAgentsGraph:
         )
         self.reflector = Reflector(self.quick_thinking_llm) if local_memory else None
 
-        # Graph-shape-affecting run choices, kept for the checkpoint signature.
         self.selected_analysts = tuple(selected_analysts)
 
-        # Set up the graph: keep the workflow for recompilation with a checkpointer.
-        self.workflow = self.graph_setup.setup_graph(selected_analysts, memory_node=self._memory_step if local_memory else None)
-        self.graph = self.workflow.compile()
-        self._checkpointer_ctx = None
-        self._resuming = False
+        self.graph = self.graph_setup.setup_graph(
+            selected_analysts, memory_node=self._memory_step if local_memory else None).compile()
 
     def resolve_instrument_context(self, ticker: str, asset_type: str = "stock",
                                    trade_date: str | None = None) -> str:
@@ -151,128 +135,11 @@ class TradingAgentsGraph:
         """
         return str(trade_date) if is_historical(trade_date) else None
 
-    def _run_signature(self, asset_type: str, portfolio=None) -> str:
-        """Run inputs that must invalidate a checkpoint if changed.
-
-        Keyed into the checkpoint thread ID so a resume under a different analyst
-        selection, debate/risk depth, or asset mode starts fresh instead of
-        silently continuing the previous graph (#1089). The rest of the config
-        counts too (provider, models, endpoint, language, vendors, limits): a
-        resume must not carry reports that other settings produced. Only where
-        the run keeps its files and how it retries are left out.
-        """
-        settings = {k: v for k, v in self.config.items() if k not in _NOT_IN_SIGNATURE}
-        supplemental_tools = getattr(self, "supplemental_tools", ())
-        if supplemental_tools:
-            settings["supplemental_tools"] = [
-                {"name": tool.name, "description": tool.description,
-                 "schema": (tool.args_schema if isinstance(tool.args_schema, dict)
-                            else tool.get_input_schema().model_json_schema())}
-                for tool in supplemental_tools
-            ]
-        digest = hashlib.sha256(json.dumps(settings, sort_keys=True, default=str).encode()).hexdigest()[:12]
-        return "|".join([
-            "analysts=" + ",".join(self.selected_analysts),
-            f"debate={self.config['max_debate_rounds']}",
-            f"risk={self.config['max_risk_discuss_rounds']}",
-            f"asset={asset_type}",
-            # None, an empty book and a changed book are three different runs.
-            f"portfolio={portfolio.fingerprint() if portfolio is not None else 'none'}",
-            # The layout itself: a checkpoint saved when analysts ran one after
-            # another has pending nodes this graph no longer has, and one saved
-            # before the Memory Log step would resume without the lessons.
-            "analysts=parallel",
-            "memory=parallel",
-            f"settings={digest}",
-        ])
-
     def propagate(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
-        """Run the trading agents graph for a company on a specific date.
-
-        ``asset_type`` selects between the stock pipeline (default) and the
-        crypto pipeline (``"crypto"``) shipped in #567 — the CLI auto-detects
-        from the ticker; programmatic callers pass it explicitly. When
-        ``checkpoint_enabled`` is set in config, the graph is recompiled with
-        a per-ticker SqliteSaver so a crashed run can resume from the last
-        successful node on a subsequent invocation with the same ticker+date.
-
-        Returns ``(final_state, signal)`` where ``signal`` is one of the 5-tier
-        ratings (Buy / Overweight / Hold / Underweight / Sell) or ``"REVIEW"``
-        when the decision had no parseable rating (#1170); guard with
-        ``tradingagents.agents.rating.is_review`` before mapping it to the
-        PortfolioRating enum.
-        """
+        """Run a fresh analysis and return its final state and rating."""
         trade_date = _validate_trade_date(trade_date)
-
-        with run_config(self.config), \
-                self.checkpoint_scope(company_name, trade_date, asset_type, portfolio) as thread_id_value:
-            return self._run_graph(
-                company_name, trade_date, asset_type=asset_type,
-                checkpoint_thread_id=thread_id_value, portfolio=portfolio,
-            )
-
-    def begin_checkpoint(self, company_name, trade_date, asset_type: str = "stock", portfolio=None, *, identity=None) -> str | None:
-        """Recompile the graph with a per-ticker checkpointer and return the
-        ``thread_id`` to inject into the stream/invoke ``config`` (or ``None``
-        when checkpointing is disabled).
-
-        Pair every call with :meth:`end_checkpoint` in a ``finally``. Both
-        ``propagate`` (via :meth:`checkpoint_scope`) and the CLI stream path use
-        this so ``--checkpoint`` actually resumes (#1249); previously the setup
-        lived only inside ``propagate`` and the CLI streamed the checkpointer-less
-        graph, making the flag a no-op.
-        """
-        self._resuming = False
-        if not self.config.get("checkpoint_enabled"):
-            return None
-        signature = self._run_signature(asset_type, portfolio)
-        self._checkpointer_ctx = get_checkpointer(self.config["data_cache_dir"], company_name)
-        saver = self._checkpointer_ctx.__enter__()
-        self.graph = self.workflow.compile(checkpointer=saver)
-
-        checkpoint_id = identity or thread_id(company_name, str(trade_date), signature)
-        saved = saver.get_tuple({"configurable": {"thread_id": checkpoint_id}})
-        step = saved.metadata.get("step") if saved is not None else None
-        self._resuming = step is not None
-        if step is not None:
-            logger.info("Resuming from step %d for %s on %s", step, company_name, trade_date)
-        else:
-            logger.info("Starting fresh for %s on %s", company_name, trade_date)
-        return checkpoint_id
-
-    def checkpoint_input(self, init_state):
-        """The value to stream/invoke: ``None`` to resume an existing checkpoint,
-        else the initial state for a fresh run.
-
-        LangGraph resumes an interrupted thread when invoked with ``None``;
-        re-passing the initial state instead appends it through the message
-        reducer, duplicating messages in the resumed state (#1249).
-        """
-        return None if self._resuming else init_state
-
-    def end_checkpoint(self):
-        """Restore the plain uncheckpointed graph after a checkpointed run."""
-        if self._checkpointer_ctx is not None:
-            self._checkpointer_ctx.__exit__(None, None, None)
-            self._checkpointer_ctx = None
-            self.graph = self.workflow.compile()
-        self._resuming = False
-
-    @contextmanager
-    def checkpoint_scope(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
-        """Context-manager form of begin/end_checkpoint for the propagate path."""
-        try:
-            yield self.begin_checkpoint(company_name, trade_date, asset_type, portfolio)
-        finally:
-            self.end_checkpoint()
-
-    def clear_checkpoint_on_success(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
-        """Drop a completed run's checkpoint so a later run starts fresh (#1249)."""
-        if self.config.get("checkpoint_enabled"):
-            clear_checkpoint(
-                self.config["data_cache_dir"], company_name, str(trade_date),
-                self._run_signature(asset_type, portfolio),
-            )
+        with run_config(self.config):
+            return self._run_graph(company_name, trade_date, asset_type=asset_type, portfolio=portfolio)
 
     def run_settings(self) -> dict:
         """What produces this graph's runs, for the saved report and state log.
@@ -328,12 +195,6 @@ class TradingAgentsGraph:
         )
 
     def _memory_step(self, state):
-        if self.research_effect is not None:
-            return self.research_effect("local", "Memory Log", "memory-context", {},
-                                        lambda: self._load_memory_step(state))
-        return self._load_memory_step(state)
-
-    def _load_memory_step(self, state):
         """The graph's Memory Log step, alongside the analysts (#1428): settle every
         ticker's due decisions (#1445), then return the lessons known by the
         trade date for the Portfolio Manager (#1251).
@@ -392,43 +253,30 @@ class TradingAgentsGraph:
             logger.warning("No final decision for %s on %s; nothing added to the memory log",
                            company_name, trade_date)
             return
+        if self.memory_log is None:
+            return
         self.memory_log.store_decision(
             ticker=company_name, trade_date=trade_date, final_trade_decision=decision,
             rating=run_rating(final_state),
         )
 
-    def _run_graph(self, company_name, trade_date, asset_type: str = "stock",
-                   checkpoint_thread_id: str | None = None, portfolio=None):
-        """Execute the graph and write the resulting state to disk and memory log."""
-        init_agent_state = self.create_run_state(company_name, trade_date, asset_type, portfolio)
+    def _run_graph(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
+        """Execute a fresh graph and record its completed decision."""
+        graph_input = self.create_run_state(company_name, trade_date, asset_type, portfolio)
         args = self.propagator.get_graph_args()
-
-        # Inject the checkpoint thread_id (from checkpoint_scope) so the same
-        # ticker+date+graph-shape resumes; a different one starts fresh (#1089).
-        if checkpoint_thread_id is not None:
-            args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_thread_id
-
-        # None resumes an existing checkpoint; init_agent_state starts fresh (#1249).
-        graph_input = self.checkpoint_input(init_agent_state)
         if self.debug:
-            # A state repeats the messages before it, so each prints once (#1027).
             final_state, printed = {}, set()
             for messages, state in self.stream_run(graph_input, **args):
-                for msg in messages:
-                    key = getattr(msg, "id", None) or (type(msg).__name__, getattr(msg, "content", None))
+                for message in messages:
+                    key = getattr(message, "id", None) or (type(message).__name__, getattr(message, "content", None))
                     if key not in printed:
                         printed.add(key)
-                        msg.pretty_print()
+                        message.pretty_print()
                 if state is not None:
                     final_state.update(state)
         else:
             final_state = self.graph.invoke(graph_input, **args)
-
         self.record_decision(company_name, trade_date, final_state)
-
-        # Clear checkpoint on successful completion to avoid stale state.
-        self.clear_checkpoint_on_success(company_name, trade_date, asset_type, portfolio)
-
         return final_state, run_rating(final_state)
 
     def stream_run(self, graph_input, **args):

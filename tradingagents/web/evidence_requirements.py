@@ -5,6 +5,29 @@ SUPPLEMENTARY = {"news", "corporate_actions", "earnings", "fundamentals", "class
 DECISION_SCOPES = SUPPLEMENTARY | {"history"}
 
 
+RESEARCH_REPORTS = (
+    "market_report", "sentiment_report", "news_report", "fundamentals_report",
+    "investment_plan", "trader_investment_plan", "final_trade_decision",
+)
+
+
+def research_gaps(result):
+    gaps = ["Missing report: " + name for name in RESEARCH_REPORTS
+            if not result.get("reports", {}).get(name)]
+    sources = result.get("social_sentiment", {}).get("sources", {})
+    for name in ("reddit", "stocktwits"):
+        source = sources.get(name, {})
+        status = source.get("status", "not_requested")
+        total, classified = source.get("total_count"), source.get("classified_count")
+        if (status not in {"completed", "empty"} or source.get("counts", {}).get("unscreened", 0)
+                or type(total) is not int or type(classified) is not int or total < 0
+                or classified != total or status == "empty" and total != 0):
+            gaps.append(name + " screening is " + status + ": "
+                        + str(source.get("classified_count", 0)) + "/"
+                        + str(source.get("total_count", "unknown")) + " posts classified")
+    return gaps
+
+
 def research_dependencies(result, key):
     return {"version": VERSION, "report_keys": [key], "scopes": [], "unresolved": [],
             "basis": "Immutable saved report provenance; current trade inputs follow explicit decision and enabled policy dependencies"}

@@ -270,20 +270,22 @@ there is no holding to reduce. Read the actual action, quantities, rationale and
 portfolio context; missing order terms must not be invented from the label.
 
 A final text answer can exist while a run remains interrupted. Completion
-requires the app's required-input/report and evidence-persistence requirements,
-not merely a model response. Company/global news, macro, prediction markets and
-social classification are enrichment. A captured failure or unknown optional
-request does not by itself mean evidence was lost. Gaps remain in the saved
-Source coverage report and Activity, with qualified completion; they are not
-changed to empty successes or silently retried. Required price/fundamental inputs,
-cancellation, corrupt/missing capture and unknown stateful effects stay blocking.
+requires all four analyst reports, the research committee plan, trader plan,
+final portfolio decision, required inputs and valid evidence capture. Both Reddit
+and StockTwits must be fully screened or have a recorded empty response; fetched
+posts left unscreened block completion. Older saved results that fail these checks
+are shown as **Incomplete**, with their reports preserved, and are excluded from
+joint proposed allocations. Optional news, macro and prediction-market gaps stay
+visible in Source coverage and Activity. They are not changed to empty successes.
+Required price/fundamental inputs, cancellation, corrupt/missing capture and
+unknown stateful effects stay blocking.
 Recorded failures of read-only GatewayIndex discovery remain disclosed coverage
 gaps; they do not imply that the research record was lost.
 Transient FRED and Reddit reads can retry once within their existing bounded
 time allowance and Retry-After. Empty, invalid, access and unconfigured results
 are not retried; successful inputs are retained. A completed workflow does not
-claim every source or every fetched post was available or classified.
-Inspect the saved run's status and errors before treating it as complete.
+claim every optional source was available. Inspect its status and source receipts;
+full social screening does not prove that a provider returned every published post.
 
 ### Tools and failures
 
@@ -346,10 +348,11 @@ without that explicit contract remain blocking.
 
 Gateway capture completeness is different from tool-call success. A known, fully
 recorded validation error can coexist with completed research. An unknown or
-pending outcome cannot. The completion guard requires analyst reports and valid
-required evidence capture. Source, Gateway, Jev, or cancellation failures can
-prevent completion. Social-source gaps remain visible in Source coverage and
-Activity. These gaps alone do not prevent completion.
+pending outcome cannot. The completion guard requires all seven reports, full
+social screening and valid required evidence capture. Source, Gateway, Jev or
+cancellation failures can prevent completion. Partial or failed social screening
+prevents completion; saved source errors remain visible in Source coverage and
+Activity.
 
 ### Data sources and historical meaning
 
@@ -799,8 +802,8 @@ Credentials are external; never print or commit them.
 
 These are existing optional maintenance features, not prerequisites for trading.
 In **Settings → Diagnostics → Local records**, backups include application
-records and referenced evidence. Legacy maintenance archives can still contain
-older research/checkpoint files; the desk does not use them for history or resume.
+records and referenced evidence. Research checkpoints are not created, included
+or restored. Archives containing checkpoint databases are unsupported.
 Credentials, Python environments, unrelated files and native memory cache are excluded.
 
 Restore inspects a supported application ZIP (maximum 64 MiB) before an explicit

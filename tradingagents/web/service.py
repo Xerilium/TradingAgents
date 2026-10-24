@@ -37,22 +37,13 @@ from .config import DeskConfig
 from .alpaca_readonly import DEFAULT_CREDENTIALS
 from .nautilus_runtime import NautilusRuntime
 from .store import DeskStore, call_evidence_failed, source_attempt_failed
+from .evidence_requirements import RESEARCH_REPORTS as REPORT_KEYS, research_gaps
 
 TERMINAL = {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
 OWNED_TERMINAL = {"filled", "canceled", "expired", "rejected"}
 OWNED_ACTIVE = {"new", "accepted", "pending_new", "partially_filled", "pending_cancel", "held"}
 CANCEL_UNCERTAIN = {"intent", "requested", "unknown"}
-REPORT_KEYS = (
-    "market_report",
-    "sentiment_report",
-    "news_report",
-    "fundamentals_report",
-    "investment_plan",
-    "trader_investment_plan",
-    "final_trade_decision",
-)
 DESK_ANALYSTS = ("market", "social", "news", "fundamentals")
-ANALYST_REPORTS = ("market_report", "sentiment_report", "news_report", "fundamentals_report")
 
 
 def now():
@@ -171,6 +162,8 @@ class DeskService:
             except (OSError, KeyError, csv.Error):
                 continue
         self.browse_only = browse_only
+        self.configuration_error = None
+        self.gateway_status = "not_requested"
         self.history = {"runs": [], "drafts": []}
         self.history_error = None
         self.history_directory = active_history
@@ -645,7 +638,7 @@ class DeskService:
                 current = self.store.data["runs"]
             for run in sorted(current, key=lambda item: item.get("created_at") or "", reverse=True):
                 for result in run.get("results", []):
-                    if result.get("status") == "completed" and result["symbol"] not in saved:
+                    if result.get("status") == "completed" and not research_gaps(result) and result["symbol"] not in saved:
                         completion = next((e.get("time") for e in reversed(run.get("events", []))
                                            if e.get("kind") == "complete" and e.get("symbol") == result["symbol"]), None)
                         observed = result.get("completed_at") or completion or run.get("completed_at")
@@ -1026,6 +1019,7 @@ class DeskService:
         symbols = list(dict.fromkeys([*self.store.data["config"]["universe"], *selections]))
         feed = next(iter(selections.values()))["feed"] if selections else None
         self.runtime.configure(symbols, **({"option_feed": feed} if feed else {}))
+        self.configuration_error = None
 
     def option_discovery(self, request):
         from .alpaca_readonly import AlpacaREST, ConnectionConfig
@@ -1197,6 +1191,8 @@ class DeskService:
                 "store": store, "execution_enabled": self.admission.execution_enabled, "new_orders_blocked": commands.get("new_orders_blocked", False),
                 "native_cache_mode": "memory", "local_laya": self.local_laya.state(),
                 "startup_errors": list(getattr(self, "startup_errors", [])),
+                "configuration_error": self.configuration_error,
+                "gateway_status": self.gateway_status,
                 "native_durability": {"state": "in_memory", "durable_writes_confirmed": False,
                     "reason": "Native cache runs in memory. SQLite application records remain saved."},
                 "capabilities": {"saved_research": True, "workspace_records": True, "human_proposals": True,
@@ -1206,6 +1202,7 @@ class DeskService:
                 "research_enabled": not self.browse_only, "history_status": "unavailable" if self.history_error else "available"}
 
     def start_native(self, request=None):
+        self.configure_symbols()
         selected = (request or {}).get("execution_profile")
         current = self.runtime.state()
         if current.get("status", "stopped") in {"stopped", "disconnected"} or selected is not None and selected != current.get("execution_profile"):
@@ -1968,24 +1965,29 @@ class DeskService:
         }
 
     def save_config(self, changes, *, add_symbol=None, expected_revision=None):
+        from .app_database import StoreConflict
+
         if self.browse_only and set(changes) - {"name", "universe"}:
             raise ValueError("Read-only review allows only index name and symbols to change")
         with self.execution_lock, self.store.lock:
+            if type(expected_revision) is not int or expected_revision != self.store.data["config_revision"]:
+                raise StoreConflict(self.store.data["config_revision"])
+            previous = self.store.data["config"]
             if add_symbol is not None:
-                from .app_database import StoreConflict
-                if type(expected_revision) is not int or expected_revision != self.store.data["config_revision"]:
-                    raise StoreConflict(self.store.data["config_revision"])
-                changes = {"universe": list(dict.fromkeys([*self.store.data["config"]["universe"], add_symbol]))}
-            if any(
-                run["status"] in {"queued", "running", "cancelling"}
-                for run in self.store.data["runs"]
-            ):
+                changes = {"universe": list(dict.fromkeys([*previous["universe"], add_symbol]))}
+            if any(run["status"] in {"queued", "running", "cancelling"} for run in self.store.data["runs"]):
                 raise ValueError("Wait for the current analysis to stop before changing settings.")
-            config = DeskConfig.model_validate({**self.store.data["config"], **changes})
-            self.store.data["config"] = config.model_dump()
-            self.store.data["config_revision"] += 1
-            self.store.save()
-            self.configure_symbols()
+            config = DeskConfig.model_validate({**previous, **changes}).model_dump()
+            symbols_changed = config["universe"] != previous["universe"]
+            if config != previous:
+                self.store.data["config"] = config
+                self.store.data["config_revision"] += 1
+                self.store.save()
+        if symbols_changed:
+            try:
+                self.configure_symbols()
+            except (OSError, ValueError) as error:
+                self.configuration_error = "Settings saved. Nautilus could not apply the symbol list; reconnect Nautilus. " + str(error)
         return self.state()
 
     def connection_context(self, runtime):
@@ -2338,7 +2340,7 @@ class DeskService:
                     "quick_think_provider": config["llm_provider"], "deep_think_provider": config["llm_provider"],
                     "quick_think_backend_url": config.get("backend_url"), "deep_think_backend_url": config.get("backend_url"),
                     "results_dir": str(self.store.directory / "reports" / run_id),
-                    "data_cache_dir": str(self.store.directory / "cache"), "checkpoint_enabled": False}
+                    "data_cache_dir": str(self.store.directory / "cache")}
                 tools = build_langchain_tools(self.gateway,
                     domains=("maenifold.memory", "maenifold.graph", "maenifold.thinking"),
                     symbol=symbol, trade_date=run["trade_date"])
@@ -2412,9 +2414,9 @@ class DeskService:
                                         result["revision"] += 1
                                         self._event(run_id, "report", key.replace("_", " ").capitalize(), symbol)
                 evidence = self._publish_research_coverage(run, result)
-                missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
-                if missing:
-                    raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
+                gaps = research_gaps(result)
+                if gaps:
+                    raise ValueError("Research incomplete: " + "; ".join(gaps))
                 failed = [a["operation"] for a in evidence["source"]["attempts"] if source_attempt_failed(a, evidence["source"]["attempts"])]
                 if failed or not evidence["source"].get("capture_complete"):
                     raise ValueError("Research incomplete: source collection or evidence capture failed: " + ", ".join(sorted(set(failed))))

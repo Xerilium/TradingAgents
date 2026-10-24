@@ -13,7 +13,6 @@ execution path.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -49,10 +48,6 @@ class PortfolioContext(BaseModel):
         if others:
             lines.append("- Other positions: " + ", ".join(f"{p.ticker.upper()} {p.quantity:,.4g}" for p in others))
         return "Portfolio at the analysis date:\n" + "\n".join(lines)
-
-    def fingerprint(self) -> str:
-        """Stable digest of the book, so a changed one cannot resume a stale run."""
-        return hashlib.sha256(self.model_dump_json().encode()).hexdigest()[:12]
 
 
 def load_portfolio(path: str | Path) -> PortfolioContext:

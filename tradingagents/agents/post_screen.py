@@ -172,7 +172,7 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                          "status": "unscreened", "model": "multilingual"})
         if retained is not None:
             if [row["text_sha256"] for row in rows] != [row["text_sha256"] for row in retained["posts"]]:
-                raise ValueError("Saved social inputs differ from the resumed source; original labels cannot be reassigned.")
+                raise ValueError("Saved social inputs differ from the supplied source; original labels cannot be reassigned.")
             rows[:] = copy.deepcopy(retained["posts"])
             if any(row["status"] == "pending" for row in rows):
                 raise ValueError("A prior social request has an unknown outcome and cannot be replayed.")

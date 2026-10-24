@@ -278,8 +278,8 @@ Research view inside an instrument shows:
 ### Research list and batch selection
 
 - Find research text search.
-- Show selector: Latest stocks, Completed, Running, Queued, Failed, Cancelled.
-- Summary shows N/N latest stocks finished; progress indicator; completed/failed/interrupted/cancelled/running/queued counts.
+- Show selector: Latest stocks, Completed, Incomplete, Running, Queued, Failed, Cancelled.
+- Summary shows N/N latest stocks finished; progress indicator; completed/incomplete/failed/interrupted/cancelled/running/queued counts.
 - Select failed/unfinished for a new run.
 - Per row: inclusion checkbox, ticker, social screening completion, rating/status. Pagination size 25/50/100 with Previous/Next.
 - Current store is “Latest research per ticker”; do not instruct the user to resume history or replay older runs.
@@ -309,7 +309,7 @@ Selecting a report changes the displayed saved report. Full source artifact is a
 
 **Setup.** New research batch lists exact checked symbols and date. Shows Inspected stock separately and warns inspection does not change research batch. Links: Choose batch stocks in Markets; Research models and limits in Settings. **Run research (N)** opens a confirmation dialog; it does not start a run. The dialog shows selected count and exact symbols, configured universe count, max parallel stocks, analysts, fast/deep model tiers, New York trade date, estimated duration based on completed samples (or no completed observations), and states there is no cost estimate. The separate **Start N-stock research** button submits `/api/runs` and begins work. Close the dialog to cancel before admission. Do not click Start during a read-only walkthrough. No autosave means Setup only previews the batch; it does not start anything until the confirmation action.
 
-**Observed sample.** 7 latest stocks finished, all completed; AAPL, AMZN, GOOGL, META, MSFT, NFLX, NVDA. Stored report/activity showed coverage gaps (including Reddit 429) even when state said completed; completion status does not mean all optional evidence sources succeeded. Inspect Source coverage and Activity, do not infer missing data to be neutral or current.
+**Earlier observed sample.** Seven latest stocks were labeled completed: AAPL, AMZN, GOOGL, META, MSFT, NFLX and NVDA. Some retained reports showed gaps, including Reddit 429. The current completion check marks saved results **Incomplete** if any of the seven required reports are missing or either social source has unfinished screening. Reports remain readable, but incomplete results are excluded from joint proposed allocation. An empty source response is allowed; a failed fetch is not an empty response. Inspect Source coverage and Activity for optional gaps. Do not infer missing data to be neutral or current.
 
 **Source.** Research workspace: `app.js:626+`; report index renderer: `app.js:799–801`; revision review: `app.js:2477–2486`; tabs and setup state/rendering around `app.js:2460–2508`; run/list handlers around `app.js:1284+`.
 

@@ -159,7 +159,7 @@ def safe_ticker_component(value: str, *, max_len: int = 32) -> str:
     can be influenced by attacker-controlled content (e.g. prompt injection
     embedded in fetched news). Without validation, a value like
     ``"../../../etc/foo"`` flows into ``os.path.join`` / ``Path /`` and
-    escapes the configured cache, checkpoint, or results directory.
+    escapes the configured cache or results directory.
 
     Returns ``value`` unchanged when it matches the allowed pattern; raises
     ``ValueError`` otherwise.

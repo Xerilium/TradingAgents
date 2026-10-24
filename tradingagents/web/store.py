@@ -17,6 +17,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from .app_database import ApplicationDatabase, StoreConflict
+from .evidence_requirements import research_gaps
 
 
 class SourceEvidenceError(ValueError):
@@ -143,6 +144,9 @@ class DeskStore:
     def result_summary(result):
         summary = {key: value for key, value in result.items() if key not in {"reports", "laya", "social_sentiment", "continuation"}}
         summary["report_keys"] = list(result.get("reports", {}))
+        summary["completion_gaps"] = research_gaps(result) if result.get("status") == "completed" else []
+        if summary["completion_gaps"]:
+            summary["status"] = "incomplete"
         summary["revision"] = result.get("revision", 0)
         laya = result.get("laya") or {}
         summary["laya"] = {
@@ -214,13 +218,18 @@ class DeskStore:
                                 ("name", "llm_provider", "deep_think_llm", "quick_think_llm",
                                  "max_debate_rounds", "max_risk_discuss_rounds")},
                     )
+                    incomplete = sum(bool(item.get("completion_gaps")) for item in summary["results"])
+                    summary["counts"]["incomplete"] = incomplete
+                    summary["counts"]["completed"] -= incomplete
+                    if summary["status"] == "completed" and incomplete:
+                        summary["status"] = "incomplete"
                     data["runs"].append(summary)
                     for result in results:
                         if result["symbol"] not in data["research"]:
                             status = self.result_summary(result)
                             data["research"][result["symbol"]] = {
                                 **{key: status.get(key) for key in
-                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision")},
+                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision", "completion_gaps")},
                                 "run_id": run["id"],
                                 "social_sentiment": status.get("social_sentiment"),
                                 "laya": {key: status["laya"].get(key) for key in

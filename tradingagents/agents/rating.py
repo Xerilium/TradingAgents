@@ -106,8 +106,7 @@ def parse_rating(text: str, default: str = RATING_REVIEW) -> str:
 def run_rating(final_state: dict) -> str:
     """A finished run's rating: the Portfolio Manager's own, else read from its decision.
 
-    The fallback serves a state without ``final_rating``, such as a run an older
-    version completed and a checkpoint hands back unchanged.
+    Parse the decision text when the state has no explicit ``final_rating``.
     """
     return final_state.get("final_rating") or parse_rating(final_state.get("final_trade_decision", ""))
 

@@ -305,56 +305,9 @@ def conditional_authority(terms, commands):
 
 
 def validate(values, resolve_artifact=None):
-    for run in values.get("journal", {}).get("runs", []):
-        if "continuation" not in run:
-            continue
-        fields(run, {"id": str, "config": dict, "results": list}, "checkpointed research run")
-        saved = run["continuation"]
-        fields(saved, {"version": int, "revision": int, "source_signature": str, "market": dict, "attempts": list}, "research continuation")
-        if saved["version"] != 1 or saved["revision"] < 0 or not re.fullmatch(r"[0-9a-f]{64}", saved["source_signature"]) or not saved["attempts"]:
-            raise ValueError("Unsupported restored research continuation")
-        parent = None
-        for attempt in saved["attempts"]:
-            fields(attempt, {"id": str, "started_at": str, "status": str}, "continuation attempt")
-            identity(attempt["id"])
-            datetime.fromisoformat(attempt["started_at"])
-            if attempt.get("parent_id") != parent:
-                raise ValueError("Restored continuation attempt lineage differs")
-            parent = attempt["id"]
-        for result in run["results"]:
-            if "continuation" not in result:
-                continue
-            checkpoint = result["continuation"]
-            fields(checkpoint, {"thread_id": str, "effects": dict, "social_budget": dict}, "research checkpoint")
-            if checkpoint["thread_id"] != f"{run['id']}:{result['symbol']}":
-                raise ValueError("Restored research checkpoint identity differs")
-            budget = checkpoint["social_budget"]
-            if (type(budget.get("remaining")) is not int or not 0 <= budget["remaining"] <= run["config"].get("social_screen_max_posts", 100)
-                    or budget.get("max_seconds") != run["config"].get("social_screen_timeout_seconds", 600)
-                    or "expires_at" in budget and (type(budget["expires_at"]) not in (int, float) or not math.isfinite(budget["expires_at"]))):
-                raise ValueError("Restored social screening budget differs")
-            if "expires_at" in budget:
-                try:
-                    datetime.fromtimestamp(budget["expires_at"])
-                except (ValueError, OverflowError, OSError) as exc:
-                    raise ValueError("Invalid restored social expiry") from exc
-            for key, effect in checkpoint["effects"].items():
-                fields(effect, {"id": str, "domain": str, "command": str, "tool_call_id": str,
-                                "arguments_sha256": str, "arguments": dict, "stateful": bool, "outcome": str, "history": list}, "research effect")
-                identity(effect["id"])
-                expected = hashlib.sha256(f"{effect['domain']}:{effect['command']}:{effect['tool_call_id']}".encode()).hexdigest()
-                if (key != expected or not re.fullmatch(r"[0-9a-f]{64}", effect["arguments_sha256"])
-                        or effect["outcome"] not in {"intent", "confirmed", "unknown", "error"}):
-                    raise ValueError("Invalid restored research effect identity or outcome")
-                if effect["outcome"] == "confirmed":
-                    fields(effect, {"result": dict}, "confirmed research effect")
-                for reference in (effect["arguments"], *([effect["result"]] if effect["outcome"] == "confirmed" else [])):
-                    fields(reference, {"path": str, "sha256": str, "bytes": int, "format": str}, "research effect artifact")
-                    if (reference["bytes"] < 0 or reference["format"] != "json"
-                            or not re.fullmatch(r"[0-9a-f]{64}", reference["sha256"])
-                            or not reference["path"].startswith(f"reports/{run['id']}/")
-                            or ".." in reference["path"].replace("\\", "/").split("/")):
-                        raise ValueError("Invalid restored research effect artifact reference")
+    if values.get("journal", {}).get("runs"):
+        raise ValueError("Desk research must use latest_research; journal continuation formats are unsupported")
+
     workspace = values.get("workspace")
     if workspace:
         from .workspace import validate_chart_definitions, validate_drawings

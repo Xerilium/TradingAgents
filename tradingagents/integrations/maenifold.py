@@ -757,7 +757,6 @@ def build_langchain_tools(
     domains: tuple[str, ...] | None = None,
     symbol: str | None = None,
     trade_date: str | None = None,
-    research_effect=None,
 ) -> list[Any]:
     """Bind only reviewed analysis commands, retaining each live JSON Schema."""
     from langchain_core.tools import StructuredTool, ToolException
@@ -789,7 +788,7 @@ def build_langchain_tools(
                 continue
 
             def bind(selected: GatewayCommand) -> Callable[..., str]:
-                def invoke(runtime=None, **parameters: Any) -> str:
+                def invoke(**parameters: Any) -> str:
                     with gateway_observation(selected.domain, selected.name, "gateway_invocation",
                                              purpose="analyst_tool") as observed:
                         try:
@@ -802,17 +801,7 @@ def build_langchain_tools(
                             if (selected.domain == "maenifold.thinking" and selected.name == "SequentialThinking"
                                     and not bounded.get("sessionId") and bounded.get("thoughtNumber", 0) != 0):
                                 raise GatewayRejected("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; continue using the returned sessionId.")
-                            dispatch = lambda on_dispatch=None: gateway.execute(
-                                selected.domain, selected.name, bounded, on_dispatch=on_dispatch)
-                            if research_effect is not None:
-                                if runtime is None:
-                                    raise ValueError("Checkpointed research requires the native tool-call identity.")
-                                namespace = runtime.config.get("configurable", {}).get("checkpoint_ns", "")
-                                value = research_effect(selected.domain, selected.name,
-                                    f"{namespace}:{runtime.tool_call_id}", bounded, dispatch,
-                                    stateful=selected.name in _STATEFUL_RESEARCH_COMMANDS)
-                            else:
-                                value = dispatch()
+                            value = gateway.execute(selected.domain, selected.name, bounded)
                         except GatewayError as exc:
                             from tradingagents.dataflows.router import tool_failure_details
                             rule = getattr(exc.__cause__, "validator", None)
@@ -821,9 +810,6 @@ def build_langchain_tools(
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 
-                if research_effect is not None:
-                    from langgraph.prebuilt import ToolRuntime
-                    invoke.__annotations__["runtime"] = ToolRuntime
                 return invoke
 
             help_name = name if domain.startswith("maenifold.") else f"{domain}.{name}"

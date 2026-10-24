@@ -266,8 +266,13 @@ class MarketDataJobs:
                     "asof": body.get("asof") or today.isoformat(), "purpose": "required_baseline", "timeframe": "1Day"}
         if action == "cancel":
             identity = body["id"]
-            self.canceled.add(identity)
-            self.update(lambda saved: saved["jobs"][identity].update(status="canceling", message="Cancellation stops future data requests; received receipts remain saved"))
+            def cancel(saved):
+                job = saved["jobs"][identity]
+                if job["status"] not in {"queued", "running", "canceling"}:
+                    raise ValueError("This data job has already finished")
+                self.canceled.add(identity)
+                job.update(status="canceling", message="Cancellation stops future data requests; received receipts remain saved")
+            self.update(cancel)
             return self.state()
         if action == "resume":
             old = self.database.read("market_history", DEFAULT)["data"]["jobs"][body["id"]]

@@ -32,17 +32,6 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def analyze(
     ctx: typer.Context,
-    checkpoint: bool | None = typer.Option(
-        None,
-        "--checkpoint/--no-checkpoint",
-        help="Enable/disable checkpoint-resume (save state after each node so a "
-        "crashed run can resume). Omit to honor TRADINGAGENTS_CHECKPOINT_ENABLED.",
-    ),
-    clear_checkpoints: bool = typer.Option(
-        False,
-        "--clear-checkpoints",
-        help="Delete all saved checkpoints before running (force fresh start).",
-    ),
     portfolio: str = typer.Option(
         None,
         "--portfolio",
@@ -72,10 +61,6 @@ def analyze(
     """
     if ctx.invoked_subcommand is not None:
         return
-    if clear_checkpoints:
-        from tradingagents.graph.checkpointer import clear_all_checkpoints
-        n = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
-        console.print(f"[yellow]Cleared {n} checkpoint(s).[/yellow]")
     portfolio_context = None
     if portfolio:
         try:
@@ -86,7 +71,7 @@ def analyze(
 
     try:
         flags = {"ticker": ticker, "date": date, "analysts": analysts, "save": save, "show": show, "html": html}
-        run_analysis(checkpoint=checkpoint, portfolio=portfolio_context, flags=flags)
+        run_analysis(portfolio=portfolio_context, flags=flags)
     except _NO_CONSOLE_ERRORS:
         # A terminal with no console buffer cannot host the interactive prompts.
         # Emit one actionable line on stderr instead of a prompt_toolkit

@@ -11,6 +11,7 @@ import socket
 import subprocess
 import secrets
 import sys
+import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import CookieError, SimpleCookie
@@ -255,6 +256,7 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/lists.js": "lists.js",
             "/static/nautilus.js": "nautilus.js",
             "/static/command-controls.js": "command-controls.js",
+            "/static/report-format.js": "report-format.js",
             "/static/market-chart.js": "market-chart.js",
             "/static/vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js": "vendor/lightweight-charts-drawing/0.6.2/lightweight-charts-drawing.umd.js",
             "/static/vendor/lightweight-charts-drawing/0.6.2/LICENSE": "vendor/lightweight-charts-drawing/0.6.2/LICENSE",
@@ -365,7 +367,7 @@ class DeskHandler(BaseHTTPRequestHandler):
             elif path == "/api/refresh":
                 result = service.refresh()
             elif path == "/api/config":
-                result = service.save_config(data)
+                result = service.save_config(data["changes"], expected_revision=data["expected_revision"])
             elif path == "/api/portfolio-model":
                 result = service.model_portfolio(data)
             elif path == "/api/workspace":
@@ -517,6 +519,8 @@ def main():
             service.launch_root = original_root
             service.startup_errors = []
             if not args.browse_only:
+                service.gateway_status = "checking"
+                gateway_process = None
                 endpoint = urlsplit(args.mcp_endpoint)
                 if endpoint.scheme == "http" and endpoint.hostname in {"localhost", "127.0.0.1", "::1"}:
                     port = endpoint.port or 80
@@ -528,11 +532,22 @@ def main():
                             executable = shutil.which("maenifold")
                             if not executable:
                                 raise FileNotFoundError("Installed Maenifold executable was not found on PATH")
-                            subprocess.Popen([executable, "--http", "--port", str(port)],
+                            gateway_process = subprocess.Popen([executable, "--http", "--port", str(port)],
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
                         except OSError as failure:
                             service.startup_errors.append(f"Maenifold startup failed: {failure}")
+                def verify_gateway():
+                    from tradingagents.integrations.maenifold import GatewayError
+                    try:
+                        service.gateway.discover("maenifold.memory")
+                        if gateway_process is not None and gateway_process.poll() is not None:
+                            raise OSError("Maenifold exited with status " + str(gateway_process.returncode))
+                        service.gateway_status = "ready"
+                    except (GatewayError, OSError, ValueError) as failure:
+                        service.gateway_status = "failed"
+                        service.startup_errors.append("Maenifold readiness failed: " + str(failure))
+                threading.Thread(target=verify_gateway, name="gateway-readiness", daemon=True).start()
                 try:
                     service.start_native()
                 except (OSError, ValueError) as failure:
