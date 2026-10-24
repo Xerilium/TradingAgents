@@ -4,12 +4,34 @@ from collections import deque
 from importlib.metadata import version
 import os
 from pathlib import Path
+import re
 import threading
 import time
 
 MODEL = "convaiinnovations/laya-multilingual"
 REVISION = "1720e3e3357cfe1e281542e223f8273b0890ca34"
 MAX_TOKENS, HEAD_TOKENS, BATCH_SIZE = 8192, 512, 5
+
+
+def local_failure_details(error):
+    """Bound local classifier diagnostics and remove remote credential material."""
+    details, seen = [], set()
+    while error is not None and id(error) not in seen and len(details) < 4:
+        seen.add(id(error))
+        message = str(error)
+        message = re.sub(r"(?i)https?://\S+", "[URL redacted]", message)
+        message = re.sub(r"([?&][^=\s&]+)=[^&\s]+", r"\1=[redacted]", message)
+        message = re.sub(r'''(?im)\b(?:authorization|api[_ -]?key|token|password|secret|cookie)\b["'\s]*[:=][^\r\n]*''',
+                         "[credential redacted]", message)
+        message = re.sub(r"(?i)\bbearer\s+\S+|\bhf_[A-Za-z0-9_-]+|\bsk-[A-Za-z0-9_-]+",
+                         "[credential redacted]", message)
+        detail = {"class": type(error).__name__[:80], "message": message[:400]}
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        if type(status) is int:
+            detail["http_status"] = status
+        details.append(detail)
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+    return details
 
 
 class LocalLaya:
@@ -48,7 +70,9 @@ class LocalLaya:
         except Exception as exc:
             if router:
                 router.unload()
-            self.details = {**self.details, "status": "failed", "error": f"{type(exc).__name__}: {exc}"[:500]}
+            details = local_failure_details(exc)
+            self.details = {**self.details, "status": "failed", "error_details": details,
+                            "error": "; ".join(f"{d['class']}: {d['message']}" for d in details)[:500]}
         finally:
             self.ready.set()
 

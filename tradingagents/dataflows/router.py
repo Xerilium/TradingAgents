@@ -193,6 +193,12 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
                        receipt["outcome"] if receipt["outcome"] in {"deferred", "unknown"} else "error",
                        error_class=kind if kind in {"GatewayError", "GatewayTimeout", "GatewayRateLimited",
                                                    "CancelledError", "TimeoutError", "TypeSafeError"} else "UnexpectedError")
+        if origin == "local_laya" and domain == "laya" and command == "predict_batch" and boundary == "local_batch":
+            from tradingagents.integrations.laya import local_failure_details
+            receipt.update(error_class=kind[:80], error_details=local_failure_details(exc),
+                failure_kind="screening_budget_exhausted" if getattr(exc, "social_budget_expired", False)
+                else "cancelled_local_screening" if isinstance(exc, (asyncio.CancelledError, InterruptedError))
+                else "local_inference_failure")
         if origin == "gateway":
             receipt.setdefault("error_details", _gateway_failure_details(exc))
             if getattr(exc, "social_budget_expired", False):

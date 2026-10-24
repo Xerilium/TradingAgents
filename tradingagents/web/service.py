@@ -1683,10 +1683,13 @@ class DeskService:
     def _research_activity(run):
         events = copy.deepcopy(run.get("events", []))
         keys = {e.get("attempt_id") for e in events if isinstance(e, dict)}
-        attempts = run.get("gateway_evidence", {}).get("attempts", [])
+        attempts = run.get("gateway_evidence", {}).get("attempts", []) + [
+            a for a in run.get("source_evidence", {}).get("attempts", [])
+            if a.get("origin") == "local_laya" and a.get("vendor") == "laya"
+            and a.get("operation") == "predict_batch" and a.get("boundary_kind") == "local_batch"]
         for receipt in attempts:
             boundary = receipt.get("boundary_kind")
-            if boundary != "gateway_invocation" and (boundary != "gateway_logical" or receipt.get("parent_attempt_id")):
+            if boundary != "local_batch" and boundary != "gateway_invocation" and (boundary != "gateway_logical" or receipt.get("parent_attempt_id")):
                 continue
             stamp = receipt.get("ended_at") or receipt.get("started_at")
             identity = receipt.get("attempt_id")

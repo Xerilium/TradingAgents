@@ -24,7 +24,16 @@ class SourceEvidenceError(ValueError):
     """A bounded, safe-to-display receipt-capture failure."""
 
 
+def _local_laya_attempt(attempt):
+    return (attempt.get("origin") == "local_laya" and attempt.get("vendor") == "laya"
+            and attempt.get("operation") == "predict_batch" and attempt.get("boundary_kind") == "local_batch")
+
+
 def source_attempt_failed(attempt, attempts=()):
+    if (_local_laya_attempt(attempt) and attempt.get("ended_at") and not attempt.get("late")
+            and not attempt.get("capture_error") and attempt.get("capture") == "recorded"
+            and attempt.get("outcome") in {"success", "error", "unknown"}):
+        return False  # Optional inference coverage is separate from original source acquisition.
     if (attempt.get("requirement") == "supplemental" and not attempt.get("capture_error")
             and attempt.get("ended_at") and not attempt.get("late")
             and attempt.get("capture") in {"recorded", "error_class_only"}
@@ -395,9 +404,12 @@ class DeskStore:
                 attempt = {}
                 evidence["attempts"].append(attempt)
             attempt.update(copy.deepcopy(receipt))
+            if _local_laya_attempt(attempt):
+                attempt["requirement"] = "supplemental"
             if evidence.get("terminal_observed_at"):
                 attempt["late"] = True
-            if receipt["outcome"] == "success":
+            if receipt["outcome"] == "success" or (_local_laya_attempt(receipt) and receipt.get("ended_at")
+                                                   and receipt["outcome"] in {"error", "unknown"}):
                 try:
                     attempt["artifact"] = self._write_source_result(run_id, receipt["attempt_id"], output)
                     attempt["capture"] = "recorded"
@@ -445,7 +457,8 @@ class DeskStore:
         evidence["unknown_count"] = sum(a["outcome"] == "unknown" for a in attempts)
         evidence["late_count"] = sum(a.get("late", False) for a in attempts)
         evidence["capture_complete"] = not (
-            evidence["pending_count"] or evidence["unknown_count"] or evidence["late_count"]
+            evidence["pending_count"] or any(a.get("outcome") == "unknown" and source_attempt_failed(a, attempts)
+                                             for a in attempts) or evidence["late_count"]
             or evidence.get("persistence_error") or any(a.get("capture_error") for a in attempts)
         )
         evidence["persistence_complete"] = not (
