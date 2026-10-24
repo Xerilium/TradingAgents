@@ -320,6 +320,8 @@ class DeskStore:
                     attempt["capture_error"] = (
                         "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
                     )
+                    if isinstance(exc, SourceEvidenceError):
+                        attempt["capture_error_details"] = str(exc)
                     evidence["capture_complete"] = False
             elif receipt["outcome"] == "error":
                 attempt["capture"] = "error_class_only"
@@ -404,6 +406,8 @@ class DeskStore:
                 attempt["capture_error"] = (
                     "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
                 )
+                if isinstance(exc, SourceEvidenceError):
+                    attempt["capture_error_details"] = str(exc)
 
     def _write_source_result(self, run_id, attempt_id, output, prefix="source", *, allow_pagination_cursor=False):
         import pandas as pd
@@ -427,7 +431,7 @@ class DeskStore:
         # Screen bounded textual views only; successful artifacts keep the original bytes.
         # RSS can entity-escape JSON, which can itself contain escaped key delimiters.
         view = payload.decode("utf-8")  # Non-UTF-8 bodies are an explicit unsupported capture.
-        marker = (r'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
+        marker = (r'''(?im)(?:^\s*|[{,]\s*|["'])[\w-]*(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'''
                   r'''["'\s]*[:=]|bearer\s+\S+|(?<![\w-])sk-(?:(?:proj|svcacct)-[a-zA-Z0-9_-]{16,}|[a-zA-Z0-9]{32,})(?![\w-])|-----BEGIN [A-Z ]*PRIVATE KEY''')
         for _ in range(4):
             # Only the known pagination field name is exempted, never its value or other token fields.
