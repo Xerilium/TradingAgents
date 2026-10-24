@@ -623,6 +623,9 @@ class DeskService:
                         ("symbol", "status", "rating", "trade_date", "revision")}})
         current_ids = {run["id"] for run in data["runs"]}
         for run in data["runs"]:
+            saved_run = next((r for r in journal["data"]["runs"] if r["id"] == run["id"]), run)
+            events = self._research_activity(saved_run)
+            run.update(events=events[-40:], event_count=len(events))
             if "continuation" in run:
                 saved = run["continuation"]
                 run["continuation"] = {key: saved.get(key) for key in ("version", "revision", "blocked_reason")}
@@ -632,9 +635,10 @@ class DeskService:
             summary = {key: copy.deepcopy(saved.get(key)) for key in (
                 "id", "created_at", "completed_at", "trade_date", "symbols", "status", "config", "account_id")}
             results = saved.get("results", [])
+            events = self._research_activity(saved)
             summary.update(history_source="Saved .paper-desk history (read-only)",
                 results=[self.store.result_summary(r) for r in results],
-                events=copy.deepcopy(saved.get("events", [])[-40:]), event_count=len(saved.get("events", [])),
+                events=events[-40:], event_count=len(events),
                 counts={status: sum(r.get("status") == status for r in results)
                         for status in ("completed", "failed", "cancelled", "running")})
             summary["counts"]["queued"] = max(0, len(saved["symbols"]) - len(results))
@@ -1673,13 +1677,61 @@ class DeskService:
             raise ValueError("Choose an explicit approval, revocation or admission")
         return {"investor": self.investor(), "commands": self.admission.snapshot()}
 
+    @staticmethod
+    def _research_activity(run):
+        events = copy.deepcopy(run.get("events", []))
+        keys = {e.get("attempt_id") for e in events if isinstance(e, dict)}
+        attempts = run.get("gateway_evidence", {}).get("attempts", [])
+        for receipt in attempts:
+            boundary = receipt.get("boundary_kind")
+            if boundary != "gateway_invocation" and (boundary != "gateway_logical" or receipt.get("parent_attempt_id")):
+                continue
+            stamp = receipt.get("ended_at") or receipt.get("started_at")
+            identity = receipt.get("attempt_id")
+            if not stamp or not identity or identity in keys:
+                continue
+            outcome = receipt.get("outcome", "unknown")
+            cause = "; ".join(d["message"] for d in receipt.get("error_details", [])
+                              if d.get("message") and d["message"] != "Exception details withheld")
+            message = (f"Retained evidence: {receipt.get('vendor')} / {receipt.get('operation')}: {outcome}. "
+                       + f"Started: {receipt.get('started_at')}; ended: {receipt.get('ended_at')}. "
+                       + (f"{receipt['failure_kind']}. " if receipt.get("failure_kind") else "")
+                       + (f"{cause}. " if cause else f"Original error details unavailable ({receipt.get('error_class', 'unknown class')}). " if outcome not in {"running", "success"} else "")
+                       + (f"Screening budget: {receipt['screening_budget']}. " if receipt.get("screening_budget") else "")
+                       + f"Receipt attempt: {identity} (Sources).")
+            events.append({"time": stamp, "kind": "source", "symbol": receipt.get("symbol"),
+                           "message": message, "attempt_id": identity})
+            keys.add(identity)
+        for result in run.get("results", []):
+            for source, evidence in result.get("social_sentiment", {}).get("sources", {}).items():
+                rows = evidence.get("posts", [])
+                if not rows:
+                    continue
+                classified = sum(row.get("status") == "classified" for row in rows)
+                stamps = [a.get("ended_at") or a.get("started_at") for a in attempts
+                          if a.get("symbol") == result["symbol"] and a.get("vendor") == "laya"]
+                stamp = evidence.get("completed_at") or max((s for s in stamps if s), default=None)
+                message = (f"Retained evidence: {source}: {classified}/{len(rows)} posts classified; "
+                           f"saved status: {evidence.get('status', 'unknown')}. "
+                           + (f"{evidence['stop_reason']}. " if evidence.get("stop_reason") else "")
+                           + ("Progress timestamp unavailable." if not stamp else
+                              "Snapshot shown at its completion time." if evidence.get("completed_at") else
+                              "Snapshot shown at the last retained Laya receipt time; progress time unavailable."))
+                if not any(e.get("kind") == "screening" and e.get("symbol") == result["symbol"]
+                           and e.get("message") == message for e in events):
+                    events.append({"time": stamp, "kind": "screening", "symbol": result["symbol"], "message": message})
+        return sorted(events, key=lambda e: e.get("time") or "")[-500:]
+
     def run_detail(self, run_id, symbol=None):
         journal = self.store.database.read("journal")["data"]
         run = next((r for r in journal["runs"] if r["id"] == run_id), None)
         if run is None:
             run = next(r for r in self.history.get("runs", []) if r["id"] == run_id)
         if symbol is None:
-            return copy.deepcopy(run)
+            detail = copy.deepcopy(run)
+            detail["events"] = self._research_activity(run)
+            detail["event_count"] = len(detail["events"])
+            return detail
         result = copy.deepcopy(next(r for r in run["results"] if r["symbol"] == symbol))
         result.setdefault("revision", 0)
         return result
@@ -2151,20 +2203,6 @@ class DeskService:
                 receipt = {**receipt, "symbol": symbol}
             try:
                 self.store.record_source_attempt(owner_id, receipt, output)
-                if symbol is not None and (receipt.get("boundary_kind") == "gateway_invocation"
-                        or receipt.get("boundary_kind") == "gateway_logical" and not receipt.get("parent_attempt_id")):
-                    outcome = receipt.get("outcome", "unknown")
-                    cause = "; ".join(detail["message"] for detail in receipt.get("error_details", [])
-                                      if detail.get("message") and detail["message"] != "Exception details withheld")
-                    budget = receipt.get("screening_budget")
-                    self._event(owner_id, "source", (
-                        f"{receipt['vendor']} / {receipt['operation']}: {outcome}"
-                        f" at {receipt.get('ended_at') or receipt.get('started_at')}. "
-                        + (f"{receipt['failure_kind']}. " if receipt.get("failure_kind") else "")
-                        + (f"{cause}. " if cause else f"{receipt.get('error_class', 'Cause not captured')}. " if outcome not in {"running", "success"} else "")
-                        + (f"Screening budget: {budget}. " if budget else "")
-                        + f"Receipt attempt: {receipt['attempt_id']} (Sources)."
-                    ), symbol, attempt_id=receipt["attempt_id"])
             except Exception:
                 with self.store.lock:
                     origin = receipt.get("origin")
