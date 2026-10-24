@@ -759,7 +759,8 @@ def build_langchain_tools(
                 description += (
                     " Research only; never authorizes trading. Cite source memory:// identifiers "
                     f"and check source dates against analysis date {trade_date or 'the current run'}. "
-                    "Graph links and similarity are retrieval hints, not verified financial evidence."
+                    "Memory and reasoning do not replace external research or independently verify facts. "
+                    "Graph links and similarity are retrieval hints; repeated underlying sources are not independent corroboration."
                 )
             if domain == "maenifold.graph":
                 description += (
@@ -770,13 +771,17 @@ def build_langchain_tools(
             if domain == "maenifold.memory":
                 description += (
                     " Reuse existing notes and concepts. Knowledge notes need a ## Source section "
-                    "with source URLs and dates, and [[WikiLinks]]. Read before editing and supply "
+                    "with source URLs, source/as-of dates, attribution, uncertainty and [[WikiLinks]]. "
+                    "Update reusable externally sourced findings without generalizing beyond the evidence; skip writes if nothing reusable is learned. "
+                    "Separate historical notes from current observations. Read before editing, preserve lineage and supply "
                     "the returned checksum. Do not overwrite to bypass a stale edit. "
                     "DeleteMemory requires explicit user confirmation."
                 )
             if domain == "maenifold.thinking":
                 description += (
-                    " Put concise research decisions, evidence, and open questions in response. "
+                    " Think through externally collected evidence as it becomes available: integrate findings, "
+                    "examine assumptions and conflicts, and identify gaps. Put source-linked reasoning in response, "
+                    "not pre-research planning or status logging; memory and reasoning are not external evidence. "
                     "Start with thoughtNumber=0, response, and nextThoughtNeeded=true; omit sessionId. "
                     "Continue with the actual returned sessionId, incremented thoughtNumber, "
                     "response, and nextThoughtNeeded=true. Complete using that sessionId, "

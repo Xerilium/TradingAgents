@@ -13,6 +13,9 @@ WRAP_UP = (
 def research_memory_guidance(tools):
     names = {tool.name for tool in tools}
     guidance = [
+        " Use available external research tools to collect actual evidence for this analysis; reuse externally collected results already supplied."
+        " Memory and reasoning are context and analysis, never substitutes for external research or independently verified facts."
+        " Trace claims to their underlying external sources; repeated sources in memory, tool results or reasoning are not independent corroboration."
         " Use prior company, project or domain knowledge only when relevant to this research."
         " During tool-enabled research, make a small, proportionate retrieval pass; stop if results are irrelevant."
         " Follow the available tools' schemas. Once tool rounds are exhausted, or during tool-free review,"
@@ -26,7 +29,7 @@ def research_memory_guidance(tools):
         ("maenifold_graph__FindSimilarConcepts", "Before BuildContext, discover an existing anchor using conceptName and maxResults=5. Use only a directly relevant returned concept; if none exists or resolution fails, disclose no relevant memory and continue primary-source research. Never invent an anchor or force an unrelated match; similarity is not evidence."),
         ("maenifold_memory__SearchMemories", "Search relevant company or domain notes, especially when graph context is unavailable; avoid indiscriminate retrieval."),
         ("maenifold_memory__ReadMemory", "Read the strongest directly relevant source notes returned by retrieval before relying on them."),
-        ("maenifold_thinking__SequentialThinking", "Use concise persistent reasoning for nontrivial research steps. Put material assumptions, source-linked evidence, decisions and unresolved gaps in response. Start with thoughtNumber=0, response, nextThoughtNeeded=true and no sessionId. Continue with the actual returned sessionId, incremented thoughtNumber, response and nextThoughtNeeded=true. Complete with that sessionId, incremented thoughtNumber, response, nextThoughtNeeded=false and a conclusion string containing the completion report (ConfessionReport) covering outcomes and gaps. Do not send top-level thought or ConfessionReport fields."),
+        ("maenifold_thinking__SequentialThinking", "Think through externally collected evidence as it becomes available: integrate findings, examine assumptions and conflicts, and identify gaps. Use response for source-linked reasoning, not pre-research planning or status logging. Start with thoughtNumber=0, response, nextThoughtNeeded=true and no sessionId. Continue with the actual returned sessionId, incremented thoughtNumber, response and nextThoughtNeeded=true. Complete with that sessionId, incremented thoughtNumber, response, nextThoughtNeeded=false and a conclusion string containing the completion report (ConfessionReport) covering outcomes and gaps. Do not send top-level thought or ConfessionReport fields."),
     ):
         if name in names:
             guidance.append(f" Use {name}: {instruction}")
@@ -39,6 +42,9 @@ def research_memory_guidance(tools):
         " or state that none were found, retrieval was unavailable, or no retrieval was performed, as actually observed."
         " Separate dated memory and its original sources from current primary evidence; check availability as of the analysis date"
         " and never treat old prices as current. Report tool failures and unresolved gaps without inventing calls or citations."
+        " When available memory tools support updates and you learn reusable externally sourced findings, keep memory:// current:"
+        " read and reuse relevant notes, preserve checksum and lineage on edits, and retain source URLs, source/as-of dates, attribution and uncertainty."
+        " Distinguish historical memory from current observations; write nothing if nothing reusable is learned, and do not generalize beyond the evidence."
         " Do not promote unsourced conclusions to verified durable knowledge. Existing required-data and report-format rules still apply."
     )
     return "".join(guidance)
