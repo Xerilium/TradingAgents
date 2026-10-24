@@ -652,6 +652,12 @@ status alone does not establish order readiness or every feature's acceptance.
 
 ### Local Laya setup and portability
 
+In **Research → Reports → Social sentiment**, **Screen 5 saved posts locally**
+annotates only the first five retained Stocktwits posts (or fewer if available).
+The separate **Local Laya batch** report shows original input hashes, model,
+batch receipts, token checks and per-post predictions. This does not refetch
+sources, rerun research or change the saved recommendation.
+
 The desk owns one background-loaded [Laya Python Router](https://github.com/NandhaKishorM/laya)
 in its existing `.venv`; no classifier server, extra port or Gateway Laya process
 is required. `pyproject.toml` pins Laya **0.4.14**, torch **2.14.1**,

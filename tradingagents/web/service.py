@@ -1727,6 +1727,106 @@ class DeskService:
                     events.append({"time": stamp, "kind": "screening", "symbol": result["symbol"], "message": message})
         return sorted(events, key=lambda e: e.get("time") or "")[-500:]
 
+    def screen_saved_posts(self, request):
+        from tradingagents.integrations.laya import local_failure_details
+        from uuid import UUID
+        run_id, symbol, identity = request["run_id"], request["symbol"], str(UUID(request["request_id"]))
+        with self.store.lock:
+            run = self._find_run(run_id)
+            result = next(r for r in run["results"] if r["symbol"] == symbol)
+            previous = result.get("local_laya_batch", {})
+            if previous.get("id") == identity:
+                return copy.deepcopy(previous)
+            if previous.get("status") in {"queued", "running"} and previous.get("owner_instance") == self.instance_id:
+                raise ValueError("A local saved-post batch is already running for this stock")
+            if self.local_laya.state()["status"] != "ready":
+                raise ValueError("Local Laya is not ready; inspect Settings diagnostics")
+            inputs = copy.deepcopy(result.get("social_sentiment", {}).get("sources", {}).get("stocktwits", {}).get("posts", [])[:5])
+            if not inputs:
+                raise ValueError("This stock has no retained Stocktwits posts")
+            for row in inputs:
+                if not isinstance(row.get("text"), str) or hashlib.sha256(row["text"].encode()).hexdigest() != row.get("text_sha256"):
+                    raise ValueError("Saved Stocktwits text/hash mismatch; no inference dispatched")
+            inputs = [{key: row.get(key) for key in ("text", "text_sha256", "provenance")} for row in inputs]
+            annotation = {"id": identity, "owner_instance": self.instance_id, "status": "queued",
+                "run_id": run_id, "symbol": symbol, "source": "stocktwits", "created_at": now(),
+                "model": self.local_laya.state()["model"],
+                "input_hashes": [row["text_sha256"] for row in inputs], "model_identity": self.local_laya.state(),
+                "api": "Router.predict_batch", "api_call_count": 0, "batch_sizes": [], "receipts": [],
+                "sources": {}, "previous_artifacts": previous.get("previous_artifacts", [])
+                    + ([previous["artifact"]] if previous.get("artifact") else []),
+                "purpose": "Local annotation of saved posts; original research and recommendation are unchanged."}
+            result["local_laya_batch"] = copy.deepcopy(annotation)
+            result["revision"] += 1
+            run["events"].append({"time": now(), "kind": "local_annotation", "symbol": symbol,
+                "message": f"Local Laya annotation queued: {len(inputs)} retained Stocktwits posts. No source refetch or research rerun."})
+            self.store.save()
+
+        def work():
+            started = time.monotonic()
+            annotation.update(status="running", started_at=now())
+            def capture(receipt, payload):
+                # This annotation owns its receipts, never the completed run's evidence buckets.
+                try:
+                    artifact = self.store._write_source_result(run_id, receipt["attempt_id"],
+                        {"receipt": receipt, "payload": payload}, "local-laya-annotation-receipt")
+                    annotation["receipts"].append({"receipt": copy.deepcopy(receipt), "artifact": artifact})
+                except Exception as exc:
+                    annotation.update(capture_error="Local annotation receipt capture failed", error_details=local_failure_details(exc))
+
+            def progress(evidence, budget):
+                if not annotation["api_call_count"] and any(row["status"] == "pending" for row in evidence["posts"]):
+                    annotation.update(api_call_count=1, batch_sizes=[len(inputs)])
+            try:
+                with self.store.lock:
+                    result["local_laya_batch"] = copy.deepcopy(annotation)
+                    result["revision"] += 1
+                    self.store.save()
+                annotation["input_artifact"] = self.store._write_source_result(run_id, str(uuid4()),
+                    {"run_id": run_id, "symbol": symbol, "source": "stocktwits", "posts": inputs}, "local-laya-annotation-input")
+                with capture_vendor_evidence(capture):
+                    screen = laya_screen(symbol, self.local_laya, max_posts=len(inputs), source="stocktwits",
+                        instrument=f"{self.company_names.get(symbol, symbol)} ({symbol})", on_progress=progress)
+                    screen([row["text"] for row in inputs])
+                evidence = screen.evidence
+                annotation.update(status=evidence["status"], sources={"stocktwits": evidence},
+                                  model_identity=self.local_laya.state())
+                if evidence.get("error"):
+                    annotation["error"] = evidence["error"]
+                if annotation.get("capture_error"):
+                    annotation["status"] = "failed"
+            except Exception as exc:
+                annotation.update(status="failed", error_details=local_failure_details(exc),
+                                  error="Local saved-post annotation failed; inspect the captured details.")
+            finally:
+                annotation.update(ended_at=now(), elapsed_seconds=round(time.monotonic() - started, 3))
+                try:
+                    annotation["artifact"] = self.store._write_source_result(run_id, str(uuid4()),
+                        annotation, "local-laya-annotation-result")
+                except Exception as exc:
+                    annotation.update(status="failed", capture_error="Local annotation result capture failed",
+                                      error_details=local_failure_details(exc))
+                with self.store.lock:
+                    result["local_laya_batch"] = copy.deepcopy(annotation)
+                    result["revision"] += 1
+                    run["events"].append({"time": now(), "kind": "local_annotation", "symbol": symbol,
+                        "message": f"Local Laya annotation: {annotation['status']}; {annotation['api_call_count']} local batch API dispatch; "
+                            f"{len(inputs)} saved inputs; {annotation['elapsed_seconds']}s. "
+                            + (annotation.get("capture_error") or "; ".join(d["class"] + ": " + d["message"] for d in annotation.get("error_details", []))
+                               or annotation.get("error") or "Original research unchanged.")})
+                    self.store.save()
+        try:
+            future = self.executor.submit(work)
+            self.research_futures.add(future)
+            future.add_done_callback(self.research_futures.discard)
+        except Exception as exc:
+            with self.store.lock:
+                annotation.update(status="failed", error_details=local_failure_details(exc), error="Local annotation could not be queued")
+                result["local_laya_batch"] = copy.deepcopy(annotation)
+                result["revision"] += 1
+                self.store.save()
+        return copy.deepcopy(annotation)
+
     def run_detail(self, run_id, symbol=None):
         journal = self.store.database.read("journal")["data"]
         run = next((r for r in journal["runs"] if r["id"] == run_id), None)

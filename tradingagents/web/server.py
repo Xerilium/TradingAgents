@@ -349,7 +349,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
                 return
             if service.browse_only and path not in {
-                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report"}:
+                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
@@ -413,6 +413,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                     analysis_date=data.get("analysis_date"),
                     exclude_fred=data.get("exclude_fred", False),
                 )
+            elif path == "/api/runs/local-laya":
+                result = service.screen_saved_posts(data)
             elif path == "/api/runs/cancel":
                 result = service.cancel_run(data["run_id"])
             elif path == "/api/runs/resume":
