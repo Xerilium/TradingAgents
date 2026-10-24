@@ -258,7 +258,15 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
         status = metadata.get("status_code", metadata.get("code", metadata.get("status")))
         if str(status) == "429" or re.search(r"\b429\b|too many requests|rate.?limit", str(error or value.get("message", "")), re.I):
             raise GatewayRateLimited(metadata.get("retry_after", metadata.get("retryAfter")))
-        raise GatewayError("The upstream Gateway tool reported an error.")
+        from tradingagents.dataflows.router import _gateway_failure_details
+        failure = GatewayError("The upstream Gateway tool reported an error.")
+        messages = [error or value.get("message", ""), *(block.get("text", "")
+            for block in value.get("content") or [] if isinstance(block, dict) and block.get("type") == "text")]
+        failure.error_details = [detail for message in messages[:6] if message
+            for detail in _gateway_failure_details(GatewayError(str(message)))]
+        if str(status).isdigit() and 100 <= int(status) <= 599:
+            failure.http_status = int(status)
+        raise failure
 
 
 def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
@@ -279,7 +287,10 @@ def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
             if value.lstrip().lower().startswith(("error:", "tool error:")):
                 if re.search(r"\b429\b|too many requests|rate.?limit", value, re.I):
                     raise GatewayRateLimited() from None
-                raise GatewayError("The upstream Gateway tool reported a text error.") from None
+                from tradingagents.dataflows.router import _gateway_failure_details
+                failure = GatewayError("The upstream Gateway tool reported a text error.")
+                failure.error_details = _gateway_failure_details(GatewayError(value))
+                raise failure from None
             return value
         return normalize_tool_result(parsed, _depth=_depth + 1)
     if not isinstance(value, dict):
@@ -435,6 +446,7 @@ class MaenifoldGateway:
             )
         )
         owns_retry = False
+        failures = []
         try:
             for attempt in range(4):
                 # A concurrent in-flight call may extend the shared deadline while
@@ -469,24 +481,39 @@ class MaenifoldGateway:
                             if (exc.retry_after > 60 or remaining > 60 or not safe or attempt == 3
                                     or (self._retrying and not owns_retry)):
                                 observed["receipt"]["retry_action"] = "defer"
-                                raise GatewayRateLimited(max(delay, remaining)) from exc
+                                failure = GatewayRateLimited(max(delay, remaining))
+                                failure.retry_details = [*failures, {"attempt": attempt + 1, "http_status": 429,
+                                    "retry_after_seconds": exc.retry_after, "retry_delay_seconds": delay, "scheduled_wait_seconds": 0,
+                                    "retry_action": "defer"}]
+                                raise failure from exc
                             self._retrying = owns_retry = True
                         observed["receipt"].update(retry_action="retry", scheduled_wait_seconds=delay)
+                        failures.append({"attempt": attempt + 1, "http_status": 429,
+                            "retry_after_seconds": exc.retry_after, "scheduled_wait_seconds": delay, "retry_action": "retry"})
                     except GatewayError as exc:
-                        from tradingagents.dataflows.router import _gateway_failure_details
+                        from tradingagents.dataflows.router import _gateway_failure_details, source_failure_details
 
                         transient = _transient_exception(exc)
                         receipt = observed["receipt"]
                         receipt.update(outcome="error" if observed["result_available"] else "unknown", error_class=type(exc).__name__,
                                        error_details=_gateway_failure_details(exc), retry_action="stop")
+                        failure = {"attempt": attempt + 1, **source_failure_details(exc),
+                                   "retry_action": "stop", "scheduled_wait_seconds": 0}
+                        failures.append(failure)
+                        exc.retry_details = failures
+                        response = getattr(transient, "response", None)
+                        header = response.headers.get("Retry-After") if response is not None else None
+                        if header is not None:
+                            failure["retry_after_seconds"] = retry_after_seconds(header)
                         if transient is None or not safe or attempt == 3:
                             raise
-                        response = getattr(transient, "response", None)
-                        delay = retry_delay(response.headers.get("Retry-After", 1) if response is not None else 1, attempt)
+                        delay = retry_delay(header if header is not None else 1, attempt)
                         if delay > 60:
                             receipt["retry_action"] = "defer"
+                            failure.update(retry_action="defer", retry_delay_seconds=delay)
                             raise
                         receipt.update(retry_action="retry", scheduled_wait_seconds=delay)
+                        failure.update(retry_action="retry", scheduled_wait_seconds=delay)
                 await asyncio.sleep(delay)
         finally:
             if owns_retry:
@@ -787,9 +814,10 @@ def build_langchain_tools(
                             else:
                                 value = dispatch()
                         except GatewayError as exc:
+                            from tradingagents.dataflows.router import tool_failure_details
                             rule = getattr(exc.__cause__, "validator", None)
                             guidance = f" Correct the advertised schema rule {rule}; use only supported fields and include required completion fields." if rule else ""
-                            raise ToolException(str(exc) + guidance) from exc
+                            raise ToolException(json.dumps(tool_failure_details(exc)) + guidance) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 

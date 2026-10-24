@@ -1,5 +1,7 @@
 import asyncio
+import http.client
 import inspect
+import json
 import logging
 import math
 import re
@@ -151,9 +153,12 @@ def _gateway_failure_details(error):
                   "message": "; ".join(dict.fromkeys(phrases))[:256] or "Exception details withheld"}
         for name, value in (("errno", getattr(current, "errno", None)),
                             ("winerror", getattr(current, "winerror", None)),
-                            ("http_status", getattr(getattr(current, "response", None), "status_code", None))):
+                            ("http_status", getattr(current, "http_status", None) or getattr(current, "code", None)
+                             or getattr(getattr(current, "response", None), "status_code", None))):
             if type(value) is int:
                 detail[name] = value
+        if detail["message"] == "Exception details withheld" and detail.get("http_status") in http.client.responses:
+            detail["message"] = http.client.responses[detail["http_status"]]
         rule = getattr(current, "validator", None)
         if isinstance(rule, str) and rule in {"required", "additionalProperties", "type", "enum", "const", "minimum", "maximum", "oneOf", "anyOf", "allOf", "format"}:
             detail["schema_rule"] = rule
@@ -261,8 +266,10 @@ def observe_source_call(operation, vendor, origin, acquire, *, requirement=None,
 
 
 def source_failure_details(error):
-    details = _gateway_failure_details(error)
-    status = getattr(error, "http_status", None) or getattr(error, "code", None) or getattr(getattr(error, "response", None), "status_code", None)
+    details = getattr(error, "error_details", None) or _gateway_failure_details(error)
+    status = (getattr(error, "http_status", None) or getattr(error, "code", None)
+              or getattr(getattr(error, "response", None), "status_code", None)
+              or next((item["http_status"] for item in details if "http_status" in item), None))
     names = {item["class"] for item in details}
     kind = ("unconfigured" if isinstance(error, VendorNotConfiguredError) else
             "no_usable_coverage" if isinstance(error, NoMarketDataError) else
@@ -276,6 +283,14 @@ def source_failure_details(error):
             "invalid_request" if isinstance(error, (ValueError, TypeError)) else "source_unavailable")
     return {"failure_kind": kind, "error_details": details,
             **({"http_status": status} if type(status) is int else {})}
+
+
+def tool_failure_details(error):
+    """Expose bounded diagnostics to analysts using the same capture policy."""
+    return {"error_class": type(error).__name__[:80], **source_failure_details(error),
+            **({"http_status": 429, "retry_after_seconds": error.retry_after}
+               if type(error).__name__ == "GatewayRateLimited" else {}),
+            **({"attempts": error.retry_details} if getattr(error, "retry_details", None) else {})}
 
 
 def source_retry_plan(error, *, attempt, remaining):
@@ -491,7 +506,7 @@ def vendor_unavailable(method: str, error: Exception) -> str:
     """What a call returns when every vendor was throttled or unreachable."""
     return (
         f"DATA_UNAVAILABLE: no configured vendor could serve {method} right now "
-        f"({error}). This says nothing about the instrument; report the "
+        f"({json.dumps(tool_failure_details(error))}). This says nothing about the instrument; report the "
         f"data as unavailable and do not estimate or fabricate values."
     )
 
@@ -606,7 +621,7 @@ def route_to_vendor(method: str, *args, **kwargs):
             logger.warning("Optional %s unavailable for %s: %s", category, method, _logged_error(first_error))
             return (
                 f"DATA_UNAVAILABLE: optional {category} could not be retrieved "
-                f"({first_error}). Proceed without it; do not fabricate values."
+                f"({json.dumps(tool_failure_details(first_error))}). Do not fabricate values."
             )
         raise first_error
 

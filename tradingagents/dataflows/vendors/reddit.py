@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import html
 import http.client
+import json
 import logging
 import re
 import time
@@ -161,22 +162,28 @@ def _fetch_subreddit_rss(
     limit: int,
     timeout: float,
     _retry: bool = True,
-) -> list[dict] | None:
+    _failures: tuple = (),
+) -> list[dict] | str:
     """Default path: parse the public Atom search feed for a subreddit.
 
     ``sub`` may be one subreddit or several joined with ``+``. On a 429 (Reddit's
     per-IP rate limit) we back off once — honouring ``Retry-After`` when
     present — before giving up, so a transient burst doesn't blank the feed.
 
-    Returns ``[]`` when the search ran and matched nothing, and ``None`` when
+    Returns ``[]`` when the search ran and matched nothing, and diagnostics when
     the fetch itself failed. The caller must keep these apart: rendering a
     failed fetch as "no posts found" hands the sentiment analyst an absence of
     discussion that was never observed (#1295).
     """
     url = _RSS.format(sub=sub, qs=_search_qs(ticker, limit))
     req = Request(url, headers={"User-Agent": _UA})
-    from tradingagents.dataflows.router import observe_source_call, source_retry_plan
+    from tradingagents.dataflows.router import observe_source_call, source_failure_details, source_retry_plan
     retry = {"attempt": 1 if _retry else 2, "retry_action": "not_needed"}
+
+    def unavailable(error):
+        attempts = [{key: value for key, value in item.items() if key != "server_retry_after"}
+                    for item in (*_failures, retry)]
+        return f"<Reddit unavailable: {json.dumps({'error_class': type(error).__name__, 'attempts': attempts})}; this is not an absence of discussion>"
 
     def read_response():
         try:
@@ -214,17 +221,20 @@ def _fetch_subreddit_rss(
                 sub, ticker, wait,
             )
             time.sleep(wait)
-            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _retry=False)
+            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _retry=False,
+                                        _failures=(*_failures, dict(retry)))
         logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
-        return None
+        return unavailable(exc)
     except (OSError, http.client.HTTPException, ET.ParseError) as exc:
+        retry.update(source_failure_details(exc))
         if retry["retry_action"] == "retry":
             time.sleep(retry["retry_after_seconds"])
-            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _retry=False)
+            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _retry=False,
+                                        _failures=(*_failures, dict(retry)))
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
         logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
-        return None
+        return unavailable(exc)
 
     posts = []
     for entry in root.findall("atom:entry", _ATOM_NS)[:limit]:
@@ -282,8 +292,8 @@ def fetch_reddit_posts(
     label = ", ".join(f"r/{s}" for s in subreddits)
     requested = limit if limit is not None else get_config().get("social_screen_max_posts", 100)
     fetched = _fetch_subreddit_rss(ticker, "+".join(subreddits), min(requested, _FEED_PAGE), timeout)
-    if fetched is None:
-        return f"<Reddit unavailable: fetch failed ({label}); this is not an absence of discussion>"
+    if isinstance(fetched, str):
+        return fetched
 
     window = bool(start_date and end_date)
     posts = _within_window(fetched, start_date, end_date)
