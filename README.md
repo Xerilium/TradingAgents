@@ -47,7 +47,7 @@ a broker order.
 | Alpaca | Configured paper/live account, broker balances, buying power, positions, orders/fills and market-data services. | The local database cannot erase or replace broker state. Market-data access depends on feed and account permissions. |
 | Market-data vendors | Alpaca observations/history; Yahoo Finance via yfinance; SEC EDGAR filings; optional Alpha Vantage, FRED, Polymarket, Reddit and StockTwits paths. | A configured adapter does not guarantee credentials, current service availability or complete coverage. |
 | Lightweight Charts + drawing plugin | Vendored chart rendering and drawing interaction, wrapped by the app's chart module. | The renderer does not fetch market prices or prove that derived calculations are valid trading signals. |
-| SQLite + report artifacts | Versioned local application records and retained source/report files; separately configured older history can also be loaded. | These records are not the broker ledger or durable native cache recovery. |
+| SQLite + report artifacts | User settings and authored trading/workspace records, plus a separate disposable cache containing only the latest research per ticker and its source files. | These records are not the broker ledger. Older research and desk resume are not retained. |
 | Evaluation workers / Optuna | Existing isolated chart, scan, strategy and simulation calculations; optional Optuna dependency supports optimization paths. | Historical results are scenarios, not broker fills or proof of future returns. |
 
 ### Data and command paths
@@ -191,7 +191,7 @@ saved provider rather than configuring an unrelated service.
 ### Run a single stock or batch
 
 1. Select the intended symbols on Dashboard or Markets.
-2. Open **Research → New research / continue**.
+2. Open **Research → New research**.
 3. Check **Batch stocks for new research**. The inspected stock is informational;
    it does not replace the list.
 4. Choose **Run research (N)** and review the workload dialog.
@@ -199,7 +199,12 @@ saved provider rather than configuring an unrelated service.
 
 Set **Settings → Research → Concurrent stocks** to 1–8 (default 1).
 New batches use that limit; changing it does not resize an existing run.
-Each stock has its own graph, checkpoints, reports and evidence attribution.
+Each stock has its own fresh graph, reports and evidence attribution.
+The next cycle replaces the previous result for each selected ticker, including
+its local Laya annotation. Other tickers keep their latest result. There is no
+historical run selector, desk resume, persisted LangGraph checkpoint or replay
+ledger. Maenifold remains the long-term memory; the desk neither reads nor
+extends the separate CLI decision-memory log.
 Selected analyst roles can also work concurrently within a stock. A failure,
 rate limit or stop prevents further stock dispatch; in-flight work settles first.
 Local Laya social screening packs up to five independent posts into each
@@ -252,7 +257,7 @@ to both tiers. Future settings changes do not rewrite saved run configuration.
 - **Debate:** research and risk discussion.
 - **Sources:** retained inputs and coverage.
 - **Activity:** recorded progression and calls.
-- **Setup:** batch configuration and continuation availability.
+- **Setup:** configuration for a new cycle.
 
 Ratings such as **Underweight** express the saved research's preferred exposure.
 They do not by themselves mean “sell shares now.” If the account holds no shares,
@@ -368,16 +373,10 @@ and format checks. Historical reading requires verified document vintages. Sourc
 also lists URLs found in report text; that link list alone is not a verified
 acquisition ledger. Inspect acquisition receipts/capture status separately.
 
-Continuation retains the original account/configuration context, remaining
-budgets and lineage, skipping completed symbols. It does not refresh account
-context or reset allowances. Cancellation, source/tool/schema changes, missing
-checkpoints, incomplete earlier evidence, exhausted budgets or uncertain
-stateful-call outcomes can prevent continuation. Confirmed exact results can be
-reused; uncertain stateful effects are not automatically replayed.
-
-Use **Continue interrupted research** only when the app says the checkpoint is
-eligible. If prior outcomes cannot be verified, the app can reject continuation.
-A new run creates a separate record; it does not repair the old record.
+A failed or stopped cycle keeps its latest status, partial reports and actual errors.
+Start a new cycle when needed; it replaces research for the selected tickers.
+Drafts that refer to replaced research keep their exact terms and original
+reference, which is shown as unavailable rather than rebound to a new report.
 
 ## Orders and baskets
 
@@ -762,8 +761,8 @@ the documented stopped-session workflow.
 
 | Location | Contents / boundary |
 | --- | --- |
-| Configured `application` directory | SQLite application records, settings, lists, proposals, approvals, journal, research and report/evidence artifacts. |
-| Configured `history` directory | Separately retained older research loaded at startup; can keep old runs visible after application reset. |
+| Configured `application` directory | Authored settings, lists, proposals, approvals and notes; separate `latest_research` cache and latest source/report artifacts. Nested receipt observations update live state without saving the settings journal or scanning aggregate counts. Latest results are cached at cycle admission, stock completion and explicit local annotation boundaries. |
+| Configured `history` directory | Not imported as research. Existing authored artifact references and explicit maintenance operations may still refer to this directory. |
 | Browser storage | Browser preferences and editing state; clearing it alone does not clear server-side research/orders. |
 | Native worker | In-memory Nautilus cache and session state. Application SQLite is not proof of native crash/restart durability. |
 | Maenifold memory | Separate durable knowledge/graph/structured-thinking corpus. |
@@ -778,9 +777,9 @@ Credentials are external; never print or commit them.
 
 These are existing optional maintenance features, not prerequisites for trading.
 In **Settings → Diagnostics → Local records**, backups include application
-records and referenced evidence, configured history and eligible checkpoint
-coverage. Credentials, Python environments, unrelated files and native memory
-cache are excluded. Checkpoint bytes alone do not prove research continuation.
+records and referenced evidence. Legacy maintenance archives can still contain
+older research/checkpoint files; the desk does not use them for history or resume.
+Credentials, Python environments, unrelated files and native memory cache are excluded.
 
 Restore inspects a supported application ZIP (maximum 64 MiB) before an explicit
 restore action. It retains current records before cutover, invalidates restored
@@ -850,7 +849,7 @@ deleting a directory does not clear an already-running process's memory.
 Implementation details can be traced directly to:
 
 - [Research graph and model allocation](tradingagents/graph/setup.py): `GraphSetup.setup_graph`.
-- [Research admission, completion and continuation](tradingagents/web/service.py): `start_run`, `_run_with_evidence`, `continuation_status`, `resume_run`.
+- [Latest research admission and completion](tradingagents/web/service.py): `start_run`, `_run_with_evidence`, `run_detail`.
 - [Gateway tool allowlists and validation](tradingagents/integrations/maenifold.py): `RESEARCH_COMMANDS`, `build_langchain_tools`.
 - [Laya and Jev screening](tradingagents/agents/post_screen.py): `laya_screen`, `jev_screen`.
 - [Native node and custom execution bridge](tradingagents/web/nautilus_v1.py): `build_node`, `ExecutionClient`; [worker](tradingagents/web/nautilus_worker.py): `Data`, `Execution`.

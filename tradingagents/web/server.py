@@ -130,12 +130,6 @@ class DeskHandler(BaseHTTPRequestHandler):
         if path == "/api/workspace":
             self._send(200, self.server.service.workspace())
             return
-        if path == "/api/runs/continuation":
-            try:
-                self._send(200, self.server.service.continuation_status(parse_qs(url.query).get("run_id", [None])[0]))
-            except (KeyError, StopIteration, ValueError):
-                self._send(400, {"error": "Saved research continuation is unavailable."})
-            return
         if path == "/api/discovery":
             query = parse_qs(url.query)
             try:
@@ -417,8 +411,6 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.screen_saved_posts(data)
             elif path == "/api/runs/cancel":
                 result = service.cancel_run(data["run_id"])
-            elif path == "/api/runs/resume":
-                result = service.resume_run(data["run_id"], data.get("continuation_revision"))
             elif path in {"/api/proposals", "/api/drafts"}:
                 raise ValueError("Legacy native draft creation was retired. Save validated BUY/SELL proposals through the investor workspace.")
             elif path == "/api/trading/pause":

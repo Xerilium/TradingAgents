@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextlib import contextmanager, nullcontext, suppress
+from contextlib import nullcontext, suppress
 from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -23,12 +23,11 @@ from zoneinfo import ZoneInfo
 
 from cli.stats_handler import StatsCallbackHandler
 from tradingagents.agents.post_screen import SOCIAL_ADMISSION_VERSION, laya_screen
-from tradingagents.dataflows.router import capture_vendor_evidence, observe_source_call
+from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
     GatewayError,
     GatewayRateLimited,
-    GatewayRejected,
     MaenifoldGateway,
     build_langchain_tools,
 )
@@ -174,12 +173,6 @@ class DeskService:
         self.history = {"runs": [], "drafts": []}
         self.history_error = None
         self.history_directory = active_history
-        history_path = active_history / "desk.json" if active_history else None
-        if history_path and history_path.resolve() != self.store.path.resolve() and (history_path.is_file() or history_path.with_name("desk.sqlite3").is_file()):
-            try:
-                self.history = DeskStore.read_existing(history_path.parent)
-            except (OSError, ValueError) as exc:
-                self.history_error = f"Saved history unavailable ({type(exc).__name__})"
         self.runtime = runtime or NautilusRuntime(
             Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe", DEFAULT_CREDENTIALS)
         DeskConfig.model_validate(self.store.data["config"])
@@ -592,6 +585,8 @@ class DeskService:
 
     def state(self, *, compact=False, run_id=None):
         journal = self.store.database.read("journal")
+        with self.store.lock:
+            journal["data"]["runs"] = copy.deepcopy(self.store.data["runs"])
         with self.lock:
             market = self._runtime_market()
             data = {**copy.deepcopy(market), **self.store.snapshot(compact=compact, run_id=run_id, journal=journal["data"])}
@@ -616,38 +611,17 @@ class DeskService:
         data["company_names"] = {s: self.company_names[s] for s in set(data["config"]["universe"]) | {p["symbol"] for p in data.get("positions", [])} if s in self.company_names}
         data["history_error"] = self.history_error
         data["saved_account_contexts"] = [{"run_id": r["id"], **copy.deepcopy(r["portfolio_evidence"]["context"])}
-            for r in journal["data"]["runs"] + self.history.get("runs", [])
+            for r in journal["data"]["runs"]
             if r.get("portfolio_evidence", {}).get("context")]
-        for r in journal["data"]["runs"] + self.history.get("runs", []):
+        for r in journal["data"]["runs"]:
             for result in r.get("results", []):
                 data.setdefault("research", {}).setdefault(result["symbol"], {
                     "run_id": r["id"], **{key: result.get(key) for key in
                         ("symbol", "status", "rating", "trade_date", "revision")}})
-        current_ids = {run["id"] for run in data["runs"]}
         for run in data["runs"]:
             saved_run = next((r for r in journal["data"]["runs"] if r["id"] == run["id"]), run)
             events = self._research_activity(saved_run)
             run.update(events=events[-40:], event_count=len(events))
-            if "continuation" in run:
-                saved = run["continuation"]
-                run["continuation"] = {key: saved.get(key) for key in ("version", "revision", "blocked_reason")}
-        for saved in self.history.get("runs", []):
-            if saved["id"] in current_ids:
-                continue
-            summary = {key: copy.deepcopy(saved.get(key)) for key in (
-                "id", "created_at", "completed_at", "trade_date", "symbols", "status", "config", "account_id")}
-            results = saved.get("results", [])
-            events = self._research_activity(saved)
-            summary.update(history_source="Saved .paper-desk history (read-only)",
-                results=[self.store.result_summary(r) for r in results],
-                events=events[-40:], event_count=len(events),
-                counts={status: sum(r.get("status") == status for r in results)
-                        for status in ("completed", "failed", "cancelled", "running")})
-            summary["counts"]["queued"] = max(0, len(saved["symbols"]) - len(results))
-            data["runs"].append(summary)
-        draft_ids = {d["order"]["client_order_id"] for d in data.get("drafts", [])}
-        data["drafts"] = data.get("drafts", []) + [copy.deepcopy(d) for d in self.history.get("drafts", [])
-            if d["order"]["client_order_id"] not in draft_ids]
         with self.lock:
             self.state_sequence += 1
             data.update(server_instance_id=self.instance_id, snapshot_sequence=self.state_sequence,
@@ -667,7 +641,7 @@ class DeskService:
             if current is None:
                 self.store._refresh()
                 current = self.store.data["runs"]
-            for run in sorted(current + self.history.get("runs", []), key=lambda item: item.get("created_at") or "", reverse=True):
+            for run in sorted(current, key=lambda item: item.get("created_at") or "", reverse=True):
                 for result in run.get("results", []):
                     if result.get("status") == "completed" and result["symbol"] not in saved:
                         completion = next((e.get("time") for e in reversed(run.get("events", []))
@@ -1753,14 +1727,13 @@ class DeskService:
                 "model": self.local_laya.state()["model"],
                 "input_hashes": [row["text_sha256"] for row in inputs], "model_identity": self.local_laya.state(),
                 "api": "Router.predict_batch", "api_call_count": 0, "batch_sizes": [], "receipts": [],
-                "sources": {}, "previous_artifacts": previous.get("previous_artifacts", [])
-                    + ([previous["artifact"]] if previous.get("artifact") else []),
+                "sources": {},
                 "purpose": "Local annotation of saved posts; original research and recommendation are unchanged."}
             result["local_laya_batch"] = copy.deepcopy(annotation)
             result["revision"] += 1
             run["events"].append({"time": now(), "kind": "local_annotation", "symbol": symbol,
                 "message": f"Local Laya annotation queued: {len(inputs)} retained Stocktwits posts. No source refetch or research rerun."})
-            self.store.save()
+            self.store.save_research()
 
         def work():
             started = time.monotonic()
@@ -1781,7 +1754,7 @@ class DeskService:
                 with self.store.lock:
                     result["local_laya_batch"] = copy.deepcopy(annotation)
                     result["revision"] += 1
-                    self.store.save()
+                    self.store.save_research()
                 annotation["input_artifact"] = self.store._write_source_result(run_id, str(uuid4()),
                     {"run_id": run_id, "symbol": symbol, "source": "stocktwits", "posts": inputs}, "local-laya-annotation-input")
                 with capture_vendor_evidence(capture):
@@ -1814,7 +1787,7 @@ class DeskService:
                             f"{len(inputs)} saved inputs; {annotation['elapsed_seconds']}s. "
                             + (annotation.get("capture_error") or "; ".join(d["class"] + ": " + d["message"] for d in annotation.get("error_details", []))
                                or annotation.get("error") or "Original research unchanged.")})
-                    self.store.save()
+                    self.store.save_research()
         try:
             future = self.executor.submit(work)
             self.research_futures.add(future)
@@ -1824,27 +1797,28 @@ class DeskService:
                 annotation.update(status="failed", error_details=local_failure_details(exc), error="Local annotation could not be queued")
                 result["local_laya_batch"] = copy.deepcopy(annotation)
                 result["revision"] += 1
-                self.store.save()
+                self.store.save_research()
         return copy.deepcopy(annotation)
 
     def run_detail(self, run_id, symbol=None):
-        journal = self.store.database.read("journal")["data"]
-        run = next((r for r in journal["runs"] if r["id"] == run_id), None)
-        if run is None:
-            run = next(r for r in self.history.get("runs", []) if r["id"] == run_id)
-        if symbol is None:
-            detail = copy.deepcopy(run)
-            detail["events"] = self._research_activity(run)
-            detail["event_count"] = len(detail["events"])
-            return detail
-        result = copy.deepcopy(next(r for r in run["results"] if r["symbol"] == symbol))
-        result.setdefault("revision", 0)
-        return result
+        with self.store.lock:
+            run = next((r for r in self.store.data["runs"] if r["id"] == run_id), None)
+            if run is None:
+                raise ValueError("This research has been replaced; only the latest result per ticker is available.")
+            if symbol is None:
+                detail = copy.deepcopy(run)
+                detail["events"] = self._research_activity(run)
+                detail["event_count"] = len(detail["events"])
+                return detail
+            result = next((r for r in run["results"] if r["symbol"] == symbol), None)
+            if result is None:
+                raise ValueError("This ticker's research has been replaced and is unavailable.")
+            return copy.deepcopy(result)
 
     def chart(self, symbol, *, force=False, run_id=None):
         from .investor import digest
         from .market_evidence import recorded_market
-        all_runs = self.store.data["runs"] + self.history.get("runs", [])
+        all_runs = self.store.data["runs"]
         run = next((r for r in all_runs if symbol in r.get("symbols", []) and
                     (r["id"] == run_id if run_id else r["status"] == "completed")), None)
         if run is None:
@@ -2074,101 +2048,28 @@ class DeskService:
     def start_run(self, symbols=None, expected_revision=None, analysis_date=None, exclude_fred=False):
         if not isinstance(exclude_fred, bool):
             raise ValueError("exclude_fred must be a boolean")
-        request_started = time.monotonic()
-        requested_at = now()
-        request = {
-            "id": str(uuid4()), "owner_kind": "research_request", "run_id": None,
-            "status": "preflight", "started_at": requested_at, "ended_at": None, "elapsed_seconds": None,
-            "stages": [], "snapshots": [], "capture_complete": True,
-            "source_evidence": {"attempts": [], "snapshots": [], "capture_complete": True,
-                                "coverage": "research_preflight_local_boundaries"},
-            "gateway_evidence": {"attempts": [], "snapshots": [], "capture_complete": True,
-                                 "internal_http_requests": None, "internal_model_executions": None},
-            "jev_evidence": {"attempts": [], "snapshots": [], "capture_complete": True,
-                             "internal_http_requests": None, "internal_model_executions": None},
-            "timing_scope": "Service start_run entry through acceptance or rejection, including scheduling. "
-                            "Overlaps accepted run elapsed; do not add these totals. Queue/worker timing is in the linked run. "
-                            "HTTP parsing and authorization before start_run are outside this scope.",
-        }
+        return self._start_run(symbols, expected_revision, analysis_date, exclude_fred)
+
+    def _start_run(self, symbols, expected_revision, analysis_date, exclude_fred=False):
+        trade_date = today() if analysis_date is None else analysis_date
+        # Reuse the MCP binding's canonical/New York date validation without discovery.
+        try:
+            build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
+        except GatewayError as exc:
+            raise ValueError(str(exc)) from exc
         with self.store.lock:
-            self.store.data["research_requests"].insert(0, request)
-        self._request_checkpoint(request, "request_started")
-        terminal = {"status": "accepted"}
-        try:
-            with capture_vendor_evidence(self._evidence_recorder(request["id"])):
-                result = self._start_run(symbols, expected_revision, analysis_date, request, request_started, exclude_fred)
-            return result
-        except BaseException as exc:
-            terminal = {"status": "interrupted" if not isinstance(exc, Exception) else
-                        "failed" if request["run_id"] else "rejected",
-                        "error_class": self._request_error_class(exc)}
-            raise
-        finally:
-            with self.store.lock:
-                request.update(**terminal, ended_at=now(), elapsed_seconds=time.monotonic() - request_started)
-                for origin in ("source", "gateway", "jev"):
-                    try:
-                        self.store.finalize_call_evidence(request, origin)
-                    except Exception:
-                        request.update(capture_complete=False, persistence_error="Request call evidence export unavailable.")
-                    if not request[f"{origin}_evidence"].get("capture_complete", False):
-                        request["capture_complete"] = False
-            self._request_checkpoint(request, "request_terminal")
-
-    @staticmethod
-    def _request_error_class(exc):
-        kind = type(exc).__name__
-        return kind if kind in {"ValueError", "TypeError", "RuntimeError", "OSError", "TimeoutError",
-                                "GatewayError", "GatewayTimeout", "GatewayRateLimited", "InterruptedError"} else "UnexpectedError"
-
-    def _request_checkpoint(self, request, reason):
-        try:
-            self.store.checkpoint_request(request, reason)
-        except Exception:
-            request.update(capture_complete=False, persistence_error="Request evidence checkpoint unavailable.")
-
-    @contextmanager
-    def _request_stage(self, request, name):
-        started = time.monotonic()
-        stage = {"stage": name, "started_at": now(), "ended_at": None, "elapsed_seconds": None, "outcome": "running"}
-        with self.store.lock:
-            request["stages"].append(stage)
-        self._request_checkpoint(request, "stage_started")
-        try:
-            yield
-            stage["outcome"] = "success"
-        except BaseException as exc:
-            stage.update(outcome="error" if isinstance(exc, Exception) else "unknown",
-                         error_class=self._request_error_class(exc))
-            raise
-        finally:
-            stage.update(ended_at=now(), elapsed_seconds=time.monotonic() - started)
-            self._request_checkpoint(request, "stage_finished")
-
-    def _start_run(self, symbols, expected_revision, analysis_date, request, request_started, exclude_fred=False):
-        requested_at = request["started_at"]
-        with self._request_stage(request, "validation"):
-            trade_date = today() if analysis_date is None else analysis_date
-            # Reuse the MCP binding's canonical/New York date validation without discovery.
-            try:
-                build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
-            except GatewayError as exc:
-                raise ValueError(str(exc)) from exc
-            with self.store.lock:
-                for prior in self.store.data["runs"]:
-                    if prior.get("retry_at"):
-                        remaining = (datetime.fromisoformat(prior["retry_at"]) - datetime.now(UTC)).total_seconds()
-                        if remaining > 0:
-                            raise GatewayRateLimited(remaining)
-        with self._request_stage(request, "readiness"):
-            ready = self.readiness(self.store.snapshot()["config"], refresh=True)
-            if not ready["ready"]:
-                raise ValueError(ready["message"])
-        with self._request_stage(request, "refresh"):
-            self.refresh()
-            self.runtime.request("refresh")
-            market = self._book()
-        with self._request_stage(request, "admission"), self.execution_lock, self.store.lock:
+            for prior in self.store.data["runs"]:
+                if prior.get("retry_at"):
+                    remaining = (datetime.fromisoformat(prior["retry_at"]) - datetime.now(UTC)).total_seconds()
+                    if remaining > 0:
+                        raise GatewayRateLimited(remaining)
+        ready = self.readiness(self.store.snapshot()["config"], refresh=True)
+        if not ready["ready"]:
+            raise ValueError(ready["message"])
+        self.refresh()
+        self.runtime.request("refresh")
+        market = self._book()
+        with self.execution_lock, self.store.lock:
             if expected_revision is not None and (
                 isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
                 or expected_revision != self.store.data["config_revision"]
@@ -2193,7 +2094,6 @@ class DeskService:
                 raise ValueError("An analysis is already running.")
             run = {
                 "id": str(uuid4()),
-                "request_id": request["id"],
                 "status": "queued",
                 "created_at": now(),
                 "trade_date": trade_date,
@@ -2206,7 +2106,7 @@ class DeskService:
                 "symbols": symbols,
                 "config": config,
                 "events": [],
-                "results": [],
+                "results": [{"symbol": s, "status": "queued", "trade_date": trade_date, "reports": {}, "revision": 0} for s in symbols],
                 "account_id": market["account"]["id"],
                 "portfolio_evidence": {
                     "status": "unavailable",
@@ -2230,31 +2130,17 @@ class DeskService:
                                    "Jev screening has separate jev_evidence; hidden SDK/provider retries are not captured. "
                                    "Success means the boundary returned, not usable data.",
                 },
-                "measurements": {
-                    "started_at": requested_at,
-                    "ended_at": None,
-                    "elapsed_seconds": None,
-                    "callbacks": StatsCallbackHandler().get_measurements(),
-                    "stages": [{"stage": "preflight", "elapsed_seconds": time.monotonic() - request_started}],
-                },
             }
-            from tradingagents.graph.checkpointer import desk_checkpoint_signature
-            run["continuation"] = {"version": 1, "revision": 0, "source_signature": desk_checkpoint_signature(),
-                "market": copy.deepcopy(market), "attempts": [{"id": str(uuid4()), "parent_id": None,
-                    "started_at": requested_at, "status": "queued"}]}
             self.store.data["runs"].insert(0, run)
-            request["run_id"] = run["id"]
-            self.store.save()
-        queued_at = time.monotonic()
+            self.store.save_research()
         try:
-            with self._request_stage(request, "scheduling"):
-                future = self.executor.submit(self._run, run["id"], market, request_started, queued_at)
-                self.research_futures.add(future)
-                future.add_done_callback(self.research_futures.discard)
+            future = self.executor.submit(self._run, run["id"], market)
+            self.research_futures.add(future)
+            future.add_done_callback(self.research_futures.discard)
         except Exception:
             with self.store.lock:
                 run.update(status="failed", error="Analysis worker could not be scheduled.")
-                self._finish_measurements(run, StatsCallbackHandler(), request_started)
+                self._finish_research(run)
             raise
         return {"run_id": run["id"]}
 
@@ -2268,39 +2154,10 @@ class DeskService:
                 {"time": now(), "kind": kind, "message": message, "symbol": symbol, **extra}
             )
             run["events"] = run["events"][-500:]
-            self.store.save()
 
-    def _finish_measurements(self, run, stats, request_started):
-        # Persist terminal state first: the measured interval includes this durable checkpoint.
+    def _finish_research(self, run):
         run["completed_at"] = now()
-        self.store.save()
-        measurements = run["measurements"]
-        measurements.update(
-            run_id=run["id"], status=run["status"], ended_at=now(),
-            elapsed_seconds=time.monotonic() - request_started,
-            callbacks=stats.get_measurements(),
-            timing_scope="Request entry through durable terminal journal checkpoint; "
-                         "includes preflight, queueing and observed retry waits. "
-                         "Artifact publication and its final reference save are excluded.",
-        )
-        try:
-            run["measurement_artifact"] = self.store.write_measurements(run["id"], measurements)
-        except OSError:
-            run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
-        for origin in ("source", "gateway", "jev"):
-            try:
-                self.store.finalize_call_evidence(run, origin)
-            except Exception:
-                run.setdefault(f"{origin}_evidence", {}).update(
-                    capture_complete=False, persistence_error="Call terminal evidence export failed."
-                )
-        if run.get("continuation"):
-            continuation = run["continuation"]
-            continuation["attempts"][-1].update(status=run["status"], ended_at=now(),
-                reason=run.get("error"), measurements=copy.deepcopy(measurements),
-                measurement_artifact=run.get("measurement_artifact"))
-            continuation["revision"] += 1
-        self.store.save()
+        self.store.save_research()
 
     def _evidence_recorder(self, owner_id, symbol=None):
         def record(receipt, output):
@@ -2314,184 +2171,22 @@ class DeskService:
                     key = f"{origin}_evidence" if origin in {"gateway", "jev"} else "source_evidence"
                     evidence = self.store._evidence_owner(owner_id).setdefault(key, {})
                     evidence.update(capture_complete=False, persistence_error="Source receipt persistence failed.")
-                    # In-memory failure remains available if a later journal save succeeds.
-                    with suppress(Exception):
-                        self.store.save()
+                    # Publish this failure with the latest result at the stock boundary.
         return record
 
-    def _run(self, run_id, market, request_started, queued_at):
-        with capture_vendor_evidence(self._evidence_recorder(run_id)):
-            self._run_with_evidence(run_id, market, request_started, queued_at)
-
-    def continuation_status(self, run_id):
-        from tradingagents.graph.checkpointer import desk_checkpoint_exists, desk_checkpoint_signature
-        with self.store.lock:
-            run = self._find_run(run_id)
-            continuation = run.get("continuation", {})
-            reason = ""
-            if continuation.get("version") != 1:
-                reason = "This saved run predates resumable desk checkpoints."
-            elif run.get("cancel_requested_at") or run["status"] in {"cancelled", "cancelling"}:
-                reason = "Operator cancellation is retained; this run cannot continue."
-            elif run["status"] != "interrupted":
-                reason = "Only an interrupted run can continue."
-            elif any(item["status"] in {"queued", "running", "cancelling"} for item in self.store.data["runs"]) or any(not future.done() for future in self.research_futures):
-                reason = "Another analysis owns the research worker."
-            elif continuation.get("source_signature") != desk_checkpoint_signature():
-                reason = "Execution source or installed persistence versions changed; start a new run."
-            elif continuation.get("blocked_reason"):
-                reason = continuation["blocked_reason"]
-            elif (not run.get("source_evidence", {}).get("capture_complete", False)
-                  or any(call_evidence_failed(run.get(f"{origin}_evidence", {})) for origin in ("gateway", "jev"))):
-                reason = "Interrupted evidence capture is incomplete; continuation cannot verify prior outcomes."
-            elif any(source_attempt_failed(attempt, run.get("source_evidence", {}).get("attempts", []))
-                     for attempt in run.get("source_evidence", {}).get("attempts", [])):
-                reason = "Original source collection is incomplete; retained failures cannot be silently replaced by continuation."
-            symbols = []
-            for symbol in run["symbols"]:
-                result = next((item for item in run["results"] if item["symbol"] == symbol), {})
-                saved = result.get("continuation", {})
-                budget = saved.get("social_budget", {})
-                exists = bool(saved.get("thread_id")) and desk_checkpoint_exists(self.store.directory / "cache", symbol, saved["thread_id"])
-                pending_social = any(row.get("status") == "pending" for source in result.get("social_sentiment", {}).get("sources", {}).values() for row in source.get("posts", []))
-                pending_effect = next((effect for effect in saved.get("effects", {}).values()
-                                       if effect["stateful"] and effect["outcome"] != "confirmed"), None)
-                unfinished_social = result.get("social_sentiment", {}).get("status") != "completed"
-                if result and result.get("status") != "completed" and not reason:
-                    if not exists:
-                        reason = f"No durable checkpoint is available for {symbol}."
-                    elif pending_effect:
-                        reason = f"{pending_effect['command']} has an uncertain prior outcome; it will not be replayed."
-                    elif pending_social:
-                        reason = f"A {symbol} social request has an unknown outcome; it will not be replayed."
-                    elif unfinished_social and budget.get("expires_at") and budget["expires_at"] <= datetime.now(UTC).timestamp():
-                        reason = f"The original {symbol} social screening time budget expired."
-                    elif unfinished_social and budget.get("remaining") == 0:
-                        reason = f"The original {symbol} social screening post budget is exhausted."
-                    elif unfinished_social and budget.get("remaining_seconds") == 0:
-                        reason = f"The original {symbol} social processing allowance is exhausted."
-                symbols.append({"symbol": symbol, "status": result.get("status", "not_started"),
-                    "remaining_posts": budget.get("remaining", run["config"].get("social_screen_max_posts", 100)),
-                    "expires_at": datetime.fromtimestamp(budget["expires_at"], UTC).isoformat() if budget.get("expires_at") else None,
-                    "checkpoint_available": exists})
-            if not reason and not any(item["checkpoint_available"] for item in symbols):
-                reason = "No durable symbol checkpoint is available."
-            return {"run_id": run_id, "revision": continuation.get("revision", 0), "eligible": not bool(reason),
-                    "reason": reason, "analysis_date": run["trade_date"], "original_created_at": run["created_at"],
-                    "account_captured_at": run.get("account_context", {}).get("captured_at"),
-                    "attempts": [{key: attempt.get(key) for key in ("id", "parent_id", "started_at", "ended_at", "status", "reason")}
-                                 for attempt in continuation.get("attempts", [])], "symbols": symbols}
-
-    def resume_run(self, run_id, revision):
-        with self.maintenance, self.execution_lock, self.store.lock:
-            if self.browse_only:
-                raise ValueError("Research continuation is unavailable in review-only mode.")
-            status = self.continuation_status(run_id)
-            if type(revision) is not int or revision != status["revision"]:
-                raise ValueError("Continuation state changed. Refresh and review it again.")
-            if not status["eligible"]:
-                raise ValueError(status["reason"])
-            run = self._find_run(run_id)
-            continuation = run["continuation"]
-            if run.get("retry_at") and datetime.fromisoformat(run["retry_at"]) > datetime.now(UTC):
-                raise ValueError("The recorded upstream retry delay has not elapsed.")
-            attempt = {"id": str(uuid4()), "parent_id": continuation["attempts"][-1]["id"],
-                       "started_at": now(), "status": "queued"}
-            attempt["previous_results"] = self.store._write_json_artifact(run_id, "continuation-prior-results", run["results"])
-            continuation["attempts"].append(attempt)
-            continuation["revision"] += 1
-            run["status"] = "queued"
-            continuation.setdefault("measurement_history", []).append(copy.deepcopy(run.get("measurements", {})))
-            run["measurements"] = {"started_at": now(), "stages": [], "callbacks": {}}
-            run.pop("error", None)
-            run.pop("completed_at", None)
-            for origin in ("source", "gateway", "jev"):
-                evidence = run.get(f"{origin}_evidence", {})
-                if "terminal_observed_at" in evidence:
-                    continuation.setdefault("terminal_evidence_history", []).append(
-                        {"origin": origin, "terminal_observed_at": evidence.pop("terminal_observed_at")})
-            self.store.save()
-            started = time.monotonic()
-            try:
-                future = self.executor.submit(self._run, run_id, copy.deepcopy(continuation["market"]), started, started)
-                self.research_futures.add(future)
-                future.add_done_callback(self.research_futures.discard)
-            except Exception:
-                run["status"] = "interrupted"
-                attempt.update(status="interrupted", ended_at=now(), reason="Continuation scheduling failed.")
-                self.store.save()
-                raise
-            return {"run_id": run_id, "status": "queued", "continuation_revision": continuation["revision"]}
-
-    def _research_effect(self, run, result, domain, command, call_id, parameters, dispatch, *, stateful=True, interruptible=True):
-        from .approval_review import read_artifact
-        identity = hashlib.sha256(f"{domain}:{command}:{call_id}".encode()).hexdigest()
-        arguments = hashlib.sha256(json.dumps(parameters, sort_keys=True, allow_nan=False).encode()).hexdigest()
-        with self.store.lock:
-            effects = result["continuation"].setdefault("effects", {})
-            prior = effects.get(identity)
-            reason = run["continuation"].get("blocked_reason")
-            if run.get("cancel_requested_at"):
-                reason = "Analysis stopped by operator; cancellation remains in force."
-            if not reason and prior and prior["arguments_sha256"] != arguments:
-                reason = "A retained external call identity has different arguments."
-            elif not reason and prior and prior["outcome"] == "rejected":
-                raise GatewayRejected(prior["error"])
-            elif not reason and prior and prior["outcome"] == "confirmed":
-                retained_arguments = read_artifact(self.store.directory, prior["arguments"])
-                if (retained_arguments is None or retained_arguments != parameters
-                        or hashlib.sha256(json.dumps(retained_arguments, sort_keys=True, allow_nan=False).encode()).hexdigest() != arguments):
-                    reason = "A retained external call's argument artifact is missing or changed."
-                else:
-                    retained = read_artifact(self.store.directory, prior["result"])
-                    if isinstance(retained, dict) and "value" in retained:
-                        return retained["value"]
-                    reason = "A confirmed external result is missing or changed."
-            elif not reason and prior and stateful:
-                reason = f"{command} has an uncertain prior outcome and cannot be replayed."
-            if reason:
-                run["continuation"]["blocked_reason"] = reason
-                self.store.save()
-        if reason:
-            if interruptible:
-                from langgraph.types import interrupt
-                interrupt(reason)
-            raise ValueError(reason)
-        attempt = None
-
-        def on_dispatch():
-            nonlocal attempt
-            with self.store.lock:
-                attempt = {"id": str(uuid4()), "parent_id": prior["id"] if prior else None,
-                    "domain": domain, "command": command, "tool_call_id": call_id, "arguments_sha256": arguments,
-                    "stateful": stateful, "outcome": "intent", "started_at": now(),
-                    "history": [*prior.get("history", []), {key: value for key, value in prior.items() if key != "history"}] if prior else []}
-                attempt["arguments"] = self.store._write_source_result(run["id"], attempt["id"], parameters, prefix="continuation-arguments")
-                effects[identity] = attempt
-                self.store.save()
+    def _run(self, run_id, market):
         try:
-            if domain == "local":
-                on_dispatch()
-                value = dispatch()
-            else:
-                value = dispatch(on_dispatch=on_dispatch)
+            with capture_vendor_evidence(self._evidence_recorder(run_id)):
+                self._run_with_evidence(run_id, market)
+        except Exception as exc:
             with self.store.lock:
-                attempt["result"] = self.store._write_source_result(run["id"], attempt["id"], {"value": value}, prefix="continuation-result")
-                attempt.update(outcome="confirmed", ended_at=now())
-                self.store.save()
-            return value
-        except BaseException as exc:
-            if attempt is None:
-                raise
-            with self.store.lock:
-                rejected = isinstance(exc, GatewayRejected)
-                attempt.update(outcome="rejected" if rejected else "unknown" if stateful else "error", ended_at=now())
-                if rejected:
-                    attempt["error"] = str(exc)
-                if stateful and not rejected:
-                    run["continuation"]["blocked_reason"] = f"{command} has an uncertain outcome; automatic replay is blocked."
-                self.store.save()
-            raise
+                run = self._find_run(run_id)
+                run.update(status="failed", error=str(exc)[:600])
+                for result in run["results"]:
+                    if result["status"] in {"queued", "running"}:
+                        result.update(status="failed", error=run["error"])
+                self._event(run_id, "error", run["error"])
+                self._finish_research(run)
 
     def _publish_research_coverage(self, run, result):
         run_id = run["id"]
@@ -2543,348 +2238,153 @@ class DeskService:
                 if changed:
                     result["reports"]["source_coverage"] = limitations
                     result["revision"] += 1
-                    self.store.save()
             if changed:
                 for line in sorted(activity):
                     self._event(run_id, "coverage", line, symbol)
         return evidence_by_origin
 
-    def _run_with_evidence(self, run_id, market, request_started, queued_at):
-        stats = StatsCallbackHandler()
+    def _run_with_evidence(self, run_id, market):
+        from tradingagents.agents.rating import run_rating
+        from tradingagents.graph.trading_graph import TradingAgentsGraph
+        from tradingagents.portfolio import PortfolioContext, Position
         with self.store.lock:
             run = self._find_run(run_id)
             run["status"] = "running"
-            run["continuation"]["attempts"][-1]["status"] = "running"
-            run["measurements"]["worker_started_at"] = now()
-            run["measurements"]["stages"].append({"stage": "queue", "elapsed_seconds": time.monotonic() - queued_at})
             config = copy.deepcopy(run["config"])
-            self.store.save()
-        try:
-            from tradingagents.agents.rating import run_rating
-            from tradingagents.graph.trading_graph import TradingAgentsGraph
-            from tradingagents.portfolio import PortfolioContext, Position
+        portfolio = PortfolioContext(cash=float(market["account"]["cash"]), currency="USD",
+            positions=[Position(ticker=p["symbol"], quantity=float(p["qty"]),
+                                average_price=_number(p.get("avg_entry_price"))) for p in market["positions"]])
+        stop_dispatch = threading.Event()
 
-            portfolio = PortfolioContext(
-                cash=float(market["account"]["cash"]),
-                currency="USD",
-                positions=[
-                    Position(
-                        ticker=p["symbol"],
-                        quantity=float(p["qty"]),
-                        average_price=_number(p.get("avg_entry_price")),
-                    )
-                    for p in market["positions"]
-                ],
-            )
-            stop_dispatch = threading.Event()
+        def run_symbol(symbol):
+            if stop_dispatch.is_set() or run_id in self.cancelled:
+                return
+            result = next(r for r in run["results"] if r["symbol"] == symbol)
+            with self.store.lock:
+                result.update(status="running", social_sentiment={"status": "not_requested", "model": "multilingual", "sources": {}})
+            self._event(run_id, "symbol", "Analysis started", symbol)
+            started = time.monotonic()
+            try:
+                stats = StatsCallbackHandler()
+                graph_config = {**build_default_config(), **config,
+                    "quick_think_provider": config["llm_provider"], "deep_think_provider": config["llm_provider"],
+                    "quick_think_backend_url": config.get("backend_url"), "deep_think_backend_url": config.get("backend_url"),
+                    "results_dir": str(self.store.directory / "reports" / run_id),
+                    "data_cache_dir": str(self.store.directory / "cache"), "checkpoint_enabled": False}
+                tools = build_langchain_tools(self.gateway,
+                    domains=("maenifold.memory", "maenifold.graph", "maenifold.thinking"),
+                    symbol=symbol, trade_date=run["trade_date"])
+                budget = {"remaining": config.get("social_screen_max_posts", 100), "deadline": None,
+                          "max_seconds": config.get("social_screen_timeout_seconds", 600)}
 
-            def run_symbol(symbol):
-                if stop_dispatch.is_set() or run_id in self.cancelled:
-                    return
-                result = next((item for item in run["results"] if item["symbol"] == symbol), None)
-                if result and result["status"] == "completed":
-                    return
-                with self.store.lock:
-                    for origin in ("source", "gateway", "jev"):
-                        evidence = run.get(f"{origin}_evidence", {})
-                        if "terminal_observed_at" in evidence:
-                            run["continuation"].setdefault("terminal_evidence_history", []).append(
-                                {"origin": origin, "terminal_observed_at": evidence.pop("terminal_observed_at")})
-                self._event(run_id, "symbol", "Analysis continued" if result else "Analysis started", symbol,
-                            attempt_id=run["continuation"]["attempts"][-1]["id"])
-                existing_result = result is not None
-                result = result or {
-                    "symbol": symbol,
-                    "status": "running",
-                    "trade_date": run["trade_date"],
-                    "reports": {},
-                    "rating": None,
-                    "laya": None,
-                    "social_sentiment": {"status": "not_requested", "model": "multilingual", "sources": {}},
-                    "revision": 0,
-                }
-                with self.store.lock:
-                    if not existing_result:
-                        run["results"].append(result)
-                    result["status"] = "running"
-                    result.pop("error", None)
-                    self.store.save()
-                started = datetime.now(UTC)
-                stage = "setup"
-                stage_started = time.monotonic()
-
-                def next_stage(name, measured_symbol=symbol):
-                    nonlocal stage, stage_started
-                    ended = time.monotonic()
+                def screen_factory(ticker, source, *, instrument_context=""):
                     with self.store.lock:
-                        run["measurements"]["stages"].append({
-                            "symbol": measured_symbol, "stage": stage,
-                            "elapsed_seconds": ended - stage_started,
-                        })
-                    stage, stage_started = name, ended
-
-                try:
-                    graph = None
-                    graph_config = build_default_config()
-                    graph_config.update(config)
-                    graph_config.update(
-                        quick_think_provider=config["llm_provider"],
-                        deep_think_provider=config["llm_provider"],
-                        quick_think_backend_url=config.get("backend_url"),
-                        deep_think_backend_url=config.get("backend_url"),
-                        results_dir=str(self.store.directory / "reports" / run_id),
-                        data_cache_dir=str(self.store.directory / "cache"),
-                        memory_log_path=str(self.store.directory / "decision-memory.md"),
-                        checkpoint_enabled=True,
-                    )
-                    saved = result.setdefault("continuation", {"thread_id": f"{run_id}:{symbol}", "effects": {},
-                        "social_budget": {"remaining": config.get("social_screen_max_posts", 100),
-                                          "time_policy": "active_lane_v1",
-                                          "remaining_seconds": config.get("social_screen_timeout_seconds", 600),
-                                          "max_seconds": config.get("social_screen_timeout_seconds", 600)}})
-                    def effect(domain, command, call_id, parameters, dispatch, *, stateful=True, current=result, interruptible=True):
-                        return self._research_effect(run, current, domain, command, call_id, parameters, dispatch,
-                                                     stateful=stateful, interruptible=interruptible)
-                    tools = build_langchain_tools(
-                        self.gateway, domains=("maenifold.memory", "maenifold.graph", "maenifold.thinking"),
-                        symbol=symbol, trade_date=run["trade_date"], research_effect=effect
-                    )
-                    social_budget = {**saved["social_budget"], "deadline": None}
-                    def screen_factory(ticker, source, current=result, budget=social_budget, gateway=self.local_laya, *, instrument_context=""):
-                        retained = copy.deepcopy(current["social_sentiment"]["sources"].get(source))
-                        def record(evidence):
-                            with self.store.lock:
-                                current["continuation"]["social_budget"] = {key: value for key, value in budget.items() if key != "deadline"}
-                                social = current["social_sentiment"]
-                                social["sources"][source] = evidence
-                                statuses = [s["status"] for s in social["sources"].values()]
-                                social["status"] = ("completed" if all(s in {"completed", "empty"} for s in statuses)
-                                                    else "unavailable" if all(s in {"unavailable", "not_screened"} for s in statuses) else "partial")
-                                current["revision"] += 1
-                                self.store.save()
-                        def progress(evidence, budget):
-                            evidence["classified_count"] = sum(row["status"] == "classified" for row in evidence["posts"])
-                            evidence["status"] = "partial"
-                            with self.store.lock:
-                                previous = current["social_sentiment"]["sources"].get(source, {})
-                                count = evidence["classified_count"]
-                                milestone = (count // 5, evidence.get("stop_reason"), evidence.get("error"))
-                                changed = milestone != (previous.get("classified_count", 0) // 5,
-                                    previous.get("stop_reason"), previous.get("error")) or not previous.get("posts")
-                                current["continuation"]["social_budget"] = {key: value for key, value in budget.items() if key != "deadline"}
-                                record(evidence)
-                                if changed:
-                                    self._event(run_id, "screening", f"{source}: {count}/{evidence['total_count']} posts classified. "
-                                        + (evidence.get("stop_reason") or "Screening in progress."), ticker)
+                        result["social_sentiment"]["sources"].setdefault(source, {
+                            "admission_version": SOCIAL_ADMISSION_VERSION, "status": "not_screened",
+                            "source": source, "counts": {}, "posts": [],
+                            "note": "No eligible posts supplied; inspect the sentiment report and source receipts."})
+                    def record(evidence):
                         with self.store.lock:
-                            if retained is None:
-                                current["social_sentiment"]["sources"][source] = {
-                                    "admission_version": SOCIAL_ADMISSION_VERSION,
-                                    "status": "not_screened", "source": source, "counts": {}, "posts": [],
-                                    "note": "No eligible posts supplied by the source; inspect the sentiment report for source availability."}
-                            current["social_sentiment"]["status"] = "partial"
-                            self.store.save()
-                        company = re.search(r"(?:Company|Name): ([^\n;]+)", instrument_context)
-                        instrument = f"{company.group(1)} ({ticker})" if company else ticker
-                        return laya_screen(ticker, gateway, budget=budget, instrument=instrument,
-                                           source=source, on_evidence=record,
-                                           cancelled=lambda: run_id in self.cancelled,
-                                           retained=retained if retained and retained.get("posts") else None, on_progress=progress)
-                    graph = (self.graph_factory or TradingAgentsGraph)(
-                        selected_analysts=config["selected_analysts"],
-                        config=graph_config, supplemental_tools=tools, callbacks=[stats],
-                        social_screen_factory=screen_factory,
-                        research_effect=effect,
-                    )
-                    graph_signature = graph._run_signature("stock", portfolio)
-                    if saved.get("graph_signature") and saved["graph_signature"] != graph_signature:
-                        raise ValueError("Saved graph settings or tool schemas changed; continuation is blocked.")
-                    saved["graph_signature"] = graph_signature
-                    final = {}
-                    seen = set()
-                    memory_seen = None
-                    initial = copy.deepcopy(saved.get("initial"))
-                    if initial is None:
-                        initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
-                    initial["desk_execution_policy"] = desk_execution_policy(config)
-                    quote_context = result.get("quote_context") or research_quote_context(symbol, run["trade_date"], market)
-                    if "initial" not in saved:
-                        initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote_context
-                    if config.get("exclude_fred") and "initial" not in saved:
-                        initial["instrument_context"] += "\nFRED macro data excluded by operator for this run during provider maintenance. Macro coverage is unverified; do not claim complete macro coverage."
-                    with self.store.lock:
-                        result["quote_context"] = quote_context
-                        result["desk_execution_policy"] = initial["desk_execution_policy"]
-                        self.store.save()
-                    if "initial" not in saved:
-                        self.store.record_portfolio_context(run_id, {
-                        "schema_version": 1,
-                        "run_id": run_id,
-                        "analysis_date": run["trade_date"],
-                        "account_id": market["account"]["id"],
-                        "account_context": copy.deepcopy(run["account_context"]),
-                        "portfolio": portfolio.model_dump(mode="json"),
-                        })
-                    account_context = run.get("account_context")
-                    if account_context and "initial" not in saved:
-                        initial["portfolio_context"] = (
-                            f"{account_context['description']} Captured at {account_context['captured_at']}.\n"
-                            + initial.get("portfolio_context", "")
-                        )
-                    with self.store.lock:
-                        saved["initial"] = initial
-                        self.store.save()
-                    graph.begin_checkpoint(symbol, run["trade_date"], portfolio=portfolio, identity=saved["thread_id"])
-                    graph_args = graph.propagator.get_graph_args()
-                    graph_args["config"] = {**graph_args.get("config", {}), "callbacks": [stats],
-                                            "configurable": {"thread_id": saved["thread_id"]}}
-                    graph_args["durability"] = "sync"
-                    snapshot = graph.graph.get_state(graph_args["config"], subgraphs=True)
-                    final.update(snapshot.values)
-                    if snapshot.metadata:
-                        remaining_steps = graph_config["max_recur_limit"] - max(0, snapshot.metadata.get("step", 0))
-                        if remaining_steps <= 0 and snapshot.next:
-                            raise ValueError("The original research graph step budget is exhausted.")
-                        graph_args["config"]["recursion_limit"] = max(1, remaining_steps)
-                    next_stage("analysis")
-                    stream = (() if graph._resuming and not snapshot.next else
-                              graph.stream_run(graph.checkpoint_input(initial), **graph_args))
-                    for messages, state in stream:
-                        if run_id in self.cancelled:
-                            raise InterruptedError("Analysis stopped by operator.")
-                        for message in messages:
-                            key = getattr(message, "id", None) or str(message)[:300]
-                            if key in seen:
-                                continue
+                            social = result["social_sentiment"]
+                            social["sources"][source] = copy.deepcopy(evidence)
+                            statuses = [s["status"] for s in social["sources"].values()]
+                            social["status"] = ("completed" if all(s in {"completed", "empty"} for s in statuses)
+                                                else "partial")
+                            result["revision"] += 1
+                    def progress(evidence, allowance):
+                        count = sum(row["status"] == "classified" for row in evidence["posts"])
+                        previous = result["social_sentiment"]["sources"].get(source, {})
+                        changed = count // 5 != previous.get("classified_count", 0) // 5 or not previous.get("posts")
+                        evidence.update(classified_count=count, status="partial")
+                        record(evidence)
+                        if changed:
+                            self._event(run_id, "screening", f"{source}: {count}/{evidence['total_count']} posts classified.", ticker)
+                    company = re.search(r"(?:Company|Name): ([^\n;]+)", instrument_context)
+                    return laya_screen(ticker, self.local_laya, budget=budget,
+                        instrument=f"{company.group(1)} ({ticker})" if company else ticker,
+                        source=source, on_evidence=record, on_progress=progress,
+                        cancelled=lambda: run_id in self.cancelled)
+
+                graph = (self.graph_factory or TradingAgentsGraph)(selected_analysts=config["selected_analysts"],
+                    config=graph_config, supplemental_tools=tools, callbacks=[stats],
+                    social_screen_factory=screen_factory, local_memory=False)
+                initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
+                initial["desk_execution_policy"] = desk_execution_policy(config)
+                quote = research_quote_context(symbol, run["trade_date"], market)
+                initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote
+                if config.get("exclude_fred"):
+                    initial["instrument_context"] += "\nFRED macro data excluded by operator during provider maintenance. Macro coverage is unverified."
+                with self.store.lock:
+                    result.update(quote_context=quote, desk_execution_policy=initial["desk_execution_policy"])
+                self.store.record_portfolio_context(run_id, {"schema_version": 1, "run_id": run_id,
+                    "analysis_date": run["trade_date"], "account_id": market["account"]["id"],
+                    "account_context": copy.deepcopy(run["account_context"]), "portfolio": portfolio.model_dump(mode="json")})
+                initial["portfolio_context"] = (f"{run['account_context']['description']} Captured at {run['account_context']['captured_at']}.\n"
+                                                + initial.get("portfolio_context", ""))
+                args = graph.propagator.get_graph_args()
+                args["config"] = {**args.get("config", {}), "callbacks": [stats]}
+                final, seen = {}, set()
+                for messages, state in graph.stream_run(initial, **args):
+                    if run_id in self.cancelled:
+                        raise InterruptedError("Analysis stopped by operator.")
+                    for message in messages:
+                        key = getattr(message, "id", None) or str(message)[:300]
+                        if key not in seen:
                             seen.add(key)
                             for call in getattr(message, "tool_calls", []) or []:
                                 self._event(run_id, "tool", call.get("name", "Tool call"), symbol)
-                        if state:
-                            final.update(state)
-                            memory = {key: {"present": key in state, "value": state.get(key)}
-                                      for key in ("past_context", "memory_note")}
-                            if memory != memory_seen:
-                                observe_source_call(
-                                    "memory_context", "local", "graph_memory_state", lambda memory=memory: memory,
-                                    symbol=symbol, trade_date=run["trade_date"],
-                                )
-                                memory_seen = memory
-                            for key in REPORT_KEYS:
-                                if state.get(key) and result["reports"].get(key) != state[key]:
-                                    with self.store.lock:
-                                        result["reports"][key] = state[key]
-                                        result["revision"] += 1
-                                        self.store.save()
-                                    self._event(
-                                        run_id, "report", key.replace("_", " ").capitalize(), symbol
-                                    )
-                            for key in ("investment_debate_state", "risk_debate_state"):
+                    if state:
+                        final.update(state)
+                        with self.store.lock:
+                            for key in (*REPORT_KEYS, "investment_debate_state", "risk_debate_state"):
                                 if state.get(key):
-                                    with self.store.lock:
-                                        content = json.dumps(state[key], ensure_ascii=False, indent=2)
-                                        if result["reports"].get(key) != content:
-                                            result["reports"][key] = content
-                                            result["revision"] += 1
-                    next_stage("decision_persistence")
-                    if run["continuation"].get("blocked_reason"):
-                        raise ValueError(run["continuation"]["blocked_reason"])
-                    terminal = graph.graph.get_state(graph_args["config"], subgraphs=True)
-                    if terminal.next or terminal.interrupts:
-                        raise ValueError("Research checkpoint still has pending steps; continuation did not complete.")
-                    final.update(terminal.values)
-                    with self.store.lock:
-                        for key in (*REPORT_KEYS, "investment_debate_state", "risk_debate_state"):
-                            if final.get(key):
-                                content = (json.dumps(final[key], ensure_ascii=False, indent=2)
-                                           if key.endswith("_debate_state") else final[key])
-                                if result["reports"].get(key) != content:
-                                    result["reports"][key] = content
-                                    result["revision"] += 1
-                        self.store.save()
-                    evidence_by_origin = self._publish_research_coverage(run, result)
-                    missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
-                    if missing:
-                        raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
-                    failures = [a["operation"] for a in evidence_by_origin["source"]["attempts"]
-                                if source_attempt_failed(a, evidence_by_origin["source"]["attempts"])]
-                    if failures or not evidence_by_origin["source"].get("capture_complete"):
-                        raise ValueError(f"Research incomplete: source collection or evidence capture failed: {', '.join(sorted(set(failures))) or 'source evidence persistence'}")
-                    if any(call_evidence_failed(evidence_by_origin[origin]) for origin in ("gateway", "jev")):
-                        raise ValueError("Research incomplete: Gateway or Jev evidence capture failed.")
-                    for origin in ("source", "gateway", "jev"):
-                        with self.store.lock:
-                            self.store._snapshot_call_evidence(run, f"symbol_terminal:{symbol}", origin)
-                    if any(run.get(f"{origin}_evidence", {}).get("persistence_error")
-                           for origin in ("source", "gateway", "jev")):
-                        raise ValueError("Research incomplete: terminal evidence publication failed.")
-                    effect("local", "Record decision", "record-decision", {"final": {key: value for key, value in final.items() if key != "messages"}},
-                           lambda: graph.record_decision(symbol, run["trade_date"], final), interruptible=False)
-                    rating = run_rating(final)
-                    if run_id in self.cancelled:
-                        raise InterruptedError("Analysis stopped by operator.")
-                    with self.store.lock:
-                        result.update(
-                            status="completed", completed_at=now(),
-                            rating=rating,
-                            elapsed_seconds=round((datetime.now(UTC) - started).total_seconds(), 1),
-                            revision=result["revision"] + 1,
-                        )
-                        self.store.save()
-                    self._event(
-                        run_id,
-                        "complete",
-                        f"{rating} · Research completed" + (" with coverage gaps; inspect Source coverage and Activity" if result["coverage_gaps"] else ""),
-                        symbol,
-                    )
-                except InterruptedError as exc:
-                    stop_dispatch.set()
-                    with self.store.lock:
-                        result.update(status="cancelled", error=str(exc))
-                        self.store.save()
-                    return
-                except Exception as exc:
-                    stop_dispatch.set()
-                    with self.store.lock:
-                        resumable = bool(result.get("continuation", {}).get("thread_id"))
-                        result.update(status="interrupted" if resumable else "failed", error=str(exc)[:600])
-                        run["error"] = str(exc)[:600]
-                        self.store.save()
-                    self._publish_research_coverage(run, result)
-                    self._event(run_id, "error", str(exc)[:600], symbol)
+                                    content = json.dumps(state[key], ensure_ascii=False, indent=2) if key.endswith("_debate_state") else state[key]
+                                    if result["reports"].get(key) != content:
+                                        result["reports"][key] = content
+                                        result["revision"] += 1
+                                        self._event(run_id, "report", key.replace("_", " ").capitalize(), symbol)
+                evidence = self._publish_research_coverage(run, result)
+                missing = [key for key in ANALYST_REPORTS if not result["reports"].get(key)]
+                if missing:
+                    raise ValueError(f"Research incomplete: missing analyst reports: {', '.join(missing)}")
+                failed = [a["operation"] for a in evidence["source"]["attempts"] if source_attempt_failed(a, evidence["source"]["attempts"])]
+                if failed or not evidence["source"].get("capture_complete"):
+                    raise ValueError("Research incomplete: source collection or evidence capture failed: " + ", ".join(sorted(set(failed))))
+                if any(call_evidence_failed(evidence[origin]) for origin in ("gateway", "jev")):
+                    raise ValueError("Research incomplete: Gateway or Jev evidence capture failed.")
+                if run_id in self.cancelled:
+                    raise InterruptedError("Analysis stopped by operator.")
+                with self.store.lock:
+                    result.update(status="completed", completed_at=now(), rating=run_rating(final), revision=result["revision"] + 1)
+                self._event(run_id, "complete", str(result["rating"]) + " · Research completed"
+                    + (" with coverage gaps; inspect Source coverage and Activity" if result["coverage_gaps"] else ""), symbol)
+            except Exception as exc:
+                stop_dispatch.set()
+                with self.store.lock:
+                    result.update(status="cancelled" if isinstance(exc, InterruptedError) else "failed", error=str(exc)[:600])
+                    run["error"] = str(exc)[:600]
                     if isinstance(exc, GatewayRateLimited):
-                        # Stop the sweep. Keep completed evidence and leave later stocks unstarted.
-                        with self.store.lock:
-                            run["error"] = str(exc)
-                            run["retry_at"] = (datetime.now(UTC) + timedelta(seconds=exc.retry_after)).isoformat()
-                        return
-                    if resumable:
-                        return
-                finally:
-                    if graph is not None:
-                        graph.end_checkpoint()
-                    next_stage(None)
-                    with self.store.lock:
-                        result["elapsed_seconds"] = round((datetime.now(UTC) - started).total_seconds(), 3)
-                        run["measurements"]["callbacks"] = stats.get_measurements()
-                        self.store.save()
+                        run["retry_at"] = (datetime.now(UTC) + timedelta(seconds=exc.retry_after)).isoformat()
+                self._publish_research_coverage(run, result)
+                self._event(run_id, "error", str(exc)[:600], symbol)
+            finally:
+                with self.store.lock:
+                    result["elapsed_seconds"] = round(time.monotonic() - started, 3)
+                    self.store.save_research()
 
-            def research_symbol(symbol):
-                with capture_vendor_evidence(self._evidence_recorder(run_id, symbol)):
-                    run_symbol(symbol)
-
-            pending_symbols = iter(run["symbols"])
-            with ThreadPoolExecutor(max_workers=config.get("research_concurrency", 1),
-                                    thread_name_prefix="stock-research") as workers:
+        def research_symbol(symbol):
+            with capture_vendor_evidence(self._evidence_recorder(run_id, symbol)):
+                run_symbol(symbol)
+        try:
+            pending = iter(run["symbols"])
+            with ThreadPoolExecutor(max_workers=config.get("research_concurrency", 1), thread_name_prefix="stock-research") as workers:
                 active = set()
-
                 def fill_slots():
-                    while (len(active) < config.get("research_concurrency", 1)
-                           and not stop_dispatch.is_set() and run_id not in self.cancelled):
-                        symbol = next(pending_symbols, None)
+                    while len(active) < config.get("research_concurrency", 1) and not stop_dispatch.is_set() and run_id not in self.cancelled:
+                        symbol = next(pending, None)
                         if symbol is None:
                             break
                         active.add(workers.submit(copy_context().run, research_symbol, symbol))
-
                 fill_slots()
                 while active:
                     finished, active = wait(active, return_when=FIRST_COMPLETED)
@@ -2892,24 +2392,20 @@ class DeskService:
                         future.result()
                     fill_slots()
             with self.store.lock:
-                run["status"] = (
-                    "cancelled"
-                    if run_id in self.cancelled
-                    else (
-                        "completed"
-                        if len(run["results"]) == len(run["symbols"]) and all(r["status"] == "completed" for r in run["results"])
-                        else "interrupted" if any(r["status"] == "interrupted" for r in run["results"]) else "failed"
-                    )
-                )
-                run["completed_at"] = now()
-                self.store.save()
+                for result in run["results"]:
+                    if result["status"] == "queued":
+                        result.update(status="cancelled" if run_id in self.cancelled else "failed", error="Not dispatched after the cycle stopped.")
+                run["status"] = ("cancelled" if run_id in self.cancelled else "completed"
+                                 if all(r["status"] == "completed" for r in run["results"]) else "failed")
         except Exception as exc:
             with self.store.lock:
                 run.update(status="failed", error=str(exc)[:600])
-                self.store.save()
         finally:
             with self.store.lock:
-                self._finish_measurements(run, stats, request_started)
+                for origin in ("source", "gateway", "jev"):
+                    self.store._call_counts(run[f"{origin}_evidence"], origin)
+                self._finish_research(run)
+
 
     def cancel_run(self, run_id):
         with self.store.lock:
@@ -2918,10 +2414,7 @@ class DeskService:
                 raise ValueError("This analysis is no longer running.")
             self.cancelled.add(run_id)
             run.setdefault("cancel_requested_at", now())
-            if run.get("continuation"):
-                run["continuation"]["revision"] += 1
             run["status"] = "cancelling"
-            self.store.save()
         return {
             "status": "cancelling",
             "message": "Stops at the next agent step; in-flight calls finish first.",

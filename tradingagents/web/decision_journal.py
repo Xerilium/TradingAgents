@@ -339,6 +339,12 @@ def decisions(investor, journal, history, authority=None, position_groups=()):
             "fill_ids": copy.deepcopy(draft.get("fill_ids")), "executable": False,
             "limitation": "A saved initialized order does not establish ownership by the current engine or a broker execution"})
     for item in result:
+        reference = item.get("research")
+        if reference:
+            current = next((r for run in journal.get("runs", []) if run["id"] == reference.get("run_id")
+                            for r in run.get("results", []) if r["symbol"] == item["symbol"]), None)
+            item["research_available"] = bool(current and current.get("revision", 0) == reference.get("revision")
+                and (not reference.get("result_sha256") or digest(current) == reference["result_sha256"]))
         proposal_ids = item.get("linked_proposal_ids", []) if item["kind"] == "allocation_basket" else [item["record_id"]] if item["kind"] == "human_proposal" else []
         linked = [command for command in commands if command["proposal_id"] in proposal_ids]
         item["command_outcomes"] = [command_outcome(command, authority, position_groups) for command in linked]

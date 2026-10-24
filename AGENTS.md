@@ -1,5 +1,14 @@
 # Working on this TradingAgents checkout
 
+## Current research retention
+
+Keep only the latest research result per ticker; the next cycle replaces it.
+No desk history import, research resume, replay ledger or persisted LangGraph
+checkpoints are required. Maenifold owns long-term memory; the desk must not
+maintain a competing local decision log. Settings, authored lists/rules/notes,
+draft and basket terms, and broker approval semantics remain separate. This
+supersedes historical research-preservation or resume guidance below.
+
 ## Cold start: understand the product before operating it
 
 Read [README.md](README.md) first. It is the component map and operating guide

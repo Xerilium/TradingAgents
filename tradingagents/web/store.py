@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from contextlib import closing, nullcontext
+from contextlib import closing
 import hashlib
 import html
 import json
@@ -12,7 +12,6 @@ import re
 import sqlite3
 import struct
 import threading
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -91,120 +90,50 @@ class DeskStore:
         self.database = ApplicationDatabase(self.directory, self.data, migrate_legacy=migrate_legacy)
         saved = self.database.read("journal")
         self.data, self.revision = saved["data"], saved["revision"]
-        for request in self.data["research_requests"]:
-            interrupted = request["status"] == "preflight"
-            if interrupted:
-                request.update(status="interrupted", recovery_observed_at=datetime.now(UTC).isoformat(),
-                               capture_complete=False)
-                for stage in request["stages"]:
-                    if stage["outcome"] == "running":
-                        stage["outcome"] = "unknown"
-            recovered_calls = False
-            for origin in ("source", "gateway", "jev"):
-                evidence = request.get(f"{origin}_evidence", {})
-                recovered_origin = False
-                for attempt in evidence.get("attempts", []):
-                    if attempt["outcome"] in {"running", "queued"}:
-                        attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                        recovered_calls = recovered_origin = True
-                if recovered_origin:
-                    self._snapshot_call_evidence(request, "recovery_unknown", origin)
-                self.finalize_call_evidence(request, origin)
-            if interrupted or recovered_calls:
-                self.checkpoint_request(request, "recovery_unknown")
+        latest = self.database.read("latest_research", {"runs": []})
+        self.research_revision = latest["revision"]
+        self.data["runs"] = latest["data"]["runs"] if latest["revision"] else self.data.get("runs", [])
+        self.data.pop("research_requests", None)
+        self.prune_research()
         for run in self.data["runs"]:
-            for result in run.get("results", []):
-                source_incomplete = any(source_attempt_failed(a, run.get("source_evidence", {}).get("attempts", []))
-                    for a in run.get("source_evidence", {}).get("attempts", [])
-                    if a.get("symbol") in {None, result["symbol"]})
-                if result.get("status") == "completed" and source_incomplete:
-                    result.update(status="failed", error="Research incomplete: required source collection or evidence capture failed. Saved reports are retained.")
-                    result["revision"] = result.get("revision", 0) + 1
-                    if run["status"] == "completed":
-                        run["status"] = "failed"
-            run.setdefault("portfolio_evidence", {
-                "status": "unavailable",
-                "reason": "Legacy run did not record its consumed portfolio context; cash and holdings are unknown.",
-            })
             if run["status"] in {"queued", "running", "cancelling"}:
-                run["status"] = "interrupted"
-                run["error"] = ("Server stopped during analysis. Review continuation eligibility."
-                                if run.get("continuation") else "Server stopped during analysis. Start a new run.")
-                continuation = run.get("continuation")
-                if continuation:
-                    continuation["revision"] += 1
-                    continuation["attempts"][-1].update(status="interrupted", ended_at=datetime.now(UTC).isoformat(),
-                                                       reason=run["error"])
-                    for result in run["results"]:
-                        if result["status"] == "running":
-                            result["status"] = "interrupted"
-                        for effect in result.get("continuation", {}).get("effects", {}).values():
-                            if effect["outcome"] == "intent":
-                                effect["outcome"] = "unknown"
-            if run["status"] in {"completed", "failed", "cancelled", "interrupted"}:
-                self._recover_measurements(run)
-                evidence = run.get("source_evidence")
-                if evidence and any(a["outcome"] == "running" for a in evidence["attempts"]):
-                    evidence.update(capture_complete=False, persistence_error="Source attempt interrupted; final outcome unavailable.")
-                if evidence and "snapshots" in evidence:
-                    recovered_source = False
-                    for attempt in evidence["attempts"]:
-                        if attempt["outcome"] == "running":
-                            attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                            recovered_source = True
-                    if recovered_source:
-                        self._snapshot_call_evidence(run, "recovery_unknown", "source")
-                    self.finalize_call_evidence(run, "source")
-                for origin in ("gateway", "jev"):
-                    calls = run.get(f"{origin}_evidence")
-                    if calls and any(a["outcome"] in {"queued", "running"} for a in calls.get("attempts", [])):
-                        for attempt in calls["attempts"]:
-                            if attempt["outcome"] in {"queued", "running"}:
-                                attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                        self._snapshot_call_evidence(run, "recovery_unknown", origin)
-                    self.finalize_call_evidence(run, origin)
+                run.update(status="failed", error="Service stopped during research. Start a new cycle; desk research does not resume.")
+                for result in run["results"]:
+                    if result["status"] in {"queued", "running", "cancelling"}:
+                        result.update(status="failed", error=run["error"])
+        self.save_research()
         self.save()
 
-    def _recover_measurements(self, run):
-        measurements = run.get("measurements")
-        if not measurements:
-            return  # Older runs never collected measurements.
-        finalized = bool(measurements.get("ended_at") or measurements.get("recovery_observed_at"))
-        if run.get("measurement_artifact") and finalized and measurements.get("status") == run["status"]:
-            return
-        if str(UUID(run["id"])) != run["id"]:
-            raise ValueError("Invalid run ID for measurement recovery.")
-        try:
-            # A crash can leave a complete immutable artifact before its journal reference.
-            candidates = []
-            directory = self.directory / "reports" / run["id"]
-            for path in directory.glob("measurements-*.json"):
-                try:
-                    payload = path.read_bytes()
-                    candidate = json.loads(payload)
-                except (OSError, ValueError):
-                    continue  # Preserve partial files; they are not completion evidence.
-                if (isinstance(candidate, dict) and candidate.get("run_id") == run["id"]
-                        and candidate.get("status") == run["status"]
-                        and candidate.get("started_at") == measurements.get("started_at")
-                        and (candidate.get("ended_at") or candidate.get("recovery_observed_at"))):
-                    candidates.append((candidate, self._measurement_reference(path, payload)))
-            if len(candidates) == 1:
-                run["measurements"], run["measurement_artifact"] = candidates[0]
-            else:
-                # No unambiguous final artifact: preserve only what the journal recorded.
-                measurements.update(run_id=run["id"], status=run["status"])
-                measurements.setdefault("recovery_observed_at", datetime.now(UTC).isoformat())
-                if not measurements.get("ended_at"):
-                    measurements.update(
-                        ended_at=None, elapsed_seconds=None, callbacks_final=False,
-                        completeness="Partial journal checkpoint; process termination time and "
-                                     "callbacks since the checkpoint are unavailable.",
-                    )
-                run["measurement_artifact"] = self.write_measurements(run["id"], measurements)
-            run.pop("measurement_export_error", None)
-        except OSError:
-            run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
+    def prune_research(self):
+        """Keep exactly the newest cycle's result for each ticker, including failures."""
+        seen, runs = set(), []
+        for run in sorted(self.data["runs"], key=lambda r: (r.get("created_at", ""), r["id"]), reverse=True):
+            results = [r for r in run.get("results", []) if r["symbol"] not in seen]
+            if not results:
+                continue
+            symbols = {r["symbol"] for r in results}
+            seen.update(symbols)
+            run.update(results=results, symbols=[s for s in run["symbols"] if s in symbols])
+            for key in ("continuation", "request_id", "measurement_artifact", "measurements", "measurement_export_error"):
+                run.pop(key, None)
+            for result in results:
+                result.pop("continuation", None)
+                if result.get("local_laya_batch"):
+                    result["local_laya_batch"].pop("previous_artifacts", None)
+            run["events"] = [e for e in run.get("events", []) if e.get("symbol") in symbols or not e.get("symbol")][-500:]
+            for origin in ("source", "gateway", "jev"):
+                evidence = run.get(f"{origin}_evidence", {})
+                evidence["attempts"] = [a for a in evidence.get("attempts", []) if a.get("symbol") in symbols or not a.get("symbol")]
+                evidence["snapshots"] = []
+            runs.append(run)
+        self.data["runs"] = runs
+
+    def save_research(self):
+        with self.lock:
+            self.prune_research()
+            saved = self.database.update("latest_research", self.research_revision,
+                lambda _: {"runs": self.data["runs"]}, {"runs": []})
+            self.research_revision = saved["revision"]
 
     def _measurement_reference(self, path, payload):
         return {"path": path.relative_to(self.directory).as_posix(),
@@ -238,19 +167,17 @@ class DeskStore:
             revision = connection.execute("SELECT revision FROM app_records WHERE name='journal'").fetchone()[0]
         if revision != self.revision:
             saved = self.database.read("journal")
-            self.data, self.revision = saved["data"], saved["revision"]
+            self.data, self.revision = {**saved["data"], "runs": self.data["runs"]}, saved["revision"]
 
     def snapshot(self, *, compact=False, run_id=None, journal=None):
-        # A caller-owned committed read must not queue behind research artifact writers.
-        with self.lock if journal is None else nullcontext():
+        # Settings come from the committed journal; research is the live latest cache.
+        with self.lock:
             if journal is None:
                 self._refresh()
                 journal = self.data
+            journal = {**journal, "runs": journal.get("runs", self.data["runs"])}
             if compact:
                 data = copy.deepcopy({key: value for key, value in journal.items() if key not in {"runs", "research_requests"}})
-                data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
-                    ("id", "run_id", "status", "started_at", "ended_at", "elapsed_seconds", "capture_complete")}
-                    for r in journal["research_requests"]]
                 selected = run_id if any(r["id"] == run_id for r in journal["runs"]) else next((r["id"] for r in journal["runs"]), None)
                 data["runs"] = []
                 data["research"] = {}
@@ -258,12 +185,9 @@ class DeskStore:
                     results = run.get("results", [])
                     counts = {status: sum(r.get("status") == status for r in results)
                               for status in ("completed", "failed", "cancelled", "running")}
-                    counts["queued"] = max(0, len(run["symbols"]) - len(results))
+                    counts["queued"] = sum(r.get("status") == "queued" for r in results)
                     summary = {key: copy.deepcopy(value) for key, value in run.items()
                                if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence", "jev_evidence", "continuation"}}
-                    if "continuation" in run:
-                        summary["continuation"] = {key: run["continuation"].get(key)
-                                                   for key in ("version", "revision", "blocked_reason")}
                     for name in ("gateway_evidence", "jev_evidence"):
                         if name in run:
                             summary[name] = {
@@ -283,7 +207,7 @@ class DeskStore:
                         }
                     summary.update(
                         counts=counts,
-                        results=[self.result_summary(r) for r in results] if run["id"] == selected else [],
+                        results=[self.result_summary(r) for r in results],
                         events=copy.deepcopy(run.get("events", [])[-40:]) if run["id"] == selected else [],
                         event_count=len(run.get("events", [])),
                         config={key: run.get("config", {}).get(key) for key in
@@ -313,7 +237,7 @@ class DeskStore:
                     revision = row[0] if row else 0
                     if type(self.revision) is not int or self.revision != revision:
                         raise StoreConflict(revision)
-                    encoded = self.database.encode(self.data)
+                    encoded = self.database.encode({**{k: v for k, v in self.data.items() if k not in {"runs", "research_requests"}}, "runs": []})
                     if row is None or encoded != row[1]:
                         revision += 1
                         connection.execute("INSERT INTO app_records VALUES('journal',?,?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at",
@@ -321,7 +245,7 @@ class DeskStore:
                 self.revision = revision
             except StoreConflict:
                 saved = self.database.read("journal")
-                self.data, self.revision = saved["data"], saved["revision"]
+                self.data, self.revision = {**saved["data"], "runs": self.data["runs"]}, saved["revision"]
                 raise
 
     @staticmethod
@@ -334,34 +258,13 @@ class DeskStore:
                 row = connection.execute("SELECT payload FROM app_records WHERE name='journal'").fetchone()
                 if row is None:
                     raise ValueError("Saved database journal is missing")
-                return json.loads(row[0])
-        return json.loads((directory / "desk.json").read_text(encoding="utf-8"))
-
-    def write_measurements(self, run_id, measurements):
-        """Write once under the existing run report path; never replace prior evidence."""
-        return self._write_json_artifact(run_id, "measurements", measurements)
+                saved = json.loads(row[0])
+        else:
+            saved = json.loads((directory / "desk.json").read_text(encoding="utf-8"))
+        return {**saved, "runs": [], "research_requests": []}
 
     def _evidence_owner(self, owner_id):
-        return next(r for collection in ("runs", "research_requests")
-                    for r in self.data[collection] if r["id"] == owner_id)
-
-    def checkpoint_request(self, request, reason):
-        """Best-effort measurement only: never replace the research outcome."""
-        with self.lock:
-            for origin in ("source", "gateway", "jev"):
-                self._call_counts(request[f"{origin}_evidence"], origin)
-            request["capture_complete"] = not (request.get("persistence_error") or request["status"] == "interrupted"
-                or any(not request[f"{origin}_evidence"]["capture_complete"] for origin in ("source", "gateway", "jev")))
-            try:
-                snapshot = {k: copy.deepcopy(v) for k, v in request.items() if k != "snapshots"}
-                snapshot["snapshot_reason"] = reason
-                request["snapshots"].append(self._write_json_artifact(request["id"], "request-measurements", snapshot))
-            except Exception:
-                request.update(capture_complete=False, persistence_error="Request measurement artifact unavailable.")
-            try:
-                self.save()
-            except Exception:
-                request.update(capture_complete=False, persistence_error="Request journal checkpoint unavailable.")
+        return next(r for r in self.data["runs"] if r["id"] == owner_id)
 
     def record_portfolio_context(self, run_id, context):
         """Keep the consumed context, never reconstruct it from a later account refresh."""
@@ -373,9 +276,8 @@ class DeskStore:
             try:
                 evidence["artifact"] = self._write_json_artifact(run_id, "portfolio-context", context)
             except OSError:
-                evidence.update(status="journal_only", reason="Portfolio artifact could not be written; context remains in journal.")
+                evidence.update(status="cache_only", reason="Portfolio artifact could not be written; context remains in the latest research cache.")
             run["portfolio_evidence"] = evidence
-            self.save()
 
     def _write_json_artifact(self, run_id, kind, content):
         if str(UUID(run_id)) != run_id:
@@ -423,15 +325,6 @@ class DeskStore:
                 attempt["capture"] = "error_class_only"
             if attempt.get("late"):
                 evidence["capture_complete"] = False
-                self._snapshot_call_evidence(run, "late_update", "source")
-                if run.get("owner_kind") == "research_request":
-                    self.checkpoint_request(run, "late_update")
-            try:
-                self.save()
-            except OSError:
-                evidence["capture_complete"] = False
-                evidence["persistence_error"] = "Journal checkpoint failed; durability is unavailable."
-                # Retain the receipt in memory for the run's next existing journal save.
 
     @staticmethod
     def _call_counts(evidence, origin):
@@ -511,40 +404,6 @@ class DeskStore:
                 attempt["capture_error"] = (
                     "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
                 )
-            self._call_counts(evidence, origin)
-            if attempt.get("late"):
-                self._snapshot_call_evidence(run, "late_update", origin)
-                if run.get("owner_kind") == "research_request":
-                    self.checkpoint_request(run, "late_update")
-            elif receipt["boundary_kind"] == "jev_batch" and receipt.get("ended_at"):
-                self._snapshot_call_evidence(run, "batch_terminal", origin)
-            try:
-                self.save()
-            except OSError:
-                evidence.update(capture_complete=False, persistence_error="Call evidence journal checkpoint failed.")
-
-    def _snapshot_call_evidence(self, run, reason, origin):
-        evidence = run[f"{origin}_evidence"]
-        self._call_counts(evidence, origin)
-        snapshot = {key: copy.deepcopy(value) for key, value in evidence.items() if key != "snapshots"}
-        snapshot.update(run_id=run["id"], run_status=run["status"], reason=reason,
-                        observed_at=datetime.now(UTC).isoformat())
-        if run.get("owner_kind") == "research_request":
-            snapshot.update(owner_kind="research_request", request_id=run["id"], run_id=run.get("run_id"))
-        try:
-            evidence.setdefault("snapshots", []).append(self._write_json_artifact(run["id"], f"{origin}-evidence", snapshot))
-        except OSError:
-            evidence.update(capture_complete=False, persistence_error="Call evidence snapshot export failed.")
-
-    def finalize_gateway_evidence(self, run):
-        self.finalize_call_evidence(run, "gateway")
-
-    def finalize_call_evidence(self, run, origin, *, reason="run_terminal"):
-        with self.lock:
-            evidence = run.get(f"{origin}_evidence")
-            if evidence and not evidence.get("terminal_observed_at"):
-                evidence["terminal_observed_at"] = datetime.now(UTC).isoformat()
-                self._snapshot_call_evidence(run, reason, origin)
 
     def _write_source_result(self, run_id, attempt_id, output, prefix="source", *, allow_pagination_cursor=False):
         import pandas as pd

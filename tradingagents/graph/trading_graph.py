@@ -62,6 +62,7 @@ class TradingAgentsGraph:
         supplemental_tools: list[BaseTool] | None = None,
         social_screen_factory=None,
         research_effect=None,
+        local_memory=True,
     ):
         """Initialize the trading agents graph and components.
 
@@ -72,6 +73,7 @@ class TradingAgentsGraph:
             callbacks: Optional list of callback handlers (e.g., for tracking LLM/tool stats)
             supplemental_tools: Additional research tools for the market, news,
                 and fundamentals analysts. Broker mutations must be excluded by the caller.
+            local_memory: Include the CLI's local decision log; the desk uses Maenifold instead.
         """
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
@@ -88,7 +90,7 @@ class TradingAgentsGraph:
         self.deep_thinking_llm = create_tier_client(self.config, "deep", **extra).get_llm()
         self.quick_thinking_llm = create_tier_client(self.config, "quick", **extra).get_llm()
 
-        self.memory_log = TradingMemoryLog(self.config)
+        self.memory_log = TradingMemoryLog(self.config) if local_memory else None
 
         self.conditional_logic = ConditionalLogic(
             max_debate_rounds=self.config["max_debate_rounds"],
@@ -115,13 +117,13 @@ class TradingAgentsGraph:
         self.propagator = Propagator(
             max_recur_limit=max_recur_limit,
         )
-        self.reflector = Reflector(self.quick_thinking_llm)
+        self.reflector = Reflector(self.quick_thinking_llm) if local_memory else None
 
         # Graph-shape-affecting run choices, kept for the checkpoint signature.
         self.selected_analysts = tuple(selected_analysts)
 
         # Set up the graph: keep the workflow for recompilation with a checkpointer.
-        self.workflow = self.graph_setup.setup_graph(selected_analysts, memory_node=self._memory_step)
+        self.workflow = self.graph_setup.setup_graph(selected_analysts, memory_node=self._memory_step if local_memory else None)
         self.graph = self.workflow.compile()
         self._checkpointer_ctx = None
         self._resuming = False
