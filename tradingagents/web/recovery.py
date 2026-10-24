@@ -131,10 +131,25 @@ def records(database, resolve_artifact=None):
         rows = connection.execute("SELECT name,revision,payload FROM app_records").fetchall()
     result = {}
     for name, revision, payload in rows:
-        if name not in {"journal", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery"} or type(revision) is not int or revision < 1:
+        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery"} or type(revision) is not int or revision < 1:
             raise ValueError("Unsupported application record scope or revision")
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
+    if "latest_research" in result:
+        cache = result["latest_research"]
+        if not isinstance(cache, dict) or set(cache) != {"runs"} or not isinstance(cache["runs"], list):
+            raise ValueError("Invalid latest research cache")
+        symbols = set()
+        for run in cache["runs"]:
+            if (not isinstance(run, dict) or not isinstance(run.get("symbols"), list)
+                    or not isinstance(run.get("results"), list) or str(UUID(run["id"])) != run["id"]):
+                raise ValueError("Invalid latest research cycle")
+            for item in run["results"]:
+                if (not isinstance(item, dict) or not isinstance(item.get("symbol"), str)
+                        or item["symbol"] not in run["symbols"] or item["symbol"] in symbols
+                        or not isinstance(item.get("reports"), dict) or not isinstance(item.get("status"), str)):
+                    raise ValueError("Invalid or duplicate latest ticker result")
+                symbols.add(item["symbol"])
     from .record_integrity import validate
     validate(result, resolve_artifact)
     if "discovery" in result:
@@ -163,9 +178,10 @@ def validate_journal(journal):
         raise ValueError("Backup journal is missing")
     DeskConfig.model_validate(journal["config"])
     for collection in ("runs", "research_requests"):
-        if not isinstance(journal.get(collection), list):
+        values = journal.get(collection, []) if collection == "research_requests" else journal.get(collection)
+        if not isinstance(values, list):
             raise ValueError("Invalid saved journal collection")
-        for record in journal[collection]:
+        for record in values:
             if str(UUID(record["id"])) != record["id"]:
                 raise ValueError("Invalid saved evidence owner identity")
 
