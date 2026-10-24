@@ -787,6 +787,24 @@ approval authority, stops native execution and requires fresh reconciliation
 and exact review. Broker records stay unchanged and saved pause choice is
 preserved. Do not use restore to conceal a source/evidence failure.
 
+### Purge unreferenced research artifacts
+
+Stop Nautilus through the UI and stop the app server before cleanup. Keep
+`desk.sqlite3`: its records contain settings, authored drafts and the bounded
+`latest_research` cache. Trace file references from **every** `app_records`
+record, then follow references inside those files until no new files are found.
+Preserve this complete reference set, including chart and draft dependencies.
+
+Delete only unreferenced research receipts, old research logs, continuation
+arguments/results, measurements and research evidence snapshots inside the
+configured application directory. The desk no longer uses its local
+`decision-memory.md` or `cache/checkpoints`; remove those unused app-local files
+as well. A UUID directory can contain execution or chart artifacts, so its name
+or age is not enough to delete the directory. Verify resolved targets, reject
+junctions/symbolic links, and compare retained file hashes after deletion.
+Restart on 8098 and confirm the latest results and saved drafts still open.
+Leave Maenifold, model caches, environments, credentials and broker records alone.
+
 ### Clear retained research or reset the app
 
 Cleanup is destructive and is not a routine troubleshooting step. Use it only
@@ -823,7 +841,7 @@ deleting a directory does not clear an already-running process's memory.
 | Research uses the wrong model server | Inspect saved provider/model/endpoint, not just defaults. |
 | Research has reports but is interrupted | Inspect Activity and capture status; a final text report is not sufficient. |
 | Tool arguments rejected | Inspect the discovered command schema and retained validation details; don't label it a transport failure. |
-| Old research survives reset | Check both configured stores and in-memory history; browser storage is not the only location. |
+| Old research survives reset | Check the application's `latest_research` cache and restart the app; clearing browser storage alone does not remove server-side results. The desk no longer imports historical research. |
 | Saved state changed in another session | Reload the current revision before editing; don't overwrite concurrent changes. |
 | No chart, scan or performance result | Check required retained source, coverage and job status; an empty result is not evidence of a calculation. |
 | Order submission reply missing | Reconcile the command/client order identity with actual broker state before retrying. |
