@@ -129,6 +129,15 @@ def _gateway_failure_details(error):
                 r"JSON Schema|schema validation failed|Missing required argument|"
                 r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
                 r"no news articles tagged|maintenance|rate limited|temporarily unavailable")
+    safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
+                     r"The upstream Gateway tool reported (?:a text error|an error)\.|"
+                     r"GatewayIndex did not return (?:a domain catalog|command schemas)\.|"
+                     r"GatewayIndex returned a malformed command\.|"
+                     r"Gateway command advertised an invalid JSON Schema\.|"
+                     r"SESSION_MISSING: Start with thoughtNumber=0 and no sessionId\.?|"
+                     r"Upstream rate limit \(429\)\. Wait \d+ seconds before trying again\.|"
+                     r"(?:Original )?[Ss]ocial screening (?:time budget expired while queued|"
+                     r"processing budget expired before dispatch|stopped by operator)")
     while pending and len(details) < 6:
         current = pending.pop(0)
         if id(current) in seen:
@@ -137,7 +146,7 @@ def _gateway_failure_details(error):
         text = current.args[0][:512] if current.args and isinstance(current.args[0], str) else ""
         # Extract known diagnostic phrases only: never serialize URLs, quoted inputs,
         # HTTP fields, response bodies, schema instances, or arbitrary message suffixes.
-        phrases = re.findall(messages, text, flags=re.IGNORECASE)
+        phrases = re.findall(safe_messages, text) or re.findall(messages, text, flags=re.IGNORECASE)
         detail = {"class": type(current).__name__[:80],
                   "message": "; ".join(dict.fromkeys(phrases))[:256] or "Exception details withheld"}
         for name, value in (("errno", getattr(current, "errno", None)),
@@ -185,7 +194,15 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
                        error_class=kind if kind in {"GatewayError", "GatewayTimeout", "GatewayRateLimited",
                                                    "CancelledError", "TimeoutError", "TypeSafeError"} else "UnexpectedError")
         if origin == "gateway":
-            receipt["error_details"] = _gateway_failure_details(exc)
+            receipt.setdefault("error_details", _gateway_failure_details(exc))
+            if getattr(exc, "social_budget_expired", False):
+                receipt["failure_kind"] = "screening_budget_exhausted"
+            elif kind == "GatewayTimeout":
+                receipt["failure_kind"] = "service_timeout"
+            elif kind == "GatewayRejected":
+                receipt["failure_kind"] = "confirmed_rejection"
+            elif isinstance(exc, asyncio.CancelledError):
+                receipt["failure_kind"] = "cancelled_unknown_outcome"
         if kind == "GatewayRateLimited":
             receipt["retry_after_seconds"] = exc.retry_after
         raise

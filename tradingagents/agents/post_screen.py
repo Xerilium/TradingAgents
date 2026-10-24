@@ -122,8 +122,12 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
 
     def execute(command, parameters):
         def dispatch():
-            if cancelled() or time.monotonic() >= budget["deadline"]:
-                raise InterruptedError("Social screening stopped; budget exhausted")
+            if cancelled():
+                raise InterruptedError("Social screening stopped by operator")
+            if time.monotonic() >= budget["deadline"]:
+                error = TimeoutError("Social screening processing budget expired before dispatch")
+                error.social_budget_expired = True
+                raise error
         from tradingagents.integrations.maenifold import gateway_observation
         with gateway_observation("laya", command, "gateway_invocation",
                                  parameters=parameters, purpose="social_sentiment") as observed:
@@ -139,6 +143,12 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                         # reaches the deadline. Record which limit actually fired.
                         if deadline.expired():
                             exc.social_budget_expired = True
+                            observed["receipt"].update(failure_kind="screening_budget_exhausted",
+                                screening_budget={"time_policy": budget.get("time_policy"), "max_seconds": max_seconds,
+                                    "remaining_seconds": max(0, budget["deadline"] - time.monotonic()),
+                                    "queue_wait_seconds": budget.get("queue_wait_seconds", 0)},
+                                error_details=[{"class": "TimeoutError", "message":
+                                    "Application social screening processing budget expired; in-flight outcome is unknown."}])
                         raise
                 result = asyncio.run(run())
             else:
@@ -166,6 +176,9 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                 raise ValueError("A prior social request has an unknown outcome and cannot be replayed.")
 
         def progress():
+            evidence["counts"] = dict.fromkeys(evidence["counts"], 0)
+            for row in rows:
+                evidence["counts"][row["stance"] if row["status"] == "classified" else "unscreened"] += 1
             if on_progress:
                 on_progress(copy.deepcopy(evidence), budget)
         try:
@@ -255,9 +268,6 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                 evidence["error"] = str(exc).strip()[:300] or type(exc).__name__
         finally:
             progress()
-        for row in rows:
-            key = row["stance"] if row["status"] == "classified" else "unscreened"
-            evidence["counts"][key] += 1
         counts = evidence["counts"]
         evidence["status"] = ("empty" if not posts else "unavailable" if counts["unscreened"] == len(posts)
                               else "partial" if counts["unscreened"] else "completed")

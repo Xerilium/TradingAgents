@@ -2151,6 +2151,20 @@ class DeskService:
                 receipt = {**receipt, "symbol": symbol}
             try:
                 self.store.record_source_attempt(owner_id, receipt, output)
+                if symbol is not None and (receipt.get("boundary_kind") == "gateway_invocation"
+                        or receipt.get("boundary_kind") == "gateway_logical" and not receipt.get("parent_attempt_id")):
+                    outcome = receipt.get("outcome", "unknown")
+                    cause = "; ".join(detail["message"] for detail in receipt.get("error_details", [])
+                                      if detail.get("message") and detail["message"] != "Exception details withheld")
+                    budget = receipt.get("screening_budget")
+                    self._event(owner_id, "source", (
+                        f"{receipt['vendor']} / {receipt['operation']}: {outcome}"
+                        f" at {receipt.get('ended_at') or receipt.get('started_at')}. "
+                        + (f"{receipt['failure_kind']}. " if receipt.get("failure_kind") else "")
+                        + (f"{cause}. " if cause else f"{receipt.get('error_class', 'Cause not captured')}. " if outcome not in {"running", "success"} else "")
+                        + (f"Screening budget: {budget}. " if budget else "")
+                        + f"Receipt attempt: {receipt['attempt_id']} (Sources)."
+                    ), symbol, attempt_id=receipt["attempt_id"])
             except Exception:
                 with self.store.lock:
                     origin = receipt.get("origin")
@@ -2350,7 +2364,7 @@ class DeskService:
         social = result["social_sentiment"]
         result["coverage_gaps"] = [
             {key: a.get(key) for key in ("attempt_id", "operation", "vendor", "arguments", "outcome", "data_status", "error_class",
-                                        "failure_kind", "error_details", "http_status", "attempt", "ordinal", "retry_action", "retry_after_seconds", "capture_error", "artifact", "receipts") if key in a}
+                                        "failure_kind", "error_details", "http_status", "attempt", "ordinal", "retry_action", "retry_after_seconds", "capture_error", "artifact", "receipts", "parent_attempt_id", "boundary_kind") if key in a}
             for origin in ("source", "gateway", "jev") for a in evidence_by_origin[origin]["attempts"]
             if a.get("capture_error") or a.get("outcome") != "success" or a.get("data_status") in {"partial", "unavailable", "no_usable_coverage"}
         ] + [{"source": name, "status": s.get("status"), "classified_count": s.get("classified_count"),
@@ -2360,18 +2374,22 @@ class DeskService:
                                     for origin, evidence in evidence_by_origin.items() if evidence.get("persistence_error")]
         if result["coverage_gaps"]:
             grouped = {}
+            activity = set()
             for gap in result["coverage_gaps"]:
                 cause = (gap.get("capture_error") or gap.get("error") or ("HTTP " + str(gap["http_status"]) if gap.get("http_status") else "")
                          or "; ".join(dict.fromkeys(detail["message"] for detail in gap.get("error_details", [])
                                                    if detail.get("message") and detail["message"] != "Exception details withheld"))
+                         or gap.get("stop_reason")
                          or "Cause not captured" + (" (" + gap["error_class"] + ")" if gap.get("error_class") else ""))
                 coverage = (str(gap.get("classified_count", 0)) + "/" + str(gap.get("total_count", "unknown")) + " posts classified"
                             if "total_count" in gap else gap.get("data_status") or gap.get("status") or gap.get("outcome", "unknown"))
                 line = (f"{gap.get('operation') or gap.get('source')} / {gap.get('vendor') or ('Laya' if gap.get('source') in {'reddit', 'stocktwits'} else 'local capture')}: {cause}. "
                         f"Coverage: {coverage}. Attempt: {gap.get('attempt', gap.get('ordinal', 'not captured'))}; "
-                        f"retry decision: {gap.get('retry_action', 'not captured')}. "
+                        f"retry decision: {gap.get('retry_action', 'not captured')}. Receipt: {gap.get('attempt_id', 'not captured')}. "
                         "Use retained evidence only; do not infer missing values or neutral sentiment.")
                 grouped[line] = grouped.get(line, 0) + 1
+                if not gap.get("parent_attempt_id") and gap.get("boundary_kind") != "gateway_invocation":
+                    activity.add(line)
             limitations = ("Source failures and screening limits remain part of this research. "
                            "Workflow completion does not establish complete data coverage. "
                            "Unknown optional outcomes are not replayed. Full receipts remain in Sources.\n\n"
@@ -2384,7 +2402,8 @@ class DeskService:
                     result["revision"] += 1
                     self.store.save()
             if changed:
-                self._event(run_id, "coverage", f"{len(result['coverage_gaps'])} source/screening limitations retained. Read Source coverage in Reports and the exact receipts in Sources.", symbol)
+                for line in sorted(activity):
+                    self._event(run_id, "coverage", line, symbol)
         return evidence_by_origin
 
     def _run_with_evidence(self, run_id, market, request_started, queued_at):
@@ -2506,8 +2525,16 @@ class DeskService:
                             evidence["classified_count"] = sum(row["status"] == "classified" for row in evidence["posts"])
                             evidence["status"] = "partial"
                             with self.store.lock:
+                                previous = current["social_sentiment"]["sources"].get(source, {})
+                                count = evidence["classified_count"]
+                                milestone = (count // 5, evidence.get("stop_reason"), evidence.get("error"))
+                                changed = milestone != (previous.get("classified_count", 0) // 5,
+                                    previous.get("stop_reason"), previous.get("error")) or not previous.get("posts")
                                 current["continuation"]["social_budget"] = {key: value for key, value in budget.items() if key != "deadline"}
                                 record(evidence)
+                                if changed:
+                                    self._event(run_id, "screening", f"{source}: {count}/{evidence['total_count']} posts classified. "
+                                        + (evidence.get("stop_reason") or "Screening in progress."), ticker)
                         with self.store.lock:
                             if retained is None:
                                 current["social_sentiment"]["sources"][source] = {
