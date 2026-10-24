@@ -54,6 +54,7 @@ def source_attempt_failed(attempt, attempts=()):
 def call_evidence_failed(evidence):
     """Unknown optional read outcomes are gaps, not missing durable receipts."""
     optional = {
+        "gateway": {"GatewayIndex"},
         "laya": {"decide"},
         "maenifold.memory": {"SearchMemories", "ReadMemory", "ListMemories", "ExtractConceptsFromFile"},
         "maenifold.graph": {"BuildContext", "FindSimilarConcepts", "Visualize", "AnalyzeConceptCorruption"},
