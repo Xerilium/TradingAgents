@@ -139,6 +139,8 @@ assumption that every workflow passed. Record what was exercised and what was
 not. Coordinate file ownership with other agents; preserve their changes.
 
 For Maenifold operations use its Gateway and discover command schemas first;
+analysts must read canonical GetHelp before Gateway tool use. The app preloads
+that help into tool descriptions and exposes GetHelp for allowed commands.
 use the Maenifold/Gate skills when applicable. Retrieve durable project decisions
 when needed and cite their `memory://` sources. Do not switch to its CLI without
 user direction.
