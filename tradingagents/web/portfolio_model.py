@@ -41,7 +41,7 @@ def model_portfolio(config, inputs, capital):
     if len(evidence) > 120_000:
         raise ValueError("Saved evidence exceeds the joint synthesis limit of 120,000 characters; no model call made and no candidates truncated")
     settings = {**build_default_config(), **config, "deep_think_provider": config["llm_provider"],
-                "deep_think_backend_url": config.get("backend_url"), "llm_max_retries": 0}
+                "deep_think_backend_url": config.get("backend_url")}
     client = create_tier_client(settings, "deep")
     response = client.get_llm().with_structured_output(JointPortfolio, include_raw=True).invoke([
         SystemMessage(content=(
