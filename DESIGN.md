@@ -27,40 +27,40 @@ colors:
 typography:
   display:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "23px"
-    fontWeight: 550
+    fontSize: "26px"
+    fontWeight: 600
     lineHeight: 1.3
     letterSpacing: "-.025em"
   headline:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "21px"
+    fontSize: "22px"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-.015em"
   title:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "12px"
+    fontSize: "16px"
     fontWeight: 620
     lineHeight: 1.5
     letterSpacing: "0"
   body:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "12px"
+    fontSize: "16px"
     fontWeight: 400
-    lineHeight: 1.5
+    lineHeight: 1.65
   report:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "12px"
+    fontSize: "16px"
     fontWeight: 400
-    lineHeight: 1.8
+    lineHeight: 1.65
   label:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "11px"
+    fontSize: "14px"
     fontWeight: 550
     lineHeight: 1.5
   action:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "11px"
+    fontSize: "14px"
     fontWeight: 600
     lineHeight: 1.5
 rounded:
@@ -301,3 +301,27 @@ The only repeating motion is the existing 1.5s loading pulse. The reduced-motion
 - **Don't** imply that selecting a symbol or launching research submits an order.
 - **Don't** hide financial columns by shrinking their text to fit a narrow viewport.
 
+
+
+## Shared desktop tokens
+
+The single CSS token definition is the `:root` block in `tradingagents/web/static/app.css`.
+Workspace styles consume these properties; do not add local copies of the type or spacing scale.
+
+| Role | Token | Value |
+| --- | --- | --- |
+| Body and research prose | `--text-body` | 16px |
+| Controls and labels | `--text-ui` | 14px |
+| Dense tabular data and chart axes | `--text-data` | 14px |
+| Secondary metadata | `--text-meta` | 13px |
+| Section, workspace and page headings | `--text-section / --text-heading / --text-display` | 18 / 22 / 26px |
+| Account values | `--text-metric` | 28px |
+| UI and prose leading | `--leading-ui / --leading-body` | 1.45 / 1.65 |
+| Shared spacing scale | `--space-1` through `--space-6` | 4 / 8 / 12 / 16 / 20 / 24px |
+| Standard control height | `--control-height` | 36px |
+
+Keep the established system-font stack, dark palette and semantic colors.
+The canvas chart reads its type, background, text, grid and candle colors from the same CSS properties.
+Use tight spacing for related controls and larger spacing between sections.
+Prose fills its available panel or cell width, as requested; do not reintroduce narrow paragraph caps.
+Desktop workspaces retain bounded scrolling within data, reading and form panes.

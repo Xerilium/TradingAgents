@@ -90,7 +90,7 @@ window.DeskMarketChart=(()=>{
       timeToX:t=>{const n=logical(t);return n===null?null:ts.logicalToCoordinate(n);},xToTime:x=>{const n=ts.coordinateToLogical(x);return n!==null&&Number.isInteger(n)?times[n]??null:null;},
       barAt:t=>{const b=bars[index(t)];return b?{time:b.t,open:b.o,high:b.h,low:b.l,close:b.c}:null;},timeToBarIndex:logical,barIndexToTime:i=>times[i]??null,
       bars:()=>bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})),visibleTimeRange:()=>null,indicatorValuesAt:()=>[],pipSize:()=>NaN,
-      formatTime:t=>String(t),timeInfo:()=>({timeZone:'America/New_York',intraday:scope.timeframe!=='1Day'}),timeAxis:()=>({height:ts.height(),width:ts.width(),fontSize:12,fontFamily:'sans-serif'})};
+      formatTime:t=>String(t),timeInfo:()=>({timeZone:'America/New_York',intraday:scope.timeframe!=='1Day'}),timeAxis:()=>({height:ts.height(),width:ts.width(),fontSize:chart.options().layout.fontSize,fontFamily:chart.options().layout.fontFamily})};
     function visible(){
       const statuses=[],out=[];
       for(const d of list.filter(d=>!d.deleted)){
@@ -147,17 +147,17 @@ window.DeskMarketChart=(()=>{
     if(!window.LightweightCharts){element.textContent='Chart library unavailable. Recorded OHLCV remains available below.';return;}
     try{
       bars=normalize(bars,timeframe);ordered(bars,timeframe);if(comparison&&comparison.timeframe!==timeframe)throw new Error('Comparison interval differs from chart interval.');
-      const library=window.LightweightCharts,style=getComputedStyle(element);
+      const library=window.LightweightCharts,style=getComputedStyle(element),color=name=>style.getPropertyValue(name).trim();
       const chart=library.createChart(element,{autoSize:true,height:280,
-        layout:{background:{color:style.getPropertyValue('--surface').trim()||'#1c2933'},textColor:style.getPropertyValue('--fg').trim()||'#c7d1d9'},
-        grid:{vertLines:{color:'#2c3d49'},horzLines:{color:'#2c3d49'}},timeScale:{timeVisible:timeframe!=='1Day',secondsVisible:false,lockVisibleTimeRangeOnResize:true},
+        layout:{background:{color:color('--paper')},textColor:color('--ink'),fontSize:parseFloat(style.getPropertyValue('--text-data')),fontFamily:style.getPropertyValue('--font').trim()},
+        grid:{vertLines:{color:color('--line')},horzLines:{color:color('--line')}},timeScale:{timeVisible:timeframe!=='1Day',secondsVisible:false,lockVisibleTimeRangeOnResize:true},
         localization:{priceFormatter:value=>Number(value).toFixed(2),timeFormatter:time=>formatTime(time,timeframe)}});
       mounted.set(element,{chart,key,onDispose});
       if(comparison){
         chart.priceScale('right').applyOptions({mode:library.PriceScaleMode.Normal});
         comparison.series.forEach((item,index)=>{const line=chart.addSeries(library.LineSeries,{color:['#86d6ab','#e6c17d'][index],title:item.symbol+' close index',priceScaleId:'right',priceLineVisible:false});line.setData(item.points.map(point=>({time:point.time,value:point.value})));});
       }else{
-        const candles=chart.addSeries(library.CandlestickSeries,{upColor:'#86d6ab',downColor:'#dc8995',borderVisible:false,wickUpColor:'#86d6ab',wickDownColor:'#dc8995'});
+        const candles=chart.addSeries(library.CandlestickSeries,{upColor:color('--positive'),downColor:color('--negative'),borderVisible:false,wickUpColor:color('--positive'),wickDownColor:color('--negative')});
         candles.setData(bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));
         mounted.get(element).controller=annotations(element,chart,candles,bars,options);
         const volume=chart.addSeries(library.HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'volume'});
