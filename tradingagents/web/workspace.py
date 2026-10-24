@@ -10,7 +10,7 @@ from uuid import uuid4
 
 
 DEFAULT = {"watchlists": [{"id": "shortlist", "name": "Shortlist", "symbols": []}],
-           "preferences": {}, "notes": {}, "browser_imports": [], "saved_screens": [], "drawings": {}, "drawing_history": [],
+           "preferences": {}, "notes": {}, "saved_screens": [], "drawings": {}, "drawing_history": [],
            "chart_definitions": {}, "chart_definition_history": []}
 
 
@@ -340,7 +340,7 @@ def validate_drawings(saved):
 
 def change(saved, request):
     patch = request.get("changes", {})
-    if not isinstance(patch, dict) or set(patch) - {"watchlists", "preferences", "notes", "browser_import", "saved_screens", "drawings"}:
+    if not isinstance(patch, dict) or set(patch) - {"watchlists", "preferences", "notes", "saved_screens", "drawings"}:
         raise ValueError("Unknown workspace change")
     if "drawings" in patch:
         updates = patch["drawings"]
@@ -367,25 +367,4 @@ def change(saved, request):
             raise ValueError("Invalid note symbol")
         saved["notes"][symbol] = {"symbol": symbol, "text": text(note.get("text"), 20000, "note"),
                                   "updated_at": datetime.now(UTC).isoformat()}
-    imported = patch.get("browser_import")
-    if imported:
-        identity = text(imported.get("id"), 100, "import id")
-        if identity not in saved["browser_imports"]:
-            names = {item["name"] for item in saved["watchlists"]}
-            for item in lists(imported["watchlists"]):
-                name, suffix = item["name"], 1
-                while name in names:
-                    suffix += 1
-                    name = item["name"][:45] + f" (import {suffix})"
-                names.add(name)
-                saved["watchlists"].append({**item, "id": str(uuid4()), "name": name})
-            skipped = []
-            for key, value in preferences(imported.get("preferences", {})).items():
-                if key in saved["preferences"]:
-                    skipped.append(key)
-                else:
-                    saved["preferences"][key] = value
-            saved["browser_imports"].append(identity)
-            saved["last_import"] = {"id": identity, "skipped_preferences": skipped,
-                                    "updated_at": datetime.now(UTC).isoformat()}
     return saved

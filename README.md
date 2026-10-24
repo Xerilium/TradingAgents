@@ -8,6 +8,11 @@ to this fork.
 
 **Start the existing installation:** run `rtk proxy .\Start-TradingDesk.cmd`
 from `C:\src\TradingAgents`, then open <http://127.0.0.1:8098/>.
+Normal startup connects Nautilus automatically and starts the installed local
+Maenifold HTTP service if its configured loopback port is unavailable. Local Laya
+already loads in the background; Codex starts its adapter when research needs it.
+Browse-only and recovery modes do not start the native connection. No packages
+are installed at startup.
 Use one app server on **8098**. The app targets desktop windows; phone layouts
 are out of scope.
 
@@ -298,8 +303,8 @@ prefetched Sentiment does not receive that same tool loop. The allowlist is:
 This includes durable mutations, not just read-only retrieval. Research guidance
 requires relevant citations, checksums for editing and explicit confirmation for
 deletion. A graph relationship is a retrieval aid, not verified financial evidence.
-The separate local decision/reflection log settles eligible prior outcomes and
-supplies Portfolio Manager lessons; it is distinct from Maenifold memory.
+Maenifold owns long-term memory and durable lessons. The desk does not keep
+a local decision/reflection log.
 
 Codex requests use ephemeral app-server sessions advertising only the bound
 TradingAgents functions. General shell/browser/computer/plugin/host MCP access
@@ -317,8 +322,8 @@ missing help is surfaced rather than replaced with invented instructions.
 
 Social source retrieval, Laya classification, model inference and evidence
 persistence are separate stages. Posts can remain unclassified after failure or
-screening-budget exhaustion; unscreened fetched posts prevent desk research
-completion. The default per-stock shared screening budget is 100 posts / 600 seconds
+screening-budget exhaustion. These gaps remain visible in saved research and
+Activity. The default shared budget per stock is 100 posts or 600 seconds
 across StockTwits and Reddit. Limit exhaustion is distinct from transport or
 schema failure. A missing source is not a fabricated neutral result. Inspect the specific saved error:
 connection failure, invalid arguments and missing evidence are different faults.
@@ -339,11 +344,12 @@ complete required evidence may proceed. This does not bypass publisher access,
 required data, transport/internal/security errors, capture or unknown-outcome checks. Legacy failures
 without that explicit contract remain blocking.
 
-Gateway capture completeness is different from every
-tool call succeeding: a known, fully recorded tool validation error can coexist
-with completed research. Unknown/pending outcomes are not equivalent to such
-captured errors. The guard also requires terminal graph state, analyst reports
-and completed-or-empty social feeds with full fetched-post classification.
+Gateway capture completeness is different from tool-call success. A known, fully
+recorded validation error can coexist with completed research. An unknown or
+pending outcome cannot. The completion guard requires analyst reports and valid
+required evidence capture. Source, Gateway, Jev, or cancellation failures can
+prevent completion. Social-source gaps remain visible in Source coverage and
+Activity. These gaps alone do not prevent completion.
 
 ### Data sources and historical meaning
 
@@ -763,10 +769,10 @@ The app runs in `.venv`; native Nautilus uses `.venv-nautilus-v1`.
 Maenifold Gateway defaults to `http://localhost:8080/mcp`.
 Provider endpoints and broker endpoints are separate configuration.
 
-Use **Settings → Account → Start Nautilus** to connect. Verify paper/live identity
-from the observed account, not just configured intent. **Stop Nautilus**
-disconnects the native engine; saved research and the web app remain available.
-Closing the browser does not stop the app server.
+Normal startup starts Nautilus from the saved settings. Use **Settings → Account**
+to inspect the observed account or to stop or start the engine. Check the observed
+account to verify paper/live identity. Stopping Nautilus leaves saved research
+and the web app available. Closing the browser does not stop the app server.
 
 Restart only the identified app/native processes and keep port 8098. A native
 restart creates a new authority session; retained broker orders are not

@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
+import shutil
+import socket
+import subprocess
 import secrets
 import sys
 from datetime import datetime, timezone
@@ -511,6 +515,29 @@ def main():
             service = DeskService(directory, gateway=MaenifoldGateway(args.mcp_endpoint, timeout=90), runtime=runtime,
                                   browse_only=args.browse_only, history_dir=args.history_dir, migrate_legacy=args.migrate_journal)
             service.launch_root = original_root
+            service.startup_errors = []
+            if not args.browse_only:
+                endpoint = urlsplit(args.mcp_endpoint)
+                if endpoint.scheme == "http" and endpoint.hostname in {"localhost", "127.0.0.1", "::1"}:
+                    port = endpoint.port or 80
+                    try:
+                        with socket.create_connection((endpoint.hostname, port), timeout=1):
+                            pass
+                    except OSError:
+                        try:
+                            executable = shutil.which("maenifold")
+                            if not executable:
+                                raise FileNotFoundError("Installed Maenifold executable was not found on PATH")
+                            subprocess.Popen([executable, "--http", "--port", str(port)],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                        except OSError as failure:
+                            service.startup_errors.append(f"Maenifold startup failed: {failure}")
+                try:
+                    service.start_native()
+                except (OSError, ValueError) as failure:
+                    with runtime.lock:
+                        runtime.snapshot.update(status="error", read_only=True, error=f"Nautilus startup failed: {failure}")
         service.launch_browse_only = args.browse_only
         server.service = service
     except Exception:

@@ -1196,6 +1196,7 @@ class DeskService:
                 "reconciliation": copy.deepcopy(runtime.get("reconciliation", {"status": "unknown"})),
                 "store": store, "execution_enabled": self.admission.execution_enabled, "new_orders_blocked": commands.get("new_orders_blocked", False),
                 "native_cache_mode": "memory", "local_laya": self.local_laya.state(),
+                "startup_errors": list(getattr(self, "startup_errors", [])),
                 "native_durability": {"state": "in_memory", "durable_writes_confirmed": False,
                     "reason": "Native cache runs in memory. SQLite application records remain saved."},
                 "capabilities": {"saved_research": True, "workspace_records": True, "human_proposals": True,
@@ -2102,7 +2103,7 @@ class DeskService:
             return {**report, "capture": capture, "store_generation": self.store.directory.resolve().as_posix()}
 
     def refresh(self):
-        # Connecting is explicit; page loads and research never start an execution strategy.
+        # Refresh reconnects the app-owned node when needed.
         self.runtime.start()
         return self.state()
 

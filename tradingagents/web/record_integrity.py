@@ -360,7 +360,7 @@ def validate(values, resolve_artifact=None):
         from .workspace import validate_chart_definitions, validate_drawings
         validate_drawings(workspace)
         validate_chart_definitions(workspace)
-        fields(workspace, {"watchlists": list, "preferences": dict, "notes": dict, "browser_imports": list}, "workspace")
+        fields(workspace, {"watchlists": list, "preferences": dict, "notes": dict}, "workspace")
         for symbol, note in workspace["notes"].items():
             fields(note, {"symbol": str, "text": str, "updated_at": str}, "symbol note")
             if symbol != note["symbol"] or len(note["text"]) > 20000:
