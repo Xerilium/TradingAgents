@@ -9,10 +9,11 @@ Do not infer that a button was exercised because it is documented here. During t
 1. [Strategy lab](#strategy-lab): simulations, experiments, saved strategies, validation, and results.
 2. [Alerts](#alerts): Inbox, Rules, and Delivery.
 3. [Settings](#settings): Account, Research, Trading rules, Integrations, Diagnostics.
-4. [Source-to-result path and validation](#source-to-result-path-and-validation).
-5. [Source map](#source-map).
-6. [Renderer and handler coverage](#renderer-and-handler-coverage).
-7. [Evidence limits and operating style](#evidence-limits-and-operating-style).
+4. [Additional controls and workflow details](#additional-control-and-workflow-details).
+5. [Source-to-result path and validation](#source-to-result-path-and-validation).
+6. [Source map](#source-map).
+7. [Renderer and handler coverage](#renderer-and-handler-coverage).
+8. [Evidence limits and operating style](#evidence-limits-and-operating-style).
 
 ## Strategy lab
 
@@ -91,7 +92,7 @@ Live observed content includes rule revision/status, last monitor evaluation, so
 
 **Monitoring gaps** opens service-restart gaps. **Attention occurrences** showed “No alert occurrences recorded.” No event was opened or acknowledged.
 
-Source-only saved-rule rows show active/paused state and evaluation state. **Edit** opens the rule for a new saved revision. **Pause** or **Resume** changes monitoring. **Remove** removes the saved rule. These actions write state.
+In Rules, source-only saved-rule rows show active/paused state and evaluation state. **Edit** opens the rule for a new saved revision. **Pause** or **Resume** changes monitoring. **Remove** removes the saved rule. These actions write state.
 
 Occurrence rows show event state, source time, conditions and evidence. **Open exact alert evidence** opens the retained evidence inspector. It has **Event**, **Evidence**, and **Rule** tabs, plus **Close saved evidence**. **Acknowledge** appears only when the event can be acknowledged; it changes unread state only and cannot approve an order. Browser attempt rows can show **Open evidence** and **Retry failed notification** when a failed attempt is eligible. Retry sends the notification attempt again. It does not prove delivery or reading. Do not claim an alert is continuous or that an event proves a trade.
 
@@ -112,7 +113,7 @@ Occurrence rows show event state, source time, conditions and evidence. **Open e
 
 The **Rule name** is required and limited to 100 characters. **Combine conditions** requires ALL or ANY and 1–16 flat condition rows. Price-above, price-below, and movement need quote scope, a finite nonnegative threshold, and a positive maximum age. Stale-source rules need a positive age; source-missing uses the selected scope’s status. A one-stock target must use a configured or owned symbol. Account conditions must all use account scope and cannot mix with stock/proposal rules; they run once globally. Policy conditions bind to exactly one saved proposal and cannot use a watchlist. Drawing rules bind to the exact saved numeric drawing revision and its symbol; they cannot target a watchlist. Saving creates an immutable rule revision. The **Evaluate this rule while the service runs** checkbox controls background monitoring; it does not request missing data. **Keep condition in group** adds the current flat condition to the unsaved group; up to 16 conditions are allowed. **Combine conditions** = ALL requires every condition; ANY requires one. One condition can be saved without adding it to a group. A price level uses strict greater-than / less-than comparison; movement triggers when the absolute percentage change is at least the threshold. A level may trigger on its first eligible observation. Crossings need comparable prior and current values. `source_missing` triggers only for missing, unavailable, or disconnected sources; an unknown state stays unavailable. `source_stale` needs a positive max age and triggers when an available source is older than that limit; disconnected data is unavailable, not cleanly stale. Price/movement require quote scope, a nonnegative threshold and positive max age. A policy condition tests whether the exact named condition is present in the saved proposal’s current, non-stale impact; it does not recalculate policy. Snapshot keeps membership from the saved snapshot; Follow updates membership at each workspace save. Account targets evaluate once globally. These are local source checks, not market-data fetches. Occurrence evidence records rule revision, inputs, status/reason, source timestamps, and source identities/artifacts when available.
 
-**Conditional source-only rule controls.** Target mode shows only the applicable watchlist, symbol, proposal or account target. Watchlist fields appear for Snapshot/Follow; Symbol for One stock; proposal selector for fixed proposal or `policy_condition`. Policy condition adds a **Condition** selector. Threshold is shown for price_above/price_below/movement/indicator. Indicator and drawing contexts add their respective condition controls. Indicator comparisons include above, below and crossing choices supported by the selected rule. The context can use current observations or a retained research run/history receipt. The interval must match the source data. The installed indicator and interval option sets come from the source capability registry; do not invent choices. Drawing rule fields bind the saved numeric drawing revision and symbol. Field choices are Close, Open, High, or Low. The only comparison choices are Cross above drawing and Cross below drawing (`cross_above` and `cross_below`). Extent is Within both anchors or Explicit extrapolation on the actual bar axis. Context is current or research; select an interval and maximum stale age. Drawing atoms accept crossings only; above/below are not valid. The source-run or history-receipt ID binds the evidence. Indicator rules select one of `close_50_sma`, `close_200_sma`, `close_10_ema`, `macd`, `macds`, `macdh`, `rsi`, `boll`, `boll_ub`, `boll_lb`, `atr`, `vwma`, or `mfi`. Comparison choices are `above`, `below`, `cross_above`, and `cross_below`. Context choices are `current` and `research`. Interval choices are `1Min`, `5Min`, `15Min`, `30Min`, `1Hour`, and `1Day`. The source history key or exact research run ID binds the data. Source history/run ID binds the chosen evidence. Context-specific help says to use sourced inputs; unavailable or stale inputs do not satisfy a rule. UI source: `alertBuilder`/`alertAtom` at `tradingagents/web/static/app.js:2490–2510`, `renderAlerts` at 2764–2797, condition evaluator and lifecycle `tradingagents/web/attention.py`.
+**Conditional source-only rule controls.** The final Alerts renderer hides unrelated target and condition fields. Snapshot/Follow shows the watchlist selector; One stock shows Symbol; One fixed proposal or policy_condition shows Proposal ID. Indicator fields appear only for indicator rules. Source-context controls hide the run ID in current context and hide history key/interval in research context. **Watchlist · snapshot/follow only** is a saved-watchlist selector. **Symbol · blank for account condition** is text. **Proposal ID · policy condition only** is a text input, and **Exact saved policy condition · policy rule only** is a text area, not a condition selector. Enter the exact proposal and condition identity. The threshold input is labeled **Price threshold / USD or absolute movement / %**. Drawing mode omits threshold/proposal/condition fields. Indicator and drawing contexts add their respective condition controls. Indicator comparisons include above, below and crossing choices supported by the selected rule. The context can use current observations or a retained research run/history receipt. The interval must match the source data. The installed indicator and interval option sets come from the source capability registry; do not invent choices. Drawing rule fields bind the saved numeric drawing revision and symbol. Field choices are Close, Open, High, or Low. The only comparison choices are Cross above drawing and Cross below drawing (`cross_above` and `cross_below`). Extent is Within both anchors or Explicit extrapolation on the actual bar axis. Context is current or research. **Bound drawing interval** is read-only and comes from the explicitly bound drawing; it is not an interval selector. Enter a positive maximum source age. Drawing atoms accept crossings only; above/below are not valid. The source-run or history-receipt ID binds the evidence. Indicator rules select one of `close_50_sma`, `close_200_sma`, `close_10_ema`, `macd`, `macds`, `macdh`, `rsi`, `boll`, `boll_ub`, `boll_lb`, `atr`, `vwma`, or `mfi`. Comparison choices are `above`, `below`, `cross_above`, and `cross_below`. Context choices are `current` and `research`. Interval choices are `1Min`, `5Min`, `15Min`, `30Min`, `1Hour`, and `1Day`. The source history key or exact research run ID binds the data. Source history/run ID binds the chosen evidence. Context-specific help says to use sourced inputs; unavailable or stale inputs do not satisfy a rule. UI source: `alertBuilder`/`alertAtom` at `tradingagents/web/static/app.js:2490–2510`, `renderAlerts` at 2764–2797, condition evaluator and lifecycle `tradingagents/web/attention.py`.
 
 The Rules pane also shows **Future research priorities** and the current saved priority summary, or “No priorities saved.” It is read-only context, not a priority editor; start research only through Research’s normal confirmation. No research was started here.
 
@@ -189,8 +190,8 @@ Status: **Nautilus / Alpaca · [Connected/Disconnected]**.
 - **Gateway and market feed** opens configured endpoint/feed details.
 - **Connection controls** opens Account.
 - **Open diagnostics** opens Diagnostics.
-- **Stock universe** has **Universe name**, **Preset**, and **Stock symbols**. The saved universe needs 1–1,000 symbols. The parser accepts commas or whitespace and the **Symbol/Ticker** column in CSV/text. The service trims and uppercases symbols, removes duplicates, then checks each against `[A-Z][A-Z0-9.\\-]{0,9}` (for example, `BRK.B`). Invalid symbols reject the save. The name is 1–40 nonblank characters. The default preset is **FANGMAN · 7 stocks**: META, AAPL, NVDA, GOOGL, MSFT, AMZN, NFLX. Choosing a preset edits the unsaved draft. **Import CSV / text** loads the selected file/text into that draft; it does not save or start research. **Export saved index** exports the saved index, not unsaved edits.
-- **Import CSV / text** reads a file or text. **Export saved index** creates an export.
+- **Stock universe** has **Universe name**, **Preset**, and **Stock symbols**. The saved universe needs 1–1,000 symbols. The parser accepts commas or whitespace and the **Symbol/Ticker** column in CSV/text. The service trims and uppercases symbols, removes duplicates, then checks each against `[A-Z][A-Z0-9.\\-]{0,9}` (for example, `BRK.B`). Invalid symbols reject the save. The name is 1–40 nonblank characters. The default preset is **FANGMAN · 7 stocks**: META, AAPL, NVDA, GOOGL, MSFT, AMZN, NFLX. Choosing a preset edits the unsaved draft. **Import CSV / text** opens a file chooser and creates a row-by-row import preview. It does not immediately alter the universe draft. Use Merge or Replace in that preview, then save settings separately. **Export saved index** exports the saved index, not unsaved edits.
+- **Import CSV / text** reads a selected CSV/text file into an import preview. **Export saved index** creates an export.
 - **Changes apply to future runs**, **Discard changes**, and **Save settings** control the draft.
 
 Import, export, and save change local data or create a file. Do not use them in a tutorial. **Preset** changes the unsaved draft. Source: `renderSettings` at `tradingagents/web/static/app.js:463` and `renderSettingsContent` near 872.
@@ -211,6 +212,84 @@ Import, export, and save change local data or create a file. Do not use them in 
 **Local records** contains **Create consistent backup** and **Restore local records**. Backup writes a file. Restore accepts an application backup ZIP up to 64 MiB. It shows **No archive selected** until a file is chosen. **Inspect restore archive** stays disabled until then. Restore keeps current records before cutover, invalidates approvals, stops the engine, needs fresh reconciliation and approvals, leaves broker history unchanged, and preserves the pause choice. Never use it in a tutorial.
 
 **Launch and restart** explains the `Start-TradingDesk.cmd` launcher and `tradingdesk.launch.json`. It uses existing environments and the configured SQLite store. The launcher checks identity and port. It does not migrate, install software, or change PowerShell policy. Source: `renderSettingsDiagnostics` at `tradingagents/web/static/app.js:475–525`; runtime and backup/restore handlers in that module near 2800 and in `tradingagents/web/service.py` and `app_database.py`.
+
+## Additional control and workflow details
+
+### Strategy editor and result readers
+
+- Strategy **Recorded field** chooses open/high/low/close. **Finite parameter name** chooses a declared parameter; **Exact decimal value** and **Units** apply to constants. Two operands and the comparison define each condition. Selecting a different kind changes the fields; it does not run the strategy.
+- **Decision-frozen entry and linked protection details** expands the modeled execution rules. **Linked take-profit limit**, **Linked protective stop**, and **Protective stop limit · requires stop** are separate checkboxes. Enabling one exposes its operand controls. Stop limit stays disabled until a protective stop exists. The selected values freeze from the completed signal bar in an experiment.
+- **Scenario N details**, **Quantity · whole shares details**, **Walk-forward windows details**, and **Search and selection details** explain the current unsaved inputs.
+- **Saved simulation preview** and **Saved experiment preview** expand the exact stored preview. Opening them does not run it.
+- Run-list row actions read a retained simulation/experiment. Experiment checkboxes select comparison members; **Compare selected retained experiments** writes a new comparison record from their exact retained results.
+- **Open retained event** reads one recorded worker event. It does not replay execution.
+- **Details** in an object-valued result cell expands that saved value. A failed/unavailable cell is not zero.
+- **Edit configuration as a new branch** loads the retained strategy/request into an unsaved branch draft and clears its saved strategy identity. Save the edited strategy revision before creating a new preview. **Create a separate repeat / branch preview** writes a fresh preview; neither action resumes an optimizer or starts a run.
+- Research-result retention does not remove saved strategies, simulation records or experiment definitions. These are separate user workflows. Do not apply latest-per-ticker pruning to them.
+
+Source: `experimentOperand`, `experimentExecutionMarkup`, `experimentAction`, `experimentEvents`, `simulationDetails`, and `evaluationAction` in `tradingagents/web/static/app.js`; `evaluation.py` and `evaluation_worker.py`.
+
+### Alert condition editing and binding
+
+| Control | Effect |
+| --- | --- |
+| **Condition groups and monitoring details** | Expands ALL/ANY, target membership, level/crossing and monitoring guidance. |
+| **Edit condition N** | Loads that unsaved atom into the editor. **Keep condition in group** replaces the edited atom rather than appending another. |
+| **Remove condition N** | Removes the atom from the unsaved flat group. Save rule is still separate. |
+| **Watchlist · snapshot/follow only** | Selects the authored list used by the chosen target mode. |
+| **Proposal ID · policy condition only** | Enters the exact saved proposal ID. It is text, not a proposal picker. |
+| **Exact saved policy condition · policy rule only** | Enters the exact condition identity to match in that proposal’s current impact. It is a textarea, not a selector. |
+| **Current history cache key · blank follows latest retained cache for this interval** | Pins an indicator’s current-history cache or permits the latest compatible interval cache. It does not request missing bars. |
+| **Exact saved research run · research context only** | Pins static retained research input. Replacement/removal can make it unavailable. |
+| **Saved numeric drawing revision** | Chooses candidate geometry. Selection alone does not change the bound drawing. |
+| **Explicitly bind chosen saved revision** | Copies that exact drawing ID/revision/hash, scope and interval into the unsaved rule and resets incompatible source selectors. Save rule is still required. |
+| **Bound drawing interval** | Read-only interval of the bound drawing. |
+| **Current history key · blank follows compatible retained appends** | Chooses drawing-rule history. New retained eligible appends can advance the condition; the rule itself collects nothing. |
+| **Exact pinned reference, scope and typed anchors** | Expands drawing identity and coordinates. |
+| **Condition source and evaluation details** | Expands typed indicator/drawing input, freshness and crossing rules. |
+| **Condition definitions, membership history and rule gaps** | Expands a saved rule’s atoms, membership transitions and gaps. |
+| **Reload saved attention state (discard rule edits)** | Rereads saved attention records after an error/conflict, clears the unsaved rule draft and releases the local conflict block. |
+
+Drawing field labels are **Actual retained OHLC field**, **Residual crossing**, **Trendline extent only**, and **Retained source context**. The selected drawing must match the exact current saved geometry. Editing or deleting it makes the old rule unavailable; choosing a newer geometry is an explicit rebind and new rule revision. Old occurrences keep their old evidence.
+
+A crossing needs comparable earlier and later observations. Corrections, replaced inputs or changed prefixes reset the baseline without inventing a crossing. Pausing, acknowledgment or an unavailable observation does not rearm it. An eligible clear can rearm it. No fresh data arrives merely because a rule is active.
+
+**Inbox** contains monitoring summary/gaps and occurrences. Existing saved-rule Edit/Pause/Resume/Remove actions belong to **Rules**, not Inbox. **Delivery** has browser permission/preference, **Enable browser notifications**, **Disable**, attempt evidence and eligible retry. The Disable button can be visible but disabled when already off.
+
+Source: `alertBuilder`, `alertAtom`, `drawingRuleFields`, `indicatorRuleFields`, `bindAttention`, `renderAlerts`, `browserNotificationPanel`, and `attention.py`. The final `renderAlerts` composition controls field visibility; the base form alone does not establish which fields the user sees.
+
+### Universe import review
+
+**Import CSV / text** opens the local file chooser. The parsed **Universe import preview** shows accepted, rejected and duplicate row counts. Its table has **Row**, **Original**, **Symbol**, and **Disposition / reason**.
+
+- **Previous rows** / **Next rows** pages the preview, 100 rows at a time.
+- **Merge accepted rows with draft universe** adds accepted symbols to the editable draft.
+- **Replace draft universe with accepted rows** replaces that draft list.
+- **Discard import preview** closes the preview without applying it.
+- Merge/Replace are disabled when no accepted symbols exist.
+- **Save settings** validates and commits the resulting universe. It does not run research. The preview and unsaved draft are separate from the current saved universe.
+
+**Gateway and market feed** / **Connection details** expand configured connection/feed observations. They are not endpoint editors. Provider endpoint and research model fields are in Research. Changing Provider edits the draft immediately and can replace endpoint/model fields with the selected provider’s draft/defaults; **Save settings** applies those values to future runs.
+
+Source: `indexImportMarkup`, `bindSettings`, import change/click handlers and `config.py`.
+
+### Native reports, diagnostics and recovery
+
+**Native risk limits and cached reports** is in **Settings → Trading rules**. Its table selector chooses orders, order fills, fills, positions or account. **Capture native table** requests a snapshot from the existing native cache and saves report evidence. It is a record-producing action even though it does not fetch a market-data provider. A populated report can offer **Download complete captured table JSON** and **Capture, reconciliation and fee provenance**. Capture must not be confused with rereading that saved report.
+
+**Diagnostics** shows Local Laya, **Maenifold**, **Startup errors**, and native/account/store observations. **Connection controls** opens Account. **Refresh account and order status** requests reconciliation. **Download diagnostics** downloads the currently held health object as JSON; it does not collect a fresh independent diagnostic run.
+
+The **Local records** flow is explicit:
+
+1. **Create consistent backup** writes an application backup. After success, **Download saved backup** downloads that ZIP and the page shows SHA-256.
+2. **Application backup ZIP · maximum 64 MiB** selects a file. Selecting another file clears the old preview/confirmation.
+3. **Inspect restore archive** uploads/stages the ZIP at the local service and validates it. It shows **Restore preview**: backup date, format/database versions, records/files, saved-history inclusion, archive hash and warnings. Current records stay unchanged.
+4. **Type RESTORE LOCAL RECORDS** accepts the exact confirmation phrase.
+5. **Restore the reviewed local records** submits the inspected token and phrase. The server validates them before cutover. It retains current records, invalidates restored approvals and stops the native engine. A success message is not proof that the new account is reconciled.
+
+The normal-page restore button is not disabled solely because the phrase is blank; the server enforces confirmation. Do not infer readiness from its enabled appearance. After a successful restore, the browser clears saved-source and draft caches and rereads state. A separate **Application recovery** screen can appear when the journal cannot load; see the global reference. Do not invoke either restore path to demonstrate a tutorial.
+
+Source: `renderHealth`, `renderSettingsDiagnostics`, recovery handlers, `nativeEnginePanel`, `recovery.py`, `recovery_mode.py`, and `app_database.py`.
 
 ## Source-to-result path and validation
 
@@ -240,7 +319,7 @@ This section records the inspected implementation paths. It explains what the in
 
 - **Account** displays configuration and the latest engine/broker observations. **Start Nautilus** and **Stop Nautilus** call native runtime controls. Status changes are observed asynchronously. A connected engine does not prove current account permissions or readiness for every order.
 - **Research** and **Integrations** keep edits in a browser draft. **Discard changes** restores the saved values. **Save settings** sends `POST /api/config`; config validation checks model/provider URL and numeric bounds, then saves the configuration for future runs. Research concurrency accepts whole numbers 1–8; it affects new research batches only. Provider, model, endpoint, social time, post limit, and universe edits do not change an already running batch.
-- **Import CSV / text** reads the selected local file into the universe draft. **Export saved index** exports the currently saved universe. **Use FANGMAN · 7 stocks** replaces the draft symbol list. They do not trigger research by themselves.
+- **Import CSV / text** reads the selected local file into a preview. Merge/Replace applies accepted rows to the editable draft; Save settings commits that draft. **Export saved index** exports the currently saved universe. **Use FANGMAN · 7 stocks** replaces the draft symbol list. They do not trigger research by themselves.
 - **Trading rules** saves an investor-policy revision through `POST /api/investor`. The service validates configured choices and persists the revision. Policy evaluation in `policy_evaluation.py` checks configured constraints against broker observations, pending/proposed buys and source freshness. Unset checks remain undecided. Saving changes the policy revision and can invalidate dependent approvals. It does not approve or submit an order.
 - **Native risk limits and cached reports** reads native state. Selecting a table changes the displayed cached view. **Capture native table** records a snapshot of the existing native table; it is not a provider request. Native caps, investor policy, account order blocks and broker approval are separate checks.
 - **Diagnostics** reads current service, reconciliation, model-readiness, local-store and capability observations. **Download diagnostics** creates a local download. **Refresh account and order status** requests fresh broker state. Native restart controls affect the runtime. **Create consistent backup** writes an application backup only after active writers settle; the ZIP contains application records and referenced evidence, not credentials or environment files. **Inspect restore archive** validates a selected supported ZIP without cutover. **Restore local records** is a separate destructive cutover: the app retains current records, invalidates restored approvals, stops native execution, then requires reconciliation and new approvals. Broker records remain at Alpaca.

@@ -7,11 +7,12 @@
 - Orders: drafts, tickets, review, open orders, history and baskets
 - Exercise and do-not-exercise instructions
 - Journal: Decisions, Position outcomes, Notes and Account history
-- Source coverage and remaining gaps
+- Exact controls and workflow details
+- Review evidence and limits
 
 ## Evidence and safety
 
-This guide separates live observation from source-confirmed behavior. “Observed” means this internal browser showed the view on 2026-10-24. “Source only” means code or local documentation describes the path, but this pass did not exercise it. A shown control does not prove broker acceptance or fill.
+This guide separates live observation from source-confirmed behavior. Dated “Observed” entries describe the stated browser pass. “Source only” means the implementation path was read, but its effect was not exercised. Other documentation is a source map, not independent proof. A shown control does not prove broker acceptance or fill.
 
 The live account view showed an Alpaca paper account. It showed $100,000 cash, equity and buying power, $0 long market value, 0 positions and 0 open orders. The app showed a configured FANGMAN list of seven stocks. These values describe that observation only.
 
@@ -27,11 +28,11 @@ Portfolio has Positions, Proposed and Performance. The present source renderer f
 
 **Observed.** The page showed account cash, equity, buying power, long market value, position count and open-order count. It showed an empty holdings table and the notice “No open holdings reported in this observation. Pending orders can still exist.” The table headings were Holding / import, Exact quantity, Broker average cost / USD, Observed price / USD, Broker market value / USD, Broker unrealized P/L / USD, Account weight (derived), and Pending exposure. “Connection and quote observations” was a disclosure.
 
-**Source only.** Holdings filters are All, Outside, Pending and Gaps. Search filters holdings. Sort choices are Symbol, Quantity, Market value and Unrealized P&L; a direction control reverses the order. Account weight is derived from absolute market value divided by equity and rounded to one decimal place. CSV is disabled when no positions exist. “All account pending exposure” expands working-order effects. Linked exit orders are alternatives, not additive exposures. Pending order quantities stay separate from held shares. Sale proceeds do not become available cash until confirmed by account observations.
+**Source only.** Holdings filters are All, Outside, Pending and Gaps. Search filters holdings. Sort choices are Symbol, Quantity, Market value and Unrealized P&L; a direction control reverses the order. Account weight is the supplied signed position market value divided by supplied positive account equity, multiplied by 100 and displayed to two decimal places. Unknown values stay unavailable. The Positions table has no CSV button; account exports are in Performance or Journal → Account history. “All account pending exposure” expands working-order effects. Linked exit orders are alternatives, not additive exposures. Pending order quantities stay separate from held shares. Sale proceeds do not become available cash until confirmed by account observations.
 
 “Read-only import observations and precision” exposes retained broker/native observations and reconciliation gaps. Missing quantities, prices, costs or fees remain unknown. A position import does not itself prove that all broker orders or fills are present.
 
-**Source-only row route.** On a populated Positions table, select a symbol. `positionsTable()` renders the symbol as a button with `data-action="inspect"` (`tradingagents/web/static/app.js:340`). The delegated document click handler handles `inspect` (`app.js:1281+`): it sets `selectedSymbol`, selects that symbol’s saved research run when available, sets the page and URL hash to `research`, then renders. The destination is the **Research** page for that symbol. `renderWorkspace()` dispatches this page to `renderResearch()` (`app.js:423,616+`). This click does not open Stock review/detail. Use global **Portfolio** navigation to return to Positions. The live table was empty, so this route is source-confirmed only.
+**Source-only row route.** A holding symbol uses `data-stock` in `UniverseReview.holdingsTable()`. Its handler calls `openStock()`. In Portfolio, that function selects the instrument’s **Position** tab inside the Portfolio workspace. It does not navigate to Research. **Back to universe** closes that detail; **Escape** also closes it. The label is shared with Markets, even in Portfolio. Dashboard’s separate `positionsTable()` uses `data-action="inspect"` and opens Research. Do not confuse these two tables. Source: `holdingsTable`, `bind`, `openStock`, `closeStock`, and `renderPortfolio` in `tradingagents/web/static/app.js`.
 
 ### Proposed
 
@@ -107,7 +108,7 @@ Session capability evidence includes account mode/endpoint, session and time, as
 Fields and choices:
 
 - “Amend an eligible existing option order” or “New order”. Eligible predecessor rows identify side, total quantity, symbol, type, duration, filled quantity and order ID. Replacement locks the contract, intent and order type; replacement quantity includes fills.
-- Position intent: Buy to open long or Sell to close held long. Sell to close is not offered for replacement.
+- Position intent: Buy to open long or Sell to close held long. For replacement the intent selector is disabled at the predecessor’s existing intent, which can be buy-to-open or sell-to-close. It cannot change the contract, intent or order type.
 - Whole contracts.
 - The profile-eligible order type: Market, Limit, Stop Market or Stop Limit.
 - Limit premium in USD per underlying unit for Limit/Stop Limit; stop trigger premium for Stop Market/Stop Limit.
@@ -137,7 +138,7 @@ Open **Optional limits for this order**. For a MARKET multi-leg package, the dis
 
 **Check order** sends a review request against saved terms and current account, policy, capability, source and order state. The result shows pass or blockers and **Current / pending / proposed calculations and source bindings**. If inputs or revisions change, the previous evaluation no longer matches. **Approve this order** rechecks review and records approval only if all required checks pass. Browse-only mode disables approval/submission. Approval is tied to exact terms and current bindings. It may show a single-use validity or an expiry. **Revoke approval** records revocation. **Submit [side, quantity, symbol] to configured account** is a separate action. It is enabled only for unchanged terms with valid approval, execution enabled, orders unpaused, current account readiness, no recovery requirement and no active operation. Submit checks current authority and reserves resources before dispatch; an error or uncertain outcome must be resolved from order state and receipts before any retry. Changed terms, account, policy, source, capability or revision can invalidate review and approval.
 
-Approval is a separate action. It binds to the exact reviewed terms and expires at the shown time. Submission is another separate action. The submit control is available only when the exact approval is valid, the account is ready, the order gate is open, and required recovery/revision checks pass. A basket review may approve exact linked legs as a group; do not assume one approval authorizes changed legs.
+Approval is a separate action. It binds to the exact reviewed terms and expires at the shown time. Submission is another separate action. The submit control is available only when the exact approval is valid, the account is ready, the order gate is open, and required recovery/revision checks pass. Basket controls select an existing exact approval for each leg. They do not create a blanket group approval. Each leg must pass its own current checks.
 
 After approval, submission can still fail or remain uncertain. Use Open orders to inspect current broker state and History for local command status/receipt. Do not submit again solely because the screen did not update.
 
@@ -171,7 +172,7 @@ Preview is non-persistent and returns executable=false with account, positions, 
 
 **Source only.** This is an explicit full-position option instruction flow, separate from stock/option orders and research. It was not available in the observed live browser. No intent, approval or submission was created.
 
-The selector must use an exact eligible option contract from current observed account positions/contracts. Eligibility requires a connected account, current account observation within the configured maximum age, reconciled long US option position, no import error, contract identity matching the current broker contract endpoint, positive whole total and available contract quantities, with available no greater than total. The broker session and native epoch must be current. Local sell commitments reduce available exercise quantity. The app does not accept a partial count: “Exercise all available” means every contract then available, not a fixed count. It does not guarantee settlement or cutoff timing.
+The Contract selector can list currently observed option-contract metadata and contracts from saved instruction history. A listed contract is not proof of an eligible held position. Preview must establish current position/contract eligibility. Eligibility requires a connected account, current account observation within the configured maximum age, reconciled long US option position, no import error, contract identity matching the current broker contract endpoint, positive whole total and available contract quantities, with available no greater than total. The broker session and native epoch must be current. Local sell commitments reduce available exercise quantity. The app does not accept a partial count: “Exercise all available” means every contract then available, not a fixed count. It does not guarantee settlement or cutoff timing.
 
 Controls include the exact contract; new intent “Exercise all available” or “Request DNE” (do_not_exercise); Account observation maximum age in seconds; Approval lifetime in seconds; required action note/reason for interlock release; “Preview current facts”; “Prepare a new intent from these facts”; saved instruction history; a prior-requests/unresolved-outcomes review checkbox; “Approve this exact reviewed instruction”; and a separate “Submit this approved instruction”. Blockers disable preparation, approval or submission.
 
@@ -195,11 +196,11 @@ Journal has Decisions, Position outcomes, Notes and Account history.
 
 The observed NVDA record showed rejected human proposal revision 2. Its rationale described a FANGMAN $10,000 paper portfolio, 1.42857% account equity per target (9.99999% total), whole-share rounding and dated limit references. It stated the research batch was still running, zero modeled fees/slippage were assumptions, and no broker order was authorized. Policy revision was 0. Broker order, fills and approval record were None. The Orders tab showed only “Linked orders and receipts” with no rows. This is one record's saved content, not a general broker status.
 
-**Source only.** Find decisions filters by symbol, status and type. Row checkboxes select records for CSV export. Clicking a symbol opens its record. Detail tabs show stored rationale, linked local/broker order evidence, outcomes and notes. A replaced research result is unavailable; Journal does not rebind to newer research. Missing order/fill evidence remains missing.
+**Source only.** Find decisions filters by symbol, status and type. Row checkboxes select decision records for **Export selected records (N)**. That action downloads `tradingagents-selected-decisions.json`, not CSV. Account-history export buttons are the separate CSV actions. Clicking a symbol opens its record. Detail tabs show stored rationale, linked local/broker order evidence, outcomes and notes. A replaced research result is unavailable; Journal does not rebind to newer research. Missing order/fill evidence remains missing.
 
 ### Position outcomes
 
-The observed empty view said no attributable outcomes were captured. Its text warns that native realized P&L includes applied settlement-currency commissions and is not independently verified net profit or tax-lot accounting. Source capture is manual: inspect Orders → Native risk limits and cached reports, choose positions, capture the native table, then return and reload Journal. This pass did not capture. No background refresh or provider call is implied.
+The observed empty view said no attributable outcomes were captured. Its text warns that native realized P&L includes applied settlement-currency commissions and is not independently verified net profit or tax-lot accounting. Source capture is manual: open Settings → Trading rules → Native risk limits and cached reports, choose **positions**, use **Capture native table**, then return and reload Journal. This pass did not capture. No background refresh or provider call is implied.
 
 When captured, rows can include native open/closed status, quantities/P&L, fee provenance, cached mark event and receive times, data gaps, fills, decision rationale, exact research and terms hash, and source capture. Missing proof stays unavailable.
 
@@ -213,20 +214,106 @@ When captured, rows can include native open/closed status, quantities/P&L, fee p
 
 Journal Account history shares Performance’s saved interval and reporting controls. The observed state had revision 0, no saved interval, empty equity/returns, and the history/export/benchmark controls listed under Performance. Opening an interval or collecting data was not performed. Read-only collection still calls the broker/history path; benchmark queuing requests market data. Exports can contain account data. Save reporting choices only when intended.
 
-## Source coverage and corrections
+## Exact controls and workflow details
 
-This draft replaces inaccurate or incomplete statements in both the installed reference and earlier draft:
+### Portfolio and saved performance
 
-- They said the observed Portfolio view showed Stock universe and treated Holdings/Stock universe as a saved Portfolio switch. Current source renderer hides those inner tabs and forces Holdings. The live pass showed an empty Holdings table. The base component supports both modes, but their alternate reachability is not proven here.
-- They described “Freshness limit not configured · closed” as the live row. That text was not present in this live view.
-- They did not distinguish the observed 0 Alpaca open orders, existing seven local rejected proposals and empty local command history.
-- They under-described saved performance interval reporting, benchmark methods, retained evidence, coverage/page limits and provider-fetching benchmark queue.
-- They did not state exact option package terms, basket preview validation/snapshot behavior, or option exercise/DNE binding and unknown-outcome release semantics in enough detail.
+**Reload saved journal (discard unsaved notes/settings)** rereads reporting records and discards local notes/reporting edits. It does not request new broker history. On a broker order row, **Broker identity, classes, nested legs and import assessment** expands the observed mapping/classification and nested-order evidence.
 
-**Live views checked:** Portfolio Positions, Proposed idle state, Performance and its data-details disclosure; Orders Drafts, Open orders, History, Baskets Targets and Impact; Journal Decisions and NVDA detail tabs, Position outcomes, Notes and Account history.
+- **Filters, exposure and source details** contains **Filter held symbols / import status**, **Holding scope**, **Holdings sort**, **Ascending/Descending**, totals, pending exposure and import evidence. These are shared saved workspace preferences, not broker changes. The whole-account totals stay separate from the filtered subset.
+- **Performance → Equity / Returns** changes which saved series/methods are displayed. Missing observations are not filled. **Data details, collection and reporting choices** exposes the shared Account history form.
+- The exact form labels are **Optional activity export symbols · blank = full account**, **Saved history collection**, **Comparison symbol (optional)**, **Comparison currency (USD required for comparison)**, **What the comparison includes**, **Planned review horizon (whole calendar days, optional)**, and **Optional note about these reporting choices**.
+- **Export full-account holdings CSV**, **Export selected interval activity CSV**, and **Export full-account selected-period performance CSV** produce different local files. The optional symbols field filters activity export only; do not describe it as narrowing full-account performance.
+- **Collect read-only broker history for this interval** makes broker requests and saves a collection. **Open selected saved interval** reads a retained collection without fetching new broker history. **Retry saved source** retries that read.
+- **Save method report from existing records** writes recalculated method evidence for the selected saved collection. It is not a provider refresh.
+- **Benchmark symbol mapping as-of date** applies to the explicit **Queue selected benchmark history for this interval** action. That action requests market data; choosing a symbol or saved interval does not.
+- **Named methods, daily-close convention and source semantics**, **Benchmark comparison and method inputs**, **Calculation inputs and broker cash-flow series**, and **Original source receipts** expand saved evidence. Each **Open receipt N** opens the exact retained receipt.
+- Captured allocation beside a performance interval is the account observation at capture time. It does not reconstruct holdings at the interval’s historical dates.
+- A modeled Proposed result has **Allocation rationale and conditions**, **Entry conditions**, and **Saved research bindings and source coverage** disclosures. These expand model rationale and pinned inputs. They do not convert the model into a human basket.
 
-**Renderer and handler families traced in source:** renderPortfolio, positionsTable, renderProposedPortfolio, renderPerformance, account-history views and reporting controls; renderOrders, renderOrdersView, savedDraftCard, stock and option proposal editors, approvalPanel/bindApproval, commandControls and command activity; basket target/impact rendering and baskets.preview/baskets.save; option instruction markup, CommandAdmission.option_instruction, approval/review, interlock release, ExecutionLifecycle.dispatch_instruction; renderJournal, decision list/detail, note editor, position outcomes and account-history workspace.
+Source: `holdingsTable`, `showPortfolio`, `renderProposedPortfolio`, `renderPerformance`, `accountHistoryWorkspace`, `accountHistoryView`, `journalAction`, and `reporting.py`.
 
-Primary source files: `tradingagents/web/static/app.js` (`approvalPanel`, `bindApproval`); `tradingagents/web/static/command-controls.js:14–46`; `tradingagents/web/approval_review.py` (review checks); `tradingagents/web/service.py` (`review_constraints`); `tradingagents/web/investor.py`; `tradingagents/web/admission.py`; `tradingagents/web/execution_lifecycle.py`; `tradingagents/web/nautilus_worker.py`; `README.md` (Orders and baskets; portfolio and history workflow).
+### Ticket layout, quantity and evidence
 
-**Remaining gaps:** No live draft edit, saved interval, populated history, open broker order, basket preview, exact ticket, review, approval, cancellation/replacement or option-instruction flow was exercised. No claim is made that those paths succeed at runtime. The current empty paper account did not establish other account states or source-supported universe mode reachability.
+**Entry**, optional **Exits**, and **Review** are ticket view steps. Selecting Review does not evaluate or approve the order. **Exits** appears only when the current ticket has an eligible exit plan. Holding-exit tickets can start in Exits. Action buttons remain in the shared footer.
+
+**Replacement, notes, and decision inputs** holds predecessor selection, notes, evidence dependencies, and **Link the selected saved report, exact revision**. **Quantity, session, and proposal details** and **Extended-session terms** contain explanatory boundaries. **Dated session capabilities and separate price evidence** expands the actual dated capability facts. An eligible research-preparation ticket has **Return to retained symbol draft**, which switches back to that symbol’s other local draft; it does not save the research ticket.
+
+Stock entry labels include **Replace an existing working order (optional)** and **Limit price / USD**. The stock **Shares (total includes prior fills for replacement)** field accepts exact decimal text. Up to nine fractional places are supported only when current asset evidence permits fractional orders. Simple fractional orders require DAY; linked exits and GTC require whole shares. Extended fractional LIMIT also needs explicit extended fractional eligibility. A fractional replacement preserves total quantity and supports eligible price-only changes; it is not a quantity amendment. BUY STOP_MARKET remains unavailable; enter reviewed STOP_LIMIT terms instead. No fractional broker acceptance was demonstrated here.
+
+A standalone trailing sell uses **Trail unit** and one value: USD distance or percent. It requires an eligible existing long holding, whole shares and regular session. It cannot be an entry, paired exit, or unsupported trail amendment. **Broker-managed trailing stop** shows the broker’s latest trail distance, high-water mark and moving stop; it does not reconstruct earlier movements.
+
+Option package exact labels include **Existing package to amend**, **Exact selected contract**, **Intent**, **Whole ratio**, **Whole strategy units**, **Order type**, **Duration**, **Net limit direction** (or **Expected net direction only; not guaranteed** for MARKET), **Signed net limit / USD per package multiplier unit**, **Human rationale**, and **Revision note**. **Add leg** and **Remove leg** edit the draft. **Preview complete package** checks it; **Save local package draft/revision** saves it. **Exact contract, dated premium and current holding evidence** expands each leg’s source facts.
+
+For a single option the exact price labels are **Limit premium / USD per underlying unit** and **Stop trigger premium / USD per underlying unit**. The underlying’s stock price is not an option premium. **Actual option quote and source receipt** and **Exact versioned broker contract / deliverables** expose the corresponding evidence.
+
+Other impact disclosures are inspection only:
+
+- **Exact historical price references and normalization**
+- **Known working-order commitments**
+- **Current / pending / proposed policy calculations**
+- **Exact parent, sibling and native identities reviewed**
+- **Exact funding basis and reservation / replacement treatment**
+- **Exact exercise / delivery readiness**
+- **Exact signed holdings, available long/short close claims, opening/residual protection and blockers**
+- **Derived native spread valuation and original risk-cap provenance**
+- **Exact review basis, old/new terms, actual account facts and known fee assumptions**
+- **Actual retained replacement requests/outcomes · separate from approval-time assumptions**
+- **Package funding, leg quantities/holdings, costs and policy source evidence**
+- **Exact complete package terms and contract revisions**
+- **Exact valuation retained with this approval**
+- **Exact approved replacement routing basis**
+
+**Reload saved investor records (discard policy/proposal edits)** is shown after a load/save conflict or error. It rereads saved records and discards local policy/proposal edits. It is not a forced overwrite.
+
+Source: `proposalEditor`, `bindSharedTicket`, `trailingProposalMarkup`, `optionProposalEditor`, `packageEditor`, `impactMarkup`, `approvalPanel`, `bindInvestor`, `investor.py`, and `approval_review.py`.
+
+### Basket targets, impact, drafts and dispatch
+
+Baskets has **Targets**, **Impact**, and its own **Drafts** tab, separate from Orders → Drafts.
+
+- **Targets** edits symbol, quantity/weight, value, MARKET/LIMIT, and limit. Row **Remove** removes an unsaved target. **Rationale, fees, and slippage assumptions** holds **Target / revision / review rationale**, **Estimated fee per leg / USD · optional, unset until entered**, and **Estimated slippage / basis points · optional**.
+- **Impact** shows preview quantities/cash/policy scenarios. **Assume [symbol] filled** checks hypothetical legs; **Recalculate assumed fills** recomputes only that preview. It does not record a fill or execute anything.
+- **Drafts** shows generated individual proposal terms and saved baskets. **Review exact saved order** opens a saved leg. **Open basket [id]** loads the saved targets and preview into the editor. **Revision history** expands its saved versions.
+- **Reject basket and linked proposals** / **Defer basket and linked proposals** write those local decisions. They do not cancel broker orders.
+- **Current / pending / proposed exposure, sector, correlation, liquidity and loss checks** and **Working orders and conflicting proposals** expose the preview’s saved evidence.
+
+The separate **Basket orders** command panel has these source-only actions:
+
+| Control | Effect |
+| --- | --- |
+| **Leg [id] approval** | Selects an existing exact approval for that proposal. It creates no approval. |
+| **Wait for preceding leg to complete** | Adds a dependency on the preceding leg. Disabled for the first leg. |
+| **Submit next approved leg** | Binds the saved basket revision, exact per-leg approval IDs and terms hashes, then requests dispatch of the next eligible leg. This is a broker action. |
+| **Submit next approved order** | Advances an existing basket execution after current checks. It does not submit every leg atomically. |
+| **Pause basket** | Stops further dispatch for that local execution group. It does not cancel sent broker orders. |
+| **Resume valid basket orders** | Revalidates the paused group for further dispatch. It does not renew stale per-leg approvals. |
+
+An imported order has **Cancel this broker order** and **Replace this broker order with approved terms**, plus a **Separately approved replacement** selector. No original app submission approval is claimed. A reserved local command can show **Submit approved order**. All are separate from reading the order and need the relevant user authorization.
+
+Source: `basketPanel`, `basketEvidence`, `bindBaskets`, `layoutBasketGroups`, and `tradingagents/web/static/command-controls.js`.
+
+### Option instructions and Journal evidence
+
+The option-instruction form uses **New full-position intent**, **Account observation maximum age / seconds**, **Approval lifetime / seconds**, and **Action note / required reason for interlock release**. The exact saved-record buttons are **Review current exact facts and history**, **Approve this exact reviewed instruction**, and **Submit this approved instruction separately**. The last action is not the review action. **Exact saved facts, authority, attempt, receipts and history** expands the record. Prepared/approved instruction records hold no resources.
+
+Journal controls:
+
+- **Open referenced latest research** is offered only when the exact referenced run/revision is still the ticker’s retained latest result. Replaced research stays unavailable; no substitution occurs.
+- **Shared position outcome [id]** opens the corresponding captured outcome.
+- **Exact decision, source research and revision history** expands the decision record.
+- **Command approval, exact terms, broker receipts and historical native receipts** expands linked command evidence.
+- **Non-atomic basket completion and paused legs** expands basket execution evidence.
+- **Order identifiers, events and source records** / **Review saved approval and command status** expose local command and broker identity/state where present.
+- **Recorded entry/increase and exit/reduction inputs: quantities, prices, times and fees**, **Exact original report reference and approved terms identity**, **Native open/closed snapshot, source precision, capture epochs and fee evidence**, and **Retained capture identities and source artifacts** expand saved outcome evidence.
+- **Download complete captured table JSON** downloads a previously captured native table. **Capture, reconciliation and fee provenance** expands its source facts. Capturing a new table is the separate Settings action.
+- A historical proposal dialog is read-only. **Close order preview** closes it; **Review associated research** opens its source if retained. It cannot approve a legacy record.
+- **Open saved source result** and **Read saved research** read a retained research reference; unavailable references remain unavailable.
+
+Source: `journalNote`, `journalNoteContent`, `decisionOutcomeMarkup`, `positionOutcomesMarkup`, `nativeEnginePanel`, `previewOrder`, and `optionInstructionsMarkup`.
+
+## Review evidence
+
+Reviewed against `b632a22` on 2026-10-25. Current browser observations covered Portfolio’s three tabs, Orders’ four tabs and all three basket panes, Journal’s four tabs and an existing decision’s four detail tabs. Empty holdings, broker orders, captures and interval data limited populated-state observation. No draft, preview, approval, command, collection, export or note was created during the review. Conditional effects above remain source-only.
+
+Use named handlers in `tradingagents/web/static/app.js`, `command-controls.js`, `investor.py`, `approval_review.py`, `admission.py`, `execution_lifecycle.py`, and `reporting.py` to resolve changed behavior. Dated line numbers elsewhere in this reference describe the earlier revision and can move.

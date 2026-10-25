@@ -5,9 +5,11 @@
 - [Global header and navigation](#global-header-and-navigation)
 - [Workspace save status](#workspace-save-status)
 - [Startup and runtime status](#startup-and-runtime-status)
+- [Errors and retries](#error-and-read-controls)
+- [Application recovery](#application-recovery-page)
 - [Coverage and limits](#coverage-evidence-and-limits)
 
-This reference is for assistant-led tutorials in the local TradingAgents desk. Use the internal browser at `http://127.0.0.1:8098/`. The normal launcher is `rtk proxy .\Start-TradingDesk.cmd`; do not start the server directly or use another port. The launcher uses `tradingdesk.launch.json`, checks the configured identity and port, and reuses the expected installation. Startup starts Nautilus in normal mode. Laya loads automatically. Codex loads only when requested. Read saved provider and account settings before describing active configuration.
+This reference is for assistant-led tutorials in the local TradingAgents desk. Use the internal browser at `http://127.0.0.1:8098/`. The normal launcher is `rtk proxy .\Start-TradingDesk.cmd`; do not start the server directly or use another port. The launcher uses `tradingdesk.launch.json`, checks the configured identity and port, and reuses the expected installation. Normal server startup starts Nautilus and starts the configured installed loopback Maenifold service if unavailable. Laya loads in the background. Codex starts its adapter when research needs it. Startup is asynchronous: an initial stopped/unverified display can precede connection. Browse-only and recovery modes do not start the native connection. Check Account and Diagnostics before declaring startup failed. Read saved provider and account settings before describing active configuration.
 
 ## Global header and navigation
 
@@ -31,7 +33,7 @@ Search, pagination, sort, filters, tabs, disclosures, symbol inspection, and pag
 
 Markets and chart workspace edits use a separate server save path. The status reads **All changes saved**, **Unsaved workspace changes**, **Saving workspace…**, or the returned error. queueWorkspace() in app.js:2064–2067 starts a save 450 ms after an edit. writeWorkspace() at app.js:2080–2091 sends the expected workspace revision.
 
-On an ordinary save error, **Retry save** retries the pending change. On a revision conflict, retry is hidden because another revision changed. **Reload saved workspace (discard unsaved edits)** reads the saved server copy and discards current workspace edits, notes and drawings. A read-only view preference in local storage is not a workspace edit. Do not use Retry or Reload to reveal a status during a walkthrough.
+On an ordinary save error, **Retry save** retries the pending change. On a revision conflict, retry is hidden because another revision changed. **Reload saved workspace (discard unsaved edits)** reads the saved server copy and discards current workspace edits, notes and drawings. Browser `persistView()` preferences and server `UniverseReview.persistPreferences()` preferences are different paths. Markets search, sort, selected watchlist, columns, instrument/chart selection and playback can queue a server workspace save even when the action only changes the view. Navigation can therefore show Saving workspace… or advance an internal revision. This does not imply a new research result or a broker change. Do not promise that all view changes are browser-only. Do not use Retry or Reload to reveal a status during a walkthrough.
 
 ## Startup and runtime status
 
@@ -47,32 +49,37 @@ Settings → Account and Diagnostics report observed runtime status. The launche
 - tradingagents/web/server.py and service.py: HTTP refresh routes and runtime service action.
 - tradingdesk.launch.json and Start-TradingDesk.cmd: configured startup paths and launcher behavior.
 
+## Error and read controls
+
+| Control | What it does |
+| --- | --- |
+| **Try again** | Reads application state again after the initial state request fails. It is not a research retry. |
+| **Retry this read-only request** | Rereads the Dashboard’s retained market evidence for the selected stock/run through `ensureChart(true)`. It does not start research. |
+| **Try loading reports again** / **Refresh this report** | Reads the selected saved report again. A previous revision can stay visible while the newer one loads. |
+| **Retry saved source** / **Retry saved data** | Rereads the selected retained artifact. It does not collect a replacement from a provider. |
+| **Refresh broker data** / **Connect or refresh account** | Invokes the global Refresh button. Connected: requests quote refresh. Disconnected: calls the runtime reconnect/start path. Use the separate account/order refresh control for command reconciliation. |
+| **Refresh account and order status** | Reconciles current broker orders and account facts; it does not grant an approval or resend a command. |
+| **Data source diagnostics** | Expands recorded data-source errors. |
+| **Research settings** / **Configure research** | Opens Settings when the provider is not ready. Check the selected category before editing. |
+| **Dismiss error** | Clears the displayed app error only. |
+| **NOTICE**, **License**, **TradingView**, source/document links | Open attribution or external source material. They do not validate the analysis or change order authority. |
+
+A request can be blocked while another action is busy, the page is hidden, or a rate-limit cooldown applies. Read the displayed reason. Do not start a second run to recover a failed read.
+
+## Application recovery page
+
+If the journal cannot load, the server can show **Application recovery** instead of the nine workspaces. Engine, research and data workers stay stopped. This is a conditional source-only screen; do not induce corruption to demonstrate it.
+
+- **Backup ZIP · maximum 64 MiB** selects an existing local application backup.
+- **Inspect archive** uploads it to the local recovery service for validation and shows its manifest/checksum. Current records do not change at inspection.
+- **Type RESTORE LOCAL RECORDS** is the required exact confirmation.
+- **Restore inspected local records** stays disabled until inspection succeeds and the phrase matches. It writes a separate recovery generation. A promoted store reloads the page; a restart-required result stops further recovery actions until restart.
+- The health block and status message show the actual outcome. They do not prove broker reconciliation. Restore is a separate user-authorized operation; do not use it for a tutorial.
+
+Source: `tradingagents/web/static/recovery.html`, `recovery.js`, `tradingagents/web/recovery_mode.py`; normal recovery controls are in the Settings reference.
+
 ## Coverage evidence and limits
 
-I used a fresh internal-browser tab at `http://127.0.0.1:8098/` on 2026-10-24. The app was already running. In my pass, I opened Dashboard, Markets, and Research with navigation links. I did not open the other page references or retained definitions. I did not save a setting or workspace edit. I did not run research, collect provider data, simulate, experiment, calculate a chart, export, import, send notifications, capture native cache, back up, restore, approve, submit, cancel, or replace an order.
+Source reviewed against local `nautilus` commit `b632a22` on 2026-10-25. The current review uses the internal browser and current handlers. The page references state which views were observed and which conditional effects remain source-only. Earlier screenshots and worker reports are historical evidence, not acceptance of the current product.
 
-Coverage map:
-
-- `markets-research.md`: source describes Dashboard, Markets, instrument, chart, and Research paths. My live pass observed Dashboard, Watchlists, and Research latest results. Root’s later pass observed Markets Universe, Screener, Saved scans, META’s Chart/Options/Position/Research, all chart inspectors, and the Research tabs plus workload-review dialog. Conditional result states and side-effect paths remain source-only.
-- `portfolio-orders-journal.md`: Portfolio tabs; Orders tabs and source-only ticket/approval/basket paths; Journal tabs and available detail views. Empty history/position states limit live evidence for populated result rows.
-- `strategy-alerts-settings.md`: Strategy lab tabs and definitions; Alerts tabs; Settings categories and disclosures. Simulation and experiment results and other conditional states are source-only.
-
-These observations establish visible labels and current states only. They do not prove financial calculations, model outcomes, provider reliability, notifications, or broker execution. Source references establish implemented paths, not live acceptance. Current empty or populated states can change.
-
-## Global control coverage
-
-The shell has an order-preview dialog and a Research workload-review dialog in `index.html:63–70`. See the Orders reference for the order dialog. Research opens its workload dialog first; **Close research workload review** cancels before admission, and only **Start N-stock research** posts the run request (`reviewResearch()` and `launchResearch()` in `app.js:140–141`, click handler at `1281`).
-
-Source-confirmed shell controls:
-
-- `renderChrome` in `tradingagents/web/static/app.js:334` renders the navigation rail, active-page label, universe, market/session snapshot, connection status, order-pause status, and Orders readiness banner.
-- `togglePause` at `app.js:1289` is the header **… · manage** action. It only navigates to Orders and focuses **Account order controls**. It does not pause or resume orders.
-- `persistView` at `app.js:137` saves selected view state in browser local storage. This includes list views, research selection, inspected symbol, selected run/report, research tab, and sort. Read-only navigation can therefore persist a view preference. It does not save a research setting or workspace edit.
-- `renderChrome` can show an Orders count for pending, proposed, or ready proposals. The Orders-only readiness banner shows reasons and states that the server checks again at Submit.
-- The **Skip to workspace** link is present in the live Dashboard accessibility tree. **Alt+R** is documented by the refresh handler; the key handler ignores editable fields.
-
-Live observations on 2026-10-24: I opened Dashboard, Markets, and Research. Dashboard showed the left rail, account mode and ID, **New orders not paused · manage**, **Find a symbol**, **Market closed · Snapshot**, **Refresh**, account values, Dashboard panel toggles, the FANGMAN watch table, search, filter, selection, sort buttons, source/time disclosures, page size, and disabled previous/next paging. The view showed a verified account, $100,000.00 equity/cash/buying power, no open orders, seven configured stocks, and seven research selections. These values are time-bound observations. Markets showed the Watchlists, Universe, Screener, and Saved scans tabs, current Watchlists content, an Unsaved workspace changes notice, and stock-list controls. Research showed the latest-results list, Completed status, search and scope controls, batch progress, detail tabs, and populated AAPL Debate. The companion draft records exact visible controls. These values can change.
-
-Root’s additional read-only observation on 2026-10-24 covered Universe filters/list actions; Screener and saved criteria; Saved scans Definition/Advanced JSON/collection consent/scheduling/import-export/history/slots/details with empty Runs and Matches; and META Chart, Options, Position, and Research. Root opened the Research workload-review dialog, read the 7-stock selection, concurrency, model tiers, NY trade date, duration estimate, unavailable cost estimate and usage-limit warning, then closed it without Start. The separate markets-research reference lists its labels and states. No save, data request, run, calculation, subscription, or order action was triggered.
-
-Not observed live: the **Alt+R** key action; disconnected refresh; quote cooldown/error outcomes; pause/resume; workspace retry/conflict notices; error branches in dialogs; and research admission after **Start**. These remain source-only. No provider collection or calculation occurred.
+Read-only navigation can save view preferences. No research, calculation, collection, authored record, settings save, import/export, notification, backup/restore or broker action is required to inspect these controls.

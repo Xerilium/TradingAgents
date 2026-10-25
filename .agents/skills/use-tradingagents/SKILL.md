@@ -14,6 +14,14 @@ Follow the user’s current request and any authorization already given. Do not 
 3. Use the internal browser at `http://127.0.0.1:8098/`. Do not start another desk instance.
 4. Check live settings and account state before explaining or acting. Defaults and old screenshots are not current state. Mark facts as live-observed or source-only.
 
+## Explain and verify a workflow
+
+For each task, identify the starting page, required saved inputs, exact controls, and expected result. Explain which changes are only an unsaved draft, which are saved locally, which request provider/model work, and which reach the broker. Follow each selected action through its handler and service when the guide and UI differ. Record that difference; do not invent a working path from a label.
+
+Use the visible UI and current source as evidence. A dated observation only describes that observation. Empty records do not verify populated controls. Distinguish a returned request, complete usable data, completed analysis, and broker acceptance. Read the relevant error or receipt before retrying.
+
+Ordinary navigation, filters, disclosures, and their incidental saved view preferences are part of an authorized walkthrough. They do not require a new approval at each click. Research, data collection, calculations, authored records, settings changes, and broker actions need authorization within the user’s task. Do not import an old conversation’s run or trade authorization into a new tutorial.
+
 ## Operating rules
 
 - Read and navigate as needed for the request. Explain exact controls and their effects.
