@@ -195,7 +195,9 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 
 **Observed empty/load state.** Disclosure **Chart analysis · transforms, studies, seasonality and formulas** says it derives from this exact retained source; raw OHLC and manual ticket source remain separate. **Load saved definitions and calculation index** reads local saved metadata; it is not a provider collection/order action. Before metadata loads, definition fields are absent. After load, one can see the editor.
 
-**Source-only editor controls (not saved or calculated during verification).**
+**Base editor controls observed on 25 October 2026.** Loading the index showed **New definition** as the only saved-definition choice for AAPL and META, with no saved calculation entries in either inspected context. The base editor, transform choices, 60-second budget, import/export controls and disabled Calculate button were visible. Save, Calculate, Import and Export effects remain source-only. With no saved result, **Open this actual bar in the raw chart** could not be exercised; that populated flow remains unverified.
+
+**Controls and effects (writes remain source-only).**
 - **Saved definition revision** selector: New definition or exact saved definition name/kind/revision.
 - **Reusable identifier** field; valid name starts with a letter and uses letters/digits/underscore.
 - **Analysis kind:** transform, study, seasonality, formula.
@@ -304,9 +306,9 @@ Selecting a report changes the displayed saved report. Full source artifact is a
 
 ## Live evidence and limits
 
-- Browser observed: Dashboard shell/account ledger/panels/watchlist; all four Markets tabs and Watchlists filter disclosure; AAPL instrument Chart, Research, Options, Position; all six chart inspectors; Research Summary, Reports, Debate, Sources, Activity, Setup; populated saved AAPL report/review and source data.
-- Source-only due no authorized data-collection/run: populated Yahoo screener result/pagination failure-empty differences; populated Saved scan definitions/runs/matches; collected current IEX history and comparison cache; calculation form after metadata loaded/results; drawing edits/saves/alerts; option contract page/contract quote subscriptions/chain/filters; research new run and social screening.
-- The scan and screen empty states are not product failures. Missing current-market cache means Comparison cannot be exercised. No observed AAPL position means Position offers proposal fields but no holdings.
+- Browser observed: Dashboard shell/account ledger/panels/watchlist; all four Markets tabs and Watchlists filter disclosure; AAPL instrument Chart, Research, Options, Position; the five current chart inspectors; saved-definition/index loading for AAPL and META; Research Summary, Reports, Debate, Sources, Activity, Setup; populated saved AAPL report/review and source data.
+- Source-only due no authorized data-collection/run: populated Yahoo screener result/pagination failure-empty differences; populated Saved scan definitions/runs/matches; new IEX history collection and populated comparisons; populated calculation results; drawing edits/saves/alerts; option contract page/contract quote subscriptions/chain/filters; research new run and social screening.
+- The scan and screen empty states are not product failures. AAPL has no retained current-market cache in the observed view. META has an existing daily IEX cache; loading that cache does not prove new collection or comparison. No observed AAPL position means Position offers proposal fields but no holdings.
 - Never claim side-effect workflows were exercised from opening the page or reading their controls.
 ## Source-only control detail: price drawings on Chart
 
