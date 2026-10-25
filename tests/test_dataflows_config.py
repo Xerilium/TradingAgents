@@ -68,7 +68,6 @@ def _graph(config):
 
     g = object.__new__(TradingAgentsGraph)
     g.config = config
-    g._checkpointer_ctx = None
     return g
 
 

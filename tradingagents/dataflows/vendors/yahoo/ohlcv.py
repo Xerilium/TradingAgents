@@ -158,15 +158,13 @@ def _cache_is_fresh(data_file, as_of_dt, now) -> bool:
     return as_of_dt.date() < now.date() or (now - written).total_seconds() <= OHLCV_CACHE_TTL_SECONDS
 
 
-def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataFrame:
+def load_ohlcv(symbol: str, as_of_date: str) -> pd.DataFrame:
     """Fetch OHLCV data with caching, filtered to prevent look-ahead bias.
 
     Downloads 5 years of data up to today and caches per symbol. On
     subsequent calls the cache is reused. Rows after as_of_date are
     filtered out so backtests never see future prices.
 
-    ``fill_gaps`` is retained for caller compatibility. Both modes use complete
-    reported bars without filling cells; excluded dates remain in frame metadata.
     """
     from tradingagents.dataflows.router import observe_source_call
 

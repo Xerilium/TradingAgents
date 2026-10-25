@@ -175,13 +175,12 @@ def validate_journal(journal):
     if not isinstance(journal, dict):
         raise ValueError("Backup journal is missing")
     DeskConfig.model_validate(journal["config"])
-    for collection in ("runs", "research_requests"):
-        values = journal.get(collection, []) if collection == "research_requests" else journal.get(collection)
-        if not isinstance(values, list):
-            raise ValueError("Invalid saved journal collection")
-        for record in values:
-            if str(UUID(record["id"])) != record["id"]:
-                raise ValueError("Invalid saved evidence owner identity")
+    runs = journal.get("runs")
+    if not isinstance(runs, list):
+        raise ValueError("Invalid saved research runs")
+    for run in runs:
+        if str(UUID(run["id"])) != run["id"]:
+            raise ValueError("Invalid saved research run identity")
 
 
 def backup(service):

@@ -82,7 +82,6 @@ class DeskStore:
         self.data = {
             "config": defaults,
             "runs": [],
-            "research_requests": [],
             "proposals": [],
             "paused": False,
             "paper_account_id": None,
@@ -102,6 +101,23 @@ class DeskStore:
                 for result in run["results"]:
                     if result["status"] in {"queued", "running", "cancelling"}:
                         result.update(status="failed", error=run["error"])
+            for origin in ("source", "gateway", "jev"):
+                evidence = run.get(f"{origin}_evidence")
+                if evidence is None:
+                    continue
+                for attempt in evidence.get("attempts", []):
+                    if attempt.get("outcome") in {"queued", "running"}:
+                        attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
+                self._call_counts(evidence, origin)
+            attempts = run.get("source_evidence", {}).get("attempts", [])
+            for result in run["results"]:
+                if result.get("status") == "completed" and any(
+                        source_attempt_failed(a, attempts) for a in attempts
+                        if a.get("symbol") in {None, result["symbol"]}):
+                    result.update(status="failed", revision=result.get("revision", 0) + 1,
+                                  error="Research incomplete: required source collection or evidence capture failed. Saved reports are retained.")
+                    if run["status"] == "completed":
+                        run["status"] = "failed"
         self.save_research()
         self.save()
 
@@ -136,7 +152,7 @@ class DeskStore:
                 lambda _: {"runs": self.data["runs"]}, {"runs": []})
             self.research_revision = saved["revision"]
 
-    def _measurement_reference(self, path, payload):
+    def _artifact_reference(self, path, payload):
         return {"path": path.relative_to(self.directory).as_posix(),
                 "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "format": "json"}
 
@@ -181,7 +197,7 @@ class DeskStore:
                 journal = self.data
             journal = {**journal, "runs": journal.get("runs", self.data["runs"])}
             if compact:
-                data = copy.deepcopy({key: value for key, value in journal.items() if key not in {"runs", "research_requests"}})
+                data = copy.deepcopy({key: value for key, value in journal.items() if key != "runs"})
                 selected = run_id if any(r["id"] == run_id for r in journal["runs"]) else next((r["id"] for r in journal["runs"]), None)
                 data["runs"] = []
                 data["research"] = {}
@@ -246,7 +262,7 @@ class DeskStore:
                     revision = row[0] if row else 0
                     if type(self.revision) is not int or self.revision != revision:
                         raise StoreConflict(revision)
-                    encoded = self.database.encode({**{k: v for k, v in self.data.items() if k not in {"runs", "research_requests"}}, "runs": []})
+                    encoded = self.database.encode({**self.data, "runs": []})
                     if row is None or encoded != row[1]:
                         revision += 1
                         connection.execute("INSERT INTO app_records VALUES('journal',?,?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at",
@@ -270,7 +286,8 @@ class DeskStore:
                 saved = json.loads(row[0])
         else:
             saved = json.loads((directory / "desk.json").read_text(encoding="utf-8"))
-        return {**saved, "runs": [], "research_requests": []}
+        saved.pop("research_requests", None)
+        return {**saved, "runs": []}
 
     def _evidence_owner(self, owner_id):
         return next(r for r in self.data["runs"] if r["id"] == owner_id)
@@ -300,7 +317,7 @@ class DeskStore:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        return self._measurement_reference(destination, payload)
+        return self._artifact_reference(destination, payload)
 
     def record_source_attempt(self, run_id, receipt, output=None):
         """Persist router receipts without exposing output or exception text in the journal."""
@@ -461,7 +478,7 @@ class DeskStore:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        return {**self._measurement_reference(destination, payload), "format": format_name}
+        return {**self._artifact_reference(destination, payload), "format": format_name}
 
     @staticmethod
     def _frame_evidence(frame):

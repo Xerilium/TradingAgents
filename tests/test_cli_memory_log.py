@@ -45,12 +45,10 @@ def test_record_decision_skips_a_run_without_a_decision(tmp_path):
 class _FakeGraph:
     """Records the lifecycle calls run_analysis makes."""
 
-    def __init__(self, resuming=None):
+    def __init__(self):
         self.calls = []
         self.graph = self
         self.propagator = self
-        self.resuming = resuming      # None: checkpointing off
-        self._resuming = False
 
     def create_run_state(self, ticker, trade_date, asset_type="stock", portfolio=None):
         self.calls.append(("create_run_state", ticker, trade_date))
@@ -61,19 +59,6 @@ class _FakeGraph:
 
     def get_graph_args(self, callbacks=None):
         return {}
-
-    def begin_checkpoint(self, *a, **k):
-        self._resuming = bool(self.resuming)
-        return None if self.resuming is None else "thread"
-
-    def checkpoint_input(self, state):
-        return state
-
-    def clear_checkpoint_on_success(self, *a, **k):
-        self.calls.append(("clear_checkpoint",))
-
-    def end_checkpoint(self):
-        pass
 
     def stream_run(self, graph_input, **kwargs):
         yield [], {"messages": [], "market_report": "M"}
@@ -131,7 +116,7 @@ def _run_cli(monkeypatch, tmp_path, fake):
         "ticker": "NVDA", "analysis_date": "2026-01-10",
         "analysts": [AnalystType.MARKET], "asset_type": "stock",
     })
-    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: {
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections: {
         "data_cache_dir": str(tmp_path / "cache"), "results_dir": str(tmp_path / "results"),
     })
     monkeypatch.setattr(m.typer, "prompt", lambda *a, **k: "N")
@@ -146,27 +131,9 @@ def test_cli_run_uses_the_memory_log_like_propagate(tmp_path, monkeypatch):
 
     assert fake.calls == [
         ("create_run_state", "NVDA", "2026-01-10"),
-        # The decision is recorded from the merged stream, before the checkpoint
-        # is cleared, matching propagate().
+        # The decision is recorded from the merged stream, matching propagate().
         ("record_decision", "NVDA", "2026-01-10", "Rating: Buy\n\nBuy NVDA."),
-        ("clear_checkpoint",),
     ]
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("resuming, said", [(True, "resuming"), (False, "starting fresh")])
-def test_the_cli_run_says_whether_it_resumed(tmp_path, monkeypatch, resuming, said):
-    """The README promises the run view tells a resumed run from a fresh one."""
-    buffer = _run_cli(monkeypatch, tmp_path, _FakeGraph(resuming=resuming))
-
-    assert any(said in text.lower() for _, kind, text in buffer.messages if kind == "System")
-
-
-@pytest.mark.unit
-def test_a_run_without_checkpointing_says_nothing_about_resuming(tmp_path, monkeypatch):
-    buffer = _run_cli(monkeypatch, tmp_path, _FakeGraph())
-
-    assert not any("resum" in text.lower() or "fresh" in text.lower() for _, _, text in buffer.messages)
 
 
 @pytest.mark.unit

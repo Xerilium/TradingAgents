@@ -185,7 +185,7 @@ def test_rounds_from_the_environment_do_not_claim_a_depth_was_chosen(monkeypatch
                   "llm_provider": "openai", "google_thinking_level": None, "openai_reasoning_effort": None,
                   "anthropic_effort": None, "output_language": "English"}
 
-    run._build_run_config(selections, None)
+    run._build_run_config(selections)
 
     assert "the research depth you chose" not in capsys.readouterr().out
 

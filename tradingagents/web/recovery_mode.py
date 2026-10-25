@@ -45,7 +45,7 @@ def preflight(root, history):
             records(target.resolve())
     elif (directory / "desk.json").exists():
         value = json.loads((directory / "desk.json").read_text(encoding="utf-8"))
-        validate_journal({**value, "research_requests": value.get("research_requests", [])})
+        validate_journal(value)
 
 
 class RecoveryService:

@@ -2227,21 +2227,31 @@ class DeskService:
 
     def _finish_research(self, run):
         run["completed_at"] = now()
+        for origin in ("source", "gateway", "jev"):
+            evidence = run.setdefault(f"{origin}_evidence", {})
+            evidence.setdefault("terminal_observed_at", run["completed_at"])
+            self.store._call_counts(evidence, origin)
         self.store.save_research()
 
     def _evidence_recorder(self, owner_id, symbol=None):
         def record(receipt, output):
             if symbol is not None:
                 receipt = {**receipt, "symbol": symbol}
-            try:
-                self.store.record_source_attempt(owner_id, receipt, output)
-            except Exception:
-                with self.store.lock:
-                    origin = receipt.get("origin")
-                    key = f"{origin}_evidence" if origin in {"gateway", "jev"} else "source_evidence"
-                    evidence = self.store._evidence_owner(owner_id).setdefault(key, {})
-                    evidence.update(capture_complete=False, persistence_error="Source receipt persistence failed.")
-                    # Publish this failure with the latest result at the stock boundary.
+            with self.store.lock:
+                run = next((r for r in self.store.data["runs"] if r["id"] == owner_id), None)
+                if run is None:
+                    return  # A newer cycle replaced this result.
+                origin = receipt.get("origin")
+                origin = origin if origin in {"gateway", "jev"} else "source"
+                key = f"{origin}_evidence"
+                try:
+                    self.store.record_source_attempt(owner_id, receipt, output)
+                    if run.get("completed_at"):
+                        self.store._call_counts(run[key], origin)
+                        self.store.save_research()
+                except Exception:
+                    run.setdefault(key, {}).update(
+                        capture_complete=False, persistence_error="Source receipt persistence failed.")
         return record
 
     def _run(self, run_id, market):
@@ -2472,8 +2482,6 @@ class DeskService:
                 run.update(status="failed", error=str(exc)[:600])
         finally:
             with self.store.lock:
-                for origin in ("source", "gateway", "jev"):
-                    self.store._call_counts(run[f"{origin}_evidence"], origin)
                 self._finish_research(run)
 
 

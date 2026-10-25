@@ -97,7 +97,7 @@ class SupplementalGraphToolsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distinct from native"):
             build_analyst_execution_plan(["news"], [native])
 
-    def test_graph_forwards_tools_and_includes_them_in_checkpoint_identity(self):
+    def test_graph_forwards_supplemental_tools(self):
         extra = research_tool([])
         with patch.object(trading_graph, "create_tier_client"), \
                 patch.object(trading_graph, "TradingMemoryLog"), \
@@ -107,9 +107,6 @@ class SupplementalGraphToolsTests(unittest.TestCase):
                 selected_analysts=["market"], config=dict(DEFAULT_CONFIG), supplemental_tools=[extra]
             )
         self.assertEqual(graph_setup.call_args.kwargs["supplemental_tools"], (extra,))
-        with_tools = graph._run_signature("stock")
-        graph.supplemental_tools = ()
-        self.assertNotEqual(with_tools, graph._run_signature("stock"))
 
 
 if __name__ == "__main__":

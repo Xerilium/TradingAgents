@@ -249,69 +249,13 @@ account, configuration and submission freshness guards still apply.
 
 ## Verification
 
-Accepted runs retain `measurements` in the existing journal and full run-detail
-response. The start timestamp is the run request's entry to the service; elapsed
-time ends after a durable terminal journal checkpoint. This includes
-preflight, queueing and retry waits inside measured operations. Rejected requests
-have their own request evidence without creating an accepted run. Artifact publication and the final
-reference save are outside the reported interval.
+Each latest stock result keeps its elapsed time so the UI can estimate research
+duration. Results also keep status, completion time, source evidence and saved
+reports needed to inspect the result. Detailed run measurement files and
+rejected-request receipts are not retained. The CLI statistics callback reports
+LLM/tool calls and token usage during CLI execution.
 
-Stage durations cover preflight, worker queue, per-symbol setup, graph analysis,
-decision persistence. Per-post Laya screening runs inside the social analysis
-stage. These are observed boundary times,
-not a decomposition of every internal provider operation. Analysis includes its
-existing source acquisition and memory work. Success, failure and cancellation
-retain measurements; an interrupted process exports the last available journal
-checkpoint on recovery, with unknown end time and elapsed duration left null.
-
-The existing statistics callback counts logical LLM/tool starts, normal ends and
-errors. Matching callback IDs prevent double counting when the same handler is
-bound to both model and graph. Callback durations sum completed matched calls
-and can overlap during parallel analysis; they are not wall-clock stage totals.
-Direct source-prefetch calls and social Laya screening do not emit these tool
-callbacks. Provider-internal requests/retries are unavailable, not inferred from
-logical counts. Token usage is labeled complete, partial or unavailable according
-to exposed response usage; missing usage is null rather than zero. Existing CLI
-statistics retain their original output fields.
-
-Each terminal run writes a unique `reports/<run-id>/measurements-<uuid>.json`
-under the desk data directory. `measurement_artifact` records its relative path,
-SHA-256, byte count and format in the journal/full run response. Files are created
-exclusively, so subsequent runs cannot overwrite previous artifacts. The payload
-contains timing/counts only, without prompts, conversations, credentials, source
-results or whole configurations. An artifact-write failure is explicit and keeps
-available measurements in the journal. A filesystem failure that also prevents
-journal writes cannot guarantee durability.
-
-Startup also repairs terminal runs whose measurement finalization was interrupted.
-It preserves their analytical status. A unique complete artifact matching the run,
-request start and terminal status is reattached with its integrity reference. If
-no unambiguous final artifact exists, recovery exports the durable journal
-checkpoint and labels unknown final callback counts/end time/elapsed time as
-unavailable; the recovery timestamp is not an analytical completion timestamp.
-Existing artifacts are never overwritten or deleted. Once the reference is
-durable, subsequent startups leave finalized and recovered measurements alone.
-Recovery neither resumes research nor invokes providers or order operations.
-
-Every service-admitted research request receives an evidence ID before validation.
-The existing journal's `research_requests` collection keeps rejected requests
-separate from accepted runs; accepted requests and runs link their IDs. Validation,
-readiness, refresh, admission and scheduling have local stage receipts. The existing
-recorder covers preflight Gateway boundaries, including copied contexts in the
-existing refresh workers. Readiness is a local stage, not a count of hidden account
-or provider requests. HTTP parsing/authorization failures before `start_run` remain
-outside this scope. Original exceptions and response shapes are preserved.
-
-Request elapsed time ends at acceptance/rejection; accepted-run elapsed time
-already includes that interval and its existing queue interval. Do not add these
-overlapping totals. Queue/worker timing stays in the linked run. Request snapshots
-reuse `reports/<request-id>/request-measurements-<uuid>.json` and existing receipt
-writers, with integrity references in the journal. They contain sanitized metadata,
-not raw request bodies, readiness errors, settings or credentials. Recording failure
-marks an evidence gap without changing request acceptance or its original failure.
-If all writes fail, durability is unavailable. Interrupted preflight/still-running
-calls recover as interrupted/unknown with unobserved end times left null. Late
-receipts create new partial snapshots; previous snapshots remain immutable.
+## Saved evidence
 
 Memory input observations reuse `source_evidence` and the same bounded, screened
 source artifacts. `graph_memory_state` records exact `past_context`/`memory_note`
@@ -324,8 +268,9 @@ default, explicitly marked absent. These artifacts do not add text to prompts,
 settle decisions, change memory selection, or prove provider execution. Oversized,
 unsafe or unwritable captures are unavailable, never silently redacted and labeled
 exact. Source, Gateway and worker boundary counts remain separate; hidden provider
-requests/retries remain unknown. Source partial/terminal/late snapshots use the
-existing immutable evidence path, including recovery of interrupted observations.
+requests/retries remain unknown. Each captured source result and call receipt
+uses an immutable evidence file. Unfinished receipts become unknown after a
+restart; late receipts remain visible in the latest result.
 
 The full run-detail response and journal also include `source_evidence` for
 vendor functions executed through `route_to_vendor` and the social/OHLCV input

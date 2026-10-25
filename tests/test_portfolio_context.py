@@ -101,15 +101,6 @@ def test_create_run_state_renders_the_portfolio_once(tmp_path):
 
 
 @pytest.mark.unit
-def test_checkpoint_signature_changes_with_the_portfolio(tmp_path):
-    graph = _bare_graph(tmp_path)
-    none = graph._run_signature("stock")
-    flat = graph._run_signature("stock", PortfolioContext())
-    held = graph._run_signature("stock", PortfolioContext.model_validate(HOLDING))
-    assert len({none, flat, held}) == 3
-
-
-@pytest.mark.unit
 @pytest.mark.parametrize("module, factory", [
     ("tradingagents.agents.trader.trader", "create_trader"),
     ("tradingagents.agents.managers.portfolio_manager", "create_portfolio_manager"),
@@ -228,34 +219,6 @@ def test_pm_capture_failure_does_not_replace_model_exception():
     with capture_vendor_evidence(broken), pytest.raises(RuntimeError) as caught:
         node(state)
     assert caught.value is failure
-
-
-@pytest.mark.unit
-def test_completed_run_clears_the_checkpoint_it_wrote(tmp_path, monkeypatch):
-    """The clear must key on the same portfolio the run was checkpointed under.
-
-    Keyed on a different one it deletes nothing, and the next identical call
-    resumes the finished thread and returns the old decision without running.
-    """
-    import tradingagents.graph.trading_graph as tg
-
-    graph = _bare_graph(tmp_path)
-    graph.config.update({"checkpoint_enabled": True, "data_cache_dir": str(tmp_path),
-                         "results_dir": str(tmp_path)})
-    graph.debug = False
-    graph._resuming = False
-    graph.propagator.get_graph_args = lambda callbacks=None: {}
-    graph._log_state = lambda *a, **k: None
-    graph.graph = type("G", (), {"invoke": lambda self, i, **k: {"final_trade_decision": "Rating: Hold\n\nx", "final_rating": "Hold"}})()
-    book = PortfolioContext.model_validate(HOLDING)
-
-    written = graph._run_signature("stock", book)  # what begin_checkpoint keys on
-    cleared = []
-    monkeypatch.setattr(tg, "clear_checkpoint", lambda d, t, dt, signature: cleared.append(signature))
-
-    graph._run_graph("AAPL", "2026-08-14", "stock", checkpoint_thread_id=None, portfolio=book)
-
-    assert cleared == [written]
 
 
 @pytest.mark.unit
