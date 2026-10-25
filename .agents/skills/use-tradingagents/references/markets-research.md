@@ -175,7 +175,7 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 
 **Observed chart.** AAPL recorded 1Day OHLC chart using Lightweight Charts, with price series and chart attribution/license links. The screen showed a last trade around $347.69 and separate daily close around $348.22; these are different sources/events. Use chart context and selected bar time before interpreting any readout. Canvas is a chart display; pointer interactions may pan/zoom/inspect but do not fetch new history.
 
-**Inspector tabs (observed).** Studies and formulas; Drawings; Comparison; Saved calculations; Source data; Playback. Selecting an inspector changes the view, not its backing data. Selecting the same inspector again can close it in Markets.
+**Inspector tabs (observed).** Studies and formulas; Drawings; Comparison; Saved calculations; Source data. Selecting an inspector changes the view, not its backing data. Selecting the same inspector again can close it in Markets.
 
 **Source data context and retained-history fields (observed/source).**
 - Chart evidence context selector: Immutable saved research inputs; Current-market context · IEX cache. Selecting a cache reads retained data. Choosing current context can load an existing selected cache; the request buttons below initiate new collection.
@@ -211,7 +211,7 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 - **Formula:** Formula expression textarea; typed causal series only, no eval/imports/application actions. Formula function buttons are inserted from loaded capabilities (source-only dynamic list). Output presentation line/histogram/overlay; declared output units from capabilities; Forward display offset/logical bars; exact scalar parameter rows (Name, Exact decimal value, Units excluding boolean), Remove parameter, Add typed parameter. Pinned reusable definitions use exact revision/hash dependency checkboxes. Buttons “Insert …” offer series from selected dependencies. Formula arguments are ordered alphabetically by parameter name. Positive displacement is a display projection, not future evidence.
 - **Seasonality:** Year comparison alignment calendar/session; Comparison scale raw/normalized; exact source adjustment shown. Completed month return uses prior-month-end to month-end close; only complete eligible years enter denominator; MTD/YTD remain separate and excluded; no dividend reinvestment implied.
 
-**Conditional result controls (source-only).** Calculation status, total budget, error/queue wait and queue/execution/termination evidence disclosure; Cancel this calculation when queued/running; calculation ID/source pin/result hash/derivation identity; coverage/provisional-inputs disclosure; when seasonality exists, Yearly value scale Common scale across years or Separate labeled scale per year; derived chart event selector by logical ordinal; exact derived geometry disclosure; actual retained source bar selector/readout Open/High/Low/Close/Source volume; **Open this actual bar in the raw chart** enters pinned retained playback; full definitions/algorithm/precision/init/source evidence disclosure. Clicking a derived event or source bar is inspection, not an execution price. Only raw source OHLC copy controls can prepare a manual ticket price.
+**Conditional result controls (source-only).** Calculation status, total budget, error/queue wait and queue/execution/termination evidence disclosure; Cancel this calculation when queued/running; calculation ID/source pin/result hash/derivation identity; coverage/provisional-inputs disclosure; when seasonality exists, Yearly value scale Common scale across years or Separate labeled scale per year; derived chart event selector by logical ordinal; exact derived geometry disclosure; actual retained source bar selector/readout Open/High/Low/Close/Source volume; **Open this actual bar in the raw chart** selects the exact contributing bar in the normal full-history chart; full definitions/algorithm/precision/init/source evidence disclosure. Clicking a derived event or source bar is inspection, not an execution price. Only raw source OHLC copy controls can prepare a manual ticket price.
 
 **Source.** Chart analysis UI, editor and action handlers: `app.js:1526–1585`; rendering of SVG, series, seasonality, exact readout and click/keyboard event inspection: `static/market-chart.js:184–224`; inspector switch and load button: `app.js:2599–2610`.
 
@@ -246,19 +246,6 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 **Source-only.** Loaded exact saved calculation buttons show definition/kind/revision/status and created time. Conditional result presents frozen source pin, output/result hash and derivation identity, coverage status, queue/termination evidence; current draft changes do not change the immutable result. Reopen selects that exact result; calculation is not rerun.
 
 **Source.** Inspector placeholder: `app.js:2602, 2609`; saved calculation list/button: `app.js:1565–1568, 1570–1574`.
-
-### Chart inspector: Playback
-
-**Observed.** **Pin these retained inputs for playback** is the entry button; it was not pressed.
-
-**Source-only after pin.**
-- Heading says hindsight, not a backtest or live market.
-- Status is Reading exact pinned artifact / Playing retained bars / Paused, includes capture time, cutoff and pinned artifact hash.
-- Actual retained bar slider; Previous bar; Next bar; Play/Pause; Actual bars per second choices 0.25/0.5/1/2/4; Leave playback.
-- Playback pins immutable history and a cutoff. It is not a simulation, forecast or market quote; stepping only changes selected retained bar. Leave returns to full-history context. Automatic Markets playback is not established by source; timer is explicitly Dashboard-scoped.
-- Chart analysis is hidden during active playback so full-history values cannot expose future inputs.
-
-**Source.** Playback markup and effects: `app.js:1385–1415`; chart inspector grouping: `app.js:2599–2610`; analysis suppression during replay: `app.js:1570–1574`.
 
 ### Instrument Research
 
@@ -318,7 +305,7 @@ Selecting a report changes the displayed saved report. Full source artifact is a
 ## Live evidence and limits
 
 - Browser observed: Dashboard shell/account ledger/panels/watchlist; all four Markets tabs and Watchlists filter disclosure; AAPL instrument Chart, Research, Options, Position; all six chart inspectors; Research Summary, Reports, Debate, Sources, Activity, Setup; populated saved AAPL report/review and source data.
-- Source-only due no authorized data-collection/run: populated Yahoo screener result/pagination failure-empty differences; populated Saved scan definitions/runs/matches; collected current IEX history and comparison cache; calculation form after metadata loaded/results; drawing edits/saves/alerts; playback after pin; option contract page/contract quote subscriptions/chain/filters; research new run and social screening.
+- Source-only due no authorized data-collection/run: populated Yahoo screener result/pagination failure-empty differences; populated Saved scan definitions/runs/matches; collected current IEX history and comparison cache; calculation form after metadata loaded/results; drawing edits/saves/alerts; option contract page/contract quote subscriptions/chain/filters; research new run and social screening.
 - The scan and screen empty states are not product failures. Missing current-market cache means Comparison cannot be exercised. No observed AAPL position means Position offers proposal fields but no holdings.
 - Never claim side-effect workflows were exercised from opening the page or reading their controls.
 ## Source-only control detail: price drawings on Chart
@@ -362,8 +349,8 @@ The Chart inspector can expand **Chart analysis · transforms, studies, seasonal
 - **Export selected revision or full library** exports the chosen revision or full definition library. **Import validated definition bundle** accepts JSON. Import resolves exact revision/hash dependencies; collisions do not overwrite history. Import can fail validation.
 - Saved calculation buttons show definition name/family-or-kind/revision/status, or IDs if the definition is missing. Their exact calculation record disclosure shows retained values. **Reopen exact saved chart calculation** and each saved calculation button open the exact stored calculation. **Cancel this calculation** appears only while queued/running. A cancellation may report that worker termination is unconfirmed.
 - A completed result can show status, total budget, queue wait, elapsed and termination details; source pin, result hash, derivation identity, coverage, provisional inputs, exact geometry and definition details. These are record values, not fresh quotes.
-- **Derived event · logical ordinal** selects one calculated event. It shows exact derived geometry and source range, not execution prices. **Actual retained source bar** selects a real contributing raw bar and displays **Open**, **High**, **Low**, **Close**, **Source volume**. **Open this actual bar in the raw chart** opens retained playback at that bar. It does not fill an order.
-- Playback hides full-history analysis until playback ends. If no contributing raw bar exists, the display says so. If result coverage is incomplete, the app reports gaps or unverified continuity; inspect unavailable source ordinals. Do not treat a calculation status alone as proof of complete market data.
+- **Derived event · logical ordinal** selects one calculated event. It shows exact derived geometry and source range, not execution prices. **Actual retained source bar** selects a real contributing raw bar and displays **Open**, **High**, **Low**, **Close**, **Source volume**. **Open this actual bar in the raw chart** opens the normal chart at that exact bar. It does not fill an order.
+- If no contributing raw bar exists, the display says so. If result coverage is incomplete, the app reports gaps or unverified continuity; inspect unavailable source ordinals. Do not treat a calculation status alone as proof of complete market data.
 - Source import/export controls can access local files. Do not use them during a read-only tutorial unless the user asks for that action.
 
 ## Review evidence
@@ -382,7 +369,7 @@ Current source review: `b632a22`, 2026-10-25. Browser observations are limited t
 - Options discovery uses `optionMarkup` / `bindOptions`, `DeskService.option_discovery` and `AlpacaREST.option_contracts`. Selecting/subscribing validates the exact retained contract revision and explicit homogeneous feed. It does not place an order.
 - `savedLayaAction` annotates at most the first five saved Stocktwits posts. It is not a full-source refetch or a replacement for the run’s social-coverage check. It changes saved evidence but not the recommendation.
 
-Playback boundary: Pin creates a browser `retainedReplay` object. `rememberChart()` calls `persistPreferences()`, which queues a revisioned server workspace save. It does not write replay state directly to browser localStorage. Seeking and speed choices use that same path. Thus playback is a retained-data view with saved preferences, not a research rerun. Source: `replayPreference`, `rememberChart`, `persistPreferences`, `writeWorkspace`.
+Chart-view preferences: `rememberChart()` calls `persistPreferences()` to queue a revisioned server workspace save for chart context, range, selected bar, comparison anchor and viewport. It does not start research. There are no playback controls, timers or saved playback preferences.
 
 ## Additional control details
 
@@ -424,19 +411,20 @@ Open an instrument’s **Research** tab, then **Request supplementary data from 
 
 Provider response, populated records and downstream policy use were not exercised in this review. Source: `supplementaryEvidence`, `bindSupplementary`, `DeskService` market-history routes and `stock_evidence.py`.
 
-### Chart controls and current limits
+### Chart price and source controls
 
 - **Common anchor** selects an actual shared retained timestamp for indexed close comparison. Both series use that anchor; pan/zoom does not change it. **Comparison source artifact** shows the secondary source reference. No provider request is made.
 - Within each recorded indicator disclosure, **Prepare indicator alert** opens an unsaved indicator-rule draft with the selected symbol/source context. It does not enable monitoring. Review its comparison, threshold, source age and context, then save separately.
 - **Formula, input hashes, initialization and correction identity** shows the selected indicator’s formula, source identity, warmup, corrections and point eligibility. A number alone does not prove alert eligibility.
 - **Review price normalization** checks an exact raw OHLC value against the instrument and chosen existing ticket field. It can then show **Copy reviewed historical price into ticket**. Copy changes only the manual ticket draft and invalidates its preview; preview/save/review remain separate.
 - Compatible destinations are **Entry / existing order limit**, **Existing stop trigger**, **Linked profit target**, **Linked protective trigger**, and **Linked protective stop limit**, depending on the current stock ticket. Atomic option packages have no copy destination.
-- Current source limit: `reviewChartCopy` discards a normalization response outside Dashboard (`activePage !== 'overview'`). Thus a Markets or Portfolio button is not proof that copying completes there. Use the Dashboard instrument path for this operation; do not claim the other paths work. This is source-only, not a new live acceptance result.
-- Current source limit: `playRetainedReplay` stops its timer outside Dashboard. **Previous bar**, **Next bar** and the slider still have separate handlers. Do not promise automatic playback in Markets or Portfolio.
-- **Open this actual bar in the raw chart** selects a contributing raw bar and pins retained playback. A derived geometry event is not an execution price.
+- Price review accepts a response in Dashboard, Markets or Portfolio only while the same page, exact chart source, selected bar, destination and ticket terms remain current. Navigating or changing these inputs invalidates the pending review.
+- **Open this actual bar in the raw chart** selects a contributing raw bar in the normal full-history chart. A derived geometry event is not an execution price.
 - **Stop future requests** cancels future data-job dispatch. **Resume unfinished symbols** creates a continuation of an eligible data job’s unfinished symbols. This is market-data collection only; it is not removed research checkpoint/resume support.
 
-Source: `savedChart`, `chartPriceControls`, `reviewChartCopy`, `applyChartCopy`, `bindEvidence`, `bindReplayAndCopy`, `rememberChart`, and `market_history.py`.
+Source: `savedChart`, `chartPriceControls`, `reviewChartCopy`, `applyChartCopy`, `bindEvidence`, `bindChartCopy`, `rememberChart`, and `market_history.py`.
+
+Observed on 25 October 2026 after the removal/fix: Markets showed five chart inspectors with no Playback tab. Using the existing META IEX cache, the 2026-10-23 close `645.39` completed normalization at increment `0.01` and copied into an unsaved LIMIT ticket. Temporary ticket inputs were then cleared. No proposal was saved. AAPL saved research had unverified currency, so its copy button remained disabled. Portfolio copying could not be exercised because the account held no stocks; its shared handler and raw calculation-source opening were checked in source only. No new history, research or calculation was requested.
 
 ### Saved scan actions and evidence
 
@@ -462,7 +450,7 @@ Guided named-input rows have **Input name**, **Remove input**, and **Add named i
 
 ## Source map
 
-- tradingagents/web/static/app.js: shell, Dashboard, Markets and Research renderers; delegated event handlers; option discovery widget; chart inspector and study/drawing/playback controls; research list and report tabs; local view state; workspace save UI.
+- tradingagents/web/static/app.js: shell, Dashboard, Markets and Research renderers; delegated event handlers; option discovery widget; chart inspector and study/drawing/source controls; research list and report tabs; local view state; workspace save UI.
 - tradingagents/web/static/nautilus.js: native account/runtime status and session-profile rendering.
 - tradingagents/web/static/market-chart.js: chart rendering, comparison alignment and pointer/drawing interactions.
 - tradingagents/web/static/vendor/lightweight-charts/ and vendor/lightweight-charts-drawing/: pinned chart and drawing libraries.

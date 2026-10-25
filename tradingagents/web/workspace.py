@@ -145,7 +145,7 @@ def preferences(value):
     for key, item in value.items():
         if key == "chartView":
             from .market_history import TIMEFRAMES
-            if (not isinstance(item, dict) or set(item) - {"symbol", "context", "timeframe", "cacheKey", "compareSymbol", "compareCacheKey", "anchor", "selectedTime", "range", "logicalRange", "replay", "analysis"}
+            if (not isinstance(item, dict) or set(item) - {"symbol", "context", "timeframe", "cacheKey", "compareSymbol", "compareCacheKey", "anchor", "selectedTime", "range", "logicalRange", "analysis"}
                     or not item.get("symbol") or item.get("context") not in {"saved", "current"} or item.get("timeframe") not in TIMEFRAMES
                     or item["context"] == "saved" and item["timeframe"] != "1Day"):
                 raise ValueError("Invalid chart source context or interval")
@@ -178,22 +178,6 @@ def preferences(value):
             if span is not None and (not isinstance(span, dict) or set(span) != {"from", "to"}
                     or any(type(value) not in (int, float) or not isfinite(value) for value in span.values()) or span["from"] > span["to"]):
                 raise ValueError("Invalid chart viewport")
-            replay = item.get("replay")
-            if replay is not None:
-                if not isinstance(replay, dict) or set(replay) - {"pin", "comparison_pin", "cutoff", "speed", "anchor"}:
-                    raise ValueError("Invalid retained replay preferences")
-                pin = source_pin(replay.get("pin"))
-                if any(pin[field] != item[field] for field in ("symbol", "context", "timeframe")):
-                    raise ValueError("Replay pin differs from the selected chart")
-                chart_time(replay.get("cutoff"), pin["timeframe"])
-                if replay.get("anchor") is not None:
-                    chart_time(replay["anchor"], pin["timeframe"])
-                if type(replay.get("speed")) not in (int, float) or replay["speed"] not in {.25, .5, 1, 2, 4, 8}:
-                    raise ValueError("Unsupported replay speed")
-                if replay.get("comparison_pin") is not None:
-                    other = source_pin(replay["comparison_pin"])
-                    if other["symbol"] == pin["symbol"] or other["timeframe"] != pin["timeframe"] or other["context"] != pin["context"]:
-                        raise ValueError("Replay comparison needs distinct matching retained sources")
         elif key == "discoveryObservationId":
             from uuid import UUID
             if item != "" and (not isinstance(item, str) or str(UUID(item)) != item):
@@ -241,9 +225,9 @@ def source_pin(value):
         raise ValueError("Invalid retained chart artifact reference")
     if value["context"] == "saved":
         if value["timeframe"] != "1Day" or str(UUID(value.get("run_id", ""))) != value.get("run_id") or value.get("cache_key"):
-            raise ValueError("Saved replay requires an exact daily research run")
+            raise ValueError("Saved chart source requires an exact daily research run")
     elif not text(value.get("cache_key"), 300, "retained chart key") or value.get("run_id"):
-        raise ValueError("Current replay requires an exact retained cache")
+        raise ValueError("Current chart source requires an exact retained cache")
     if value.get("derivation_identity") is not None and not re.fullmatch(r"[0-9a-f]{64}", str(value["derivation_identity"])):
         raise ValueError("Invalid pinned calculation identity")
     return copy.deepcopy(value)

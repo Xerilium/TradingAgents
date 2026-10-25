@@ -884,7 +884,7 @@ Seasonality requires complete expected calendar/session coverage and each prior-
 
 Formulas use the allowlisted parsed AST and typed causal series operations, not eval, imports, arbitrary Python/JavaScript or application actions. Choose line, histogram or price overlay; add exact typed scalar parameters and pin reusable formula/study revisions. Formula-call arguments follow alphabetical parameter-name order; study references use DefinitionName__component. Units, lookback, initialization, gaps, cycles and availability are validated. Display displacement never creates earlier availability. For example sma(close,20) is a causal price series; its rendering choice is separate from its calculation. External scripts and transform-event-to-raw-axis coercion are unavailable.
 
-Selecting derived geometry cannot copy its price into a ticket. Choose a real contributing source row, **Open this actual bar in the raw chart**, then explicitly review the original raw O/H/L/C and existing normalization. The reference binds calculation/result hash, event/source ordinal and raw source identity where applicable. No quantity, account, session, order approval or submission changes. Full-history analysis is hidden during retained playback to prevent future summary leakage; ending playback restores it.
+Selecting derived geometry cannot copy its price into a ticket. Choose a real contributing source row, **Open this actual bar in the raw chart**, then explicitly review the original raw O/H/L/C and existing normalization. The reference binds calculation/result hash, event/source ordinal and raw source identity where applicable. No quantity, account, session, order approval or submission changes. The selected actual bar opens in the normal full-history chart; range selection, comparisons and source inspection remain available.
 
 Peer-reference catalog: [Heikin Ashi](https://www.tradingview.com/support/solutions/43000619436-understanding-heikin-ashi-charts/), [Renko/Kagi/Line Break/P&F](https://www.tradingview.com/support/solutions/43000758617-advanced-intraday-chart-types/), [CCI](https://www.tradingview.com/support/solutions/43000502001-commodity-channel-index-cci/), [Donchian](https://www.tradingview.com/support/solutions/43000502253-donchian-channels-dc/), [Ichimoku](https://www.tradingview.com/support/solutions/43000589152-ichimoku-cloud/). These identify capabilities, not numerical parity or acceptance. This source integration has not been visually or numerically exercised here; no chart calculation or runtime activation was performed.
 
@@ -921,23 +921,12 @@ This source batch has static verification only; it has not been activated or
 accepted through live monitoring, workspace edits, notifications or browser UAT.
 
 
-## Retained bar playback and exact historical price copying
+## Chart inspection and exact historical price copying
 
-The chart's **Pin these retained inputs for playback** freezes the source artifact
-and SHA-256, interval, symbol and calculation identity. Existing compatible
-comparisons pin both artifacts and keep their fixed common anchor. Seek,
-previous/next and play/pause advance through actual recorded bars, including gaps;
-the default speed is one actual bar per second. Candles, volume, indicators,
-comparison values and selectors stop at the playback cutoff. A future comparison
-anchor remains unavailable until reached; it is not rebased or read from later
-bars. Agent report claims are hidden during playback.
-
-The existing workspace preferences retain the pins, cutoff, anchor and speed.
-Restoration is paused and reads the exact retained sources. Missing or changed
-artifacts/calculations are unavailable; current data is never substituted.
-Navigation, closing the stock, changing symbol/interval/source or leaving playback
-pauses its timer. Playback is retained-bar hindsight using the displayed source
-capture, not a backtest, live market, strategy replay or execution simulator.
+Historical charts provide range selection, pan/zoom, a recorded-bar selector and
+raw OHLCV inspection. Derived calculations can open an exact contributing raw bar
+in the normal chart. Source identity is checked before that bar is selected.
+Charts do not have playback controls or saved playback state.
 
 For the selected actual bar, **Recorded value** defaults to Close; explicitly
 choose Open, High or Low if wanted. This uses exact source numeric text, not chart
@@ -951,12 +940,14 @@ Unknown source currency, instrument mapping or increment leaves copying unavaila
 
 Copy changes only that price and its retained reference. It preserves quantity,
 session, account and live quotes, and invalidates the ticket preview. Cursor
-movement and playback never update a ticket automatically. Manual edits remove the
+movement never updates a ticket automatically. Manual edits remove the
 affected price receipt. An existing paired SELL target has two names for the same
 price: order limit and linked target. Both are shown before copy and changed
 together; editing either invalidates their shared receipt. Preview and save use the existing exact-revision flow and
 revalidate the source/reference; approval and submission remain separate actions.
-This source batch has no browser, playback or broker acceptance.
+Price review works from Dashboard, Markets and Portfolio. Its response is accepted
+only while the same page, chart source, selected bar and ticket terms remain current.
+Broker approval and execution are outside this chart-copy operation.
 
 
 ## Indicator evidence and attention

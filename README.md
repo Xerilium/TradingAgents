@@ -173,10 +173,8 @@ incompatible drawings remain unresolved rather than silently rebound. Saving a
 drawing does not create an alert. An eligible numeric drawing can seed a separate
 alert draft.
 
-Playback pins retained data and historical cutoff, with stepping/speed/play
-controls. It is hindsight inspection, not a backtest. Automatic playback in
-Markets is not established: the current timer stops outside Dashboard.
-Historical-price copying requires an eligible existing manual ticket field and
+Historical charts retain range selection, candle inspection, comparison and source
+evidence. Historical-price copying works in Dashboard, Markets and Portfolio. It requires an eligible existing manual ticket field and
 normalization review; it does not change a quote or approve/submit an order.
 
 ## Research

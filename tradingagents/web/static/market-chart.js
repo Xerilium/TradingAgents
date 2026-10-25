@@ -76,7 +76,7 @@ window.DeskMarketChart=(()=>{
         x=ts.logicalToCoordinate(origin+point.offset);
       }else{
         if(point.basis==='observed'){
-          const bar=bars[index(point.time)];if(!bar)throw new Error('Observed anchor bar is absent or beyond the replay cutoff.');
+          const bar=bars[index(point.time)];if(!bar)throw new Error('Observed anchor bar is absent from the selected chart range.');
           const raw=bar.raw?.[point.value_kind]??bar[point.value_kind];
           if(decimal(raw)!==decimal(point.price))throw new Error('Observed anchor value changed; original provenance is retained.');
         }
