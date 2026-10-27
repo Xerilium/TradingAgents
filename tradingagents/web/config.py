@@ -21,7 +21,7 @@ class DeskConfig(BaseModel):
     max_order_notional: float = Field(default=5000, gt=0, le=1000000)
     reserve_pct: float = Field(default=20, ge=0, lt=100)
     price_buffer_bps: float = Field(default=25, ge=0, le=100)
-    llm_provider: str = Field(default="chatgpt", min_length=1, max_length=50)
+    llm_provider: str = Field(default="codex", min_length=1, max_length=50)
     deep_think_llm: str = Field(default="gpt-6-sol", min_length=1, max_length=100)
     quick_think_llm: str = Field(default="gpt-6-luna", min_length=1, max_length=100)
     backend_url: str | None = None

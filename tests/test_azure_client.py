@@ -54,3 +54,10 @@ def test_deployment_environment_overrides_model(monkeypatch, deployment):
     assert str(llm.root_client.base_url) == (
         f"https://configured.openai.azure.com/openai/deployments/{selected}/"
     )
+
+from tradingagents.llm_clients.factory import create_llm_client
+
+@pytest.mark.unit
+def test_the_output_token_cap_reaches_the_deployment():
+    llm = create_llm_client("azure", "gpt-5.5", max_tokens=1234).get_llm()
+    assert llm.max_tokens == 1234

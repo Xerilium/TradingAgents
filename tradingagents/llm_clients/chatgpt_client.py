@@ -423,6 +423,9 @@ class ChatGPTClient(BaseLLMClient):
             reasoning_effort=self.kwargs.get("reasoning_effort") or "high", callbacks=self.kwargs.get("callbacks"),
         )
 
+    def get_provider_name(self) -> str:
+        return "codex"
+
     def validate_model(self) -> bool:
         # The account catalog and inference enforce availability, without a
         # stale hardcoded model list or a fallback to a different model.

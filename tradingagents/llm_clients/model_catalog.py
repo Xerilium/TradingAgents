@@ -203,6 +203,7 @@ MODEL_OPTIONS: ProviderModeOptions = {
     # server serves, so only "Custom model ID" is offered.
     "openai_compatible": _CUSTOM_ONLY,
     "chatgpt": _CUSTOM_ONLY,
+    "codex": _CUSTOM_ONLY,
     # Hosted OpenAI-compatible providers that serve many (and frequently
     # changing) models — offer "Custom model ID" rather than a list that goes
     # stale. The endpoint + key are wired by the provider; the user picks the
@@ -222,6 +223,9 @@ MODEL_OPTIONS: ProviderModeOptions = {
     "nvidia": _CUSTOM_ONLY,
     # Bedrock model IDs / cross-region inference profile IDs are user-specified.
     "bedrock": _CUSTOM_ONLY,
+    # The plan's models are listed live from OpenAI once signed in.
+    "chatgpt": _CUSTOM_ONLY,
+    "codex": _CUSTOM_ONLY,
 }
 
 

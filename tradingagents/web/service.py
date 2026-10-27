@@ -202,9 +202,14 @@ def research_quote_context(symbol, trade_date, market):
 class DeskService:
     def __init__(self, directory: Path, gateway=None, graph_factory=None):
         defaults = build_default_config()
-        defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "chatgpt")
+        defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "codex")
         settings = DeskConfig(**{k: defaults[k] for k in DeskConfig.model_fields if k in defaults})
         self.store = DeskStore(directory, settings.model_dump())
+        if not self.store.data.get("codex_provider_migrated"):
+            if self.store.data["config"].get("llm_provider") == "chatgpt":
+                self.store.data["config"]["llm_provider"] = "codex"
+            self.store.data["codex_provider_migrated"] = True
+            self.store.save()
         DeskConfig.model_validate(self.store.data["config"])
         self.gateway = gateway or MaenifoldGateway(timeout=90)
         self.graph_factory = graph_factory
@@ -285,7 +290,7 @@ class DeskService:
         provider = config["llm_provider"].lower()
         if self.graph_factory is not None:
             return {"ready": True, "message": "Injected analysis runtime."}
-        if provider == "chatgpt":
+        if provider == "codex":
             from tradingagents.llm_clients.chatgpt_client import check_chatgpt_account
 
             with self.account_lock:
