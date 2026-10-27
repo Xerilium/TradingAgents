@@ -183,6 +183,16 @@ normalization review; it does not change a quote or approve/submit an order.
 
 ### Choose the provider
 
+The upstream CLI also supports ChatGPT Plus or Pro subscription authentication
+using the `chatgpt` provider, separate from the desk's `codex` app-server
+provider. Choose **Subscription** in the CLI or set `llm_provider: "chatgpt"`,
+then run `tradingagents login chatgpt` and open the supplied address. If the
+browser runs on another machine, or the CLI runs in Docker
+(`docker compose run --rm tradingagents login chatgpt`), paste the address the
+browser reaches. Authentication is saved in `~/.tradingagents/chatgpt-auth.json`;
+`tradingagents logout chatgpt` revokes it. Usage counts against the subscription
+plan, which does not accept `temperature` or `max_tokens`.
+
 In **Settings → Research**, select **Codex (existing sign-in)** or
 **OpenAI-compatible (including Unsloth)**. Codex uses the existing adapter;
 its default fast/deep choices are Luna and Sol. The compatible option keeps
@@ -200,8 +210,8 @@ This lookup does not run inference or change the model loaded on the server.
 **Max output tokens** is an optional positive integer for future API-backed
 research and portfolio calls. Leave it blank to use the server default. Context
 is shared by input, tool results and generated output; the loaded context size
-is changed on the server. Codex manages its own token limits, so this override
-is unavailable with Codex sign-in.
+is changed on the server. Codex and ChatGPT subscription sign-in manage their own token limits, so this
+override is unavailable with either sign-in provider.
 
 “No model loaded” from a compatible endpoint means that endpoint cannot serve
 the selected model. It does not mean Codex is unavailable. Check the actual

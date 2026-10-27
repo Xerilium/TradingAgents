@@ -142,13 +142,19 @@ class DeskService:
     def __init__(self, directory: Path, gateway=None, graph_factory=None, runtime=None,
                  browse_only=False, history_dir=None, migrate_legacy=False):
         defaults = build_default_config()
-        defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "chatgpt")
+        defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "codex")
         settings = DeskConfig(**{k: defaults[k] for k in DeskConfig.model_fields if k in defaults})
         from .recovery import active_paths, writer_lease
         self.application_root = Path(directory).resolve()
         self.writer_lease = writer_lease(self.application_root)
         active_directory, active_history = active_paths(self.application_root, history_dir)
         self.store = DeskStore(active_directory, settings.model_dump(), migrate_legacy=migrate_legacy)
+        if not self.store.data.get("codex_provider_migrated"):
+            if self.store.data["config"].get("llm_provider") == "chatgpt":
+                self.store.data["config"]["llm_provider"] = "codex"
+                self.store.data["config_revision"] = self.store.data.get("config_revision", 0) + 1
+            self.store.data["codex_provider_migrated"] = True
+            self.store.save()
         self.maintenance = threading.RLock()
         self.restore_candidates = {}
         self.research_futures = set()
@@ -1907,7 +1913,7 @@ class DeskService:
         provider = config["llm_provider"].lower()
         if self.graph_factory is not None:
             return {"ready": True, "message": "Injected analysis runtime."}
-        if provider == "chatgpt":
+        if provider == "codex":
             from tradingagents.llm_clients.chatgpt_client import check_chatgpt_account
 
             with self.account_lock:
@@ -1924,6 +1930,19 @@ class DeskService:
                         status = {"ready": False, "message": str(exc)}
                     self.account_status = (time.monotonic() + 30, status)
                 return dict(self.account_status[1])
+        if provider == "chatgpt":
+            from tradingagents.llm_clients.chatgpt_auth import ChatGPTAuthError, ChatGPTUnreachable, credential
+
+            try:
+                token = credential()
+                if probe:
+                    token()
+            except ChatGPTUnreachable as exc:
+                return {"ready": False, "message": str(exc)}
+            except ChatGPTAuthError as exc:
+                return {"ready": False, "message": str(exc)}
+            return {"ready": True, "message": "ChatGPT sign-in is available." if probe
+                    else "ChatGPT sign-in is saved; checked when analysis starts."}
         if provider not in PROVIDER_API_KEY_ENV:
             return {"ready": False, "message": "Choose a supported model provider in settings."}
         if provider in {"ollama", "openai_compatible"}:

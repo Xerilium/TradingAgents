@@ -11,6 +11,7 @@ outcomes (a "Yes" at 0.76 means the market prices a 76% chance).
 """
 import json
 import logging
+import math
 from datetime import UTC, datetime
 
 import requests
@@ -65,6 +66,21 @@ def _is_forward_looking(market: dict, now: datetime) -> bool:
     return bool(_parse_json_list(market.get("outcomePrices"))) and bool(
         _parse_json_list(market.get("outcomes"))
     )
+
+
+def _odds(prob: float) -> str:
+    """A probability as a percentage; within 1% of 0 or 100 its distance from
+    there keeps two significant digits, so 0.05% is not 0% and 99.95% not 100%."""
+    def decimals(distance: float) -> int:
+        return 1 - math.floor(math.log10(distance))
+
+    if 0 < prob < 0.01:
+        percent = prob * 100
+        return f"{percent:.{decimals(percent)}f}".rstrip("0").rstrip(".") + "%"
+    if 0.99 < prob < 1:
+        distance = (1 - prob) * 100
+        return f"{100 - distance:.{decimals(distance)}f}".rstrip("0").rstrip(".") + "%"
+    return f"{prob:.0%}"
 
 
 def get_prediction_markets(topic: str, limit: int | None = None, as_of_date: str | None = None) -> str:
@@ -131,7 +147,7 @@ def get_prediction_markets(topic: str, limit: int | None = None, as_of_date: str
         prices = _parse_json_list(m.get("outcomePrices"))
         outcomes = _parse_json_list(m.get("outcomes"))
         try:
-            probabilities = ", ".join(f"{label}: {float(price):.2%}" for label, price in zip(outcomes, prices, strict=True))
+            probabilities = ", ".join(f"{label}: {_odds(float(price))}" for label, price in zip(outcomes, prices, strict=True))
         except (ValueError, TypeError):
             lines.append(f"- {m.get('question')}: outcome probabilities were malformed; not analyzed.")
             continue

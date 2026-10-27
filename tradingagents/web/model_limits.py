@@ -7,7 +7,7 @@ import os
 import httpx
 
 from tradingagents.llm_clients.api_key_env import get_api_key_env
-from tradingagents.llm_clients.openai_client import is_openai_compatible
+from tradingagents.llm_clients.openai_client import SIGNED_IN_PROVIDERS, is_openai_compatible
 
 
 def _positive(value):
@@ -62,7 +62,7 @@ def discover(config):
                                      "status": item_status, "message": item_message})
         return result
 
-    if not is_openai_compatible(provider):
+    if provider in SIGNED_IN_PROVIDERS or not is_openai_compatible(provider):
         return answer("unknown", "Limit discovery is unavailable for this provider.")
     if not endpoint:
         return answer("unknown", "Enter a model endpoint to discover its limits.")
