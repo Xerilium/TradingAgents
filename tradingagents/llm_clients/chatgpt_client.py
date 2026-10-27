@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import queue
 import shutil
@@ -36,6 +37,7 @@ from tradingagents.integrations.maenifold import (
 from .base_client import BaseLLMClient
 
 _NAMESPACE = "tradingagents"
+_LOGGER = logging.getLogger(__name__)
 
 
 def _codex_path() -> str:
@@ -58,7 +60,6 @@ class _AppServer:
             "project_doc_max_bytes": 0,
             "developer_instructions": "",
             "web_search": "disabled",
-            "mcp_servers": {},
             "features.shell_tool": False,
             "features.unified_exec": False,
             "features.plugins": False,
@@ -83,6 +84,17 @@ class _AppServer:
         child_env = {key: value for key, value in os.environ.items() if key.upper() not in excluded_env}
         self.workspace = tempfile.TemporaryDirectory(prefix="tradingagents-research-")
         try:
+            catalog = subprocess.run(
+                [args[0], "mcp", "list", "--json", *args[4:]], cwd=self.workspace.name,
+                env=child_env, capture_output=True, text=True, encoding="utf-8",
+                check=True, timeout=max(0.1, self.deadline - time.monotonic()),
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            for entry in json.loads(catalog.stdout):
+                name = entry["name"]
+                if not isinstance(name, str) or not name:
+                    raise ValueError("Invalid MCP server name")
+                args.extend(["-c", f"mcp_servers.{name}.enabled=false"])
             self.process = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
@@ -90,8 +102,11 @@ class _AppServer:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
         except OSError as exc:
-            self.workspace.cleanup()
+            self._cleanup_workspace()
             raise RuntimeError("Codex app-server could not start. Check the Codex CLI and its permissions.") from exc
+        except (subprocess.SubprocessError, ValueError, KeyError, TypeError) as exc:
+            self._cleanup_workspace()
+            raise RuntimeError("Codex MCP configuration could not be isolated; account adapter stopped.") from exc
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
 
@@ -163,20 +178,39 @@ class _AppServer:
         if self._closed:
             return
         self._closed = True
+        # The stdio app-server normally exits on EOF; keep forceful tree
+        # termination for a helper that does not finish on its own.
         with suppress(OSError, ValueError):
             self.process.stdin.close()
         try:
             self.process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            with suppress(OSError):
-                self.process.terminate()
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            if isinstance(exc, OSError):
+                _LOGGER.warning("Could not wait for Codex app-server shutdown", exc_info=True)
+            if os.name == "nt" and self.process.poll() is None:
+                try:
+                    subprocess.run(
+                        ["taskkill.exe", "/PID", str(self.process.pid), "/T", "/F"],
+                        check=True, timeout=5, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    if self.process.poll() is None:
+                        _LOGGER.warning("Could not stop the Codex app-server process tree", exc_info=True)
+            if self.process.poll() is None:
+                with suppress(OSError):
+                    self.process.terminate()
             try:
                 self.process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                if isinstance(exc, OSError):
+                    _LOGGER.warning("Could not wait for Codex app-server termination", exc_info=True)
                 with suppress(OSError):
                     self.process.kill()
-                with suppress(subprocess.TimeoutExpired, OSError):
+                try:
                     self.process.wait(timeout=3)
+                except (subprocess.TimeoutExpired, OSError):
+                    _LOGGER.warning("Could not wait for Codex app-server kill", exc_info=True)
         finally:
             self.reader.join(timeout=1)
             # The reader owns stdout while it is active: closing the buffered
@@ -184,7 +218,14 @@ class _AppServer:
             if not self.reader.is_alive():
                 with suppress(OSError, ValueError):
                     self.process.stdout.close()
+            self._cleanup_workspace()
+
+    def _cleanup_workspace(self):
+        try:
             self.workspace.cleanup()
+        except OSError:
+            # Housekeeping must not replace a completed response or its real error.
+            _LOGGER.warning("Could not remove Codex research workspace %s", self.workspace.name, exc_info=True)
 
 
 def _initialize_chatgpt(server: _AppServer) -> None:
@@ -338,12 +379,6 @@ class ChatGPTChatModel(BaseChatModel):
         server.cancelled = cancelled
         try:
             _initialize_chatgpt(server)
-            effective = server.rpc("config/read", {"includeLayers": False}).get("config", {})
-            disabled_mcp = {
-                f"mcp_servers.{name}.enabled": False
-                for name in effective.get("mcp_servers", {})
-            }
-            del effective
             dynamic = [{"type": "namespace", "name": _NAMESPACE, "description": "TradingAgents functions", "tools": [{
                 "type": "function", "name": tool["name"], "description": tool.get("description", ""),
                 "inputSchema": tool.get("parameters", {"type": "object", "properties": {}}),
@@ -355,12 +390,22 @@ class ChatGPTChatModel(BaseChatModel):
                 "sandbox": "read-only", "approvalPolicy": "never", "dynamicTools": dynamic,
                 "baseInstructions": instructions or "Answer the user's request.",
                 "developerInstructions": "This session performs financial research only. Repository and personal coding-workflow instructions, code scores, test policies and task bookkeeping do not apply to research reports. Return only the requested financial analysis or bound research tool call.",
-                "config": {**disabled_mcp, "model_reasoning_effort": self.reasoning_effort},
+                "config": {"model_reasoning_effort": self.reasoning_effort},
                 "serviceTier": "default",
             })
             thread_id = started["thread"]["id"]
             if started.get("model", self.model_name) != self.model_name:
                 raise RuntimeError("Codex did not select the requested ChatGPT model.")
+            cursor = None
+            while True:
+                inventory = server.rpc("mcpServerStatus/list", {
+                    "threadId": thread_id, "detail": "toolsAndAuthOnly", "cursor": cursor,
+                })
+                if any(item.get("tools") for item in inventory.get("data", [])):
+                    raise RuntimeError("Codex exposed built-in MCP tools; account adapter stopped before research.")
+                cursor = inventory.get("nextCursor")
+                if not cursor:
+                    break
             if history:
                 server.rpc("thread/inject_items", {"threadId": thread_id, "items": history})
             turn = {"threadId": thread_id, "input": [{"type": "text", "text": user_text}], "environments": []}
@@ -400,8 +445,12 @@ class ChatGPTChatModel(BaseChatModel):
                 if method == "item/started" and params.get("item", {}).get("type") in {
                     "commandExecution", "fileChange", "mcpToolCall", "webSearch", "computerUse",
                 }:
+                    item = params["item"]
+                    identity = item["type"]
+                    if identity == "mcpToolCall":
+                        identity += f"; server={str(item.get('server', 'unknown'))[:120]}; tool={str(item.get('tool', 'unknown'))[:120]}"
                     raise RuntimeError(
-                        f"Codex exposed an unexpected built-in tool ({params['item']['type']}) "
+                        f"Codex exposed an unexpected built-in tool ({identity}) "
                         f"for requested model {self.model_name}; account adapter stopped."
                     )
                 if "id" in event and method:

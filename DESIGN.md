@@ -24,6 +24,64 @@ colors:
   field: "#14202a"
   primary-text: "#10271b"
   focus: "#86d6ab"
+  error-surface: "#3a252b"
+  error-border: "#6a414b"
+  error-text: "#f2b0b8"
+  universe-focus: "#99d4ef"
+  # Shadow ink is specific to the narrow universe detail overlay.
+  universe-detail-shadow-ink: "#000b"
+  # The following values describe observed component-specific states.
+  nav-active-surface: "#203329"
+  quiet-hover-surface: "#2c3c48"
+  symbol-hover-surface: "#345342"
+  notice-warning-surface: "#353024"
+  danger-button-surface: "#36272b"
+  nav-count-surface: "#365c46"
+  status-success-border: "#365c47"
+  badge-warning-surface: "#393426"
+  badge-error-surface: "#3d282e"
+  nav-rail-border: "#3d5e4c"
+  badge-info-border: "#426881"
+  universe-border: "#435361"
+  symbol-border: "#435462"
+  button-border: "#475561"
+  danger-hover-surface: "#4b3138"
+  badge-neutral-border: "#4b5a67"
+  field-border: "#4b5d6a"
+  sidebar-control-border: "#547061"
+  toast-border: "#547c64"
+  notice-warning-border: "#5a5039"
+  dialog-border: "#5a7060"
+  research-selected-border: "#5c826b"
+  universe-control-border: "#607484"
+  symbol-selected-border: "#629674"
+  button-hover-border: "#667a89"
+  badge-warning-border: "#6b5c38"
+  allocation-fill: "#78ae90"
+  field-hover-border: "#7a9386"
+  badge-error-border: "#81505a"
+  danger-button-border: "#89585e"
+  paper-identity-text: "#a3d3b7"
+  status-success-text: "#a4dfba"
+  nav-active-text: "#a5e7bd"
+  badge-info-text: "#aad2ef"
+  chart-control-text: "#acbac6"
+  universe-muted-text: "#aebfcc"
+  danger-hover-border: "#b27b83"
+  symbol-selected-text: "#b8e9c9"
+  nav-count-text: "#c5f3d4"
+  report-text: "#cfdae2"
+  asset-mark-text: "#d3e0e9"
+  skip-link-text: "#d4efde"
+  down-candle: "#dc8c96"
+  chart-control-hover-text: "#e1eee5"
+  toast-text: "#e2f2e8"
+  badge-warning-text: "#e4cb97"
+  notice-warning-text: "#e5cf9c"
+  badge-error-text: "#f0a9b0"
+  snapshot-warning-text: "#f1d49b"
+  universe-error-text: "#ffc3a5"
+  universe-selected-surface: "#2b5140"
 typography:
   display:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
@@ -55,7 +113,7 @@ typography:
     lineHeight: 1.65
   label:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "14px"
+    fontSize: "13px"
     fontWeight: 550
     lineHeight: 1.5
   action:
@@ -106,7 +164,7 @@ components:
     rounded: "{rounded.control}"
     padding: "8px 12px"
   button-danger:
-    backgroundColor: "#36272b"
+    backgroundColor: "{colors.danger-button-surface}"
     textColor: "{colors.negative}"
     typography: "{typography.action}"
     rounded: "{rounded.control}"
@@ -127,10 +185,10 @@ components:
     typography: "{typography.title}"
     padding: "11px 13px"
   navigation-active:
-    backgroundColor: "#203329"
-    textColor: "#a5e7bd"
+    backgroundColor: "{colors.nav-active-surface}"
+    textColor: "{colors.nav-active-text}"
     rounded: "0"
-    padding: "0 17px"
+    padding: "8px 12px"
   symbol-chip:
     backgroundColor: "#293a47"
     textColor: "#c1d0db"
@@ -138,7 +196,7 @@ components:
     padding: "3px 5px"
   status-verified:
     backgroundColor: "#203a2d"
-    textColor: "#a4dfba"
+    textColor: "{colors.status-success-text}"
     rounded: "{rounded.badge}"
     padding: "3px 6px"
 ---
@@ -155,7 +213,7 @@ The visual system keeps research, proposals, and broker execution legible as sep
 
 **Key Characteristics:**
 
-- Dense horizontal navigation and linked instrument panels.
+- Desktop sidebar navigation and linked instrument panels.
 - Charcoal surfaces separated by fine rules and lighter headers.
 - Green actions and selections with labeled status semantics.
 - System typography with aligned, tabular financial figures.
@@ -165,11 +223,11 @@ Extracted from the current cascade in `tradingagents/web/static/app.css`, the sh
 
 ## Colors
 
-The palette uses cool charcoal layers for long reading sessions, with a pale green accent for action and selection. Sidecar tonal strips are derived previews for the documentation panel; they do not introduce new application tokens.
+The palette uses cool charcoal layers for long reading sessions, with a pale green accent for action and selection. The named component-state colors in the frontmatter record observed control, badge, notice, chart and universe variants; they describe those specific uses, not a requirement to reuse each value globally. Sidecar tonal strips are derived previews; they do not introduce application tokens.
 
 ### Primary
 
-- **Desk Green** (`accent`): primary buttons, active chart tabs, links, the brand mark, and active navigation underline.
+- **Desk Green** (`accent`): primary buttons, active chart tabs, links, the brand mark, and active navigation treatment.
 - **Green Hover** (`accent-hover`): primary button hover fill and border.
 - **Green Wash** (`accent-wash`): retained root wash token; the current status badges use their explicit component variants.
 - **Positive Green** (`positive`): gains, positive quote changes, completed research stages, and upward candles.
@@ -178,6 +236,8 @@ The palette uses cool charcoal layers for long reading sessions, with a pale gre
 
 - **Loss Rose** (`negative`): negative changes, sell-side labels, and destructive controls.
 - **Review Amber** (`warning`): caution and review semantics.
+- **Error surface, border, and text** (`error-surface`, `error-border`, `error-text`): shared error notices and details.
+- **Universe focus** (`universe-focus`): keyboard focus in the configured-universe workspace.
 - Status badges use separate muted green, blue, amber, and rose fills with matching borders and light text. Their words carry the meaning alongside color.
 
 ### Neutral
@@ -203,38 +263,28 @@ Success, error, warning and information states use distinct foreground, border a
 
 The typography resembles a native trading workstation. Compact labels remain subordinate to instrument symbols and account values; reports gain breathing room through line height rather than a new font.
 
-- **Display:** account ledger values use the `display` role. This is a financial metric style, not a promotional heading.
-- **Headline:** page headings use the `headline` role; the narrow layout reduces them to 20px.
-- **Title:** instrument headers use the `title` role. General section headings and settings titles retain their observed 14–16px hierarchy.
-- **Body:** general UI text uses `body`; table values and research summaries commonly use 11px.
-- **Report:** analyst text uses `report`, preserves whitespace, wraps long tokens, and limits width to 88ch. At the narrow breakpoint it becomes 11px.
-- **Label:** table headings use `label`. Supporting captions retain an 11px minimum.
-- **Action:** standard buttons use `action`; small controls retain the same 11px text size.
+- **Headline:** page headings and Dashboard account values use the 22px heading token.
+- **Title:** section headings use the existing compact hierarchy.
+- **Body:** general UI text uses 16px; data cells use 14px.
+- **Report:** analyst text uses the body role, preserves whitespace, and wraps long tokens.
+- **Label:** table headings and supporting captions use the 13px metadata token.
+- **Action:** standard buttons and navigation controls use the 14px UI token; compact metadata variants can use 13px.
 
 **The Numeric Alignment Rule.** Keep table cells and account values in tabular numerals. Right-align numeric columns and left-align instrument identity.
 
 ## Layout
 
-The desktop shell is full width. A sticky horizontal navigation bar (61px) sits over a compact context bar (39px). The default workspace padding is 20px 21px 24px. Navigation stays horizontal as the page narrows, moving below the brand into its own row.
+The desktop shell places a vertical navigation sidebar beside the workspace and its context bar. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
 
-The account ledger is one bordered row of four equal cells. The primary instrument grid uses `minmax(280px,.97fr) minmax(410px,1.65fr) minmax(250px,.85fr)` with a 12px gap. The chart is the largest instrument. A lower grid uses a 1.25:1 ratio for positions and the order blotter. These are current desk compositions, not requirements for every future screen.
-
-Responsive behavior follows the actual cascade:
+The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist and its table remain scrollable when their controls need more space.
 
 | Condition | Implemented behavior |
 | --- | --- |
-| At least 1600px | Wider instrument minima, 25px horizontal workspace padding, 275px chart region. |
-| At most 1250px | Tighter navigation and 10px panel gaps; compact header and table padding. |
-| At most 1060px | Watchlist and chart remain side by side; evidence spans the following row; the lower grid becomes one column. |
-| At most 980px | The inherited research-detail sidebar narrows to 175px. |
-| At most 790px | Navigation wraps below the brand; settings and research details become one column; research symbols become a scrolling horizontal list. |
-| At most 760px | The inherited account ledger becomes two columns; the footer stacks; the research toolbar may wrap. |
-| At most 600px | Instruments stack in chart, watchlist, evidence order; the page action expands; fields use one column. |
-| At most 540px | Supplemental inherited compact rules reduce event-list gutters and let the research-run label occupy a full row. |
+| At least 1101px wide and 801px high | Dashboard uses the wider two-row composition. |
+| At most 1100px wide or 800px high | Dashboard switches to a single visible panel with tabs. |
+| At most 790px wide | The sidebar becomes a horizontal scrolling navigation row and the footer is hidden. |
 
-Tables retain horizontal scrolling rather than compressing financial columns into unreadable text. Watchlist rows use 5px vertical cell padding on desktop and 7px at 600px and below. Panel content permits shrinking with `min-width:0`. The chart region is 242px high by default; breakpoint-specific heights range from 220px to 275px.
-
-Chart SVGs render as block elements and match their viewBox to the measured content width and height through ResizeObserver. Plot geometry uses the available panel space while axis labels retain their 11px CSS size on narrow screens.
+Tables retain horizontal scrolling when financial columns need more space. Chart sizing follows the available panel area.
 
 ## Elevation & Depth
 
@@ -242,12 +292,13 @@ Normal workspace surfaces are flat. Layering comes from the dark canvas, lighter
 
 - **Toast:** `0 8px 28px #0005`.
 - **Order dialog:** `0 20px 70px #0008`, with backdrop `#060d14ad`.
+- **Narrow universe detail:** `0 10px 70px #000b`.
 
 **The Flat Instrument Rule.** Use rules and tonal layers to separate persistent instruments. Reserve shadows for temporary overlays.
 
 ## Shapes
 
-Controls, panels, and account containers use the compact control radius. Status badges and symbol chips use the smaller badge radius; the dialog uses the dialog radius. These are restrained corner treatments on rectangular tools. Navigation tabs remain square, with a two-pixel active underline. Circular marks identify status or research stages.
+Controls, panels, and account containers use the compact control radius. Status badges and symbol chips use the smaller badge radius; the dialog uses the dialog radius. These are restrained corner treatments on rectangular tools. Navigation controls retain a visible active state. Circular marks identify status or research stages.
 
 One-pixel borders carry structural separation. Avoid turning the ledger or instrument grid into detached rounded tiles.
 
@@ -277,13 +328,13 @@ Fields use a recessed dark surface, a cool border, and a minimum height of 36px.
 
 ### Navigation
 
-Global navigation combines small line icons with text. The active page has a green-toned fill, lighter green text, and a bottom accent rule; hover uses a cooler slate fill. The pause/resume control remains at the right of the global bar. Narrow layouts place the navigation links below the brand and keep their labels; at 600px and below the icons are hidden.
+Global navigation combines small line icons with text in the desktop sidebar. The current page has a green-toned fill and accent border. At narrow widths the navigation becomes a horizontally scrolling row, with labels retained and icons hidden.
 
 ### Linked instruments
 
 Selecting a ticker updates the daily OHLC chart, quote strip, and research inspector. The selected table row uses a green-toned fill, while pointer hover uses a cooler surface. Chart tabs switch between instrument history and account equity; period controls are compact text buttons. Up/down candles use separate fills and strokes; volume bars have reduced opacity.
 
-Reports use disclosure sections with a visible expansion marker. The research-stage line uses five equal grid columns, 11px labels that can wrap, and colored completion markers. Empty charts show a plain panel surface and an explicit absence message, with no decorative price series.
+Reports use disclosure sections with a visible expansion marker. The research-stage line uses five equal grid columns, labels that can wrap, and colored completion markers. Empty charts show a plain panel surface and an explicit absence message, with no decorative price series.
 
 ### Order preview and feedback
 
@@ -305,7 +356,7 @@ The only repeating motion is the existing 1.5s loading pulse. The reduced-motion
 
 ### Don't:
 
-- **Don't** revive the superseded light palette or vertical desktop sidebar.
+- **Don't** revive the superseded light palette.
 - **Don't** add decorative shadows to persistent instrument panels.
 - **Don't** replace missing market data with illustrative prices or chart points.
 - **Don't** imply that selecting a symbol or launching research submits an order.
@@ -325,7 +376,7 @@ Workspace styles consume these properties; do not add local copies of the type o
 | Dense tabular data and chart axes | `--text-data` | 14px |
 | Secondary metadata | `--text-meta` | 13px |
 | Section, workspace and page headings | `--text-section / --text-heading / --text-display` | 18 / 22 / 26px |
-| Account values | `--text-metric` | 28px |
+| Account values | `--text-metric` / `--text-heading` | 28px / 22px on Dashboard |
 | UI and prose leading | `--leading-ui / --leading-body` | 1.45 / 1.65 |
 | Shared spacing scale | `--space-1` through `--space-6` | 4 / 8 / 12 / 16 / 20 / 24px |
 | Standard control height | `--control-height` | 36px |

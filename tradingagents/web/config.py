@@ -26,6 +26,7 @@ class DeskConfig(BaseModel):
     deep_think_llm: str = Field(default="gpt-6-sol", min_length=1, max_length=100)
     quick_think_llm: str = Field(default="gpt-6-luna", min_length=1, max_length=100)
     backend_url: str | None = None
+    max_tokens: int | None = Field(default=None, gt=0, strict=True)
     max_debate_rounds: int = Field(default=1, ge=1, le=3)
     max_risk_discuss_rounds: int = Field(default=1, ge=1, le=3)
     max_tool_rounds: int = Field(default=8, ge=1, le=20)

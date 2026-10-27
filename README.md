@@ -6,15 +6,17 @@ preparation, and portfolio monitoring. This checkout extends
 the browser desk, execution integration, and workflows described here are specific
 to this fork.
 
-**Start the existing installation:** run `rtk proxy .\Start-TradingDesk.cmd`
-from `C:\src\TradingAgents`, then open <http://127.0.0.1:8098/>.
-Normal startup connects Nautilus automatically and starts the installed local
-Maenifold HTTP service if its configured loopback port is unavailable. Local Laya
-already loads in the background; Codex starts its adapter when research needs it.
-Browse-only and recovery modes do not start the native connection. No packages
-are installed at startup.
-Use one app server on **8098**. The app targets desktop windows; phone layouts
-are out of scope.
+**Start the installed Windows app:** open the TradingAgents desktop or Start
+menu shortcut. Both point to
+`%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`.
+The app opens <http://127.0.0.1:8098/> and stays in the system tray when the
+browser closes. The tray offers **Open**, **Restart**, **Check for updates**,
+**Open logs**, and **Quit**. A normal tray Quit has not yet been verified.
+
+Development uses `rtk proxy .\Start-TradingDesk-Dev.cmd` from the checkout and
+<http://127.0.0.1:8099/>. Its runtime, data and credentials are separate from
+production. No packages are installed at startup. The app targets desktop
+windows; phone layouts are out of scope.
 
 ## Read this first
 
@@ -186,6 +188,20 @@ In **Settings → Research**, select **Codex (existing sign-in)** or
 its default fast/deep choices are Luna and Sol. The compatible option keeps
 the endpoint/model workflow available. Save settings before starting a run.
 Switching options in an editing draft is not the same as saving configuration.
+
+For an API model, **Model limits** reads the configured server's `/models`
+metadata when you open Research settings or change the endpoint/model. It shows
+the advertised loaded context, output maximum and output default for each model;
+missing values remain **Unknown**. **Refresh model limits** rereads the server.
+Transient connection failures and HTTP 408/429/500/502/503/504 receive three
+retries after the first attempt, with timeouts of 10, 20, 30 and 30 seconds.
+This lookup does not run inference or change the model loaded on the server.
+
+**Max output tokens** is an optional positive integer for future API-backed
+research and portfolio calls. Leave it blank to use the server default. Context
+is shared by input, tool results and generated output; the loaded context size
+is changed on the server. Codex manages its own token limits, so this override
+is unavailable with Codex sign-in.
 
 “No model loaded” from a compatible endpoint means that endpoint cannot serve
 the selected model. It does not mean Codex is unavailable. Check the actual
@@ -681,14 +697,15 @@ batch receipts, token checks and per-post predictions. This does not refetch
 sources, rerun research or change the saved recommendation.
 
 The desk owns one background-loaded [Laya Python Router](https://github.com/NandhaKishorM/laya)
-in its existing `.venv`; no classifier server, extra port or Gateway Laya process
+in its app runtime; no classifier server, extra port or Gateway Laya process
 is required. `pyproject.toml` pins Laya **0.4.14**, torch **2.14.1**,
 transformers **5.20.2**, tokenizers **0.23.3**, huggingface-hub **2.3.0** and
 safetensors **0.8.0** in the `paper` extra. The standalone
 [`convaiinnovations/laya-multilingual`](https://huggingface.co/convaiinnovations/laya-multilingual/tree/1720e3e3357cfe1e281542e223f8273b0890ca34)
 checkpoint is fixed at revision `1720e3e3357cfe1e281542e223f8273b0890ca34`.
 
-For an existing checkout/environment, use the already-installed `uv` to freeze
+The following commands describe checkout development setup, not the installed
+app. For an existing checkout/environment, use the already-installed `uv` to freeze
 the installed versions, inspect the missing-only resolution, then install the
 same pinned classifier dependencies. Run these commands from the checkout:
 
@@ -720,26 +737,18 @@ differs from the existing `paper` extra's **15.0.1** pin; the local Laya additio
 preserved 16.1.1 and every other pre-existing package. No dependency installation
 runs at app startup.
 
-NautilusTrader **1.231.0** belongs in the separate `.venv-nautilus-v1`, not the
-app environment. That native installation, the installed Codex app-server and
-sign-in, the existing Maenifold Gateway/MCP service, Alpaca account access and
-credentials are separate prerequisites; the app's pip manifest does not provision
-them. Copy/configure `tradingdesk.launch.json` locally with its five fields:
-`application`, `history`, `native_python`, `credentials_file` and `port` (8098).
-Paths resolve against the checkout containing that file; absolute paths also
-work. Retain the migrated SQLite application/history stores and keep credentials
-external. The launcher rejects missing stores rather than creating replacement
-records. Portability here provides the app dependency/model setup; it is not
-an automatic broker, native-runtime or data migration.
+The installed release has separate private desk and Nautilus runtimes. Checkout
+development uses `.venv` and `.venv-nautilus-v1`. A signed-in Codex installation
+and Maenifold Gateway/MCP service remain external prerequisites. Alpaca access
+also requires the appropriate private account configuration.
 
-The default weight cache is `.cache/laya` relative to the checkout. Reuse it
-across app restarts; set `TRADINGAGENTS_LAYA_CACHE` to another cache directory
-if needed (relative paths also resolve against the checkout). Prefetching is
-optional; first startup downloads the same fixed revision in the background:
+The desktop profiles keep the Laya cache under their own profile directories.
+Standalone checkout use defaults to `.cache/laya` relative to the checkout;
+`TRADINGAGENTS_LAYA_CACHE` can select another cache. Prefetching for standalone
+checkout use is optional; the loader downloads the fixed revision in the background:
 
 ```powershell
 rtk proxy .venv/Scripts/hf.exe download convaiinnovations/laya-multilingual --revision 1720e3e3357cfe1e281542e223f8273b0890ca34 --include rl_agent_config.json --include model.safetensors --include "tokenizer/*" --include "encoder/*" --cache-dir .cache/laya
-rtk proxy .\Start-TradingDesk.cmd
 ```
 
 `TRADINGAGENTS_LAYA_DEVICE=cpu` is the default. Set it to `cuda` or `cuda:0`
@@ -761,21 +770,24 @@ still use their existing Gateway tools and canonical GetHelp instructions.
 
 ### Existing installation
 
-`tradingdesk.launch.json` supplies the application directory, history directory,
-native Python, credentials-file location and port. The normal launcher uses
-those values and checks the installation. A Git clone alone is not this working
-installation: environments, local data and private credentials are separate.
+The installed app uses private runtimes and the production profile under
+`%LOCALAPPDATA%\com.tradingagents.desktop\production`. Its
+private provider configuration is `private\providers.env`, and its desk log
+is `logs\desk.log` under that profile. The development launcher uses source
+environments and `.local-workspace\development` on port 8099. It does not copy
+production credentials or share the production profile. The older
+`Start-TradingDesk.cmd` and `tradingdesk.launch.json` describe the legacy
+source-linked installation, not the installed production app.
 
-The app runs in `.venv`; native Nautilus uses `.venv-nautilus-v1`.
-Maenifold Gateway defaults to `http://localhost:8080/mcp`.
-Provider endpoints and broker endpoints are separate configuration.
+Maenifold Gateway defaults to `http://localhost:8080/mcp`. Provider endpoints
+and broker endpoints are separate configuration.
 
 Normal startup starts Nautilus from the saved settings. Use **Settings → Account**
 to inspect the observed account or to stop or start the engine. Check the observed
 account to verify paper/live identity. Stopping Nautilus leaves saved research
 and the web app available. Closing the browser does not stop the app server.
 
-Restart only the identified app/native processes and keep port 8098. A native
+Use the tray to restart the installed app. A native
 restart creates a new authority session; retained broker orders are not
 automatically cancelled. Apply changed credentials or execution profiles through
 the documented stopped-session workflow.
@@ -784,17 +796,21 @@ the documented stopped-session workflow.
 
 | Location | Contents / boundary |
 | --- | --- |
-| Configured `application` directory | Authored settings, lists, proposals, approvals and notes; separate `latest_research` cache and latest source/report artifacts. Nested receipt observations update live state without saving the settings journal or scanning aggregate counts. Latest results are cached at cycle admission, stock completion and explicit local annotation boundaries. |
-| Configured `history` directory | Not imported as research. Existing authored artifact references and explicit maintenance operations may still refer to this directory. |
+| Production profile `application` directory | Authored settings, lists, proposals, approvals and notes; separate `latest_research` cache and latest source/report artifacts. |
+| Production profile `research` directory | Not imported as research. Existing authored artifact references and explicit maintenance operations may still refer to this directory. |
 | Browser storage | Browser preferences and editing state; clearing it alone does not clear server-side research/orders. |
 | Native worker | In-memory Nautilus cache and session state. Application SQLite is not proof of native crash/restart durability. |
 | Maenifold memory | Separate durable knowledge/graph/structured-thinking corpus. |
 | Alpaca | Broker balances, positions, orders, fills and history; outside a local reset. |
 
-Both configured local data directories currently sit under
-`C:/src/TradingAgents/.local-workspace/evidence/runtime-staging/20261017T024233Z-e3f9548d/`.
-Read the launch configuration each time rather than assuming this path.
-Credentials are external; never print or commit them.
+The prior source-linked application and history directories remain under
+`.local-workspace/evidence/runtime-staging/20261017T024233Z-e3f9548d/` as
+preserved source data. Credentials are private; never print or commit them.
+
+The Windows 0.6.0 installer and signature were produced, but the update feed
+has not been published and an end-to-end update has not been proven. The macOS
+dependency locks target macOS 26 or later on Apple silicon; no macOS build or
+acceptance has been completed.
 
 ### Existing local backup and restore controls
 
@@ -833,24 +849,18 @@ Leave Maenifold, model caches, environments, credentials and broker records alon
 Cleanup is destructive and is not a routine troubleshooting step. Use it only
 when requested, and identify exactly which records should be removed.
 
-1. Read the configured application/history paths. Verify resolved absolute
+1. Identify the selected profile's application and research paths. Verify resolved absolute
    targets and reject junctions/symbolic links before recursive deletion.
 2. Stop Nautilus through the UI, then stop only the app server owning 8098.
    Confirm its registered workers exited.
-3. To clear separate retained history, remove and recreate only the configured
-   `history` directory. Research held in the application store remains.
+3. To clear separate retained history, remove and recreate only the selected
+   profile's `research` directory. Research held in the application store remains.
 4. For a requested full fresh local state, clear both configured directories.
    This removes local settings, drafts, lists and research, not broker records.
-5. An empty application store needs initialization. The normal launcher rejects
-   a missing SQLite store. Use the existing server entry point once with the
-   exact configured paths, then return to the normal launcher:
+5. The installed app can initialize a fresh store when explicitly requested.
+   Do not use an empty store as a workaround for an unavailable existing one.
 
-```powershell
-rtk proxy .\.venv\Scripts\python.exe -m tradingagents.web.server --port 8098 --data-dir <application> --history-dir <history> --nautilus-python <native_python> --alpaca-credentials-file <credentials_file>
-```
-
-Replace every placeholder from `tradingdesk.launch.json`. Do not delete source,
-environments, credentials or broker records. Do not import unwanted old browser
+Do not delete source, environments, credentials or broker records. Do not import unwanted old browser
 lists into the new store. Verify the resulting empty views after restart:
 deleting a directory does not clear an already-running process's memory.
 
@@ -874,7 +884,7 @@ deleting a directory does not clear an already-running process's memory.
 
 | Area | Entry points |
 | --- | --- |
-| Launcher and configuration | `Start-TradingDesk.cmd`, `Launch-TradingDesk.py`, `tradingdesk.launch.json` |
+| Desktop host and development launcher | `desktop/`, `Start-TradingDesk-Dev.cmd`; legacy source launcher: `Start-TradingDesk.cmd`, `Launch-TradingDesk.py`, `tradingdesk.launch.json` |
 | Web/API and orchestration | `tradingagents/web/server.py`, `service.py`, `config.py` |
 | Browser composition | `tradingagents/web/static/app.js`, `index.html`, `app.css`, `ui-*.css` |
 | Charts | `web/static/market-chart.js`, vendored `lightweight-charts/5.2.1` and drawing plugin `0.6.2` |

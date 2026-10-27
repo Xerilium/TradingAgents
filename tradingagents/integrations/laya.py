@@ -35,8 +35,8 @@ def local_failure_details(error):
 
 
 class LocalLaya:
-    def __init__(self):
-        root = Path(__file__).resolve().parents[2]
+    def __init__(self, cache_root=None):
+        root = Path(cache_root) if cache_root is not None else Path(__file__).resolve().parents[2]
         cache = Path(os.getenv("TRADINGAGENTS_LAYA_CACHE", ".cache/laya"))
         self.cache = (root / cache).resolve()
         self.device = os.getenv("TRADINGAGENTS_LAYA_DEVICE", "cpu")

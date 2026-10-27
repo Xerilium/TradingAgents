@@ -19,6 +19,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 from zipfile import BadZipFile, LargeZipFile
 
+# Reserve stdout for the desktop host protocol before importing the desk.
+desktop_output = sys.stdout if "--desktop-control" in sys.argv else None
+if desktop_output is not None:
+    sys.stdout = sys.stderr
+
 from dotenv import load_dotenv
 
 from tradingagents.integrations.maenifold import GatewayRateLimited
@@ -36,9 +41,15 @@ class DeskServer(ThreadingHTTPServer):
         if address[0] != "127.0.0.1":
             raise ValueError("TradingAgents supports IPv4 loopback binding only")
         self.service = service
+        self.service_lock = threading.RLock()
+        self.closing = False
         self.csrf_token = secrets.token_urlsafe(32)
         self.session_token = secrets.token_urlsafe(32)
+        self.serving = threading.Event()
         super().__init__(address, DeskHandler)
+
+    def service_actions(self):
+        self.serving.set()
 
 
 class DeskHandler(BaseHTTPRequestHandler):
@@ -105,7 +116,8 @@ class DeskHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def do_GET(self):
-        if not urlsplit(self.path).path.startswith("/api/"):
+        path = urlsplit(self.path).path
+        if not path.startswith("/api/") or path == "/api/model-limits":
             self._get()
             return
         with self.server.service.maintenance:
@@ -131,6 +143,24 @@ class DeskHandler(BaseHTTPRequestHandler):
             else:
                 state = self.server.service.state()
             self._send(200, {**state, "csrf_token": self.server.csrf_token})
+            return
+        if path == "/api/model-limits":
+            from .config import DeskConfig
+            from .model_limits import discover
+            query = parse_qs(url.query, keep_blank_values=True)
+            fields = {"provider": "llm_provider", "backend_url": "backend_url",
+                      "deep_think_llm": "deep_think_llm", "quick_think_llm": "quick_think_llm"}
+            try:
+                if set(query) - fields.keys() or any(len(values) != 1 for values in query.values()):
+                    raise ValueError("Invalid model settings query")
+                with self.server.service.store.lock:
+                    settings = dict(self.server.service.store.data["config"])
+                settings.update({fields[key]: values[0] for key, values in query.items()})
+                config = DeskConfig.model_validate(settings)
+            except (ValueError, TypeError):
+                self._send(400, {"error": "Invalid model settings or endpoint."})
+                return
+            self._send(200, discover(config))
             return
         if path == "/api/portfolio-model":
             self._send(200, self.server.service.proposed_portfolio())
@@ -383,21 +413,25 @@ class DeskHandler(BaseHTTPRequestHandler):
             elif path == "/api/admission":
                 result = service.approval_action(data, admission=True)
             elif path == "/api/recovery":
-                result = service.recovery_action(data)
-                if getattr(service, "recovery_only", False) and result.get("restored"):
-                    service.close()
-                    try:
-                        replacement = DeskService(service.application_root, runtime=service.runtime,
-                                                  browse_only=service.launch_browse_only)
-                        replacement.launch_browse_only = service.launch_browse_only
-                    except Exception:
-                        from .recovery import writer_lease
-                        service.writer_lease = writer_lease(service.application_root)
-                        raise
-                    replacement.launch_root = service.original_root
-                    self.server.service = replacement
-                    result.update(promoted=True, restart_required=False,
-                        message="Application records restored in a retained sibling generation. Native cache is in memory and is not restored; new orders remain blocked pending fresh reconciliation and review.")
+                with self.server.service_lock:
+                    if self.server.closing:
+                        raise ValueError("The application is stopping")
+                    service = self.server.service
+                    result = service.recovery_action(data)
+                    if getattr(service, "recovery_only", False) and result.get("restored"):
+                        service.close()
+                        try:
+                            replacement = DeskService(service.application_root, runtime=service.runtime,
+                                                      browse_only=service.launch_browse_only)
+                            replacement.launch_browse_only = service.launch_browse_only
+                        except Exception:
+                            from .recovery import writer_lease
+                            service.writer_lease = writer_lease(service.application_root)
+                            raise
+                        replacement.launch_root = service.original_root
+                        self.server.service = replacement
+                        result.update(promoted=True, restart_required=False,
+                            message="Application records restored in a retained sibling generation. Native cache is in memory and is not restored; new orders remain blocked pending fresh reconciliation and review.")
             elif path == "/api/reporting":
                 result = service.save_reporting(data)
             elif path == "/api/commands":
@@ -478,6 +512,7 @@ def main():
     parser.add_argument("--browse-only", action="store_true", help="Browse saved runs and prepare local human proposals; disable research, native order drafts, approval and admission")
     parser.add_argument("--history-dir", type=Path, help="Read additional saved research without modifying its journal")
     parser.add_argument("--migrate-journal", action="store_true", help="One-time offline JSON migration; all source writers must be stopped first")
+    parser.add_argument("--desktop-control", action="store_true", help="Accept stop or EOF on stdin from the desktop host")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("port must be between 1 and 65535")
@@ -500,6 +535,28 @@ def main():
         server = DeskServer(("127.0.0.1", args.port), None)
     except OSError:
         parser.exit(2, f"Cannot bind 127.0.0.1:{args.port}. The port is occupied or unavailable; use the launcher to identify a matching instance. No processes were stopped.\n")
+    service = None
+    runtime = None
+    gateway_process = None
+
+    def close_owned():
+        try:
+            with server.service_lock:
+                server.closing = True
+                current_service = server.service if server.service is not None else service
+                if current_service is not None:
+                    current_service.close()
+                elif runtime is not None:
+                    runtime.stop()
+        finally:
+            if gateway_process is not None and gateway_process.poll() is None:
+                gateway_process.terminate()
+                try:
+                    gateway_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    gateway_process.kill()
+                    gateway_process.wait()
+
     try:
         try:
             directory = startup_root(original_root)
@@ -520,7 +577,6 @@ def main():
             service.startup_errors = []
             if not args.browse_only:
                 service.gateway_status = "checking"
-                gateway_process = None
                 endpoint = urlsplit(args.mcp_endpoint)
                 if endpoint.scheme == "http" and endpoint.hostname in {"localhost", "127.0.0.1", "::1"}:
                     port = endpoint.port or 80
@@ -555,17 +611,29 @@ def main():
                         runtime.snapshot.update(status="error", read_only=True, error=f"Nautilus startup failed: {failure}")
         service.launch_browse_only = args.browse_only
         server.service = service
-    except Exception:
+    except BaseException:
         server.server_close()
+        close_owned()
         raise
-    print(f"TradingAgents paper workspace: http://127.0.0.1:{args.port}", flush=True)
     try:
+        if args.desktop_control:
+            def watch_desktop():
+                for line in sys.stdin:
+                    if line.strip().lower() == "stop":
+                        break
+                server.serving.wait()
+                server.shutdown()
+
+            threading.Thread(target=watch_desktop, name="desktop-control", daemon=True).start()
+            print(json.dumps({"desktop_ready": True, "port": args.port}), file=desktop_output, flush=True)
+        else:
+            print(f"TradingAgents paper workspace: http://127.0.0.1:{args.port}", flush=True)
         server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
-        service.close()
+        close_owned()
 
 
 if __name__ == "__main__":

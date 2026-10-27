@@ -80,7 +80,7 @@ Saved draft cards may include historical Nautilus records. Their presence does n
 
 ### Stock order proposal
 
-**Source only.** “Create an order” opens a human trade proposal. The exact fields depend on side, order type, asset/account capabilities, selected holding and policy. Do not treat a hidden or disabled field as available.
+**Observed fields, source-only writes.** Opening the saved NVDA proposal on 25 October 2026 showed editable BUY, 6 shares, LIMIT 211.50, DAY and Regular session fields. Entry, Exits and Review changed the visible ticket step. No terms were edited or saved. “Create an order” is the separate new-proposal route; the conditional capabilities below come from source. The exact fields depend on side, order type, asset/account capabilities, selected holding and policy. Do not treat a hidden or disabled field as available.
 
 The stock editor can include:
 
@@ -124,7 +124,7 @@ The estimate uses dated option bid/ask and exact deliverable. Premium is per und
 
 Execution profile choices are “Long options only” (default) and “Bounded risk option spreads”, subject to account capability. An existing package can be amended only if eligible; amendment locks profile, contracts, intents, ratios and order type.
 
-Each leg selects an exact contract and a profile-allowed intent. Long-only uses Buy to Open (BTO) or Sell to Close (STC). Bounded-risk spreads can also use Sell to Open (STO) and Buy to Close (BTC), but every short leg needs coverage. Whole strategy units multiply each normalized whole-leg ratio. The view shows exact contracts, expiration, strike, call/put, multiplier, holding and dated STC availability. Add legs up to four; remove a leg only when at least two remain.
+Each leg selects an exact contract and a profile-allowed intent. Long-only uses Buy to Open (BTO) or Sell to Close (STC). Bounded-risk spreads can also use Sell to Open (STO) and Buy to Close (BTC), but every short leg needs coverage. Whole strategy units multiply each positive whole-leg ratio. The ratios must have greatest common divisor 1; enter 1:1 rather than 2:2. The app does not silently normalize them. All legs require observed metadata for the same underlying stock; the bounded-risk profile also requires the same expiry. The view shows exact contracts, expiration, strike, call/put, multiplier, holding and dated STC availability. **Add leg** adds the next unused retained selected contract, up to four; select another compatible contract first if no unused selection exists. Its enabled appearance alone does not prove a candidate is available. **Remove leg** removes an unsaved row even when fewer than two would remain. Such a draft is incomplete: Preview/Save stay blocked until there are 2–4 distinct compatible legs and all other required terms are valid. These conditional behaviors were traced in the handlers; no option package was created in the browser.
 
 Other fields are whole strategy units, profile-allowed order type and duration, net debit/credit direction, signed net limit in USD per package multiplier unit for LIMIT, rationale and revision note. Zero net limit is unsupported. Long-only supports 2–4 distinct BTO/STC legs, MARKET or LIMIT, DAY or GTC. Bounded-risk spreads require 2–4 legs with the same expiry, covered shorts and LIMIT. The app revalidates each separately selected session/capability.
 
@@ -132,7 +132,7 @@ A package LIMIT is positive for a debit and negative for a credit. A market pack
 
 ### Review, approval and submission
 
-**Review controls.** Open a saved draft and choose **Review this order** or its row action **Open exact terms / revise / review**. The Position instrument also embeds the same Entry/Review ticket, even when no holding exists. Save the terms first; unsaved form terms cannot be checked or approved. Review shows **Approve exact saved terms**, the exact side, quantity, symbol, order type, limit/stop, account, proposal revision, policy revision, time in force, session and rationale. **Exact saved terms and source identity** discloses the proposal ID, hash and saved JSON.
+**Review controls.** From **Orders → Drafts**, use the record’s **Open exact terms / revise / review** button, then the ticket’s **Review** step. A readiness card can instead offer **Review this order**. The observed rejected NVDA revision opened directly on Review and said **Order rejected**. That revision has no Check order or Approve action: use **Entry** to edit terms and **Save local proposal revision** before reviewing a new draft revision. Save effects were not exercised. The Position instrument also embeds the same Entry/Review ticket, even when no holding exists. Save the terms first; unsaved form terms cannot be checked or approved. Review shows **Approve exact saved terms**, the exact side, quantity, symbol, order type, limit/stop, account, proposal revision, policy revision, time in force, session and rationale. **Exact saved terms and source identity** discloses the proposal ID, hash and saved JSON.
 
 Open **Optional limits for this order**. For a MARKET multi-leg package, the disclosure is **Package MARKET debit bound and optional limits**. Fields are **Quote age limit / seconds (optional)**, **Approval lifetime / seconds (optional)**, conditional BUY MARKET/STOP_MARKET **Observed buy-price limit / USD (optional; market fill is not guaranteed)**, or for a MARKET package **Local net debit review bound / USD per package multiplier unit (required for MARKET; no broker cap or sign guarantee)**, **Fee estimate bound / USD (optional)**, and **Optional review note**. Numeric controls use `min=0`, `step=any`; values must be finite and nonnegative. A supplied approval lifetime must be positive. MARKET package net-debit bound must be positive. Other optional bounds may be blank. A bound is a local review condition; it is not an Alpaca price cap or execution guarantee.
 
@@ -206,9 +206,9 @@ When captured, rows can include native open/closed status, quantities/P&L, fee p
 
 ### Notes
 
-**Observed.** Eight note records were listed. Each said “No saved note.”
+**Observed.** The top-level **Notes** tab lists eight decision shortcuts, each marked **No saved note**; these are not eight saved notes. Each button includes symbols, decision type, source date and a short decision ID. Selecting the NFLX shortcut opened **NFLX · saved decision** with its **Notes** detail tab selected. Use **Decisions** to find a record, then its detail **Notes** tab, or use the top-level shortcut directly.
 
-**Source only.** A decision note binds to an exact decision and source research/revision. Fields are Investor assumptions (up to 20,000 characters), Investor review date, Later outcome notes (up to 20,000 characters), and “Save journal note”. The view shows saved version/date and Follow-up note history. Saving persists a local note; it does not change an order, approval or broker instruction. “Reload saved journal” discards unsaved notes/settings.
+**Observed fields, source-only save.** A decision note binds to its exact decision and source research/revision. The form showed **Investor assumptions**, **Investor review date**, **Later outcome notes**, **Save journal note**, **No saved follow-up note**, and **Follow-up note history**. The two note texts allow up to 20,000 characters in source. No note was entered or saved. The view shows saved version/date and Follow-up note history. Saving persists a local note; it does not change an order, approval or broker instruction. “Reload saved journal” discards unsaved notes/settings.
 
 ### Account history
 
@@ -235,7 +235,7 @@ Source: `holdingsTable`, `showPortfolio`, `renderProposedPortfolio`, `renderPerf
 
 ### Ticket layout, quantity and evidence
 
-**Entry**, optional **Exits**, and **Review** are ticket view steps. Selecting Review does not evaluate or approve the order. **Exits** appears only when the current ticket has an eligible exit plan. Holding-exit tickets can start in Exits. Action buttons remain in the shared footer.
+**Entry**, optional **Exits**, and **Review** are ticket view steps. Selecting Review does not evaluate or approve the order. **Exits** appears when the stock ticket supports optional exits, including an eligible BUY MARKET/LIMIT with blank exit fields; its presence does not mean an exit plan was entered or saved. Holding-exit tickets can start in Exits. Action buttons remain in the shared footer.
 
 **Replacement, notes, and decision inputs** holds predecessor selection, notes, evidence dependencies, and **Link the selected saved report, exact revision**. **Quantity, session, and proposal details** and **Extended-session terms** contain explanatory boundaries. **Dated session capabilities and separate price evidence** expands the actual dated capability facts. An eligible research-preparation ticket has **Return to retained symbol draft**, which switches back to that symbol’s other local draft; it does not save the research ticket.
 
@@ -274,9 +274,13 @@ Baskets has **Targets**, **Impact**, and its own **Drafts** tab, separate from O
 
 - **Targets** edits symbol, quantity/weight, value, MARKET/LIMIT, and limit. Row **Remove** removes an unsaved target. **Rationale, fees, and slippage assumptions** holds **Target / revision / review rationale**, **Estimated fee per leg / USD · optional, unset until entered**, and **Estimated slippage / basis points · optional**.
 - **Impact** shows preview quantities/cash/policy scenarios. **Assume [symbol] filled** checks hypothetical legs; **Recalculate assumed fills** recomputes only that preview. It does not record a fill or execute anything.
-- **Drafts** shows generated individual proposal terms and saved baskets. **Review exact saved order** opens a saved leg. **Open basket [id]** loads the saved targets and preview into the editor. **Revision history** expands its saved versions.
+- **Drafts** shows generated individual proposal terms and saved baskets. Open **Orders → Baskets → Drafts**, then **Open basket [id]**. The observed revision 2 returned to **Targets** and loaded its seven targets. **Impact** displayed its saved October 23 observation, policy revision and source hash; opening the basket did not make that evidence current. In **Drafts**, expand an individual leg to see retained terms and **Review exact saved order**. The leg-review route is source-confirmed but was not completed during this browser pass. **Revision history** expands saved versions. For a verified route to the saved proposal, use the separate **Orders → Drafts → Open exact terms / revise / review** action.
 - **Reject basket and linked proposals** / **Defer basket and linked proposals** write those local decisions. They do not cancel broker orders.
 - **Current / pending / proposed exposure, sector, correlation, liquidity and loss checks** and **Working orders and conflicting proposals** expose the preview’s saved evidence.
+
+**Observed basket limitations (25 October 2026).** The saved basket was rejected and marked **Preview needs review**. Its Impact values were retained hypothetical calculations, not a refreshed account preview or real fills. A target `weight` is a percentage of observed account equity; the displayed 1.42857 meant 1.42857%, followed by whole-share floor sizing. Loading did not preview again, save a revision, recalculate assumed fills or create orders.
+
+**Refresh repair verified, 25 October 2026.** Basket legs, working-order conflicts and saved revision histories now have stable disclosure IDs, which the existing render path restores. The saved AAPL leg and basket revision history stayed open across the normal refresh interval. **Review exact saved order** then opened AAPL’s exact saved BUY 4 LIMIT 347.69 order on the Review step. Its rejected revision remained blocked from approval/submission. This later check resolves the earlier disclosure fault; it does not validate broker execution.
 
 The separate **Basket orders** command panel has these source-only actions:
 
@@ -313,6 +317,9 @@ Journal controls:
 Source: `journalNote`, `journalNoteContent`, `decisionOutcomeMarkup`, `positionOutcomesMarkup`, `nativeEnginePanel`, `previewOrder`, and `optionInstructionsMarkup`.
 
 ## Review evidence
+
+**Follow-up at `580f1c8`, 25 October 2026.** Browser checks exercised a rejected NVDA proposal’s Entry/Exits/Review steps; saved basket loading, its Targets/Impact/Drafts panes and one leg’s retained terms; Journal symbol filtering and export-selection count (restored to zero, no export); NVDA Rationale/Orders/Outcome/Notes; and the NFLX Notes shortcut. NVDA filtering also matched the multi-stock basket containing NVDA. The saved basket-leg review button initially disappeared on refresh; the later repair and successful leg-review route are recorded above. No authored record, approval, new preview, collection, export, note, broker action or research was created. Ordinary view preferences can autosave.
+
 
 Reviewed against `b632a22` on 2026-10-25. Current browser observations covered Portfolio’s three tabs, Orders’ four tabs and all three basket panes, Journal’s four tabs and an existing decision’s four detail tabs. Empty holdings, broker orders, captures and interval data limited populated-state observation. No draft, preview, approval, command, collection, export or note was created during the review. Conditional effects above remain source-only.
 

@@ -1,11 +1,7 @@
 # Working on this TradingAgents checkout
 
-This project uses Serena for development. Make sure that you read the project's critical_info memory before working on it.
-
-When using Serena, the memory is provided either
-along with the result of the initial_instructions tool, or
-upon activating the project with activate_project. Be sure to always call the initial_instructions tool!
-When not using Serena, read ./.serena/memories/critical_info.md manually.
+The user stopped use of Serena. Use normal repository tools and Maenifold.
+If `.serena/memories/critical_info.md` exists, read it as a file; do not start Serena.
 
 ## Current research retention
 
@@ -44,22 +40,23 @@ Read [printerv2 operating rules](C:/src/printerv2/AGENTS.md), the
 [local issue tracker](C:/src/printerv2/issues/2026-10-22-ui-delivery.md), and the
 [delivery plan](C:/src/printerv2/docs/ui/approved-20261022/delivery.md).
 Current user instructions and issue criteria supersede historical guidance.
-Current exception: the user banned agents, archived the worker sessions and
-instructed the primary to implement the research concurrency setting directly.
-Finish only that change and its live UI demonstration. No coded tests, builds,
-experiments, broad audits or broker actions. Earlier delegation/review rules
-below do not authorize restarting workers for this assignment.
-Do not rerun full research batches to verify narrow repairs. Reuse retained
-evidence and inspect the affected code. No paid research runs for testing.
-The latest user-supplied operating rules make the primary assistant PM only:
-never edit application code. The primary leads a user-requested guided UI
-walkthrough; an independent read-only repository session validates documentation
-against its own UI view. Visible repository sessions own
-explicitly assigned implementation in worktrees, with one integration owner
-for this primary checkout. One read-only repository session performs the
-integrated UI sweep and affected-path recheck. Do not use subagents or perform
-unlisted tests, builds or other actions. Use only the latest Sol, Terra or Luna
-models at default reasoning; never Astra or priority processing. Git stays local.
+Current assignment: package TradingAgents with Tauri for Windows first, with
+macOS support. The user explicitly authorized the primary to implement and
+build here on 26 October 2026, replacing the old PM-only and no-subagent
+restrictions for this assignment. Scoped repository workers may help; use
+GPT-6.1 Terra. Prefer the lowest practical reasoning effort (currently `low`)
+for subagents. Increase it only when the task needs it or the user asks.
+Coordinate file ownership and preserve existing working changes.
+Use off-the-shelf packaging, updater and process-management components where
+practical. Install released code and its private runtimes outside the source
+checkout. Isolate development settings, stores, runtime and endpoint from the
+installed production instance. The tray must stop only processes the app owns.
+Batch implementation before one packaging/build and affected UI verification
+cycle; delegate builds to a worker. No automated tests, mock services or
+research reruns. A package build and real installed-app startup/shutdown
+verification are authorized. Preserve production data and credentials during
+controlled cutover. Broker actions still require explicit authorization.
+Git stays local unless the user asks to publish or push.
 
 Load Microsoft writing style and Maenifold skills at session start. Use
 SequentialThinking during multi-step problem solving and BuildContext to find
@@ -115,11 +112,12 @@ actual installation, saved data and permitted smoke test.
 ## Local operation and preservation
 
 - Work in `C:\src\TradingAgents`; current application branch is `nautilus`.
-- The single canonical startup command is `rtk proxy .\Start-TradingDesk.cmd`.
-  The only TradingAgents UI port is 8098 (`http://127.0.0.1:8098/`); do not start alternate-port UI instances.
-  Use it unchanged; do not wrap or patch the launcher or start the server directly.
-  Read `tradingdesk.launch.json` for current paths; never substitute an empty
-  data directory or run a migration merely to get the server started.
+- Use the installed desktop/Start menu shortcut for production. The repository
+  `rtk proxy .\Start-TradingDesk.cmd` opens that installed executable too.
+  Production uses port 8098 and its private AppData profile. Development uses
+  `rtk proxy .\Start-TradingDesk-Dev.cmd`, port 8099 and the checkout's
+  `.local-workspace/development` profile. Never share production stores or
+  credentials with development. Do not start the old Python launcher directly.
 - Preserve `.local-workspace`, both Python environments, saved research,
   account configuration and backups. These local files are not all in Git.
 - Do not restore old `printerv2` paths from historical UAT records or manifests.
@@ -144,8 +142,39 @@ actual installation, saved data and permitted smoke test.
   observed results. Static checks remain appropriate. In-scope research and
   local simulations are part of authorized dev/test work, not a separate gate.
   Broker actions remain separately controlled. Preserve production data.
-  Running-app UAT uses the built-in browser only; browser verification does not
-  permit backend/API scripting against the running app or financial actions.
+- Use the app's local API where it makes sense for reads, progress checks and
+  user-authorized actions. Use its existing session and CSRF protections; do
+  not bypass them or expose tokens. API access does not authorize extra work.
+- Use the built-in browser for visual checks and UI behavior. An API response
+  alone does not prove the page renders or its controls work.
+- Keep order preparation, per-order approval and broker submission separate
+  through both interfaces. Approval does not authorize submission. Broker
+  actions still require the explicit authorization stated above.
+
+### Local API helper
+
+Use `scripts/desk_api.py` with Python 3.11+; it uses only the standard library.
+It opens the normal local session, supplies the CSRF token for POST, keeps
+session tokens in memory and removes the CSRF token from printed state.
+Production is fixed to `127.0.0.1:8098`; `--dev` selects isolated port 8099.
+Redirects and proxies are disabled. No request is retried automatically.
+
+```powershell
+rtk proxy .venv/Scripts/python.exe scripts/desk_api.py --help
+rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get /api/health
+rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get /api/model-limits --timeout 120
+rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get '/api/state?compact=1'
+rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get /api/workspace --field revision
+```
+
+For an authorized change, use `post /api/<route> --json-file <body.json>`.
+Read the actual route and service handler for its body contract; preserve
+required revisions and exact order terms. `--timeout <seconds>` changes the
+per-request timeout. A timeout or connection error does not prove a POST failed;
+read the resulting state before deciding whether to retry. Do not print private
+configuration or credential files. The helper grants no additional authority,
+does not combine approval with submission and does not replace visual UI checks.
+
 - For efficiency, batch all known fixes before one affected browser verification
   cycle for that batch. If that cycle finds more problems, collect and fix them
   as the next batch, then run one cycle for that batch. Do not run a full cycle

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-14T02:53:10.938Z",
+  "generatedAt": "2026-10-26T21:48:24.469554Z",
   "title": "Design System: TradingAgents Paper Desk",
   "extensions": {
     "colorMeta": {
@@ -311,16 +311,36 @@
           "oklch(84% 0.1003 159.59)",
           "oklch(95% 0.1003 159.59)"
         ]
+      },
+      "error-surface": {
+        "role": "secondary",
+        "displayName": "Error Surface"
+      },
+      "error-border": {
+        "role": "secondary",
+        "displayName": "Error Border"
+      },
+      "error-text": {
+        "role": "secondary",
+        "displayName": "Error Text"
+      },
+      "universe-focus": {
+        "role": "secondary",
+        "displayName": "Universe Focus"
+      },
+      "universe-detail-shadow-ink": {
+        "role": "neutral",
+        "displayName": "Universe Detail Shadow Ink"
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Account value",
-        "purpose": "Large tabular account ledger values."
+        "purpose": "Large financial values where the metric role is used."
       },
       "headline": {
         "displayName": "Page heading",
-        "purpose": "Current workspace or task title."
+        "purpose": "Page headings and Dashboard account values."
       },
       "title": {
         "displayName": "Instrument title",
@@ -336,11 +356,11 @@
       },
       "label": {
         "displayName": "Data label",
-        "purpose": "Table headers, chart axes, and compact labels; minimum implemented text size is 11px. Chart viewBoxes follow the measured content size so axis text retains its CSS size on narrow screens."
+        "purpose": "Table headings and supporting captions use the 13px metadata token."
       },
       "action": {
         "displayName": "Action",
-        "purpose": "Explicit button labels."
+        "purpose": "Standard buttons and navigation controls use 14px; compact metadata variants can use 13px."
       }
     },
     "shadows": [
@@ -353,6 +373,11 @@
         "name": "order-dialog",
         "value": "0 20px 70px #0008",
         "purpose": "Order review dialog above the desk."
+      },
+      {
+        "name": "universe-detail",
+        "value": "0 10px 70px #000b",
+        "purpose": "Narrow-screen universe detail overlay."
       }
     ],
     "motion": [
@@ -374,36 +399,24 @@
     ],
     "breakpoints": [
       {
-        "name": "wide-workstation-min",
-        "value": "1600px"
+        "name": "dashboard-grid-min-width",
+        "value": "1101px"
       },
       {
-        "name": "compact-workstation-max",
-        "value": "1250px"
+        "name": "dashboard-grid-min-height",
+        "value": "801px"
       },
       {
-        "name": "two-instrument-columns-max",
-        "value": "1060px"
+        "name": "dashboard-tabs-max-width",
+        "value": "1100px"
       },
       {
-        "name": "research-sidebar-compact-max",
-        "value": "980px"
+        "name": "dashboard-tabs-max-height",
+        "value": "800px"
       },
       {
-        "name": "wrapped-navigation-max",
+        "name": "horizontal-navigation-max-width",
         "value": "790px"
-      },
-      {
-        "name": "two-column-ledger-max",
-        "value": "760px"
-      },
-      {
-        "name": "stacked-instruments-max",
-        "value": "600px"
-      },
-      {
-        "name": "compact-supplement-max",
-        "value": "540px"
       }
     ]
   },
@@ -414,7 +427,7 @@
       "refersTo": "button-primary",
       "description": "Explicit primary actions such as launching research or submitting a reviewed paper order.",
       "html": "<button class=\"ds-primary\" type=\"button\">Run research</button>",
-      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid var(--accent,#79ce9e);border-radius:var(--radius,3px);background:var(--accent,#79ce9e);color:var(--primary-text,#10271b);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-primary:hover:not(:disabled){background:var(--accent-hover,#94ddB3);border-color:var(--accent-hover,#94ddB3);}.ds-primary:disabled{opacity:.5;cursor:not-allowed;}.ds-primary:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none;animation:none;}}"
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid var(--accent,#79ce9e);border-radius:var(--radius,3px);background:var(--accent,#79ce9e);color:var(--primary-text,#10271b);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:14px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-primary:hover:not(:disabled){background:var(--accent-hover,#94ddB3);border-color:var(--accent-hover,#94ddB3);}.ds-primary:disabled{opacity:.5;cursor:not-allowed;}.ds-primary:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none;animation:none;}}"
     },
     {
       "name": "Ordinary action",
@@ -422,7 +435,7 @@
       "refersTo": "button-default",
       "description": "Secondary operations such as building paper proposals.",
       "html": "<button class=\"ds-default\" type=\"button\">Build paper proposals</button>",
-      "css": ".ds-default{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid #475561;border-radius:var(--radius,3px);background:var(--control,#253440);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-default:hover:not(:disabled){background:var(--control-hover,#324552);border-color:#667a89;}.ds-default:disabled{opacity:.5;cursor:not-allowed;}.ds-default:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-default{transition:none;animation:none;}}"
+      "css": ".ds-default{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid #475561;border-radius:var(--radius,3px);background:var(--control,#253440);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:14px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-default:hover:not(:disabled){background:var(--control-hover,#324552);border-color:#667a89;}.ds-default:disabled{opacity:.5;cursor:not-allowed;}.ds-default:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-default{transition:none;animation:none;}}"
     },
     {
       "name": "Quiet action",
@@ -430,7 +443,7 @@
       "refersTo": "button-quiet",
       "description": "Low-emphasis controls such as refreshing or exporting a panel.",
       "html": "<button class=\"ds-quiet\" type=\"button\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M20 7v5h-5M4 17v-5h5M6.1 8a7 7 0 0 1 11.6-3L20 8M4 16l2.3 3A7 7 0 0 0 18 16\"/></svg>Refresh</button>",
-      "css": ".ds-quiet{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid transparent;border-radius:var(--radius,3px);background:transparent;color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-quiet:hover:not(:disabled){background:#2c3c48;border-color:transparent;}.ds-quiet:disabled{opacity:.5;cursor:not-allowed;}.ds-quiet:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-quiet{transition:none;animation:none;}}.ds-quiet svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;}"
+      "css": ".ds-quiet{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid transparent;border-radius:var(--radius,3px);background:transparent;color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:14px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-quiet:hover:not(:disabled){background:#2c3c48;border-color:transparent;}.ds-quiet:disabled{opacity:.5;cursor:not-allowed;}.ds-quiet:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-quiet{transition:none;animation:none;}}.ds-quiet svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;}"
     },
     {
       "name": "Destructive action",
@@ -438,7 +451,7 @@
       "refersTo": "button-danger",
       "description": "Stop a run, pause execution, or cancel an eligible order.",
       "html": "<button class=\"ds-danger\" type=\"button\">Stop run</button>",
-      "css": ".ds-danger{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid #89585e;border-radius:var(--radius,3px);background:#36272b;color:var(--negative,#f29199);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-danger:hover:not(:disabled){background:#4b3138;border-color:#b27b83;}.ds-danger:disabled{opacity:.5;cursor:not-allowed;}.ds-danger:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-danger{transition:none;animation:none;}}"
+      "css": ".ds-danger{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:8px 12px;border:1px solid #89585e;border-radius:var(--radius,3px);background:#36272b;color:var(--negative,#f29199);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:14px;font-weight:600;line-height:1.5;white-space:nowrap;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-danger:hover:not(:disabled){background:#4b3138;border-color:#b27b83;}.ds-danger:disabled{opacity:.5;cursor:not-allowed;}.ds-danger:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-danger{transition:none;animation:none;}}"
     },
     {
       "name": "Labeled field",
@@ -446,15 +459,15 @@
       "refersTo": "input",
       "description": "Recessed field with persistent label and compact supporting text.",
       "html": "<label class=\"ds-field\">Universe name<input class=\"ds-input\" value=\"FANGMAN\"><small>Changes apply to future runs.</small></label>",
-      "css": ".ds-field{display:flex;flex-direction:column;gap:6px;color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.5;}.ds-field small{color:var(--muted,#a5b3c0);font-size:11px;font-weight:400;}.ds-input{min-width:0;min-height:36px;padding:8px 10px;border:1px solid #4b5d6a;border-radius:var(--radius,3px);background:var(--field,#14202a);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:12px;line-height:1.5;caret-color:var(--accent,#79ce9e);}.ds-input:hover{border-color:#7a9386;}.ds-input:disabled{background:#21313d;color:#a9b5bf;}.ds-input::placeholder{color:#9baab8;}.ds-input:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}"
+      "css": ".ds-field{display:flex;flex-direction:column;gap:6px;color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:13px;font-weight:600;line-height:1.5;}.ds-field small{color:var(--muted,#a5b3c0);font-size:13px;font-weight:400;}.ds-input{min-width:0;min-height:36px;padding:8px 10px;border:1px solid #4b5d6a;border-radius:var(--radius,3px);background:var(--field,#14202a);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:14px;line-height:1.5;caret-color:var(--accent,#79ce9e);}.ds-input:hover{border-color:#7a9386;}.ds-input:disabled{background:#21313d;color:#a9b5bf;}.ds-input::placeholder{color:#9baab8;}.ds-input:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}"
     },
     {
       "name": "Workspace navigation",
       "kind": "nav",
       "refersTo": "navigation-active",
-      "description": "Horizontal page links with a green selected surface and bottom rule.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a class=\"ds-nav-link\" href=\"#overview\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z\"/></svg><span>Workspace</span></a><a class=\"ds-nav-link\" href=\"#research\">Agent research</a><a class=\"ds-nav-link\" href=\"#orders\">Trade &amp; orders</a></nav>",
-      "css": ".ds-nav{display:flex;align-items:stretch;gap:0;min-height:61px;background:var(--navy,#101a23);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);}.ds-nav-link{display:flex;position:relative;align-items:center;gap:8px;padding:0 17px;border-radius:0;color:var(--nav-text,#b9c7d1);font-size:12px;font-weight:500;line-height:1.5;text-decoration:none;}.ds-nav-link svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;}.ds-nav-link:hover{background:#202e38;color:#fff;}.ds-nav-link[aria-current=page]{background:#203329;color:#a5e7bd;}.ds-nav-link[aria-current=page]:after{content:\"\";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent,#79ce9e);}.ds-nav-link:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(max-width:600px){.ds-nav{min-height:41px;justify-content:space-between;}.ds-nav-link{padding:10px 8px;gap:0;font-size:11px;}.ds-nav-link svg{display:none;}}"
+      "description": "Desktop sidebar navigation with a visible active page; horizontal scrolling at narrow widths.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a class=\"ds-nav-link\" href=\"#overview\" aria-current=\"page\">Dashboard</a><a class=\"ds-nav-link\" href=\"#research\">Research</a><a class=\"ds-nav-link\" href=\"#orders\">Orders</a></nav>",
+      "css": ".ds-nav{display:flex;flex-direction:column;gap:4px;width:208px;padding:8px;background:var(--navy,#101a23);font-family:var(--font,\"Segoe UI\",sans-serif)}.ds-nav-link{display:flex;align-items:center;min-height:36px;padding:8px 12px;border:1px solid transparent;color:var(--nav-text,#b9c7d1);font-size:14px;text-decoration:none}.ds-nav-link:hover{background:#202e38}.ds-nav-link[aria-current=page]{background:#203329;color:#a5e7bd;border-color:var(--accent,#79ce9e)}.ds-nav-link:focus-visible{outline:2px solid var(--accent,#79ce9e);outline-offset:2px}@media(max-width:790px){.ds-nav{width:100%;flex-direction:row;overflow:auto}.ds-nav-link{flex:none;white-space:nowrap}}"
     },
     {
       "name": "Linked symbol chips",
@@ -462,7 +475,7 @@
       "refersTo": "symbol-chip",
       "description": "Small selectable ticker controls carry the shared instrument context.",
       "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" type=\"button\" aria-pressed=\"true\">NVDA</button><button class=\"ds-chip\" type=\"button\" aria-pressed=\"false\">AAPL</button><button class=\"ds-chip\" type=\"button\" aria-pressed=\"false\">MSFT</button></div>",
-      "css": ".ds-chips{display:flex;gap:5px;flex-wrap:wrap;}.ds-chip{padding:3px 5px;border:1px solid #435462;border-radius:2px;background:#293a47;color:#c1d0db;font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.5;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-chip:hover{background:#345342;}.ds-chip[aria-pressed=true]{color:#b8e9c9;background:#244533;border-color:#629674;}.ds-chip:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-chip{transition:none;animation:none;}}"
+      "css": ".ds-chips{display:flex;gap:5px;flex-wrap:wrap;}.ds-chip{padding:3px 5px;border:1px solid #435462;border-radius:2px;background:#293a47;color:#c1d0db;font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:13px;font-weight:600;line-height:1.5;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-chip:hover{background:#345342;}.ds-chip[aria-pressed=true]{color:#b8e9c9;background:#244533;border-color:#629674;}.ds-chip:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-chip{transition:none;animation:none;}}"
     },
     {
       "name": "Labeled status",
@@ -470,7 +483,7 @@
       "refersTo": "status-verified",
       "description": "Status words remain visible alongside semantic color.",
       "html": "<div class=\"ds-statuses\"><span class=\"ds-status ds-verified\">Paper verified</span><span class=\"ds-status ds-pending\">Running</span><span class=\"ds-status ds-review\">Blocked</span><span class=\"ds-status ds-failed\">Rejected</span></div>",
-      "css": ".ds-statuses{display:flex;gap:5px;flex-wrap:wrap;}.ds-status{display:inline-flex;align-items:center;gap:5px;padding:3px 6px;border:1px solid #4b5a67;border-radius:2px;color:var(--muted,#a5b3c0);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:600;line-height:1.3;white-space:nowrap;}.ds-verified{background:#203a2d;border-color:#365c47;color:#a4dfba;}.ds-pending{background:#22394b;border-color:#426881;color:#aad2ef;}.ds-review{background:#393426;border-color:#6b5c38;color:#e4cb97;}.ds-failed{background:#3d282e;border-color:#81505a;color:#f0a9b0;}"
+      "css": ".ds-statuses{display:flex;gap:5px;flex-wrap:wrap;}.ds-status{display:inline-flex;align-items:center;gap:5px;padding:3px 6px;border:1px solid #4b5a67;border-radius:2px;color:var(--muted,#a5b3c0);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:13px;font-weight:600;line-height:1.3;white-space:nowrap;}.ds-verified{background:#203a2d;border-color:#365c47;color:#a4dfba;}.ds-pending{background:#22394b;border-color:#426881;color:#aad2ef;}.ds-review{background:#393426;border-color:#6b5c38;color:#e4cb97;}.ds-failed{background:#3d282e;border-color:#81505a;color:#f0a9b0;}"
     },
     {
       "name": "Instrument panel",
@@ -478,21 +491,21 @@
       "refersTo": "panel",
       "description": "Flat ruled container with a lighter header and an honest empty state.",
       "html": "<section class=\"ds-panel\"><header class=\"ds-panel-header\"><div><h2>Positions</h2><p>Broker holdings · actual paper exposure</p></div></header><div class=\"ds-empty\"><h3>Account not loaded</h3><p>Refresh to retrieve holdings from the connected paper account.</p></div></section>",
-      "css": ".ds-panel{min-width:0;overflow:hidden;border:1px solid var(--line,#34414d);border-radius:var(--radius,3px);background:var(--paper,#1b252f);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);line-height:1.5;}.ds-panel-header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:49px;padding:11px 13px;border-bottom:1px solid var(--line,#34414d);background:var(--instrument-header,#23313c);}.ds-panel-header h2{margin:0;font-size:12px;font-weight:620;letter-spacing:0;}.ds-panel-header p{margin:2px 0 0;color:var(--muted,#a5b3c0);font-size:11px;}.ds-empty{display:flex;flex-direction:column;align-items:center;gap:8px;min-height:177px;padding:30px 20px;text-align:center;}.ds-empty h3{margin:0;font-size:12px;font-weight:650;}.ds-empty p{margin:0;max-width:48ch;color:var(--muted,#a5b3c0);font-size:11px;}"
+      "css": ".ds-panel{min-width:0;overflow:hidden;border:1px solid var(--line,#34414d);border-radius:var(--radius,3px);background:var(--paper,#1b252f);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);line-height:1.5;}.ds-panel-header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:49px;padding:11px 13px;border-bottom:1px solid var(--line,#34414d);background:var(--instrument-header,#23313c);}.ds-panel-header h2{margin:0;font-size:14px;font-weight:620;letter-spacing:0;}.ds-panel-header p{margin:2px 0 0;color:var(--muted,#a5b3c0);font-size:13px;}.ds-empty{display:flex;flex-direction:column;align-items:center;gap:8px;min-height:177px;padding:30px 20px;text-align:center;}.ds-empty h3{margin:0;font-size:14px;font-weight:650;}.ds-empty p{margin:0;max-width:48ch;color:var(--muted,#a5b3c0);font-size:13px;}"
     },
     {
       "name": "Linked watchlist rows",
       "kind": "custom",
       "description": "Tabular numerical reading with selected and hover states; samples preserve unavailable prices.",
       "html": "<div class=\"ds-table-scroll\"><table class=\"ds-table\"><thead><tr><th>Symbol</th><th>Last</th><th>Change</th></tr></thead><tbody><tr class=\"ds-selected\"><td><button class=\"ds-ticker\" type=\"button\">NVDA</button><span class=\"ds-asset-name\">NVIDIA</span></td><td>—</td><td>—</td></tr><tr><td><button class=\"ds-ticker\" type=\"button\">AAPL</button><span class=\"ds-asset-name\">Apple</span></td><td>—</td><td>—</td></tr></tbody></table></div>",
-      "css": ".ds-table-scroll{overflow-x:auto;border:1px solid var(--line,#34414d);border-radius:3px;}.ds-table{width:100%;border-collapse:collapse;background:var(--paper,#1b252f);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;line-height:1.5;white-space:nowrap;}.ds-table th{padding:9px 12px;border-bottom:1px solid var(--line,#34414d);background:var(--table-header,#202c36);color:#b5c1cb;font-size:11px;font-weight:550;text-align:right;}.ds-table td{padding:5px 12px;border-bottom:1px solid #2b3945;text-align:right;font-variant-numeric:tabular-nums;}.ds-table th:first-child,.ds-table td:first-child{text-align:left;}.ds-table tr:last-child td{border-bottom:0;}.ds-table tbody tr:hover{background:var(--table-hover,#253b48);}.ds-table tbody tr.ds-selected{background:var(--selected-row,#233f35);}.ds-ticker{border:0;padding:0;background:transparent;color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:11px;font-weight:650;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-ticker:hover{color:var(--accent,#79ce9e);text-decoration:underline;text-underline-offset:3px;}.ds-asset-name{display:block;margin-top:2px;color:#a3b3c0;font-size:11px;}.ds-ticker:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-ticker{transition:none;animation:none;}}@media(max-width:600px){.ds-table td{padding-top:7px;padding-bottom:7px;}}"
+      "css": ".ds-table-scroll{overflow-x:auto;border:1px solid var(--line,#34414d);border-radius:3px;}.ds-table{width:100%;border-collapse:collapse;background:var(--paper,#1b252f);color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:14px;line-height:1.5;white-space:nowrap;}.ds-table th{padding:9px 12px;border-bottom:1px solid var(--line,#34414d);background:var(--table-header,#202c36);color:#b5c1cb;font-size:13px;font-weight:550;text-align:right;}.ds-table td{padding:5px 12px;border-bottom:1px solid #2b3945;text-align:right;font-variant-numeric:tabular-nums;}.ds-table th:first-child,.ds-table td:first-child{text-align:left;}.ds-table tr:last-child td{border-bottom:0;}.ds-table tbody tr:hover{background:var(--table-hover,#253b48);}.ds-table tbody tr.ds-selected{background:var(--selected-row,#233f35);}.ds-ticker{border:0;padding:0;background:transparent;color:var(--ink,#e1e8ee);font-family:var(--font,\"Segoe UI Variable Text\",\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif);font-size:13px;font-weight:650;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease;}.ds-ticker:hover{color:var(--accent,#79ce9e);text-decoration:underline;text-underline-offset:3px;}.ds-asset-name{display:block;margin-top:2px;color:#a3b3c0;font-size:13px;}.ds-ticker:focus-visible{outline:3px solid var(--focus,#86d6ab);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-ticker{transition:none;animation:none;}}@media(max-width:600px){.ds-table td{padding-top:7px;padding-bottom:7px;}}"
     }
   ],
   "narrative": {
     "northStar": "The Linked Trading Desk",
     "overview": "A compact workstation places portfolio exposure, instrument data, and agent evidence within one continuous reading surface. Its charcoal navy layers, cool rules, and green controls follow the user's pinned Active Trader Pro direction. The interface supports sustained inspection through modest headings, tabular numbers, and explicit selection.\n\nThe visual system keeps research, proposals, and broker execution legible as separate states. Selection links the watchlist, chart, and evidence inspector; it does not imply an order. Paper identity, source timestamps, unavailable data, and broker acknowledgements are part of the interface's information hierarchy.",
     "keyCharacteristics": [
-      "Dense horizontal navigation and linked instrument panels.",
+      "Desktop sidebar navigation and linked instrument panels.",
       "Charcoal surfaces separated by fine rules and lighter headers.",
       "Green actions and selections with labeled status semantics.",
       "System typography with aligned, tabular financial figures.",
@@ -525,7 +538,7 @@
       "Do preserve keyboard focus, native form controls, and reduced-motion behavior."
     ],
     "donts": [
-      "Don't revive the superseded light palette or vertical desktop sidebar.",
+      "Don't revive the superseded light palette.",
       "Don't add decorative shadows to persistent instrument panels.",
       "Don't replace missing market data with illustrative prices or chart points.",
       "Don't imply that selecting a symbol or launching research submits an order.",

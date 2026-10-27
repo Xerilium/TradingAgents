@@ -173,7 +173,7 @@ class DeskService:
         self.configure_symbols()
         self.gateway = gateway or MaenifoldGateway(timeout=90)
         from tradingagents.integrations.laya import LocalLaya
-        self.local_laya = LocalLaya()
+        self.local_laya = LocalLaya(cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None)
         self.graph_factory = graph_factory
         self.lock = threading.RLock()
         self.execution_lock = threading.Lock()
@@ -2870,6 +2870,11 @@ class DeskService:
                     stop_calculation_process(process)
 
     def close(self):
+        with self.store.lock:
+            self.cancelled.update(
+                r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running"}
+            )
+        self.executor.shutdown(wait=False, cancel_futures=True)
         self.local_laya.close()
         self._stop_simulations(closing=True)
         self.chart_executor.shutdown(wait=False, cancel_futures=True)
@@ -2877,8 +2882,3 @@ class DeskService:
         self.attention_monitor.close()
         self.data_jobs.close()
         self.runtime.stop()
-        with self.store.lock:
-            self.cancelled.update(
-                r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running"}
-            )
-        self.executor.shutdown(wait=False, cancel_futures=True)

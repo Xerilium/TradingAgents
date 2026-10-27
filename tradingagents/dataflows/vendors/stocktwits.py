@@ -108,13 +108,21 @@ def fetch_stocktwits_messages(
             return resp.read()
 
     try:
+        if type(limit) is not int or limit <= 0:
+            raise ValueError("StockTwits limit must be a positive integer")
         fetched, seen, cursor, more = [], set(), None, True
         while more and len(_within_window(fetched, start_date, end_date)) < limit:
             request = Request(url + (f"?max={cursor}" if cursor else ""), headers={"User-Agent": _UA, "Accept": "application/json"})
             raw = observe_source_call("stocktwits_stream", "stocktwits", "http_response_bytes", lambda request=request: read_response(request),
                                       ticker=ticker, start_date=start_date, end_date=end_date)
             data = json.loads(raw)
-            page = data.get("messages", []) if isinstance(data, dict) else []
+            if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
+                raise ValueError("StockTwits response has no message list")
+            page = data["messages"]
+            if any(not isinstance(m, dict) or not isinstance(m.get("id"), (int, str))
+                   or not m.get("id") or not isinstance(m.get("created_at"), str)
+                   or _created_at(m) is None for m in page):
+                raise ValueError("StockTwits response contains an invalid message")
             fresh = [m for m in page if m.get("id") not in seen]
             fetched.extend(fresh)
             seen.update(m.get("id") for m in fresh)
@@ -123,7 +131,7 @@ def fetch_stocktwits_messages(
             if start_date and fresh and all(m.get("created_at", "9999")[:10] < start_date for m in fresh):
                 more = False
             cursor = next_cursor
-    except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
         logger.warning("StockTwits fetch failed for %s: %s", ticker, type(exc).__name__)
@@ -136,11 +144,15 @@ def fetch_stocktwits_messages(
                 (_created_at(m) for m in fetched), start_date, end_date,
                 "StockTwits", f"messages about ${ticker.upper()}",
             )
-            return gap or (
-                f"<no StockTwits messages for ${ticker.upper()} within "
-                f"{start_date}..{end_date}>"
-            )
-        return f"<no StockTwits messages found for ${ticker.upper()}>"
+            if gap:
+                return gap
+            empty = f"<no StockTwits messages for ${ticker.upper()} within {start_date}..{end_date}>"
+        else:
+            empty = f"<no StockTwits messages found for ${ticker.upper()}>"
+        if screen:
+            _, screening_note = screen([])
+            return f"{screening_note}\n\n{empty}"
+        return empty
 
     note = f"StockTwits acquisition: {len(messages)} in-window messages, requested maximum {limit}; newest-page sample, not exhaustive window coverage."
     if screen:

@@ -233,3 +233,11 @@ tradingdesk.launch.json
 .runtime-cutover-backups/
 .tmp-nautilus-desk/
 .tmp-nautilus-task2/
+
+# Generated desktop dependencies and private runtime payloads
+/desktop/node_modules/
+/desktop/src-tauri/payload/
+/desktop/src-tauri/tauri.release.local.json
+/desktop/src-tauri/gen/
+/desktop/src-tauri/icons/android/
+/desktop/src-tauri/icons/ios/

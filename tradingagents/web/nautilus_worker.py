@@ -50,9 +50,17 @@ def main():
     from _tradingagents_native_adapter.nautilus_v1 import (DataClientFactory, ExecutionClient,
         ExecutionClientFactory, MarketDataClient, Strategy, build_node)
 
-    manifest = json.loads((Path(__file__).parents[2] / "docs/nautilus-v1-runtime-manifest.json").read_text(encoding="utf-8"))
+    manifest_path = Path(__file__).resolve().parents[1] / "assets/runtime-manifests/nautilus-v1-runtime-manifest.json"
+    source_root = Path(__file__).resolve().parents[2]
+    profile = os.getenv("TRADINGAGENTS_DESKTOP_PROFILE")
+    source_development = profile == "development" and sys.platform == "win32" and (source_root / "pyproject.toml").is_file()
+    if not manifest_path.is_file() and (not profile or source_development):
+        manifest_path = source_root / "docs/nautilus-v1-runtime-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if __version__ != manifest["nautilus_version"]:
         raise ValueError("Native version differs from the reviewed runtime contract")
+    if not manifest["installed_files"]:
+        raise ValueError("Native runtime manifest contains no file integrity evidence")
     for relative, expected in manifest["installed_files"].items():
         with (Path(native_package_file).parent / relative).open("rb") as source:
             if hashlib.file_digest(source, "sha256").hexdigest() != expected["sha256"]:

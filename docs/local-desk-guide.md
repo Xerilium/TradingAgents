@@ -5,8 +5,9 @@ operating guide. This document retains detailed implementation contracts and
 dated observations; older installation examples are not current account state
 or blanket feature acceptance.
 
-Current installation documented on 20 October 2026. Start from the
-[README](../README.md); agents must also read [AGENTS.md](../AGENTS.md).
+The Windows desktop installation and development paths below were updated on
+26 October 2026. Dated observations elsewhere in this guide remain historical.
+Start from the [README](../README.md); agents must also read [AGENTS.md](../AGENTS.md).
 
 ## What we built
 
@@ -162,54 +163,53 @@ verification does not establish a live connection or live execution acceptance.
 
 ## Launch the existing installation
 
-1. Open `C:\src\TradingAgents\Start-TradingDesk.cmd`, or run:
-
-   ```powershell
-   rtk proxy .\Start-TradingDesk.cmd
-   ```
-
-2. Open <http://127.0.0.1:8098>. Port **8098** is the only TradingAgents UI port;
-   do not start an alternate-port instance. The launcher reuses a matching running service
-   or starts it with the configured data directories. It does not install
-   packages, migrate records or stop another service occupying the port.
+1. Open the TradingAgents desktop or Start menu shortcut. Both target
+   `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`.
+2. Open <http://127.0.0.1:8098> if the browser did not open automatically.
+   The installed app uses port **8098** and the production profile under
+   `%LOCALAPPDATA%\com.tradingagents.desktop\production`.
 3. Expand **Nautilus connection**. If stopped, choose **Start Nautilus**. Wait for
    connected account status and prices before relying on current observations.
 4. Confirm the account is paper, check cash/equity/buying power, and inspect
    missing prices and timestamps. A refreshed account does not mean a new market
    price event, particularly while the market is closed.
 
-This is an existing-installation procedure, not a clean-machine installer.
-A Git clone alone lacks the local data, environments and credentials.
-Do not run `python -m tradingagents.web.server` without explicit configuration:
-its default port and data location differ from this installation.
+The tray offers **Open**, **Restart**, **Check for updates**, **Open logs** and
+**Quit**. Closing the browser leaves the tray app running. Normal tray Quit has
+not yet been observed. A Git clone alone lacks the installed app, local data
+and private credentials. Do not run `python -m tradingagents.web.server`
+without explicit configuration: its defaults differ from this installation.
 
 **Stop Nautilus** disconnects the engine; the web app and saved research remain
-available. Closing the browser does not stop the web server. Stop only the
-identified local app processes when maintenance requires taking it offline.
+available. Use the tray controls for the installed app when maintenance
+requires taking it offline.
+
+For isolated source development, run `rtk proxy .\Start-TradingDesk-Dev.cmd`
+from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
+checkout's `.venv` and `.venv-nautilus-v1` and
+`.local-workspace\development`. It does not copy production credentials or
+share production settings or data. The old `Start-TradingDesk.cmd` and
+`tradingdesk.launch.json` describe the legacy source-linked installation.
 
 ## Where things live
 
-`tradingdesk.launch.json` is the authority for this machine's configuration.
-It is ignored by Git and contains paths, not credential values.
-
 | Item | Current location / purpose |
 | --- | --- |
-| App code and launcher | `C:\src\TradingAgents` |
-| Web app Python | `.venv\Scripts\python.exe` under the checkout |
-| Nautilus Python | `.venv-nautilus-v1\Scripts\python.exe` under the checkout |
-| Application data | `.local-workspace\evidence\runtime-staging\20261017T024233Z-e3f9548d\application` |
-| Saved history | Same staging folder, sibling `history` directory |
-| Credential file | `C:\src\printer\apps\tradingagents\.env`, existing `ACPA_*` keys; never publish values |
-| Launcher logs | `.runtime-stage\launcher.out.log` and `launcher.err.log` |
+| Installed app | `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` |
+| Production profile | `%LOCALAPPDATA%\com.tradingagents.desktop\production` |
+| Application data and research | `application` and `research` within the production profile |
+| Private provider configuration | `private\providers.env` within the production profile; never publish values |
+| Desk log | `logs\desk.log` within the production profile |
+| Development checkout and data | `C:\src\TradingAgents` and its `.local-workspace\development` |
+| Prior source-linked application and history | `.local-workspace\evidence\runtime-staging\20261017T024233Z-e3f9548d\application` and sibling `history` |
 | Preserved local evidence and backups | `.local-workspace` and existing repository-local backup folders |
 
-The application, history and native Python moved out of `C:\src\printerv2`.
 Old paths inside dated evidence remain provenance, not launch instructions.
-The old directory was empty but locked during migration. Python base runtimes
-remain installed under the user's Windows/uv directories. Credentials remain
-in `C:\src\printer`, which is a different folder from `printerv2`.
-The separate dependency smoke audit must be consulted before claiming every
-auxiliary environment launcher has been cleaned of old references.
+The signed Windows 0.6.0 installer and its signature exist; the update feed is
+not published and an end-to-end update has not been proven. macOS dependency
+locks target macOS 26 or later on Apple silicon; no macOS build has been made.
+The installed desk still depends on a signed-in Codex installation and an
+external Maenifold service for those integrations.
 
 Preserve these local files when moving the checkout. Do not replace them with
 fresh data or commit databases, credentials, environment files or backup archives.
@@ -708,10 +708,10 @@ this as completed trading-execution UAT.
 
 ## If startup or data looks wrong
 
-- Check `tradingdesk.launch.json` and that its four paths exist. Preserve the
-  configured application/history pair; do not point at a convenient empty folder.
-- Read `.runtime-stage\launcher.err.log` for launcher startup failures. The
-  migration-started instance used `migration.err.log` in the same directory.
+- Check the installed production profile and read its `logs\desk.log`. Preserve
+  the application and research data; do not substitute an empty folder.
+- For source development, inspect `.local-workspace\development` and the
+  development launcher. The old `.runtime-stage` logs are historical.
 - If the port belongs to another instance, inspect its identity before changing
   or stopping anything. The launcher deliberately does not take it over.
 - If the app opens but balances are unavailable, inspect Nautilus connection
