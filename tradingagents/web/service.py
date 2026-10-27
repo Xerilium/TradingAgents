@@ -308,6 +308,17 @@ class DeskService:
                         status = {"ready": False, "message": str(exc)}
                     self.account_status = (time.monotonic() + 30, status)
                 return dict(self.account_status[1])
+        if provider == "chatgpt":
+            from tradingagents.llm_clients.chatgpt_auth import ChatGPTAuthError, ChatGPTUnreachable, credential
+
+            try:
+                callback = credential()
+                if probe:
+                    callback()
+            except (ChatGPTUnreachable, ChatGPTAuthError) as exc:
+                return {"ready": False, "message": str(exc)}
+            return {"ready": True, "message": "ChatGPT sign-in available." if probe else
+                    "ChatGPT sign-in is saved; checked when analysis starts."}
         if provider not in PROVIDER_API_KEY_ENV:
             return {"ready": False, "message": "Choose a supported model provider in settings."}
         if provider in {"ollama", "openai_compatible"}:
