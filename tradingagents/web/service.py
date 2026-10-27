@@ -208,6 +208,7 @@ class DeskService:
         if not self.store.data.get("codex_provider_migrated"):
             if self.store.data["config"].get("llm_provider") == "chatgpt":
                 self.store.data["config"]["llm_provider"] = "codex"
+                self.store.data["config_revision"] += 1
             self.store.data["codex_provider_migrated"] = True
             self.store.save()
         DeskConfig.model_validate(self.store.data["config"])
