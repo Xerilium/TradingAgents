@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from langchain_core.messages import AIMessage
 from langchain_openai import ChatOpenAI
@@ -64,6 +64,48 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
     the schema as a tool but don't force tool_choice, so structured output works
     across local servers regardless of the model ID's capabilities (#1057).
     """
+
+    max_total_tokens: int | None = None
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        if self.max_total_tokens is None:
+            return payload
+        parts = urlsplit(str(self.root_client.base_url))
+        path = parts.path.rstrip("/")
+        if path.endswith("/v1"):
+            path = path[:-3]
+        root = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
+        # The SDK transports authentication, timeouts and retry settings. Flatten
+        # extra_body exactly as the SDK does for the final completion request.
+        body = dict(payload)
+        body.update(body.pop("extra_body", {}) or {})
+        try:
+            client = self.root_client.with_options(timeout=30)
+            rendered = client.post(root + "/apply-template", cast_to=dict, body=body)
+            prompt = rendered["prompt"]
+            if not isinstance(prompt, str):
+                raise ValueError("invalid template response")
+            counted = client.post(root + "/tokenize", cast_to=dict,
+                body={"content": prompt, "model": body["model"], "parse_special": True, "add_special": False})
+            tokens = counted["tokens"]
+            if not isinstance(tokens, list) or any(type(token) is not int for token in tokens):
+                raise ValueError("invalid tokenizer response")
+        except Exception:
+            raise RuntimeError("Exact server tokenization is unavailable; cannot enforce the total token limit.") from None
+        remaining = self.max_total_tokens - len(tokens)
+        if remaining <= 0:
+            raise ValueError("The request input exhausts the configured total token limit.")
+        output = payload.pop("max_tokens", None)
+        completion = payload.get("max_completion_tokens")
+        extra = payload.get("extra_body") or {}
+        limits = [remaining] + [v for v in (output, completion, extra.get("max_tokens"),
+                                               extra.get("max_completion_tokens")) if v is not None]
+        payload["max_completion_tokens"] = min(limits)
+        if extra:
+            extra.pop("max_tokens", None)
+            extra.pop("max_completion_tokens", None)
+        return payload
 
     def with_structured_output(self, schema, *, method=None, **kwargs):
         resolved = method or get_capabilities(self.model_name).preferred_structured_method
@@ -399,9 +441,13 @@ class OpenAIClient(BaseLLMClient):
         for key in _PASSTHROUGH_KWARGS:
             if key not in self.kwargs:
                 continue
-            if key == "reasoning_effort" and not _supports_reasoning_effort(self.model):
+            if (key == "reasoning_effort" and self.provider == "openai"
+                    and _is_native_openai_base_url(base_url) and not _supports_reasoning_effort(self.model)):
                 continue
             llm_kwargs[key] = self.kwargs[key]
+
+        if self.provider == "openai_compatible" and self.kwargs.get("max_total_tokens") is not None:
+            llm_kwargs["max_total_tokens"] = self.kwargs["max_total_tokens"]
 
         # The subclass (provider quirks) comes from the registry spec.
         return chat_cls(**llm_kwargs)

@@ -148,6 +148,12 @@ class DeskService:
         self.writer_lease = writer_lease(self.application_root)
         active_directory, active_history = active_paths(self.application_root, history_dir)
         self.store = DeskStore(active_directory, settings.model_dump(), migrate_legacy=migrate_legacy)
+        saved_config = self.store.data["config"]
+        normalized_config = DeskConfig.model_validate(saved_config).model_dump()
+        if normalized_config != saved_config:
+            self.store.data["config"] = normalized_config
+            self.store.data["config_revision"] = self.store.data.get("config_revision", 0) + 1
+            self.store.save()
         if not self.store.data.get("codex_provider_migrated"):
             if self.store.data["config"].get("llm_provider") == "chatgpt":
                 self.store.data["config"]["llm_provider"] = "codex"

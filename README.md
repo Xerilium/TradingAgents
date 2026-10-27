@@ -207,11 +207,27 @@ Transient connection failures and HTTP 408/429/500/502/503/504 receive three
 retries after the first attempt, with timeouts of 10, 20, 30 and 30 seconds.
 This lookup does not run inference or change the model loaded on the server.
 
-**Max output tokens** is an optional positive integer for future API-backed
-research and portfolio calls. Leave it blank to use the server default. Context
-is shared by input, tool results and generated output; the loaded context size
-is changed on the server. Codex and ChatGPT subscription sign-in manage their own token limits, so this
-override is unavailable with either sign-in provider.
+Deep and Fast each have separate optional **Max total tokens**, **Max output
+tokens** and **Reasoning level** controls. They apply to future research calls;
+the joint portfolio uses Deep's controls. Blank reasoning leaves the server's
+default. Supported levels depend on the model and provider.
+
+For OpenAI-compatible servers, the total budget includes the rendered prompt,
+tool schemas/results and generated tokens. When set, the client uses the
+server's `/apply-template` and `/tokenize` endpoints to count the full input,
+then caps generation at the smaller of the output limit and remaining total.
+It never truncates evidence. An exhausted total or unavailable exact tokenizer
+is reported as an error. Other providers cannot use this total-budget control.
+
+Blank output uses the remaining total budget when a total is set, otherwise
+the server default. Output can include reasoning tokens. Codex and ChatGPT
+subscription sign-in manage their own token limits, so both length controls
+are disabled for those providers; reasoning remains available.
+
+The app does not add the Deep and Fast budgets or validate them against server
+capacity. These budgets do not resize server context or reserve a dedicated
+slot. The server still owns concurrency and shared-cache admission. Do not
+infer per-request context by dividing advertised context by the slot count.
 
 “No model loaded” from a compatible endpoint means that endpoint cannot serve
 the selected model. It does not mean Codex is unavailable. Check the actual

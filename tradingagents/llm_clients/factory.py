@@ -92,7 +92,7 @@ def _coerce_max_tokens(value):
 
 
 # Providers that take OpenAI's ``openai_reasoning_effort``.
-REASONING_EFFORT_PROVIDERS = ("openai", "chatgpt", "codex")
+REASONING_EFFORT_PROVIDERS = ("openai", "chatgpt", "codex", "openai_compatible")
 
 
 def build_llm_kwargs(config: dict) -> dict[str, Any]:
@@ -155,6 +155,23 @@ def create_tier_client(config: dict, tier: str, **extra) -> BaseLLMClient:
         base_url = config.get(f"{tier}_think_backend_url") or config.get("backend_url")
     else:
         base_url = config.get(f"{tier}_think_backend_url")
-    kwargs = build_llm_kwargs({**config, "llm_provider": provider})
+    tier_config = {**config, "llm_provider": provider}
+    output_key = f"{tier}_max_output_tokens"
+    if output_key in config:
+        tier_config["max_tokens"] = config[output_key]
+    reasoning = config.get(f"{tier}_reasoning_effort")
+    if f"{tier}_reasoning_effort" in config:
+        tier_config["openai_reasoning_effort"] = reasoning
+    if reasoning is not None:
+        if provider not in REASONING_EFFORT_PROVIDERS:
+            raise ValueError(f"Reasoning effort is not supported for provider '{provider}'.")
+    total = config.get(f"{tier}_max_total_tokens")
+    if total is not None and provider != "openai_compatible":
+        raise ValueError(f"Total token limits are not supported for provider '{provider}'.")
+    if provider in ("codex", "chatgpt") and config.get(output_key) is not None:
+        raise ValueError(f"Output token limits are not supported for provider '{provider}'.")
+    kwargs = build_llm_kwargs(tier_config)
+    if total is not None:
+        kwargs["max_total_tokens"] = _coerce_max_tokens(total)
     return create_llm_client(provider=provider, model=config[f"{tier}_think_llm"], base_url=base_url,
                              **kwargs, **extra)

@@ -4381,7 +4381,7 @@ dependencies = [
 
 [[package]]
 name = "tradingagents-desktop"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "libc",
  "process-wrap",

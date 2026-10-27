@@ -27,6 +27,12 @@ class DeskConfig(BaseModel):
     quick_think_llm: str = Field(default="gpt-6-luna", min_length=1, max_length=100)
     backend_url: str | None = None
     max_tokens: int | None = Field(default=None, gt=0, strict=True)
+    deep_max_total_tokens: int | None = Field(default=None, gt=0, strict=True)
+    deep_max_output_tokens: int | None = Field(default=None, gt=0, strict=True)
+    deep_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
+    quick_max_total_tokens: int | None = Field(default=None, gt=0, strict=True)
+    quick_max_output_tokens: int | None = Field(default=None, gt=0, strict=True)
+    quick_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
     max_debate_rounds: int = Field(default=1, ge=1, le=3)
     max_risk_discuss_rounds: int = Field(default=1, ge=1, le=3)
     max_tool_rounds: int = Field(default=8, ge=1, le=20)
@@ -35,6 +41,16 @@ class DeskConfig(BaseModel):
     social_screen_max_posts: int = Field(default=100, ge=1)
     selected_analysts: list[Literal["market", "social", "news", "fundamentals"]] = Field(
         default_factory=lambda: ["market", "social", "news", "fundamentals"], min_length=1, max_length=4)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_output_limit(cls, values):
+        if (isinstance(values, dict) and values.get("max_tokens") is not None
+                and str(values.get("llm_provider", "codex")).lower() not in {"codex", "chatgpt"}):
+            values = dict(values)
+            for tier in ("deep", "quick"):
+                values.setdefault(f"{tier}_max_output_tokens", values["max_tokens"])
+        return values
 
     @field_validator("universe")
     @classmethod
@@ -77,4 +93,13 @@ class DeskConfig(BaseModel):
             raise ValueError("Allocation and cash reserve must total no more than 100%.")
         if self.max_position_pct > self.allocation_pct:
             raise ValueError("The single-position limit cannot exceed total invested allocation.")
+        provider = self.llm_provider.lower()
+        for tier in ("deep", "quick"):
+            if getattr(self, f"{tier}_max_total_tokens") is not None and provider != "openai_compatible":
+                raise ValueError(f"Total token limits are not supported for provider '{provider}'.")
+            if getattr(self, f"{tier}_max_output_tokens") is not None and provider in {"codex", "chatgpt"}:
+                raise ValueError(f"Output token limits are not supported for provider '{provider}'.")
+            if (getattr(self, f"{tier}_reasoning_effort") is not None
+                    and provider not in {"codex", "chatgpt", "openai", "openai_compatible"}):
+                raise ValueError(f"Reasoning effort is not supported for provider '{provider}'.")
         return self
