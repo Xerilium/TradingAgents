@@ -24,8 +24,6 @@ desktop_output = sys.stdout if "--desktop-control" in sys.argv else None
 if desktop_output is not None:
     sys.stdout = sys.stderr
 
-from dotenv import load_dotenv
-
 from tradingagents.integrations.maenifold import GatewayRateLimited
 
 from .service import DeskService
@@ -42,6 +40,7 @@ class DeskServer(ThreadingHTTPServer):
             raise ValueError("TradingAgents supports IPv4 loopback binding only")
         self.service = service
         self.service_lock = threading.RLock()
+        self.credentials_lock = threading.Lock()
         self.closing = False
         self.csrf_token = secrets.token_urlsafe(32)
         self.session_token = secrets.token_urlsafe(32)
@@ -117,7 +116,7 @@ class DeskHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
-        if not path.startswith("/api/") or path == "/api/model-limits":
+        if not path.startswith("/api/") or path in {"/api/model-limits", "/api/credentials"}:
             self._get()
             return
         with self.server.service.maintenance:
@@ -143,6 +142,10 @@ class DeskHandler(BaseHTTPRequestHandler):
             else:
                 state = self.server.service.state()
             self._send(200, {**state, "csrf_token": self.server.csrf_token})
+            return
+        if path == "/api/credentials":
+            from tradingagents.credentials import CredentialStore
+            self._send(200, CredentialStore(self.server.service.runtime.credential_profile).status())
             return
         if path == "/api/model-limits":
             from .config import DeskConfig
@@ -373,7 +376,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be a JSON object.")
             service = self.server.service
             path = urlsplit(self.path).path
-            if not (path in {"/api/discovery", "/api/quotes/refresh", "/api/commands/reconcile", "/api/native-report"} or path == "/api/reporting" and data.get("action") == "collect" or
+            if not (path in {"/api/credentials", "/api/discovery", "/api/quotes/refresh", "/api/commands/reconcile", "/api/native-report"} or path == "/api/reporting" and data.get("action") == "collect" or
                     path == "/api/recovery" and data.get("action") in {"preview", "backup"} or
                     path == "/api/commands" and data.get("action") == "option_instruction" and data.get("operation") == "submit"):
                 service.maintenance.acquire()
@@ -382,13 +385,23 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
                 return
             if service.browse_only and path not in {
-                    "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model"}:
+                    "/api/credentials", "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
                 self._send(400, {"error": "Legacy direct-order submission is unsupported. Use exact proposal approval, admission and Nautilus commands through /api/commands."})
                 return
-            if path == "/api/nautilus/start":
+            if path == "/api/credentials":
+                from tradingagents.credentials import CredentialStore
+                with self.server.credentials_lock:
+                    credentials = CredentialStore(service.runtime.credential_profile)
+                    if data.get("action") == "save":
+                        result = credentials.save(data.get("group"), data.get("values"))
+                    elif data.get("action") == "remove":
+                        result = credentials.remove(data.get("group"))
+                    else:
+                        raise ValueError("Choose save or remove credentials")
+            elif path == "/api/nautilus/start":
                 result = service.start_native(data)
             elif path == "/api/nautilus/stop":
                 result = service.runtime.stop()
@@ -507,8 +520,8 @@ def main():
     parser.add_argument("--data-dir", type=Path, default=Path.cwd() / ".paper-desk")
     parser.add_argument("--mcp-endpoint", default="http://localhost:8080/mcp")
     parser.add_argument("--nautilus-python", type=Path, default=Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe")
-    parser.add_argument("--alpaca-credentials-file", type=Path,
-                        default=Path(r"C:\src\printer\apps\tradingagents\.env"))
+    parser.add_argument("--credential-profile", choices=("production", "development"),
+                        default="development", help="Native credential-store profile")
     parser.add_argument("--browse-only", action="store_true", help="Browse saved runs and prepare local human proposals; disable research, native order drafts, approval and admission")
     parser.add_argument("--history-dir", type=Path, help="Read additional saved research without modifying its journal")
     parser.add_argument("--migrate-journal", action="store_true", help="One-time offline JSON migration; all source writers must be stopped first")
@@ -516,17 +529,13 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("port must be between 1 and 65535")
-    credential_path = args.alpaca_credentials_file.resolve()
-    from .recovery_mode import RecoveryService, preflight, recovery_root, startup_root
+    os.environ["TRADINGAGENTS_DESKTOP_PROFILE"] = args.credential_profile
+    from tradingagents.credentials import CredentialStore
+    CredentialStore(args.credential_profile).load_environment()
+    from .recovery_mode import RecoveryService, preflight, startup_root
     from .recovery import writer_lease
     import sqlite3
     original_root = args.data_dir.resolve()
-    protected_roots = [Path(__file__).parent / "static", original_root, recovery_root(original_root)]
-    if args.history_dir:
-        protected_roots.append(args.history_dir)
-    if any(credential_path.is_relative_to(root.resolve()) for root in protected_roots):
-        parser.error("Credentials must remain outside served assets and account/history backup directories")
-    load_dotenv(credential_path, override=False)
     from tradingagents.integrations.maenifold import MaenifoldGateway
 
     from .nautilus_runtime import NautilusRuntime
@@ -565,11 +574,11 @@ def main():
         except WriterBusy:
             raise  # Ownership conflicts are never evidence of corrupt records.
         except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as failure:
-            runtime = NautilusRuntime(original_root / "nautilus", args.nautilus_python, args.alpaca_credentials_file,
+            runtime = NautilusRuntime(original_root / "nautilus", args.nautilus_python, args.credential_profile,
                                       application_root=original_root)
             service = RecoveryService(original_root, failure, runtime)
         else:
-            runtime = NautilusRuntime(directory / "nautilus", args.nautilus_python, args.alpaca_credentials_file,
+            runtime = NautilusRuntime(directory / "nautilus", args.nautilus_python, args.credential_profile,
                                       application_root=original_root)
             service = DeskService(directory, gateway=MaenifoldGateway(args.mcp_endpoint, timeout=90), runtime=runtime,
                                   browse_only=args.browse_only, history_dir=args.history_dir, migrate_legacy=args.migrate_journal)

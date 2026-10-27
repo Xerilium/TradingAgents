@@ -782,19 +782,25 @@ still use their existing Gateway tools and canonical GetHelp instructions.
 
 The installed app uses private runtimes and the production profile under
 `%LOCALAPPDATA%\com.tradingagents.desktop\production`. Its
-private provider configuration is `private\providers.env`, and its desk log
-is `logs\desk.log` under that profile. The development launcher uses source
+API credentials use Windows Credential Manager or macOS Keychain, with separate
+production and development entries. Use **Settings → Account** for Alpaca and
+**Settings → Integrations** for provider and data-feed keys. Stored secrets are
+not returned to the browser. Blank fields keep saved values; **Remove** deletes
+the selected credential. There is no plaintext fallback in the desktop app.
+Its desk log is `logs\desk.log` under that profile. The development launcher uses source
 environments and `.local-workspace\development` on port 8099. It does not copy
 production credentials or share the production profile. The older
-`Start-TradingDesk.cmd` and `tradingdesk.launch.json` describe the legacy
-source-linked installation, not the installed production app.
+`Start-TradingDesk.cmd` opens the installed production app. The old
+`tradingdesk.launch.json` is not the installed app's launch configuration.
 
 Maenifold Gateway defaults to `http://localhost:8080/mcp`. Provider endpoints
 and broker endpoints are separate configuration.
 
 Normal startup starts Nautilus from the saved settings. Use **Settings → Account**
 to inspect the observed account or to stop or start the engine. Check the observed
-account to verify paper/live identity. Stopping Nautilus leaves saved research
+account to verify paper/live identity. Saving credentials does not reconnect an
+active engine: stop Nautilus, then start it to use the saved account and endpoint.
+Normal app startup uses the saved native credentials. Stopping Nautilus leaves saved research
 and the web app available. Closing the browser does not stop the app server.
 
 Use the tray to restart the installed app. A native
@@ -817,7 +823,9 @@ The prior source-linked application and history directories remain under
 `.local-workspace/evidence/runtime-staging/20261017T024233Z-e3f9548d/` as
 preserved source data. Credentials are private; never print or commit them.
 
-The Windows 0.6.0 installer and signature were produced, but the update feed
+The Windows 0.6.2 installer and signature were produced and installed locally,
+with native credential storage and the paper-account connection verified in
+Settings. The update feed
 has not been published and an end-to-end update has not been proven. The macOS
 dependency locks target macOS 26 or later on Apple silicon; no macOS build or
 acceptance has been completed.

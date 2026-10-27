@@ -36,7 +36,7 @@ class ConnectionConfig:
     def __post_init__(self):
         object.__setattr__(self, "endpoint", normalize_trading_endpoint(self.endpoint))
         if not self._key or not self._secret:
-            raise ValueError("Alpaca credentials are missing from the configured file")
+            raise ValueError("Alpaca credentials are not configured")
 
     @classmethod
     def load(cls, credentials_file=DEFAULT_CREDENTIALS):

@@ -13,9 +13,9 @@ from uuid import uuid4
 
 
 class NautilusRuntime:
-    def __init__(self, directory, python, credentials_file, *, application_root=None):
+    def __init__(self, directory, python, credential_profile, *, application_root=None):
         self.directory, self.python = Path(directory), Path(python)
-        self.credentials_file = Path(credentials_file).resolve()
+        self.credential_profile = credential_profile
         self.application_root = Path(application_root).resolve() if application_root else Path(directory).parent.resolve()
         self.lock = threading.RLock()
         self.process = None
@@ -54,15 +54,17 @@ class NautilusRuntime:
         with self.lock:
             if self.process and self.process.poll() is None:
                 return self.state()
-            if not self.python.is_file() or not self.credentials_file.is_file():
-                raise ValueError("Configured Nautilus Python or Alpaca credentials file is missing")
+            if not self.python.is_file():
+                raise ValueError("Configured Nautilus Python is missing")
+            from tradingagents.credentials import CredentialStore
+            CredentialStore(self.credential_profile).connection_config()
             self.directory.mkdir(parents=True, exist_ok=True)
             if self.observer_thread is None or not self.observer_thread.is_alive():
                 self.observer_thread = threading.Thread(target=self._observe, daemon=True, name="account-record-observer")
                 self.observer_thread.start()
             with (self.directory / "nautilus.log").open("ab") as log:
                 self.process = subprocess.Popen(
-                    [str(self.python), "-u", str(Path(__file__).with_name("nautilus_worker.py")), str(self.credentials_file)],
+                    [str(self.python), "-u", str(Path(__file__).with_name("nautilus_worker.py")), "--credential-profile", self.credential_profile],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
                     text=True, encoding="utf-8", cwd=self.directory,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,

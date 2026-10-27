@@ -76,10 +76,9 @@ impl Backend {
         }
         command.args(["--desktop-control", "--port", &port.to_string(), "--data-dir"])
             .arg(profile.join("application")).arg("--history-dir").arg(profile.join("research"))
-            .arg("--nautilus-python").arg(native).arg("--alpaca-credentials-file")
-            .arg(profile.join("private/providers.env")).current_dir(profile)
+            .arg("--nautilus-python").arg(native).arg("--credential-profile")
+            .arg(if development { "development" } else { "production" }).current_dir(profile)
             .env("TRADINGAGENTS_DESKTOP_PROFILE", if development { "development" } else { "production" })
-            .env("TRADINGAGENTS_DESKTOP_CREDENTIALS_FILE", profile.join("private/providers.env"))
             .env("TRADINGAGENTS_RESULTS_DIR", profile.join("research/logs"))
             .env("TRADINGAGENTS_CACHE_DIR", profile.join("cache"))
             .env("TRADINGAGENTS_MEMORY_LOG_PATH", profile.join("private/trading_memory.md"))

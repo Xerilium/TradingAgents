@@ -317,7 +317,8 @@ class MarketDataJobs:
         return self.state()
 
     def read(self, path, *, data, canceled):
-        client = AlpacaREST(self.service.runtime.credentials_file)
+        from tradingagents.credentials import CredentialStore
+        client = AlpacaREST(connection=CredentialStore(self.service.runtime.credential_profile).connection_config())
         for attempt in range(3):
             limit = getattr(self.scan_limits, "value", None)
             if limit:

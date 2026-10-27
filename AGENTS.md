@@ -124,6 +124,9 @@ actual installation, saved data and permitted smoke test.
   The guide explains the relocation and remaining external dependencies.
 - Never print or commit credential values. Credentials stay outside served
   assets and application/history backup directories.
+- Desktop API keys belong in Windows Credential Manager or macOS Keychain,
+  managed through Settings. Production and development use separate vault
+  namespaces. Do not add a desktop plaintext credential-file fallback.
 - This is the user's computer. Leave unrelated files, processes and settings
   alone. No installation or system-setting change without specific permission.
 - Use KISS/YAGNI. Prefer an available LSP for code navigation. Track the user's
@@ -174,6 +177,11 @@ per-request timeout. A timeout or connection error does not prove a POST failed;
 read the resulting state before deciding whether to retry. Do not print private
 configuration or credential files. The helper grants no additional authority,
 does not combine approval with submission and does not replace visual UI checks.
+
+`get /api/credentials` returns native-store availability and configured flags,
+never secret values. Credential POST bodies must stay in memory; do not use
+`--json-file`, shell arguments, logs or temporary files to carry secrets.
+Saving credentials does not reconnect Nautilus or authorize broker actions.
 
 - For efficiency, batch all known fixes before one affected browser verification
   cycle for that batch. If that cycle finds more problems, collect and fix them

@@ -188,8 +188,19 @@ For isolated source development, run `rtk proxy .\Start-TradingDesk-Dev.cmd`
 from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
 checkout's `.venv` and `.venv-nautilus-v1` and
 `.local-workspace\development`. It does not copy production credentials or
-share production settings or data. The old `Start-TradingDesk.cmd` and
-`tradingdesk.launch.json` describe the legacy source-linked installation.
+share production settings or data. `Start-TradingDesk.cmd` opens the installed
+production app. The old `tradingdesk.launch.json` is not its launch configuration.
+
+Manage Alpaca credentials in **Settings → Account** and other API keys in
+**Settings → Integrations**. The desktop app uses Windows Credential Manager
+or macOS Keychain, with separate production and development entries. It does
+not fall back to a plaintext file. Fields stay empty after saving; the page
+shows only whether a value is saved. Blank fields keep existing values.
+**Remove** deletes the selected credential after confirmation.
+
+Saving credentials does not switch an active account. Stop Nautilus, then start
+it to load the saved account and endpoint. Normal app startup also uses that
+native store. Verify the observed paper/live account before preparing orders.
 
 ## Where things live
 
@@ -198,14 +209,16 @@ share production settings or data. The old `Start-TradingDesk.cmd` and
 | Installed app | `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` |
 | Production profile | `%LOCALAPPDATA%\com.tradingagents.desktop\production` |
 | Application data and research | `application` and `research` within the production profile |
-| Private provider configuration | `private\providers.env` within the production profile; never publish values |
+| API credentials | Native OS vault, under `TradingAgents.desktop.production.*` or `TradingAgents.desktop.development.*`; never publish values |
 | Desk log | `logs\desk.log` within the production profile |
 | Development checkout and data | `C:\src\TradingAgents` and its `.local-workspace\development` |
 | Prior source-linked application and history | `.local-workspace\evidence\runtime-staging\20261017T024233Z-e3f9548d\application` and sibling `history` |
 | Preserved local evidence and backups | `.local-workspace` and existing repository-local backup folders |
 
 Old paths inside dated evidence remain provenance, not launch instructions.
-The signed Windows 0.6.0 installer and its signature exist; the update feed is
+The signed Windows 0.6.2 installer and its signature exist and the update is
+installed locally. Windows Credential Manager storage and the paper-account
+connection were verified in Settings on 27 October 2026. The update feed is
 not published and an end-to-end update has not been proven. macOS dependency
 locks target macOS 26 or later on Apple silicon; no macOS build has been made.
 The installed desk still depends on a signed-in Codex installation and an

@@ -35,6 +35,9 @@ def main():
     from _tradingagents_native_adapter.native_recovery import collect_history
     from _tradingagents_native_adapter.linked_orders import observed_orders, native_order, native_group, native_observation, LIVE, equity_quantity, asset_session_flags, option_contract, is_package
     from _tradingagents_native_adapter.alpaca_readonly import AlpacaREST, ConnectionConfig
+    credential_spec = spec_from_file_location("_tradingagents_native_adapter.credentials", Path(__file__).parents[1] / "credentials.py")
+    credential_module = module_from_spec(credential_spec)
+    credential_spec.loader.exec_module(credential_module)
     from _tradingagents_native_adapter.alpaca_reports import fill_report, order_report, position_report, timestamp, execution_id, native_quantities, market_replacement_binding
     from _tradingagents_native_adapter.linked_orders import broker_position_quantity, native_type, native_profile_transition, package_terms, package_valuation_key, validate_package_valuation
     from _tradingagents_native_adapter.account_projection import reconcile, history_scope
@@ -70,8 +73,10 @@ def main():
     startup = json.loads(sys.stdin.readline())
     if startup.get("option_feed") not in {None, "opra", "indicative"}:
         raise ValueError("Choose an explicit supported option feed")
-    connection = ConnectionConfig.load(sys.argv[1])
-    transport = AlpacaREST(sys.argv[1], connection=connection)
+    if len(sys.argv) != 3 or sys.argv[1] != "--credential-profile" or sys.argv[2] not in {"production", "development"}:
+        raise ValueError("A valid credential profile is required")
+    connection = credential_module.CredentialStore(sys.argv[2]).connection_config(ConnectionConfig)
+    transport = AlpacaREST(connection=connection)
     endpoint = connection.endpoint
 
     def diagnose(exc):
@@ -808,7 +813,7 @@ def main():
             self.history_cache = None
             self.recovery_fee_sources = {}
             self.last_observation = 0
-            self.lifecycle = ExecutionLifecycle(self, authority_database, sys.argv[1], lambda: runtime_snapshot(self.cache), lambda: getattr(clients["data"], "asset_metadata", {}), native_epoch=native_epoch, connection=connection)
+            self.lifecycle = ExecutionLifecycle(self, authority_database, sys.argv[2], lambda: runtime_snapshot(self.cache), lambda: getattr(clients["data"], "asset_metadata", {}), native_epoch=native_epoch, connection=connection)
             self.position_reports, self.order_reports, self.fill_reports = [], [], []
             self.reconciliation_blockers = ["Initial broker observation pending"]
             try:

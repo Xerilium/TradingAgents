@@ -34,7 +34,6 @@ from tradingagents.integrations.maenifold import (
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
 
 from .config import DeskConfig
-from .alpaca_readonly import DEFAULT_CREDENTIALS
 from .nautilus_runtime import NautilusRuntime
 from .store import DeskStore, call_evidence_failed, source_attempt_failed
 from .evidence_requirements import RESEARCH_REPORTS as REPORT_KEYS, research_gaps
@@ -174,7 +173,8 @@ class DeskService:
         self.history_error = None
         self.history_directory = active_history
         self.runtime = runtime or NautilusRuntime(
-            Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe", DEFAULT_CREDENTIALS)
+            Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe",
+            os.getenv("TRADINGAGENTS_DESKTOP_PROFILE", "development"))
         DeskConfig.model_validate(self.store.data["config"])
         self.configure_symbols()
         self.gateway = gateway or MaenifoldGateway(timeout=90)
@@ -1036,8 +1036,9 @@ class DeskService:
             query = request.get("query")
             if not isinstance(query, dict):
                 raise ValueError("Choose explicit option contract filters or an exact OCC symbol")
-            connection = ConnectionConfig.load(self.runtime.credentials_file)
-            result = AlpacaREST(self.runtime.credentials_file, connection=connection).option_contracts(query)
+            from tradingagents.credentials import CredentialStore
+            connection = CredentialStore(self.runtime.credential_profile).connection_config()
+            result = AlpacaREST(connection=connection).option_contracts(query)
             identity = str(uuid4())
             reference = store._write_source_result(identity, str(uuid4()), result["raw"], prefix="option-contracts", allow_pagination_cursor=True)
             observation = seal({"query": copy.deepcopy(query), "contracts": result["contracts"],
@@ -1307,7 +1308,7 @@ class DeskService:
             record = self.reporting()
             collection_store = self.store
             collection_runtime = self.runtime.state() if request.get("action") == "collect" else None
-            collection_credentials = self.runtime.credentials_file if request.get("action") == "collect" else None
+            collection_profile = self.runtime.credential_profile if request.get("action") == "collect" else None
         if request.get("expected_revision") != record["revision"] or type(request.get("expected_revision")) is not int:
             raise StoreConflict(record["revision"])
         if request.get("action") == "export":
@@ -1351,7 +1352,8 @@ class DeskService:
             from .account_history import collect
             from .alpaca_readonly import AlpacaREST
             runtime = collection_runtime
-            result = collect(AlpacaREST(collection_credentials), collection_store, request["start"], request["end"],
+            from tradingagents.credentials import CredentialStore
+            result = collect(AlpacaREST(connection=CredentialStore(collection_profile).connection_config()), collection_store, request["start"], request["end"],
                              (runtime.get("account") or {}).get("id"))
             result["allocation_observation"] = {"account_at": runtime.get("account_at"),
                 "reconciliation": runtime.get("reconciliation"), "positions": runtime.get("positions"),
@@ -2010,12 +2012,13 @@ class DeskService:
         return self.state()
 
     def connection_context(self, runtime):
-        from .alpaca_readonly import trading_endpoint, TRADING_ORIGINS
+        from .alpaca_readonly import TRADING_ORIGINS
+        from tradingagents.credentials import CredentialStore
         try:
-            configured = trading_endpoint(self.runtime.credentials_file)
+            configured = CredentialStore(self.runtime.credential_profile).connection_config().endpoint
             intent, error = TRADING_ORIGINS[configured], None
         except (OSError, ValueError, KeyError):
-            configured, intent, error = None, "unknown", "Configured Alpaca origin is unavailable or unsupported; correct the file and explicitly reconnect"
+            configured, intent, error = None, "unknown", "Alpaca credentials are unavailable or unsupported; update Settings and explicitly reconnect"
         identity = runtime.get("connection_identity") or {}
         account = runtime.get("account") or {}
         current = (runtime.get("status") == "connected" and account.get("id")
