@@ -197,11 +197,7 @@ fn main() {
             }
             let development = app.config().identifier == "com.tradingagents.desktop.dev";
             let port = if development { 8099 } else { 8098 };
-            let profile = if development && cfg!(debug_assertions) {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize()?.join(".local-workspace/development")
-            } else {
-                app.path().app_local_data_dir()?.join(if development { "development" } else { "production" })
-            };
+            let profile = app.path().app_local_data_dir()?;
             let payload = app.path().resource_dir()?.join("payload");
             let (tx, rx) = mpsc::channel();
             let exiting = Arc::new(AtomicBool::new(false));

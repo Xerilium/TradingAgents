@@ -14,37 +14,57 @@ macOS Apple Silicon locks were cross-resolved with `MACOSX_DEPLOYMENT_TARGET=26.
 and the arm64 macOS target; the build and runtime still require verification on
 macOS 26+. Do not reuse Windows wheel evidence for macOS.
 
-From the repository root, run `rtk proxy .venv/Scripts/python.exe packaging/prepare.py`
-on Windows or the equivalent Python 3.11+ command on macOS. The script requires
-both reviewed platform locks and a clean generated payload and wheel directory.
-It downloads standalone Python builds and binary wheels into `packaging/build`,
-installs the project wheel and dependencies into `desktop/src-tauri/payload`,
-and creates a platform-specific Nautilus integrity manifest from a hash-locked
-official wheel. No existing virtual environment, user data, or credentials are
-copied. Inspect the printed payload size before bundling. A failed preparation
-may leave partial generated files; remove only the identified build directories
-and payload before retrying.
+## Normal app updates
 
-The installer contains CPU seed runtimes and a separate `payload/app` project
-wheel extraction. On first launch the host copies each seed into the profile's
-`runtimes/desk` and `runtimes/native` through staging directories. Later app
-updates do not replace these runtimes or their dependencies. An incomplete
-existing runtime or staging directory is reported rather than overwritten.
-The app resource contains the platform Nautilus integrity manifest.
+The default Tauri configuration includes only `payload/app`, its provenance,
+and the desktop launcher. It excludes both Python runtime seeds. The existing
+Tauri updater installs this app-only package; it does not reinstall dependencies.
 
-After `npm ci` in `desktop`, build with the Tauri CLI and the real updater
-configuration overlay. Set `TAURI_SIGNING_PRIVATE_KEY` to the external publisher
-key path; do not copy the private key into the checkout or payload. Keep the
-signed installer and its `.sig` together. The overlay uses the actual public
-key and release feed; the feed is unavailable until a release is published.
+For an ordinary code or prompt change, from the repository root run
+`rtk proxy .venv/Scripts/python.exe packaging/refresh_project.py` (use an
+existing Python 3.11+ on macOS). This builds the app wheel and refreshes only
+`payload/app` and its provenance. It neither opens nor installs into
+`payload/desk` or `payload/native`. It uses the previously prepared app's
+platform-specific Nautilus integrity manifest.
 
-For a signed installer, `packaging/release_metadata.py` creates `latest.json`
-and a SHA-256 sidecar. Supply the actual version, release tag, platform, and
-output path. The generated GitHub asset URL is prospective until the matching
-release and files are published. For a multi-platform release, merge platform
-entries into one manifest before publication. Review and retain the prior signed
-installer and a data backup before replacing an installed version; do not assume
-that an older version can read a migrated database.
+Then, from `desktop`, run `rtk proxy npm run build:release`. Supply the existing
+publisher key through `TAURI_SIGNING_PRIVATE_KEY`; never copy the key into
+the repository. Keep the update artifact and its `.sig` together.
+
+`packaging/release_metadata.py` creates `latest.json` and a SHA-256 sidecar
+for this signed app-only update. Supply the actual version, release tag,
+platform and output path. Publish only app-only artifacts to the updater feed.
+The generated GitHub URL is prospective until the matching release is published.
+
+## First installation and dependency changes
+
+Prepare dependencies once per platform/runtime release. From the repository root,
+run `rtk proxy .venv/Scripts/python.exe packaging/prepare.py` (or an existing
+Python 3.11+ on macOS). It requires both reviewed platform locks and clean generated
+payload/wheel directories. It downloads standalone Python and hash-locked wheels
+into `packaging/build`, installs dependencies into `payload/desk` and
+`payload/native`, and stages `payload/app` with the verified Nautilus manifest.
+No user environment, data or credentials are copied. Do not repeat preparation
+for ordinary app changes.
+
+For a full first-install package, use `npm run build:setup` from `desktop`.
+This explicitly adds `tauri.setup.conf.json`, including the runtime seeds,
+and disables updater artifacts. Use a separate `CARGO_TARGET_DIR` for this
+build and retain its full setup outside the normal update output. It must never
+be used as the updater feed's artifact. The existing signed 0.6.19 full installer
+remains a first-install package for its dependency set; install the current
+app-only update afterward.
+
+On first launch, full setup seeds `runtimes/desk` and `runtimes/native`
+in the app's private profile through staging directories. Subsequent launches
+reuse them. An app-only update requires those installed runtimes; when absent,
+the host tells the user to run full setup. Startup does not download dependencies.
+Existing incomplete runtimes/staging directories are reported and not overwritten.
+
+Review dependency changes as a separate runtime release. App-only updates do not
+apply new dependency locks to installed runtimes. Keep production runtimes,
+CUDA, data and credentials separate from replaceable app resources. Back up the
+profile and retain the previous signed app before a controlled update.
 
 ## Optional Windows Laya CUDA runtime
 

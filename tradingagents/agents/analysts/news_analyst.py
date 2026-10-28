@@ -10,6 +10,7 @@ from tradingagents.agents.tools import (
     get_news,
     get_prediction_markets,
     read_research_source,
+    search_research_sources,
 )
 
 # The tools this analyst is offered; its tool node is built from the same tuple.
@@ -19,6 +20,7 @@ TOOLS = (
     get_macro_indicators,
     get_prediction_markets,
     read_research_source,
+    search_research_sources,
 )
 
 

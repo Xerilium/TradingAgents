@@ -2645,7 +2645,8 @@ class DeskService:
                     self.store.save_research()
 
         def research_symbol(symbol):
-            with capture_vendor_evidence(self._evidence_recorder(run_id, symbol)):
+            with capture_vendor_evidence(self._evidence_recorder(run_id, symbol),
+                    cancelled=cancellation.is_cancelled, cache=cancellation.source_cache):
                 run_symbol(symbol)
         try:
             pending = iter(run["symbols"])

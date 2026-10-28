@@ -117,6 +117,8 @@ def build_default_config() -> dict:
         # provider/SDK at its own default (usually 2). Raise it to ride out bursty
         # 429 throttling on rate-limited deployments instead of aborting a run (#1091).
         "llm_max_retries": None,
+        # Retries after the first Reddit/FRED data request; waits remain cancellable.
+        "research_retries": 10,
         # Cap on output tokens forwarded to every provider chat client. None leaves
         # each provider at its own default. Set it to bound a model that emits
         # unbounded reasoning/output and hangs or trips a gateway idle timeout

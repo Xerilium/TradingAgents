@@ -50,9 +50,9 @@ def _codex_path() -> str:
 class _AppServer:
     """One bounded stdio RPC connection, with no credential handling."""
 
-    def __init__(self, timeout: float, cancelled=None):
+    def __init__(self, timeout: float | None, cancelled=None):
         self.cancelled = cancelled
-        self.deadline = time.monotonic() + timeout
+        self.deadline = time.monotonic() + (timeout if timeout is not None else 30)
         self.messages: queue.Queue = queue.Queue()
         self.events: deque = deque()
         self.request_id = 0
@@ -96,7 +96,7 @@ class _AppServer:
                 while True:
                     remaining = self._check_request()
                     try:
-                        stdout, stderr = catalog.communicate(timeout=min(remaining, 0.1))
+                        stdout, stderr = catalog.communicate(timeout=min(remaining, 0.1) if remaining is not None else 0.1)
                         break
                     except subprocess.TimeoutExpired:
                         continue
@@ -160,8 +160,8 @@ class _AppServer:
         cancelled = getattr(self, "cancelled", None)
         if cancelled is not None and cancelled.is_set():
             raise InterruptedError("ChatGPT request cancelled.")
-        remaining = self.deadline - time.monotonic()
-        if remaining <= 0:
+        remaining = None if self.deadline is None else self.deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
             raise TimeoutError("ChatGPT request timed out. Check Codex sign-in and account limits.")
         return remaining
 
@@ -169,7 +169,7 @@ class _AppServer:
         while True:
             remaining = self._check_request()
             try:
-                item = self.messages.get(timeout=min(remaining, 0.1))
+                item = self.messages.get(timeout=min(remaining, 0.1) if remaining is not None else 0.1)
                 break
             except queue.Empty:
                 continue
@@ -325,7 +325,7 @@ class ChatGPTChatModel(BaseChatModel):
     """Native LangChain chat and function tools, billed to a ChatGPT login."""
 
     model_name: str
-    timeout: float = Field(default=300, gt=0)
+    timeout: float | None = Field(default=None, gt=0)
     max_retries: int = Field(default=3, ge=0, le=3)
     reasoning_effort: str = "high"
 
@@ -345,12 +345,13 @@ class ChatGPTChatModel(BaseChatModel):
         self, messages: list[BaseMessage], stop: list[str] | None = None,
         run_manager: CallbackManagerForLLMRun | None = None, **kwargs,
     ) -> ChatResult:
-        deadline = kwargs.setdefault("_request_deadline", time.monotonic() + self.timeout)
+        deadline = kwargs.setdefault("_request_deadline",
+                                     time.monotonic() + self.timeout if self.timeout is not None else None)
         cancelled = kwargs.get("_request_cancelled")
         for attempt in range(self.max_retries + 1):
             if cancelled is not None and cancelled.is_set():
                 raise InterruptedError("ChatGPT request cancelled.")
-            if time.monotonic() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError("ChatGPT request timed out.")
             try:
                 return self._generate_once(messages, stop, run_manager, **kwargs)
@@ -358,7 +359,7 @@ class ChatGPTChatModel(BaseChatModel):
                 if attempt == self.max_retries or exc.retry_after > 60:
                     raise
                 delay = retry_delay(exc.retry_after, attempt)
-                if time.monotonic() + delay >= deadline:
+                if deadline is not None and time.monotonic() + delay >= deadline:
                     raise TimeoutError("ChatGPT request deadline does not allow another retry.") from exc
                 if cancelled is None:
                     time.sleep(delay)
@@ -370,7 +371,7 @@ class ChatGPTChatModel(BaseChatModel):
         # loop. Give this specific request a cooperative cancellation signal.
         cancelled = threading.Event()
         kwargs["_request_cancelled"] = cancelled
-        kwargs["_request_deadline"] = time.monotonic() + self.timeout
+        kwargs["_request_deadline"] = time.monotonic() + self.timeout if self.timeout is not None else None
         manager = run_manager.get_sync() if run_manager is not None else None
         worker = asyncio.create_task(asyncio.to_thread(self._generate, messages, stop, manager, **kwargs))
         try:
@@ -396,12 +397,16 @@ class ChatGPTChatModel(BaseChatModel):
         cancelled = kwargs.get("_request_cancelled")
         if cancelled is not None and cancelled.is_set():
             raise InterruptedError("ChatGPT request cancelled.")
-        remaining = kwargs.get("_request_deadline", time.monotonic() + self.timeout) - time.monotonic()
-        if remaining <= 0:
+        deadline = kwargs.get("_request_deadline")
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
             raise TimeoutError("ChatGPT request timed out.")
-        server = _AppServer(min(self.timeout, remaining), cancelled=cancelled)
+        server = _AppServer(remaining, cancelled=cancelled)
         try:
             _initialize_chatgpt(server)
+            # Startup is bounded; an active model request has no default deadline.
+            if deadline is None:
+                server.deadline = None
             dynamic = [{"type": "namespace", "name": _NAMESPACE, "description": "TradingAgents functions", "tools": [{
                 "type": "function", "name": tool["name"], "description": tool.get("description", ""),
                 "inputSchema": tool.get("parameters", {"type": "object", "properties": {}}),
@@ -498,7 +503,7 @@ class ChatGPTClient(BaseLLMClient):
 
     def get_llm(self) -> ChatGPTChatModel:
         return ChatGPTChatModel(
-            model_name=self.model, timeout=self.kwargs.get("timeout", 300),
+            model_name=self.model, timeout=self.kwargs.get("timeout"),
             max_retries=self.kwargs.get("max_retries", 3),
             reasoning_effort=self.kwargs.get("reasoning_effort") or "high", callbacks=self.kwargs.get("callbacks"),
         )

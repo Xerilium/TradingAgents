@@ -1,10 +1,12 @@
 {
   "name": "tradingagents-desktop",
   "private": true,
-  "version": "0.6.16",
+  "version": "0.6.22",
   "scripts": {
     "tauri": "tauri",
-    "build:workflow-tools": "node workflow-ui/build.mjs"
+    "build:workflow-tools": "node workflow-ui/build.mjs",
+    "build:release": "tauri build --ci --config src-tauri/tauri.updater.conf.json",
+    "build:setup": "tauri build --ci --config src-tauri/tauri.updater.conf.json --config src-tauri/tauri.setup.conf.json"
   },
   "devDependencies": {
     "@codemirror/lang-markdown": "6.5.2",

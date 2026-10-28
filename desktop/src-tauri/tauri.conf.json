@@ -1,12 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TradingAgents",
-  "version": "0.6.16",
+  "version": "0.6.22",
   "identifier": "com.tradingagents.desktop",
   "build": {
     "frontendDist": "../ui"
   },
   "app": {
+    "appDirectoriesOverride": "$HOME/.cache/trader/production",
     "windows": [],
     "security": {
       "csp": "default-src 'none'"
@@ -20,7 +21,8 @@
       "dmg"
     ],
     "resources": {
-      "payload/": "payload/"
+      "payload/app/": "payload/app/",
+      "payload/provenance.json": "payload/provenance.json"
     },
     "icon": [
       "icons/32x32.png",

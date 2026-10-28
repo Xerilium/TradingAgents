@@ -3,7 +3,7 @@
 Reads Reddit's public Atom/RSS search feed, searching all subreddits in one
 combined request. The JSON search endpoint is WAF-blocked (``HTTP 403``) for
 anonymous clients (#862), so RSS is the only path; it carries no score or comment
-counts. Transient reads retry up to three times, honouring ``Retry-After`` within the budget.
+counts. Transient reads use the research retry setting; every wait is capped at 30 seconds.
 
 A fetch that fails is reported as ``<unavailable>``, never as "no posts found":
 the two are different claims, and passing a rate-limited fetch off as silence
@@ -27,7 +27,6 @@ import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -136,8 +135,6 @@ def _strip_html(content: str) -> str:
     return " ".join(html.unescape(text).split())
 
 
-# Wait at most 30 seconds in a collection; longer server delays are deferred.
-_RETRY_MAX_SECONDS = 30.0
 _REDDIT_FETCH_LOCK = threading.Lock()
 _REDDIT_COOLDOWN_UNTIL = 0.0
 
@@ -147,6 +144,21 @@ _REDDIT_COOLDOWN_UNTIL = 0.0
 # memory before we parse it. Overflow raises http.client.HTTPException, which
 # both fetch paths already treat as a failed fetch (degrade to empty / RSS).
 _MAX_FEED_BYTES = 5 * 1024 * 1024
+
+
+def _check_cancelled(cancelled):
+    if cancelled and cancelled():
+        raise InterruptedError("Research cancelled")
+
+
+def _wait(seconds, cancelled):
+    end = time.monotonic() + seconds
+    while True:
+        _check_cancelled(cancelled)
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.2, remaining))
 
 
 def _read_capped(resp) -> bytes:
@@ -164,101 +176,74 @@ def _fetch_subreddit_rss(
     sub: str,
     limit: int,
     timeout: float,
-    _attempt: int = 1,
-    _waited: float = 0.0,
-    _failures: tuple = (),
+    cancelled=None,
 ) -> list[dict] | str:
-    """Default path: parse the public Atom search feed for a subreddit.
+    """Fetch one combined Atom feed, retrying transient failures before giving up."""
+    global _REDDIT_COOLDOWN_UNTIL
+    from tradingagents.dataflows.router import observe_source_call, source_retry_plan
 
-    ``sub`` may be one subreddit or several joined with ``+``. On a 429 (Reddit's
-    per-IP rate limit) we retry up to three times within a 30-second wait
-    budget, honouring ``Retry-After`` when present.
-
-    Returns ``[]`` when the search ran and matched nothing, and diagnostics when
-    the fetch itself failed. The caller must keep these apart: rendering a
-    failed fetch as "no posts found" hands the sentiment analyst an absence of
-    discussion that was never observed (#1295).
-    """
     url = _RSS.format(sub=sub, qs=_search_qs(ticker, limit))
     req = Request(url, headers={"User-Agent": _UA})
-    from tradingagents.dataflows.router import observe_source_call, source_failure_details, source_retry_plan
-    retry = {"attempt": _attempt, "retry_action": "not_needed"}
+    failures = []
+    retries = get_config().get("research_retries", 10)
+    for attempt in range(1, retries + 2):
+        _check_cancelled(cancelled)
+        _wait(max(0.0, _REDDIT_COOLDOWN_UNTIL - time.monotonic()), cancelled)
+        retry = {"attempt": attempt, "retry_action": "not_needed"}
 
-    def unavailable(error):
-        attempts = [{key: value for key, value in item.items() if key != "server_retry_after"}
-                    for item in (*_failures, retry)]
-        return f"<Reddit unavailable: {json.dumps({'error_class': type(error).__name__, 'attempts': attempts})}; this is not an absence of discussion>"
+        def read_response():
+            global _REDDIT_COOLDOWN_UNTIL
+            try:
+                with urlopen(req, timeout=timeout) as resp:
+                    return _read_capped(resp)
+            except (OSError, http.client.HTTPException) as exc:
+                if isinstance(exc, InterruptedError):
+                    raise
+                retry.update(source_retry_plan(exc, attempt=attempt))
+                if retry["failure_kind"] == "rate_limited":
+                    _REDDIT_COOLDOWN_UNTIL = max(
+                        _REDDIT_COOLDOWN_UNTIL,
+                        time.monotonic() + retry["retry_after_seconds"],
+                    )
+                raise
 
-    def read_response():
-        global _REDDIT_COOLDOWN_UNTIL
         try:
-            with urlopen(req, timeout=timeout) as resp:
-                raw = _read_capped(resp)
-            return raw
+            raw = observe_source_call(
+                "reddit_rss", "reddit", "http_response_bytes",
+                read_response, retry=retry, ticker=ticker,
+            )
+            root = None
+
+            def parse_response():
+                nonlocal root
+                root = ET.fromstring(raw)
+                if root.tag != f"{{{_ATOM_NS['atom']}}}feed":
+                    raise ET.ParseError("Reddit response is not an Atom feed")
+                entries = root.findall("atom:entry", _ATOM_NS)
+                for entry in entries:
+                    title = entry.find("atom:title", _ATOM_NS)
+                    published = entry.find("atom:published", _ATOM_NS)
+                    link = entry.find("atom:link", _ATOM_NS)
+                    if (title is None or not title.text or published is None
+                            or _iso_to_timestamp(published.text) is None
+                            or link is None or not link.get("href")):
+                        raise ET.ParseError("Reddit Atom feed contains a malformed entry")
+                return {"root_tag": root.tag, "entry_count": len(entries)}
+
+            observe_source_call("reddit_rss_parse", "reddit", "parsed_feed_metadata",
+                                parse_response, requirement="supplemental", ticker=ticker)
+            break
         except (OSError, http.client.HTTPException, ET.ParseError) as exc:
             if isinstance(exc, InterruptedError):
                 raise
-            retry.update(source_retry_plan(exc, attempt=retry["attempt"], remaining=timeout + 60))
-            if retry["failure_kind"] in {"rate_limited", "transient_server", "transient_transport"}:
-                value = getattr(exc, "retry_after", None)
-                if value is None:
-                    headers = getattr(exc, "headers", None)
-                    value = headers.get("Retry-After") if headers else None
-                delay = max(1.0, retry["retry_after_seconds"]) if value is not None else 2.0 ** _attempt
-                if retry["failure_kind"] == "rate_limited":
-                    _REDDIT_COOLDOWN_UNTIL = max(_REDDIT_COOLDOWN_UNTIL, time.monotonic() + delay)
-                retry.update(server_retry_after=str(value)[:128] if value is not None else None,
-                    retry_after_seconds=delay,
-                    retry_action="retry" if _attempt <= 3 and _waited + delay <= _RETRY_MAX_SECONDS else "defer")
-            raise
-
-    try:
-        raw = observe_source_call("reddit_rss", "reddit", "http_response_bytes", read_response, retry=retry, ticker=ticker)
-        root = None
-        def parse_response():
-            nonlocal root
-            root = ET.fromstring(raw)
-            if root.tag != f"{{{_ATOM_NS['atom']}}}feed":
-                raise ET.ParseError("Reddit response is not an Atom feed")
-            entries = root.findall("atom:entry", _ATOM_NS)
-            for entry in entries:
-                title = entry.find("atom:title", _ATOM_NS)
-                published = entry.find("atom:published", _ATOM_NS)
-                link = entry.find("atom:link", _ATOM_NS)
-                if (title is None or not title.text or published is None
-                        or _iso_to_timestamp(published.text) is None
-                        or link is None or not link.get("href")):
-                    raise ET.ParseError("Reddit Atom feed contains a malformed entry")
-            return {"root_tag": root.tag, "entry_count": len(entries)}
-        observe_source_call("reddit_rss_parse", "reddit", "parsed_feed_metadata", parse_response,
-                            requirement="supplemental", ticker=ticker)
-    except HTTPError as exc:
-        if retry["retry_action"] == "retry":
-            # Never retry earlier than the server requested.
-            wait = retry["retry_after_seconds"]
-            logger.warning(
-                "Reddit RSS transient HTTP failure for r/%s · %s — backing off %.1fs before retry",
-                sub, ticker, wait,
-            )
-            time.sleep(wait)
-            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _attempt=_attempt + 1,
-                                        _waited=_waited + retry["retry_after_seconds"],
-                                        _failures=(*_failures, dict(retry)))
-        logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
-        return unavailable(exc)
-    except (OSError, http.client.HTTPException, ET.ParseError) as exc:
-        if isinstance(exc, InterruptedError):
-            raise
-        retry.update(source_failure_details(exc))
-        if retry["retry_action"] == "retry":
-            time.sleep(retry["retry_after_seconds"])
-            return _fetch_subreddit_rss(ticker, sub, limit, timeout, _attempt=_attempt + 1,
-                                        _waited=_waited + retry["retry_after_seconds"],
-                                        _failures=(*_failures, dict(retry)))
-        # OSError covers URLError/TimeoutError/connection resets; HTTPException
-        # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
-        logger.warning("Reddit RSS fetch failed for r/%s · %s: %s", sub, ticker, type(exc).__name__)
-        return unavailable(exc)
+            failures.append(dict(retry))
+            if retry["retry_action"] != "retry":
+                logger.warning("Reddit RSS fetch failed for r/%s · %s after %d attempts: %s",
+                               sub, ticker, attempt, type(exc).__name__)
+                return f"<Reddit unavailable: {json.dumps({'error_class': type(exc).__name__, 'attempts': failures})}; this is not an absence of discussion>"
+            logger.warning("Reddit RSS r/%s · %s: retry %d/%d in %.1fs",
+                           sub, ticker, attempt, retries, retry["retry_after_seconds"])
+            _wait(retry["retry_after_seconds"], cancelled)
 
     posts = []
     for entry in root.findall("atom:entry", _ATOM_NS)[:limit]:
@@ -292,6 +277,7 @@ def fetch_reddit_posts(
     screen=None,
     limit: int | None = None,
     on_acquisition=None,
+    cancelled=None,
 ) -> str:
     """Fetch recent Reddit posts mentioning ``ticker`` across finance
     subreddits (by default ``subreddits_for(ticker)``) and return them as a
@@ -310,6 +296,9 @@ def fetch_reddit_posts(
     flag per post and a note line that heads the block. It runs before the
     per-subreddit cut, so the posts it keeps fill the slots.
     """
+    if cancelled is None:
+        from tradingagents.dataflows.router import source_cancelled
+        cancelled = source_cancelled
     subreddits = list(subreddits or subreddits_for(ticker))
     # Crypto reaches us as a Yahoo pair (BTC-USD); search Reddit for the base
     # ("BTC") so the query actually matches discussion instead of near-nothing.
@@ -320,26 +309,12 @@ def fetch_reddit_posts(
         if on_acquisition:
             on_acquisition({"status": status, "reason": reason, **details})
 
-    def unavailable(reason):
-        report("unavailable", reason)
-        from tradingagents.dataflows.errors import VendorUnavailableError
-        from tradingagents.dataflows.router import observe_source_call
-
-        def defer():
-            raise VendorUnavailableError(reason)
-
-        try:
-            observe_source_call("reddit_rss", "reddit", "http_response_bytes", defer,
-                                retry={"retry_action": "defer"}, ticker=ticker)
-        except VendorUnavailableError:
-            return f"<Reddit unavailable: {reason}; this is not an absence of discussion>"
-
-    if not _REDDIT_FETCH_LOCK.acquire(timeout=_RETRY_MAX_SECONDS):
-        return unavailable("another collection did not finish within 30 seconds")
+    while not _REDDIT_FETCH_LOCK.acquire(timeout=0.2):
+        _check_cancelled(cancelled)
     try:
-        if time.monotonic() < _REDDIT_COOLDOWN_UNTIL:
-            return unavailable("rate-limit cooldown is active")
-        fetched = _fetch_subreddit_rss(ticker, "+".join(subreddits), min(requested, _FEED_PAGE), timeout)
+        _check_cancelled(cancelled)
+        _wait(max(0.0, _REDDIT_COOLDOWN_UNTIL - time.monotonic()), cancelled)
+        fetched = _fetch_subreddit_rss(ticker, "+".join(subreddits), min(requested, _FEED_PAGE), timeout, cancelled=cancelled)
     finally:
         _REDDIT_FETCH_LOCK.release()
     if isinstance(fetched, str):

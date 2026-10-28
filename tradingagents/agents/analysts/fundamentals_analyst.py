@@ -11,6 +11,7 @@ from tradingagents.agents.tools import (
     get_income_statement,
     get_insider_transactions,
     read_research_source,
+    search_research_sources,
 )
 
 # The tools this analyst is offered; its tool node is built from the same tuple.
@@ -22,6 +23,7 @@ TOOLS = (
     get_income_statement,
     get_insider_transactions,
     read_research_source,
+    search_research_sources,
 )
 
 
@@ -36,7 +38,7 @@ def create_fundamentals_analyst(llm, tools=None, *, workflow):
         active_tools = tuple(tool for tool in tools if tool.name not in excluded)
         calls = [(get_fund_data.name, {"curr_date": current_date})] if is_fund else [
             *((tool.name, {} if tool is get_insider_transactions else {"curr_date": current_date})
-            for tool in TOOLS if tool not in (read_research_source, get_fund_data)
+            for tool in TOOLS if tool not in (read_research_source, search_research_sources, get_fund_data)
             ),
             (get_income_statement.name, {"freq": "annual", "curr_date": current_date}),
         ]

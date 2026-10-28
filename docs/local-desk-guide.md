@@ -167,7 +167,7 @@ verification does not establish a live connection or live execution acceptance.
    `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`.
 2. Open <http://127.0.0.1:8098> if the browser did not open automatically.
    The installed app uses port **8098** and the production profile under
-   `%LOCALAPPDATA%\com.tradingagents.desktop\production`.
+   `%USERPROFILE%\.cache\trader\production`.
 3. Expand **Nautilus connection**. If stopped, choose **Start Nautilus**. Wait for
    connected account status and prices before relying on current observations.
 4. Confirm the account is paper, check cash/equity/buying power, and inspect
@@ -187,7 +187,7 @@ requires taking it offline.
 For isolated source development, run `rtk proxy .\Start-TradingDesk-Dev.cmd`
 from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
 checkout's `.venv` and `.venv-nautilus-v1` and
-`.local-workspace\development`. It does not copy production credentials or
+`%USERPROFILE%\.cache\trader\development`. It does not copy production credentials or
 share production settings or data. `Start-TradingDesk.cmd` opens the installed
 production app. The old `tradingdesk.launch.json` is not its launch configuration.
 
@@ -207,11 +207,11 @@ native store. Verify the observed paper/live account before preparing orders.
 | Item | Current location / purpose |
 | --- | --- |
 | Installed app | `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` |
-| Production profile | `%LOCALAPPDATA%\com.tradingagents.desktop\production` |
+| Production profile | `%USERPROFILE%\.cache\trader\production` |
 | Application data and research | `application` and `research` within the production profile |
 | API credentials | Native OS vault, under `TradingAgents.desktop.production.*` or `TradingAgents.desktop.development.*`; never publish values |
 | Desk log | `logs\desk.log` within the production profile |
-| Development checkout and data | `C:\src\TradingAgents` and its `.local-workspace\development` |
+| Development checkout and data | `C:\src\TradingAgents` and its `%USERPROFILE%\.cache\trader\development` |
 | Prior source-linked application and history | `.local-workspace\evidence\runtime-staging\20261017T024233Z-e3f9548d\application` and sibling `history` |
 | Preserved local evidence and backups | `.local-workspace` and existing repository-local backup folders |
 
@@ -232,7 +232,7 @@ fresh data or commit databases, credentials, environment files or backup archive
 | Page | How to use it |
 | --- | --- |
 | Portfolio overview | Check account balances and holdings; scan the universe using search, filters, sorting and columns. Select stocks to organize watchlists. Open a stock's market evidence and available charts before relying on an agent recommendation. |
-| Agent research | Choose an existing run and stock. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
+| Agent research | Choose a stock's latest saved result. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
 | Orders and drafts | Create or review a local proposal or basket. Check symbol, side, quantity, order type, limit price when applicable and time in force. Read readiness reasons. Approve exact terms, then separately Submit only when intentionally placing an order. |
 | Settings | Edit the named universe or import a Symbol/Ticker CSV or text list, review and save. Model/provider changes apply to future research. Connected-service status identifies the account and price feed. |
 | Decision journal | Inspect saved decisions, research links, proposals and baskets. Record follow-up notes and export selected records. Reporting uses available records and configured periods; absent data is not fabricated performance. |
@@ -562,42 +562,25 @@ their commitments and applicable order blocks. Use **Refresh account and order
 status** for an explicit reconciliation attempt. A historical, disconnected or
 unavailable worker snapshot does not establish current update coverage.
 
-Application backup results and restore previews show checkpoint coverage by saved
-run, symbol and thread: included, missing, incompatible, blocked or legacy. Included
-means checkpoint bytes were retained, not that continuation is eligible. Current
-compatibility is separate from immutable capture-time coverage; later source or
-installed-version changes can make archived included checkpoints incompatible.
-Snapshots are sequential consistent SQLite copies while application research/data writers
-are quiescent; they are not one atomic transaction across all stores. Legacy archives
-remain readable without claiming missing checkpoints. Restore never resumes agents;
-open the saved run and review its original budget, expiry and eligibility first.
-Checkpoint bytes and hashes alone do not prove continuity. An older or foreign
-archive, a different generation, or missing/unreadable current state can hide later
-external research effects, budget spending or cancellation; continuation remains
-blocked until continuity is established. Retained checkpoints remain evidence.
+Application backups include records and referenced evidence. Research checkpoints
+are not created, included or restored; archives containing checkpoint databases
+are unsupported. Snapshots are sequential consistent SQLite copies while application
+research/data writers are quiescent, not one atomic transaction across all stores.
 The prior-state backup reference is retained when available. With a damaged or
 unreadable store, the original damaged directory is retained; no unavailable prior
 state archive or completed external-effect reconciliation is claimed.
 These source changes have not been exercised through a new backup/restore or broker
 reconnection in this batch.
 
-## Continue interrupted research
+## Latest research and interrupted cycles
 
-Open the saved run in Agent research. The continuation panel shows eligibility,
-the specific blocked reason, each symbol's remaining social posts and original
-absolute expiry, and the parent-linked attempt history. Refresh continuation status
-only reloads saved checkpoint eligibility; it does not start agents.
-
-For an eligible interrupted run, click **Continue this saved run** explicitly.
-The server rechecks the continuation revision and eligibility before queuing the
-same run. Original analysis/account context, collected evidence and social budgets
-are retained. Continuation does not refresh context, reset expiry or create a new
-run. It is disabled in a review-only session.
-
-Legacy, incompatible, cancelled, expired or exhausted checkpoints and uncertain
-state-changing effects are blocked with their actual reason. A blocked continuation
-is not silently retried as fresh research. These source controls have not been
-accepted through an actual continued research run.
+The desk keeps only the latest result for each ticker, including a failed or stopped
+cycle's status, partial reports and actual errors. Start a new cycle when needed;
+it replaces the previous result for each selected ticker. Other tickers retain their
+latest results. The desk does not import research history or resume interrupted
+research. Maenifold owns long-term memory. Drafts retain their original terms and
+references; a replaced research reference is shown as unavailable rather than
+silently rebound to a new report.
 
 ## Edit research workflows and prompts
 
@@ -622,7 +605,7 @@ runs load the bundle once, including queued stocks. Later saves and activation
 affect later runs. A new joint portfolio call captures its own bundle.
 
 Files live under application/workflows in the active profile. Development uses
-.local-workspace/development/application/workflows. The current pointer selects
+~/.cache/trader/development/application/workflows. The current pointer selects
 a workflow's active file folder for atomic saves; it is not a history feature.
 Updates preserve authored files.
 
@@ -755,7 +738,7 @@ this as completed trading-execution UAT.
 
 - Check the installed production profile and read its `logs\desk.log`. Preserve
   the application and research data; do not substitute an empty folder.
-- For source development, inspect `.local-workspace\development` and the
+- For source development, inspect `%USERPROFILE%\.cache\trader\development` and the
   development launcher. The old `.runtime-stage` logs are historical.
 - If the port belongs to another instance, inspect its identity before changing
   or stopping anything. The launcher deliberately does not take it over.

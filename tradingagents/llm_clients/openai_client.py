@@ -1,5 +1,6 @@
 import logging
 import json
+import httpx
 from contextvars import ContextVar
 import os
 import re
@@ -127,7 +128,7 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
         body.update(body.pop("extra_body", {}) or {})
         stage = "apply-template"
         try:
-            client = self.root_client.with_options(timeout=30)
+            client = self.root_client
             output, buffer, available = budget_limits(self.max_total_tokens, payload)
             raw_total = 0
             for message in body.get("messages", []):
@@ -175,7 +176,7 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
         if path.endswith("/v1"):
             path = path[:-3]
         root = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
-        client = self.root_async_client.with_options(timeout=30)
+        client = self.root_async_client
         callback_config = None
         if run_manager is not None:
             callbacks = AsyncCallbackManager(
@@ -596,6 +597,13 @@ class OpenAIClient(BaseLLMClient):
 
         if self.provider == "openai_compatible" and self.kwargs.get("max_total_tokens") is not None:
             llm_kwargs["max_total_tokens"] = self.kwargs["max_total_tokens"]
+
+        # Bound connection setup without cutting off an active model response.
+        llm_kwargs.setdefault("timeout", httpx.Timeout(None, connect=30, write=30, pool=30))
+
+        # Some LangChain versions impose a separate stream inactivity deadline.
+        if "stream_chunk_timeout" in chat_cls.model_fields:
+            llm_kwargs["stream_chunk_timeout"] = self.kwargs.get("stream_chunk_timeout")
 
         # The subclass (provider quirks) comes from the registry spec.
         return chat_cls(**llm_kwargs)

@@ -347,6 +347,7 @@ click==8.5.0 \
     --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
     # via
     #   -c packaging/desk-constraints.txt
+    #   ddgs
     #   huggingface-hub
     #   uvicorn
 colorama==0.4.6 \
@@ -454,6 +455,10 @@ curl-cffi==0.16.3 \
     # via
     #   -c packaging/desk-constraints.txt
     #   yfinance
+ddgs==9.16.1 \
+    --hash=sha256:0cde5682e5801b838915bcb1d12ade8f2e1ec11763b88d0035a1faa0662b517a \
+    --hash=sha256:9ac0b3c19d865a9bfbf7bc7cc8090bd43d1e7adfb083a017bbece360a22e21b6
+    # via tradingagents (pyproject.toml)
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2
@@ -1009,6 +1014,7 @@ lxml==6.1.3 \
     --hash=sha256:ff88a92cafde90888511242d1c54afcc1a8adbb6dc0a88fa7f87e29e92400d4a
     # via
     #   -c packaging/desk-constraints.txt
+    #   ddgs
     #   yfinance
 mako==1.4.3 \
     --hash=sha256:723296007c870bfd6b3f0c3230dba7198096e5269297ebf5e4eff9e7ffa39d4f \
@@ -1506,6 +1512,39 @@ platformdirs==4.13.0 \
     # via
     #   -c packaging/desk-constraints.txt
     #   yfinance
+primp==2.0.1 \
+    --hash=sha256:0440d84854d1f9218277eef2c688a1774408e0d8a3805077eb6db432a4fa7970 \
+    --hash=sha256:0b8af35eb64d61291b105479245c89ed1231a5fff1e9b75870515892ffabf054 \
+    --hash=sha256:0beec080cb61044bd8b2eb0e3ca60f15f2df8ced9f2fbc6f1760855c20aed42a \
+    --hash=sha256:0e27f3e233cf34cae6cbc8158af58b93fb0a87ceb1802b4611c7a14a2d822cdc \
+    --hash=sha256:1cb429afd3a5ea98c625292f3c6581b0ccc0d398d3307603cce25ec140dfd671 \
+    --hash=sha256:24d3ffeb054c23c7588d0240b5488d960f669398d1ab4cb3873158322bdf821d \
+    --hash=sha256:2b4970ab274deaa13224777fb52b8745523293c23566a6c44fa3fbd61e47c183 \
+    --hash=sha256:31b3cd957f02dc49e5e9d9cbadd809747872caebfaf093dc34775a7f866a3e65 \
+    --hash=sha256:415aa6bb1b998ace5a456734df95755b5342b73fa0a6babbcb3ca471c83b9dbe \
+    --hash=sha256:4296ae43a8660bcb1dfc1570ed07dc9f8ab64f11fdebf3272532411b7fe321ef \
+    --hash=sha256:4f659e6479073c4693195f0f43b7a96ae0afd353f6f057754f80be016eea6f20 \
+    --hash=sha256:656ea4ff0d45bbd119394a6834a367e34192d75cb7a5945cfc2f1cbb266b1be4 \
+    --hash=sha256:706c843c86162d431c5a2051b8b41e16c7c51bca6bd60d139d7614609463a6c5 \
+    --hash=sha256:71fa07394c0084940d86c9f441bc2f05d7f8951a944bde315bebb6eec9b718d7 \
+    --hash=sha256:7f494686da2991212f5607d125c32cb8da72a92e179d497c7d2ffeba21abff1e \
+    --hash=sha256:82ba17b077bef19a189d9ec8d77ca632496cb444e0f4fa37e27e90041cf0da8f \
+    --hash=sha256:888ba0708e518acad84bfc0a8bb274ec7ae48655a95afdb9c8184bd88cc6d7ab \
+    --hash=sha256:934696c74b8a88a7dbb40b3bb54a182b0c9782427f036035cb21bfc0cf7e24a9 \
+    --hash=sha256:9a7be373adfded677a9092ae2743873d5c8a9573148d617a189d26715f7d8ea5 \
+    --hash=sha256:9ba278a9af63981f2aece0d98fec9d6cc5a918943eb56e4f4df2b3ca90dab787 \
+    --hash=sha256:9edc6d2f2fd30d2ddf8c093bf533a3e99ae1385a1d2af15baaa299fb55310fb8 \
+    --hash=sha256:a26651747b21efdff1ff986ee3e98ec3b349ce84b01b22226ce0b7a967041f01 \
+    --hash=sha256:aa85a55b1c53ef8c2d14f1c61f0b7ab0ff300b349b2768a52d6c2f3f3f9ca80c \
+    --hash=sha256:acc8b31f7fcc241b8ecb94069efea611f4f451d90f1798684c379d05e108b2c0 \
+    --hash=sha256:bedb42ea9188dd571db46d93f0b994d2e8e9271d2ddd55ee0ab7ac2844742bed \
+    --hash=sha256:c8f2b2eaacddf2bdff7b1b5f4219249d06246e577432fcb9b9babbc65146ff32 \
+    --hash=sha256:ca21c764f17ba42dde38c29d6a1f01970d39fa5f4793b0fe702006bd71b7a16a \
+    --hash=sha256:dea9370fcf6624725f564f9b9cf4fec3c127f86b7494196d03343a835fe3dee4 \
+    --hash=sha256:e5f2e7b9fe557a440a929746a318074fd9989be318ce75411d01f1f3ed7bc85d \
+    --hash=sha256:e5f8d170c69b4afbe61d854b3f0cf27a0c0e557f0e54ebe595dad4db0f72127d \
+    --hash=sha256:f0806c7653ee05bbe3c7b28f97f19bd5d763d7da1366026d5cb85cd8713f5c33
+    # via ddgs
 prompt-toolkit==3.0.53 \
     --hash=sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2 \
     --hash=sha256:9ec8a0ad96d5c56148b3f914aa79c1564c3fde5d2e6b876e7bc327e353cf8fa6
@@ -1851,6 +1890,7 @@ pyyaml==6.0.3 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
     #   -c packaging/desk-constraints.txt
+    #   tradingagents (pyproject.toml)
     #   huggingface-hub
     #   langchain-core
     #   optuna

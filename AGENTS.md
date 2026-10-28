@@ -114,9 +114,9 @@ actual installation, saved data and permitted smoke test.
 - Work in `C:\src\TradingAgents`; current application branch is `nautilus`.
 - Use the installed desktop/Start menu shortcut for production. The repository
   `rtk proxy .\Start-TradingDesk.cmd` opens that installed executable too.
-  Production uses port 8098 and its private AppData profile. Development uses
-  `rtk proxy .\Start-TradingDesk-Dev.cmd`, port 8099 and the checkout's
-  `.local-workspace/development` profile. Never share production stores or
+  Production uses port 8098 and its private production profile. Development uses
+  `rtk proxy .\Start-TradingDesk-Dev.cmd`, port 8099 and the
+  `~/.cache/trader/development` profile. Never share production stores or
   credentials with development. Do not start the old Python launcher directly.
 - Preserve `.local-workspace`, both Python environments, saved research,
   account configuration and backups. These local files are not all in Git.
@@ -134,6 +134,11 @@ actual installation, saved data and permitted smoke test.
   requirement costs 10,000; disclose code/test changes.
 - Start with visible failures and affected feature journeys in the built-in
   browser. Investigate the root cause and make the smallest KISS fix.
+- A human-authorized test or research round means one round. A failure does
+  not authorize another. Do not repeat runs or test cycles without fresh
+  authorization. Fix source in one batch and report its actual validation status.
+- Solve data rate limits with simple configurable retries and exponential
+  backoff. Do not add a queue engine or scheduler for this purpose.
 - Do not create automated tests without fresh, explicit user authorization.
   No mocks, stubs, synthetic checks, benchmarks or speed-focused work.
   A timing improvement is not acceptance: verify visible errors are resolved
@@ -154,7 +159,23 @@ actual installation, saved data and permitted smoke test.
   through both interfaces. Approval does not authorize submission. Broker
   actions still require the explicit authorization stated above.
 
+### Release packaging
+
+Normal releases are app-only: refresh with `packaging/refresh_project.py` and
+build `desktop` with `npm run build:release`. Do not rerun dependency preparation
+or include `payload/desk` and `payload/native` for ordinary code/prompt updates.
+Full setup is an explicit separate build for first installation/dependency changes;
+see `packaging/README.md`. Preserve installed private runtimes and CUDA.
+
 ### Local API helper
+
+Production profile maintenance must use the installed standalone runtime at
+`~/.cache/trader/production/runtimes/desk/python.exe`
+with `-I`, including API calls, backups, restore and file verification. On this
+PC, the development Python sees a different AppData database at the same path.
+Do not use it for production AppData operations. Compare the loaded API settings,
+revision and ticker list with the captured pre-update state before starting work;
+a matching launch-root identity alone does not prove the correct data is loaded.
 
 Use `scripts/desk_api.py` with Python 3.11+; it uses only the standard library.
 It opens the normal local session, supplies the CSRF token for POST, keeps
@@ -163,11 +184,11 @@ Production is fixed to `127.0.0.1:8098`; `--dev` selects isolated port 8099.
 Redirects and proxies are disabled. No request is retried automatically.
 
 ```powershell
-rtk proxy .venv/Scripts/python.exe scripts/desk_api.py --help
-rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get /api/health
-rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get /api/model-limits --timeout 120
-rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get '/api/state?compact=1'
-rtk proxy .venv/Scripts/python.exe scripts/desk_api.py get /api/workspace --field revision
+rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py --help
+rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/health
+rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/model-limits --timeout 120
+rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get '/api/state?compact=1'
+rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/workspace --field revision
 ```
 
 For an authorized change, use `post /api/<route> --json-file <body.json>`.

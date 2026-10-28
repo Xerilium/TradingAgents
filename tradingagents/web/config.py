@@ -38,6 +38,7 @@ class DeskConfig(BaseModel):
     max_tool_rounds: int = Field(default=8, ge=1, le=20)
     research_concurrency: int = Field(default=1, ge=1, le=100, strict=True)
     research_stop_on_failure: bool = Field(default=False, strict=True)
+    research_retries: int = Field(default=10, ge=0, strict=True)
     laya_device: Literal["cpu", "gpu"] = "cpu"
     social_screen_timeout_seconds: int = Field(default=600, ge=1)
     social_screen_max_posts: int = Field(default=100, ge=1)

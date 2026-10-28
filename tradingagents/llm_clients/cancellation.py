@@ -24,6 +24,7 @@ class ResearchCancellationController:
         self._thread = threading.Thread(target=self._run_loop, name="research-model-loop", daemon=True)
         self._futures = set()
         self._clients = []
+        self.source_cache = {}
         self._thread.start()
 
     def _run_loop(self):
@@ -60,6 +61,10 @@ class ResearchCancellationController:
         finally:
             with self._lock:
                 self._futures.discard(future)
+
+    def is_cancelled(self):
+        with self._lock:
+            return self._cancelled or self._closed
 
     def cancel(self):
         with self._lock:

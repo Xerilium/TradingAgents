@@ -25,8 +25,11 @@ fn python(root: &Path) -> PathBuf {
 fn persistent_runtime(payload: &Path, profile: &Path, kind: &str) -> Result<PathBuf, String> {
     let destination = profile.join("runtimes").join(kind);
     if fs::symlink_metadata(&destination).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound) {
-        fs::create_dir_all(profile.join("runtimes")).map_err(|e| e.to_string())?;
         let seed = payload.join(kind);
+        if !python(&seed).is_file() {
+            return Err("Dependencies are not installed. Run the full TradingAgents setup once, then reopen the app. App updates do not contain Python runtimes.".into());
+        }
+        fs::create_dir_all(profile.join("runtimes")).map_err(|e| e.to_string())?;
         let mut copy = Command::new(python(&seed));
         copy.args(["-I", "-c", "import pathlib,shutil,sys; s,d=map(pathlib.Path,sys.argv[1:]); t=d.with_name(d.name+'.staging'); shutil.copytree(s,t,symlinks=True,copy_function=shutil.copy2); t.rename(d)"])
             .arg(&seed).arg(&destination).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());

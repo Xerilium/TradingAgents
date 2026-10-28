@@ -59,16 +59,42 @@ logger = logging.getLogger(__name__)
 _evidence_recorder = ContextVar("vendor_evidence_recorder", default=None)
 _evidence_parent = ContextVar("vendor_evidence_parent", default=None)
 _source_requirement = ContextVar("source_requirement", default="required")
+_source_cancelled = ContextVar("source_cancelled", default=None)
+_source_cache = ContextVar("source_request_cache", default=None)
+
+
+def source_cancelled():
+    callback = _source_cancelled.get()
+    return bool(callback and callback())
+
+
+def wait_source(seconds):
+    end = time.monotonic() + max(0.0, seconds)
+    while True:
+        if source_cancelled():
+            raise InterruptedError("Research cancelled")
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.2, remaining))
+
+
+def source_request_cache():
+    return _source_cache.get()
 
 
 @contextmanager
-def capture_vendor_evidence(recorder):
+def capture_vendor_evidence(recorder, *, cancelled=None, cache=None):
     """Bind the desk's recorder to this execution context, including graph child tasks."""
     token = _evidence_recorder.set(recorder)
     parent_token = _evidence_parent.set(None)
+    cancelled_token = _source_cancelled.set(cancelled if cancelled is not None else _source_cancelled.get())
+    cache_token = _source_cache.set(cache if cache is not None else _source_cache.get())
     try:
         yield
     finally:
+        _source_cache.reset(cache_token)
+        _source_cancelled.reset(cancelled_token)
         _evidence_parent.reset(parent_token)
         _evidence_recorder.reset(token)
 
@@ -130,7 +156,7 @@ def _gateway_failure_details(error):
                 r"MCP operation failed|unhandled errors in a TaskGroup|invalid JSON|"
                 r"JSON Schema|schema validation failed|Missing required argument|"
                 r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
-                r"no news articles tagged|maintenance|rate limited|temporarily unavailable")
+                r"no news articles tagged|maintenance|rate limited|temporarily unavailable|No results found")
     safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
                      r"MEMORY_(?:READ_REQUIRED|CHECKSUM_MISMATCH|CHECKSUM_CONFLICT|WIKILINK_REQUIRED|WIKILINK_REJECTED)|"
                      r"The upstream Gateway tool reported (?:a text error|an error)\.|"
@@ -279,9 +305,10 @@ def source_failure_details(error):
             "authentication_or_access" if status in {401, 403} else
             "invalid_request" if status in {400, 422} else
             "not_found" if status == 404 else
-            "rate_limited" if status == 429 or "YFRateLimitError" in names else
+            "rate_limited" if status == 429 or names.intersection({"YFRateLimitError", "RatelimitException"}) else
             "transient_server" if status in {500, 502, 503, 504} else
-            "transient_transport" if names.intersection({"Timeout", "TimeoutError", "ReadTimeout", "ConnectTimeout", "ConnectionError", "ConnectionResetError", "RemoteDisconnected", "IncompleteRead"}) else
+            "transient_transport" if names.intersection({"Timeout", "TimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout", "ConnectionError", "ConnectionResetError", "ConnectionRefusedError", "ConnectionAbortedError", "BrokenPipeError", "RemoteDisconnected", "IncompleteRead"}) else
+            "search_unavailable" if "DDGSException" in names else
             "invalid_response" if names.intersection({"ParseError", "JSONDecodeError", "UnicodeDecodeError"}) else
             "invalid_request" if isinstance(error, (ValueError, TypeError)) or any(
                 detail.get("message", "").startswith("MEMORY_") for detail in details) else "source_unavailable")
@@ -297,23 +324,56 @@ def tool_failure_details(error):
             **({"attempts": error.retry_details} if getattr(error, "retry_details", None) else {})}
 
 
-def source_retry_plan(error, *, attempt, remaining):
+def source_retry_plan(error, *, attempt):
+    """Retry transient data failures without imposing a total processing deadline."""
     details = source_failure_details(error)
+    delay = min(30.0, 5.0 * 2 ** min(attempt - 1, 3))
     value = getattr(error, "retry_after", None)
     if value is None:
         headers = getattr(error, "headers", None) or getattr(getattr(error, "response", None), "headers", {})
         value = headers.get("Retry-After") if headers else None
     try:
-        delay = float(value)
+        server_delay = float(value)
     except (TypeError, ValueError):
         try:
-            delay = parsedate_to_datetime(value).timestamp() - time.time()
+            server_delay = parsedate_to_datetime(value).timestamp() - time.time()
         except (TypeError, ValueError, OverflowError):
-            delay = 60.0 if details["failure_kind"] == "rate_limited" else 1.0
-    delay = max(0.0, delay) if math.isfinite(delay) else 60.0
-    eligible = details["failure_kind"] in {"rate_limited", "transient_server", "transient_transport"}
+            server_delay = 0.0
+    if math.isfinite(server_delay):
+        delay = min(30.0, max(delay, server_delay))
+    # DDGS can report a backend failure without retaining its HTTP status.
+    eligible = details["failure_kind"] in {"rate_limited", "transient_server", "transient_transport", "search_unavailable"}
+    retries = get_config().get("research_retries", 10)
     return {"attempt": attempt, **details, "retry_after_seconds": delay,
-            "retry_action": "retry" if eligible and attempt == 1 and delay < remaining and delay <= 60 else "defer" if eligible else "stop"}
+            "retry_action": "retry" if eligible and attempt <= retries else "defer" if eligible else "stop"}
+
+
+def retry_source_call(operation, vendor, origin, acquire, *, requirement="supplemental", **arguments):
+    """Use the run's existing retries, receipts and interruptible backoff."""
+    for attempt in range(1, get_config().get("research_retries", 10) + 2):
+        wait_source(0)
+        retry = {"attempt": attempt, "retry_action": "not_needed"}
+
+        def request():
+            try:
+                return acquire()
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                retry.update(source_retry_plan(exc, attempt=attempt))
+                raise
+
+        try:
+            result = observe_source_call(operation, vendor, origin, request,
+                                         requirement=requirement, retry=retry, **arguments)
+            wait_source(0)
+            return result
+        except InterruptedError:
+            raise
+        except Exception:
+            if retry["retry_action"] != "retry":
+                raise
+            wait_source(retry["retry_after_seconds"])
 
 
 def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None, requirement=None, retry=None):
@@ -324,6 +384,8 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
     arguments, argument_scope = _source_arguments(function, args, kwargs)
     if source_arguments is not None:
         arguments = _safe_source_arguments(source_arguments)
+        if method == "search_research_sources" and vendor == "ddgs":
+            arguments.update(query=source_arguments["query"], max_results=source_arguments["max_results"])
     receipt = {
         "attempt_id": str(uuid4()), "operation": method, "vendor": vendor,
         "origin": origin, "parent_attempt_id": _evidence_parent.get(),

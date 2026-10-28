@@ -371,7 +371,7 @@ def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
 
 
 class SdkMcpTransport:
-    """Official SDK Streamable HTTP transport, without custom MCP HTTP code."""
+    """Official SDK transport; timeout bounds connection and initialization, not tool execution."""
 
     def __init__(self, endpoint: str, timeout: float = 30.0):
         parsed = urlsplit(endpoint)
@@ -393,11 +393,10 @@ class SdkMcpTransport:
             raise GatewayError(_EXTRAS_MESSAGE) from exc
 
         try:
-            # This bounds initialization, the tool call, and session teardown.
+            # Bound connection setup, but let active tools run until completion or cancellation.
             async with (
-                asyncio.timeout(self.timeout),
                 httpx.AsyncClient(
-                    timeout=httpx.Timeout(self.timeout),
+                    timeout=httpx.Timeout(self.timeout, read=None),
                     follow_redirects=False,
                     trust_env=False,
                 ) as http_client,
@@ -406,13 +405,10 @@ class SdkMcpTransport:
                     write_stream,
                     _,
                 ),
-                ClientSession(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds=timedelta(seconds=self.timeout),
-                ) as session,
+                ClientSession(read_stream, write_stream) as session,
             ):
-                await session.initialize()
+                async with asyncio.timeout(self.timeout):
+                    await session.initialize()
                 if on_dispatch is not None:
                     on_dispatch()
                 return await session.call_tool(name, arguments=arguments)

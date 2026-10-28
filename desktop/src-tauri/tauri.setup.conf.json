@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "resources": {
+      "payload/desk/": "payload/desk/",
+      "payload/native/": "payload/native/"
+    }
+  }
+}

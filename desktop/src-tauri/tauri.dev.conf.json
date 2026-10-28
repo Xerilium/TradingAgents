@@ -1,5 +1,6 @@
 {
   "productName": "TradingAgents Development",
   "identifier": "com.tradingagents.desktop.dev",
+  "app": {"appDirectoriesOverride": "$HOME/.cache/trader/development"},
   "bundle": {"active": false, "resources": []}
 }
