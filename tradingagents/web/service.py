@@ -22,6 +22,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from cli.stats_handler import StatsCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler
 from tradingagents.agents.post_screen import SOCIAL_ADMISSION_VERSION, laya_screen
 from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.default_config import build_default_config
@@ -32,8 +33,10 @@ from tradingagents.integrations.maenifold import (
     build_langchain_tools,
 )
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
+from tradingagents.llm_clients.cancellation import ResearchCancellationController
 
 from .config import DeskConfig
+from .workflows import WorkflowStore
 from .nautilus_runtime import NautilusRuntime
 from .store import DeskStore, call_evidence_failed, source_attempt_failed
 from .evidence_requirements import RESEARCH_REPORTS as REPORT_KEYS, research_gaps
@@ -43,6 +46,15 @@ OWNED_TERMINAL = {"filled", "canceled", "expired", "rejected"}
 OWNED_ACTIVE = {"new", "accepted", "pending_new", "partially_filled", "pending_cancel", "held"}
 CANCEL_UNCERTAIN = {"intent", "requested", "unknown"}
 DESK_ANALYSTS = ("market", "social", "news", "fundamentals")
+
+
+class ResearchBudgetEvents(BaseCallbackHandler):
+    def __init__(self, record):
+        self.record = record
+
+    def on_custom_event(self, name, data, **kwargs):
+        if name == "research_context_budget" and isinstance(data, dict):
+            self.record(data)
 
 
 def now():
@@ -117,24 +129,23 @@ def normalize_quotes(raw):
     return result
 
 
-def desk_execution_policy(config):
-    return ("Research is advisory. NautilusTrader owns account and order lifecycle. "
-            "The investor chooses the quantity, reviews configured rules, approves exact terms "
-            "and explicitly submits any order. Ratings and price levels do not grant order authority.")
+def desk_execution_policy(config, workflow=None):
+    if workflow is None:
+        from tradingagents.workflows import WorkflowBundle, bundled_files
+        workflow = WorkflowBundle.from_files(bundled_files())
+    return workflow.text('desk_execution_policy')
 
 
-def research_quote_context(symbol, trade_date, market):
+def research_quote_context(symbol, trade_date, market, workflow=None):
+    if workflow is None:
+        from tradingagents.workflows import WorkflowBundle, bundled_files
+        workflow = WorkflowBundle.from_files(bundled_files())
     if trade_date != today():
-        return "Nautilus quote omitted for historical analysis."
+        return workflow.text('desk_historical_quote')
     quote = market.get("quotes", {}).get(symbol)
-    return (
-        "Nautilus / Alpaca IEX quote observation: "
-        + json.dumps({"symbol": symbol, "quote": quote, "market_open": (market.get("clock") or {}).get("is_open"),
-                      "account_observed_at": market.get("updated_at")}, allow_nan=False)
-        + "\nPrice follows the reported basis: last_trade or bid/ask quote_midpoint; it is not an official close. "
-        "Missing quotes are unavailable, not zero. Respect the source timestamp and stale flag. "
-        "This research observation grants no order authority; execution requires separate exact human approval and submission."
-    )
+    observation = json.dumps({"symbol": symbol, "quote": quote, "market_open": (market.get("clock") or {}).get("is_open"),
+                              "account_observed_at": market.get("updated_at")}, allow_nan=False)
+    return workflow.render('desk_quote_context', observation=observation)
 
 
 class DeskService:
@@ -160,9 +171,13 @@ class DeskService:
                 self.store.data["config_revision"] = self.store.data.get("config_revision", 0) + 1
             self.store.data["codex_provider_migrated"] = True
             self.store.save()
+        self.workflows = WorkflowStore(self.application_root / "workflows", self.store.data["config"])
         self.maintenance = threading.RLock()
         self.restore_candidates = {}
+        self.research_delete_preview = None
         self.research_futures = set()
+        self.research_run_futures = {}
+        self.research_cancellations = {}
         self.portfolio_model_job = {"status": "idle"}
         self.instance_id, self.state_sequence = str(uuid4()), 0
         self.company_names = {}
@@ -185,7 +200,9 @@ class DeskService:
         self.configure_symbols()
         self.gateway = gateway or MaenifoldGateway(timeout=90)
         from tradingagents.integrations.laya import LocalLaya
-        self.local_laya = LocalLaya(cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None)
+        self.local_laya = LocalLaya(
+            cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None,
+            device=self.store.data["config"]["laya_device"])
         self.graph_factory = graph_factory
         self.lock = threading.RLock()
         self.execution_lock = threading.Lock()
@@ -683,6 +700,7 @@ class DeskService:
             with self.store.lock:
                 config = copy.deepcopy(self.store.data["config"])
                 runs = copy.deepcopy(self.store.data["runs"])
+            workflow = self.workflows.active_bundle()
             quotes = self._runtime_market()["quotes"]
             latest = {}
             for run in sorted(runs, key=lambda row: row.get("created_at") or "", reverse=True):
@@ -715,7 +733,7 @@ class DeskService:
                 try:
                     if not inputs:
                         raise ValueError("No eligible completed research with dated reference prices; no model call made")
-                    output = model_portfolio(config, inputs, capital)
+                    output = model_portfolio(config, inputs, capital, workflow=workflow)
                     with self.lock:
                         job.update(status="completed", result=output)
                 except Exception as error:
@@ -1780,7 +1798,41 @@ class DeskService:
                     events.append({"time": stamp, "kind": "screening", "symbol": result["symbol"], "message": message})
         return sorted(events, key=lambda e: e.get("time") or "")[-500:]
 
+    def delete_research(self, request):
+        preview = request.get("preview") is True
+        if preview:
+            if set(request) != {"symbols", "preview"}:
+                raise ValueError("Send selected symbols and preview=true.")
+        elif (set(request) != {"symbols", "expected_revision", "preview_token", "confirm"}
+              or request.get("confirm") is not True or type(request.get("expected_revision")) is not int):
+            raise ValueError("Confirm the selected symbols with the preview revision.")
+        with self.maintenance, self.execution_lock:
+            with self.store.lock:
+                if (any(not future.done() for future in self.research_futures)
+                        or self.portfolio_model_job.get("status") in {"queued", "running"}
+                        or any(run.get("status") in {"queued", "running", "cancelling"}
+                               or any(result.get("local_laya_batch", {}).get("owner_instance") == self.instance_id
+                                      and result["local_laya_batch"].get("status") in {"queued", "running"}
+                                      for result in run.get("results", [])) for run in self.store.data["runs"])):
+                    raise ValueError("Wait for research and saved-post screening to finish before deleting research.")
+            if preview:
+                result = self.store.delete_research(request.get("symbols"), preview=True)
+                token = str(uuid4())
+                self.research_delete_preview = {"token": token, "symbols": list(result["symbols"]),
+                                                "expected_revision": result["expected_revision"]}
+                return {**result, "preview_token": token}
+            if self.research_delete_preview != {"token": request.get("preview_token"), "symbols": request.get("symbols"),
+                                                "expected_revision": request.get("expected_revision")}:
+                raise ValueError("Research selection or preview changed. Preview again before confirming.")
+            result = self.store.delete_research(request.get("symbols"), request.get("expected_revision"))
+            self.research_delete_preview = None
+            return result
+
     def screen_saved_posts(self, request):
+        with self.execution_lock:
+            return self._screen_saved_posts(request)
+
+    def _screen_saved_posts(self, request):
         from tradingagents.integrations.laya import local_failure_details
         from uuid import UUID
         run_id, symbol, identity = request["run_id"], request["symbol"], str(UUID(request["request_id"]))
@@ -1996,20 +2048,36 @@ class DeskService:
 
         if self.browse_only and set(changes) - {"name", "universe"}:
             raise ValueError("Read-only review allows only index name and symbols to change")
-        with self.execution_lock, self.store.lock:
-            if type(expected_revision) is not int or expected_revision != self.store.data["config_revision"]:
-                raise StoreConflict(self.store.data["config_revision"])
-            previous = self.store.data["config"]
-            if add_symbol is not None:
-                changes = {"universe": list(dict.fromkeys([*previous["universe"], add_symbol]))}
-            if any(run["status"] in {"queued", "running", "cancelling"} for run in self.store.data["runs"]):
-                raise ValueError("Wait for the current analysis to stop before changing settings.")
-            config = DeskConfig.model_validate({**previous, **changes}).model_dump()
-            symbols_changed = config["universe"] != previous["universe"]
-            if config != previous:
-                self.store.data["config"] = config
-                self.store.data["config_revision"] += 1
-                self.store.save()
+        with self.execution_lock:
+            with self.store.lock:
+                if type(expected_revision) is not int or expected_revision != self.store.data["config_revision"]:
+                    raise StoreConflict(self.store.data["config_revision"])
+                previous = self.store.data["config"]
+                if add_symbol is not None:
+                    changes = {"universe": list(dict.fromkeys([*previous["universe"], add_symbol]))}
+                if (any(run["status"] in {"queued", "running", "cancelling"} for run in self.store.data["runs"])
+                        or any(not future.done() for future in self.research_futures)):
+                    raise ValueError("Wait for the current analysis to stop before changing settings.")
+                config = DeskConfig.model_validate({**previous, **changes}).model_dump()
+                symbols_changed = config["universe"] != previous["universe"]
+                laya_changed = config["laya_device"] != self.local_laya.requested_device
+                if laya_changed and any(
+                    result.get("local_laya_batch", {}).get("owner_instance") == self.instance_id
+                    and result["local_laya_batch"].get("status") in {"queued", "running"}
+                    for run in self.store.data["runs"] for result in run["results"]
+                ):
+                    raise ValueError("Wait for local Laya screening to finish before changing its device.")
+            if laya_changed:
+                from tradingagents.integrations.laya import LocalLaya
+                self.local_laya.close(wait=True)
+                self.local_laya = LocalLaya(
+                    cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None,
+                    device=config["laya_device"])
+            with self.store.lock:
+                if config != previous:
+                    self.store.data["config"] = config
+                    self.store.data["config_revision"] += 1
+                    self.store.save()
         if symbols_changed:
             try:
                 self.configure_symbols()
@@ -2175,7 +2243,9 @@ class DeskService:
                 raise ValueError("Workspace settings changed. Refresh and review the research selection again.")
             config = copy.deepcopy(self.store.data["config"])
             config["exclude_fred"] = exclude_fred
-            config["selected_analysts"] = list(DESK_ANALYSTS)
+            workflow = self.workflows.active_bundle()
+            config.update(workflow.definition["limits"])
+            config["selected_analysts"] = list(workflow.definition["analysts"])
             symbols = symbols or config["universe"]
             if (
                 not isinstance(symbols, list)
@@ -2231,11 +2301,26 @@ class DeskService:
             }
             self.store.data["runs"].insert(0, run)
             self.store.save_research()
+            self.research_cancellations[run["id"]] = ResearchCancellationController()
         try:
-            future = self.executor.submit(self._run, run["id"], market)
-            self.research_futures.add(future)
-            future.add_done_callback(self.research_futures.discard)
+            with self.store.lock:
+                if run["id"] in self.cancelled:
+                    run["status"] = "cancelled"
+                    self._finish_research(run)
+                    controller = self.research_cancellations.pop(run["id"])
+                else:
+                    controller = None
+                    future = self.executor.submit(self._run, run["id"], market, workflow)
+                    self.research_futures.add(future)
+                    self.research_run_futures[run["id"]] = future
+                    future.add_done_callback(self.research_futures.discard)
+                    future.add_done_callback(lambda _: self.research_run_futures.pop(run["id"], None))
+            if controller is not None:
+                controller.close()
         except Exception:
+            controller = self.research_cancellations.pop(run["id"], None)
+            if controller is not None:
+                controller.close()
             with self.store.lock:
                 run.update(status="failed", error="Analysis worker could not be scheduled.")
                 self._finish_research(run)
@@ -2282,19 +2367,25 @@ class DeskService:
                         capture_complete=False, persistence_error="Source receipt persistence failed.")
         return record
 
-    def _run(self, run_id, market):
+    def _run(self, run_id, market, workflow):
         try:
             with capture_vendor_evidence(self._evidence_recorder(run_id)):
-                self._run_with_evidence(run_id, market)
+                self._run_with_evidence(run_id, market, workflow)
         except Exception as exc:
             with self.store.lock:
                 run = self._find_run(run_id)
-                run.update(status="failed", error=str(exc)[:600])
+                status = "cancelled" if run_id in self.cancelled else "failed"
+                run.update(status=status, error=str(exc)[:600])
                 for result in run["results"]:
-                    if result["status"] in {"queued", "running"}:
-                        result.update(status="failed", error=run["error"])
+                    if result["status"] in {"queued", "running", "cancelling"}:
+                        result.update(status=status, error=run["error"])
                 self._event(run_id, "error", run["error"])
                 self._finish_research(run)
+        finally:
+            with self.store.lock:
+                controller = self.research_cancellations.pop(run_id, None)
+            if controller is not None:
+                controller.close()
 
     def _publish_research_coverage(self, run, result):
         run_id = run["id"]
@@ -2310,33 +2401,79 @@ class DeskService:
         social = result["social_sentiment"]
         result["coverage_gaps"] = [
             {key: a.get(key) for key in ("attempt_id", "operation", "vendor", "arguments", "outcome", "data_status", "error_class",
-                                        "failure_kind", "error_details", "http_status", "attempt", "ordinal", "retry_action", "retry_after_seconds", "capture_error", "artifact", "receipts", "parent_attempt_id", "boundary_kind") if key in a}
+                                        "failure_kind", "error_details", "http_status", "attempt", "ordinal", "retry_action", "retry_after_seconds", "capture_error", "capture_error_details", "artifact", "receipts", "parent_attempt_id", "boundary_kind") if key in a}
             for origin in ("source", "gateway", "jev") for a in evidence_by_origin[origin]["attempts"]
             if a.get("capture_error") or a.get("outcome") != "success" or a.get("data_status") in {"partial", "unavailable", "no_usable_coverage"}
         ] + [{"source": name, "status": s.get("status"), "classified_count": s.get("classified_count"),
-              "total_count": s.get("total_count"), "stop_reason": s.get("stop_reason"), "error": s.get("error")}
+              "total_count": s.get("total_count"), "stop_reason": s.get("stop_reason"), "error": s.get("error"),
+              "acquisition": copy.deepcopy(s.get("acquisition"))}
              for name, s in social["sources"].items() if s.get("status") not in {"completed", "empty"}]
         result["coverage_gaps"] += [{"source": origin, "error": evidence["persistence_error"], "status": "persistence_failed"}
                                     for origin, evidence in evidence_by_origin.items() if evidence.get("persistence_error")]
+        # One memory operation can have invocation, logical and transport receipts.
+        # Keep the full receipt tree, but present one failed update to the reader.
+        gaps_by_id = {gap["attempt_id"]: gap for gap in result["coverage_gaps"] if gap.get("attempt_id")}
+        memory_writes = {"EditMemory", "WriteMemory", "MoveMemory", "DeleteMemory"}
+        display_gaps = []
+        for gap in result["coverage_gaps"]:
+            root = gap
+            if gap.get("vendor") == "maenifold.memory" and gap.get("operation") in memory_writes and not gap.get("capture_error"):
+                visited = set()
+                while root.get("parent_attempt_id") in gaps_by_id and root.get("attempt_id") not in visited:
+                    visited.add(root.get("attempt_id"))
+                    parent = gaps_by_id[root["parent_attempt_id"]]
+                    if (parent.get("vendor") != gap["vendor"] or parent.get("operation") != gap["operation"]
+                            or parent.get("capture_error")):
+                        break
+                    root = parent
+                if root is not gap:
+                    root.setdefault("related_attempt_ids", []).append(gap["attempt_id"])
+                    details = root.setdefault("error_details", [])
+                    for detail in gap.get("error_details", []):
+                        if detail not in details:
+                            details.append(copy.deepcopy(detail))
+                    continue
+            display_gaps.append(gap)
+        result["coverage_gaps"] = display_gaps
         if result["coverage_gaps"]:
             grouped = {}
             activity = set()
             for gap in result["coverage_gaps"]:
-                cause = (gap.get("capture_error") or gap.get("error") or ("HTTP " + str(gap["http_status"]) if gap.get("http_status") else "")
+                cause = (gap.get("capture_error_details") or gap.get("capture_error") or gap.get("error") or ("HTTP " + str(gap["http_status"]) if gap.get("http_status") else "")
                          or "; ".join(dict.fromkeys(detail["message"] for detail in gap.get("error_details", [])
                                                    if detail.get("message") and detail["message"] != "Exception details withheld"))
                          or gap.get("stop_reason")
                          or "Cause not captured" + (" (" + gap["error_class"] + ")" if gap.get("error_class") else ""))
                 coverage = (str(gap.get("classified_count", 0)) + "/" + str(gap.get("total_count", "unknown")) + " posts classified"
                             if "total_count" in gap else gap.get("data_status") or gap.get("status") or gap.get("outcome", "unknown"))
-                line = (f"{gap.get('operation') or gap.get('source')} / {gap.get('vendor') or ('Laya' if gap.get('source') in {'reddit', 'stocktwits'} else 'local capture')}: {cause}. "
-                        f"Coverage: {coverage}. Attempt: {gap.get('attempt', gap.get('ordinal', 'not captured'))}; "
-                        f"retry decision: {gap.get('retry_action', 'not captured')}. Receipt: {gap.get('attempt_id', 'not captured')}. "
-                        "Use retained evidence only; do not infer missing values or neutral sentiment.")
+                acquisition = gap.get("acquisition")
+                if isinstance(acquisition, dict) and acquisition.get("status") in ("limited", "unavailable"):
+                    cause = next((value for value in (acquisition.get("reason"), acquisition.get("coverage"))
+                                  if isinstance(value, str) and value.strip()), cause)
+                    coverage = (f"acquisition {acquisition['status']}; "
+                                f"{acquisition.get('fetched_count', 'unknown')} fetched, "
+                                f"{acquisition.get('eligible_count', 'unknown')} eligible; " + coverage)
+                memory_write = gap.get("vendor") == "maenifold.memory" and gap.get("operation") in memory_writes
+                if memory_write:
+                    rejection = [detail["message"] for detail in gap.get("error_details", [])
+                                 if detail.get("message", "").startswith("MEMORY_")]
+                    if rejection and not gap.get("capture_error"):
+                        cause = "; ".join(dict.fromkeys(rejection))
+                    line = (f"Memory update ({gap['operation']}): {cause.rstrip('.')}. "
+                            "The update is not confirmed. Check the current note and correct any rejected request before retrying. "
+                            f"Receipt: {gap.get('attempt_id', 'not captured')}. Nested receipts remain in Sources.")
+                else:
+                    attempt = gap.get("attempt")
+                    if attempt is None:
+                        attempt = gap.get("ordinal")
+                    line = (f"{gap.get('operation') or gap.get('source')} / {gap.get('vendor') or ('Laya' if gap.get('source') in {'reddit', 'stocktwits'} else 'local capture')}: {cause.rstrip('.')}. "
+                            f"Coverage: {coverage}. Attempt: {attempt if attempt is not None else 'not captured'}; "
+                            f"retry decision: {gap.get('retry_action') or 'not captured'}. Receipt: {gap.get('attempt_id', 'not captured')}. "
+                            "Use retained evidence only; do not infer missing values or neutral sentiment.")
                 grouped[line] = grouped.get(line, 0) + 1
-                if not gap.get("parent_attempt_id") and gap.get("boundary_kind") != "gateway_invocation":
+                if not gap.get("parent_attempt_id") and (memory_write or gap.get("boundary_kind") != "gateway_invocation"):
                     activity.add(line)
-            limitations = ("Source failures and screening limits remain part of this research. "
+            limitations = ("Research tool failures and screening limits remain part of this research. "
                            "Workflow completion does not establish complete data coverage. "
                            "Unknown optional outcomes are not replayed. Full receipts remain in Sources.\n\n"
                            + "\n".join(f"- {line}" + (f" ({count} matching receipts)" if count > 1 else "")
@@ -2351,29 +2488,46 @@ class DeskService:
                     self._event(run_id, "coverage", line, symbol)
         return evidence_by_origin
 
-    def _run_with_evidence(self, run_id, market):
+    def _run_with_evidence(self, run_id, market, workflow):
         from tradingagents.agents.rating import run_rating
         from tradingagents.graph.trading_graph import TradingAgentsGraph
         from tradingagents.portfolio import PortfolioContext, Position
         with self.store.lock:
             run = self._find_run(run_id)
+            if run_id in self.cancelled:
+                run["status"] = "cancelled"
+                self._finish_research(run)
+                return
             run["status"] = "running"
             config = copy.deepcopy(run["config"])
+            cancellation = self.research_cancellations[run_id]
         portfolio = PortfolioContext(cash=float(market["account"]["cash"]), currency="USD",
             positions=[Position(ticker=p["symbol"], quantity=float(p["qty"]),
                                 average_price=_number(p.get("avg_entry_price"))) for p in market["positions"]])
         stop_dispatch = threading.Event()
 
         def run_symbol(symbol):
-            if stop_dispatch.is_set() or run_id in self.cancelled:
-                return
             result = next(r for r in run["results"] if r["symbol"] == symbol)
             with self.store.lock:
+                if stop_dispatch.is_set() or run_id in self.cancelled:
+                    return
                 result.update(status="running", social_sentiment={"status": "not_requested", "model": "multilingual", "sources": {}})
             self._event(run_id, "symbol", "Analysis started", symbol)
             started = time.monotonic()
             try:
                 stats = StatsCallbackHandler()
+                def record_budget(data):
+                    fields = ("stage", "input_tokens", "output_reserved", "buffer", "total_tokens",
+                              "source_id", "source_label", "sha256", "characters", "ranges",
+                              "chunk_index", "chunk_count", "summary_tokens", "sources")
+                    budget = {key: copy.deepcopy(data[key]) for key in fields if key in data}
+                    message = (f"Evidence chunk processed: {data.get('source_label', 'source')} "
+                               f"{data.get('chunk_index', '')}/{data.get('chunk_count', '')}; full source retained."
+                               if data.get("stage") == "chunk" else
+                               f"Model budget: {data.get('input_tokens')} input + {data.get('output_reserved')} output reserved "
+                               f"+ {data.get('buffer')} buffer / {data.get('total_tokens')} total.")
+                    self._event(run_id, "context", message, symbol, budget=budget)
+                callbacks = [stats, ResearchBudgetEvents(record_budget)]
                 graph_config = {**build_default_config(), **config,
                     "quick_think_provider": config["llm_provider"], "deep_think_provider": config["llm_provider"],
                     "quick_think_backend_url": config.get("backend_url"), "deep_think_backend_url": config.get("backend_url"),
@@ -2414,14 +2568,14 @@ class DeskService:
                         cancelled=lambda: run_id in self.cancelled)
 
                 graph = (self.graph_factory or TradingAgentsGraph)(selected_analysts=config["selected_analysts"],
-                    config=graph_config, supplemental_tools=tools, callbacks=[stats],
-                    social_screen_factory=screen_factory, local_memory=False)
+                    config=graph_config, supplemental_tools=tools, callbacks=callbacks,
+                    social_screen_factory=screen_factory, local_memory=False, cancellation=cancellation, workflow=workflow)
                 initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
-                initial["desk_execution_policy"] = desk_execution_policy(config)
-                quote = research_quote_context(symbol, run["trade_date"], market)
+                initial["desk_execution_policy"] = desk_execution_policy(config, workflow)
+                quote = research_quote_context(symbol, run["trade_date"], market, workflow)
                 initial["instrument_context"] = initial.get("instrument_context", f"Instrument: {symbol}.") + "\n\n" + quote
                 if config.get("exclude_fred"):
-                    initial["instrument_context"] += "\nFRED macro data excluded by operator during provider maintenance. Macro coverage is unverified."
+                    initial['instrument_context'] += '\n' + workflow.text('desk_exclude_fred')
                 with self.store.lock:
                     result.update(quote_context=quote, desk_execution_policy=initial["desk_execution_policy"])
                 self.store.record_portfolio_context(run_id, {"schema_version": 1, "run_id": run_id,
@@ -2430,7 +2584,7 @@ class DeskService:
                 initial["portfolio_context"] = (f"{run['account_context']['description']} Captured at {run['account_context']['captured_at']}.\n"
                                                 + initial.get("portfolio_context", ""))
                 args = graph.propagator.get_graph_args()
-                args["config"] = {**args.get("config", {}), "callbacks": [stats]}
+                args["config"] = {**args.get("config", {}), "callbacks": callbacks}
                 final, seen = {}, set()
                 for messages, state in graph.stream_run(initial, **args):
                     if run_id in self.cancelled:
@@ -2444,6 +2598,8 @@ class DeskService:
                     if state:
                         final.update(state)
                         with self.store.lock:
+                            if run_id in self.cancelled:
+                                raise InterruptedError("Analysis stopped by operator.")
                             for key in (*REPORT_KEYS, "investment_debate_state", "risk_debate_state"):
                                 if state.get(key):
                                     content = json.dumps(state[key], ensure_ascii=False, indent=2) if key.endswith("_debate_state") else state[key]
@@ -2458,18 +2614,26 @@ class DeskService:
                 failed = [a["operation"] for a in evidence["source"]["attempts"] if source_attempt_failed(a, evidence["source"]["attempts"])]
                 if failed or not evidence["source"].get("capture_complete"):
                     raise ValueError("Research incomplete: source collection or evidence capture failed: " + ", ".join(sorted(set(failed))))
-                if any(call_evidence_failed(evidence[origin]) for origin in ("gateway", "jev")):
-                    raise ValueError("Research incomplete: Gateway or Jev evidence capture failed.")
-                if run_id in self.cancelled:
-                    raise InterruptedError("Analysis stopped by operator.")
+                for origin in ("gateway", "jev"):
+                    if call_evidence_failed(evidence[origin]):
+                        failed_capture = next((attempt for attempt in evidence[origin]["attempts"]
+                                               if attempt.get("capture_error")), None)
+                        if failed_capture:
+                            operation = f"{failed_capture.get('vendor', origin)}/{failed_capture.get('operation', 'unknown')}"
+                            cause = failed_capture.get("capture_error_details") or failed_capture["capture_error"]
+                            raise ValueError(f"Research incomplete: {origin} evidence capture failed for {operation}. {cause}")
+                        raise ValueError(f"Research incomplete: {origin} evidence persistence is incomplete or a stateful operation has an unknown outcome; inspect Sources.")
                 with self.store.lock:
+                    if run_id in self.cancelled:
+                        raise InterruptedError("Analysis stopped by operator.")
                     result.update(status="completed", completed_at=now(), rating=run_rating(final), revision=result["revision"] + 1)
                 self._event(run_id, "complete", str(result["rating"]) + " · Research completed"
                     + (" with coverage gaps; inspect Source coverage and Activity" if result["coverage_gaps"] else ""), symbol)
             except Exception as exc:
-                stop_dispatch.set()
+                if config.get("research_stop_on_failure", False):
+                    stop_dispatch.set()
                 with self.store.lock:
-                    result.update(status="cancelled" if isinstance(exc, InterruptedError) else "failed", error=str(exc)[:600])
+                    result.update(status="cancelled" if run_id in self.cancelled or isinstance(exc, InterruptedError) else "failed", error=str(exc)[:600])
                     run["error"] = str(exc)[:600]
                     if isinstance(exc, GatewayRateLimited):
                         run["retry_at"] = (datetime.now(UTC) + timedelta(seconds=exc.retry_after)).isoformat()
@@ -2507,7 +2671,7 @@ class DeskService:
                                  if all(r["status"] == "completed" for r in run["results"]) else "failed")
         except Exception as exc:
             with self.store.lock:
-                run.update(status="failed", error=str(exc)[:600])
+                run.update(status="cancelled" if run_id in self.cancelled else "failed", error=str(exc)[:600])
         finally:
             with self.store.lock:
                 self._finish_research(run)
@@ -2521,9 +2685,26 @@ class DeskService:
             self.cancelled.add(run_id)
             run.setdefault("cancel_requested_at", now())
             run["status"] = "cancelling"
+            for result in run["results"]:
+                if result["status"] == "queued":
+                    result.update(status="cancelled", error="Stopped before dispatch.")
+            controller = self.research_cancellations.get(run_id)
+            if controller is not None:
+                controller.cancel()
+            future = self.research_run_futures.get(run_id)
+            queued = future is not None and future.cancel()
+            if queued:
+                run["status"] = "cancelled"
+                self._finish_research(run)
+                self.research_cancellations.pop(run_id, None)
+            else:
+                self.store.save_research()
+            status = run["status"]
+        if controller is not None and queued:
+            controller.close()
         return {
-            "status": "cancelling",
-            "message": "Stops at the next agent step; in-flight calls finish first.",
+            "status": status,
+            "message": "Queued research cancelled. Active model requests are being interrupted.",
         }
 
     def propose(self, run_id):
@@ -2900,8 +3081,11 @@ class DeskService:
     def close(self):
         with self.store.lock:
             self.cancelled.update(
-                r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running"}
+                r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running", "cancelling"}
             )
+            controllers = tuple(self.research_cancellations.values())
+        for controller in controllers:
+            controller.cancel()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.local_laya.close()
         self._stop_simulations(closing=True)

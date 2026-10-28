@@ -1,0 +1,1 @@
+Before BuildContext, discover an existing anchor using conceptName and maxResults=5. Use only a directly relevant returned concept; if none exists or resolution fails, disclose no relevant memory and continue primary-source research. Never invent an anchor or force an unrelated match; similarity is not evidence.

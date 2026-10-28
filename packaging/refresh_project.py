@@ -2,7 +2,7 @@
 import json
 import subprocess
 from pathlib import Path
-from prepare import BUILD, CACHE, PAYLOAD, ROOT, VERSIONS, digest, interpreter, package_dir, run
+from prepare import BUILD, CACHE, PAYLOAD, ROOT, VERSIONS, digest, interpreter, package_dir, run, stage_app
 
 uv = "uv"
 wheel_dir = BUILD / "wheels"
@@ -20,6 +20,7 @@ for kind in VERSIONS:
     target = package_dir(python) / manifest_name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(manifest_bytes[kind])
+stage_app(wheels[0], manifest_bytes["native"])
 provenance_path = PAYLOAD / "provenance.json"
 provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
 provenance["project_wheel_sha256"] = digest(wheels[0])

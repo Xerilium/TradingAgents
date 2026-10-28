@@ -10,6 +10,7 @@ free-text generation and the rating is read from that text.
 
 from __future__ import annotations
 
+from tradingagents.agents.prompt_evidence import EvidencePrompt
 from tradingagents.agents.context import (
     get_desk_execution_policy,
     get_instrument_context_from_state,
@@ -23,16 +24,16 @@ from tradingagents.agents.schemas import (
     PortfolioDecision,
     render_pm_decision,
 )
-from tradingagents.agents.structured import NO_EXTERNAL_TOOLS, bind_structured, invoke_structured
+from tradingagents.agents.structured import bind_structured, invoke_structured
 from tradingagents.dataflows.router import observe_source_call
 
 
-def create_portfolio_manager(llm):
-    structured_llm = bind_structured(llm, PortfolioDecision, "Portfolio Manager")
+def create_portfolio_manager(llm, *, workflow):
+    structured_llm = bind_structured(llm, PortfolioDecision, 'Portfolio Manager', workflow=workflow)
 
     def portfolio_manager_node(state) -> dict:
-        instrument_context = get_instrument_context_from_state(state)
-        portfolio_context = get_portfolio_context_from_state(state)
+        instrument_context = get_instrument_context_from_state(state, workflow)
+        portfolio_context = get_portfolio_context_from_state(state, workflow)
         policy = get_desk_execution_policy(state)
 
         history = state["risk_debate_state"]["history"]
@@ -52,60 +53,24 @@ def create_portfolio_manager(llm):
             },
             symbol=state.get("company_of_interest"), trade_date=state.get("trade_date"),
         )
+        evidence = EvidencePrompt(workflow)
         lessons_line = (
-            f"- Lessons from prior decisions and outcomes:\n{past_context}\n"
+            workflow.render('portfolio_lessons', evidence=evidence.add('prior decisions and outcomes', past_context))
             if past_context
             else ""
         )
 
-        prompt = f"""As the Portfolio Manager, synthesize the risk analysts' debate and deliver the final trading decision.
-
-{instrument_context}
-{get_verified_market_context_from_state(state)}
-
-{portfolio_context}
-
----
-
-**Rating Scale** (use exactly one):
-- **Buy**: Strong conviction to enter or add to position
-- **Overweight**: Favorable outlook, gradually increase exposure
-- **Hold**: Maintain current position, no action needed
-- **Underweight**: Reduce exposure, take partial profits
-- **Sell**: Exit position or avoid entry
-
-**Context:**
-- Research Manager's investment plan: **{research_plan}**
-- Trader's transaction proposal: **{trader_plan}**
-{lessons_line}
-**Risk Analysts Debate History:**
-{history}
-
----
-
-Ground every conclusion in specific evidence from the analysts. The risk debate always contains conflicting stances; deciding which is stronger is the job, so conflict alone is not a reason to Hold. Commit to the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not force a direction to appear decisive. Weigh the analysts on their merits, independent of speaking order.
-
-## Output
-
-Write these sections, in this order, starting with the rating on its own line:
-
-- **Rating**: exactly one of Buy / Overweight / Hold / Underweight / Sell
-- **Executive Summary**: the call and how to act on it
-- **Investment Thesis**: the evidence that decided it, and what would change it
-
-{NO_EXTERNAL_TOOLS}{get_language_instruction()}"""
-        if policy:
-            prompt = prompt.replace(", sized by how decisively it wins", "")
+        prompt = workflow.render('portfolio_manager_desk' if policy else 'portfolio_manager', instrument_context=instrument_context, get_verified_market_context_from_state=get_verified_market_context_from_state(state, workflow), portfolio_context=portfolio_context, evidence_research_manager_investment_plan=evidence.add('research manager investment plan', research_plan), evidence_trader_transaction_proposal=evidence.add('trader transaction proposal', trader_plan), lessons_line=lessons_line, evidence_debate_history=evidence.add('debate history', history), NO_EXTERNAL_TOOLS=workflow.text('no_external_tools'), get_language_instruction=get_language_instruction(workflow))
 
         # The typed rating is the decision; the rendered text only carries it.
         # Read back from text, a rating the thesis quotes could replace it.
-        decision = invoke_structured(bind_structured(llm, DeskPortfolioDecision, "Portfolio Manager") if policy else structured_llm,
-                                     prompt, "Portfolio Manager")
+        decision = invoke_structured(bind_structured(llm, DeskPortfolioDecision, 'Portfolio Manager', workflow=workflow) if policy else structured_llm,
+                                     evidence.messages(prompt), "Portfolio Manager")
         if decision is not None:
             final_trade_decision = render_pm_decision(decision)
             final_rating = decision.rating.value
         else:
-            final_trade_decision = llm.invoke(prompt).content
+            final_trade_decision = llm.invoke(evidence.messages(prompt)).content
             final_rating = parse_rating(final_trade_decision)
 
         new_risk_debate_state = {

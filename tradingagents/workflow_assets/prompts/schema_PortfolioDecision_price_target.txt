@@ -1,0 +1,1 @@
+Optional target price in the instrument's quote currency.

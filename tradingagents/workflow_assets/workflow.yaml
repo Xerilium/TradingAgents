@@ -1,0 +1,141 @@
+analysts: [market, social, news, fundamentals]
+limits:
+  max_debate_rounds: 1
+  max_risk_discuss_rounds: 1
+  max_tool_rounds: 20
+  max_recur_limit: 100
+nodes:
+  Market Analyst: {handler: market, tier: fast}
+  Sentiment Analyst: {handler: social, tier: fast}
+  News Analyst: {handler: news, tier: fast}
+  Fundamentals Analyst: {handler: fundamentals, tier: fast}
+  Memory Log: {handler: memory}
+  Bull Researcher: {handler: bull, tier: fast}
+  Bear Researcher: {handler: bear, tier: fast}
+  Research Manager: {handler: research_manager, tier: deep}
+  Trader: {handler: trader, tier: fast}
+  Aggressive Analyst: {handler: aggressive, tier: fast}
+  Conservative Analyst: {handler: conservative, tier: fast}
+  Neutral Analyst: {handler: neutral, tier: fast}
+  Portfolio Manager: {handler: portfolio_manager, tier: deep}
+edges:
+  - {from: START, to: Market Analyst}
+  - {from: START, to: Sentiment Analyst}
+  - {from: START, to: News Analyst}
+  - {from: START, to: Fundamentals Analyst}
+  - {from: START, to: Memory Log}
+  - from: [Market Analyst, Sentiment Analyst, News Analyst, Fundamentals Analyst, Memory Log]
+    to: Bull Researcher
+  - from: Bull Researcher
+    router: research_debate
+    paths: {Bull Researcher: Bull Researcher, Bear Researcher: Bear Researcher, Research Manager: Research Manager}
+  - from: Bear Researcher
+    router: research_debate
+    paths: {Bull Researcher: Bull Researcher, Bear Researcher: Bear Researcher, Research Manager: Research Manager}
+  - {from: Research Manager, to: Trader}
+  - {from: Trader, to: Aggressive Analyst}
+  - from: Aggressive Analyst
+    router: risk_debate
+    paths: {Aggressive Analyst: Aggressive Analyst, Conservative Analyst: Conservative Analyst, Neutral Analyst: Neutral Analyst, Portfolio Manager: Portfolio Manager}
+  - from: Conservative Analyst
+    router: risk_debate
+    paths: {Aggressive Analyst: Aggressive Analyst, Conservative Analyst: Conservative Analyst, Neutral Analyst: Neutral Analyst, Portfolio Manager: Portfolio Manager}
+  - from: Neutral Analyst
+    router: risk_debate
+    paths: {Aggressive Analyst: Aggressive Analyst, Conservative Analyst: Conservative Analyst, Neutral Analyst: Neutral Analyst, Portfolio Manager: Portfolio Manager}
+  - {from: Portfolio Manager, to: END}
+prompts:
+  aggressive_debator: prompts/aggressive_debator.txt
+  allocation_entry_conditions: prompts/allocation_entry_conditions.txt
+  allocation_rationale: prompts/allocation_rationale.txt
+  allocation_weight: prompts/allocation_weight.txt
+  analyst_wrapper: prompts/analyst_wrapper.txt
+  bear_researcher: prompts/bear_researcher.txt
+  bull_researcher: prompts/bull_researcher.txt
+  conservative_debator: prompts/conservative_debator.txt
+  desk_exclude_fred: prompts/desk_exclude_fred.txt
+  desk_execution_policy: prompts/desk_execution_policy.txt
+  desk_historical_quote: prompts/desk_historical_quote.txt
+  desk_quote_context: prompts/desk_quote_context.txt
+  fundamentals_analyst: prompts/fundamentals_analyst.txt
+  fundamentals_analyst_etf: prompts/fundamentals_analyst_etf.txt
+  fundamentals_review_etf: prompts/fundamentals_review_etf.txt
+  fundamentals_review_tools: prompts/fundamentals_review_tools.txt
+  fundamentals_review_stock: prompts/fundamentals_review_stock.txt
+  joint_allocations: prompts/joint_allocations.txt
+  joint_cash_rationale: prompts/joint_cash_rationale.txt
+  joint_portfolio: prompts/joint_portfolio.txt
+  market_analyst: prompts/market_analyst.txt
+  neutral_debator: prompts/neutral_debator.txt
+  news_analyst: prompts/news_analyst.txt
+  no_external_tools: prompts/no_external_tools.txt
+  portfolio_lessons: prompts/portfolio_lessons.txt
+  portfolio_manager: prompts/portfolio_manager.txt
+  portfolio_manager_desk: prompts/portfolio_manager_desk.txt
+  research_manager: prompts/research_manager.txt
+  research_manager_desk: prompts/research_manager_desk.txt
+  schema_DeskPortfolioDecision_executive_summary: prompts/schema_DeskPortfolioDecision_executive_summary.txt
+  schema_DeskPortfolioDecision_rating: prompts/schema_DeskPortfolioDecision_rating.txt
+  schema_DeskResearchPlan_recommendation: prompts/schema_DeskResearchPlan_recommendation.txt
+  schema_DeskResearchPlan_strategic_actions: prompts/schema_DeskResearchPlan_strategic_actions.txt
+  schema_DeskTraderProposal_position_sizing: prompts/schema_DeskTraderProposal_position_sizing.txt
+  schema_PortfolioDecision_executive_summary: prompts/schema_PortfolioDecision_executive_summary.txt
+  schema_PortfolioDecision_investment_thesis: prompts/schema_PortfolioDecision_investment_thesis.txt
+  schema_PortfolioDecision_price_target: prompts/schema_PortfolioDecision_price_target.txt
+  schema_PortfolioDecision_rating: prompts/schema_PortfolioDecision_rating.txt
+  schema_PortfolioDecision_time_horizon: prompts/schema_PortfolioDecision_time_horizon.txt
+  schema_ResearchPlan_rationale: prompts/schema_ResearchPlan_rationale.txt
+  schema_ResearchPlan_recommendation: prompts/schema_ResearchPlan_recommendation.txt
+  schema_ResearchPlan_strategic_actions: prompts/schema_ResearchPlan_strategic_actions.txt
+  schema_SentimentReport_confidence: prompts/schema_SentimentReport_confidence.txt
+  schema_SentimentReport_narrative: prompts/schema_SentimentReport_narrative.txt
+  schema_SentimentReport_overall_band: prompts/schema_SentimentReport_overall_band.txt
+  schema_SentimentReport_overall_score: prompts/schema_SentimentReport_overall_score.txt
+  schema_TraderProposal_action: prompts/schema_TraderProposal_action.txt
+  schema_TraderProposal_entry_price: prompts/schema_TraderProposal_entry_price.txt
+  schema_TraderProposal_position_sizing: prompts/schema_TraderProposal_position_sizing.txt
+  schema_TraderProposal_reasoning: prompts/schema_TraderProposal_reasoning.txt
+  schema_TraderProposal_stop_loss: prompts/schema_TraderProposal_stop_loss.txt
+  sentiment_analyst: prompts/sentiment_analyst.txt
+  sentiment_reddit_crypto: prompts/sentiment_reddit_crypto.txt
+  sentiment_reddit_crypto_specific: prompts/sentiment_reddit_crypto_specific.txt
+  sentiment_reddit_stock: prompts/sentiment_reddit_stock.txt
+  sentiment_wrapper: prompts/sentiment_wrapper.txt
+  shared_called_tools: prompts/shared_called_tools.txt
+  shared_crypto: prompts/shared_crypto.txt
+  shared_duplicate_filing: prompts/shared_duplicate_filing.txt
+  shared_etf: prompts/shared_etf.txt
+  shared_evidence_reference: prompts/shared_evidence_reference.txt
+  shared_evidence_wrapper: prompts/shared_evidence_wrapper.txt
+  shared_historical_identity: prompts/shared_historical_identity.txt
+  shared_instrument: prompts/shared_instrument.txt
+  shared_language: prompts/shared_language.txt
+  shared_memory_base: prompts/shared_memory_base.txt
+  shared_memory_build_context: prompts/shared_memory_build_context.txt
+  shared_memory_final: prompts/shared_memory_final.txt
+  shared_memory_find_similar: prompts/shared_memory_find_similar.txt
+  shared_memory_no_graph: prompts/shared_memory_no_graph.txt
+  shared_memory_read: prompts/shared_memory_read.txt
+  shared_memory_search: prompts/shared_memory_search.txt
+  shared_memory_thinking: prompts/shared_memory_thinking.txt
+  shared_memory_tool_instruction: prompts/shared_memory_tool_instruction.txt
+  shared_memory_tools: prompts/shared_memory_tools.txt
+  shared_memory_unavailable: prompts/shared_memory_unavailable.txt
+  shared_opponent_opening: prompts/shared_opponent_opening.txt
+  shared_portfolio_holdings_missing: prompts/shared_portfolio_holdings_missing.txt
+  shared_portfolio_missing: prompts/shared_portfolio_missing.txt
+  shared_report_absent: prompts/shared_report_absent.txt
+  shared_request_inputs: prompts/shared_request_inputs.txt
+  shared_resolved_identity: prompts/shared_resolved_identity.txt
+  shared_snapshot: prompts/shared_snapshot.txt
+  shared_snapshot_missing: prompts/shared_snapshot_missing.txt
+  shared_tool_returned: prompts/shared_tool_returned.txt
+  shared_tools_spent: prompts/shared_tools_spent.txt
+  trader_grounding: prompts/trader_grounding.txt
+  trader_grounding_desk: prompts/trader_grounding_desk.txt
+  trader_report_section: prompts/trader_report_section.txt
+  trader_system: prompts/trader_system.txt
+  trader_system_desk: prompts/trader_system_desk.txt
+  trader_user: prompts/trader_user.txt
+  trader_user_desk: prompts/trader_user_desk.txt
+  wrap_up: prompts/wrap_up.txt

@@ -1,0 +1,1 @@
+Ground concrete price levels (entry, stop-loss, position sizing) in the collected market snapshot's dated values. Treat the technical report as interpretation, and use the research plan for direction and strategy. 

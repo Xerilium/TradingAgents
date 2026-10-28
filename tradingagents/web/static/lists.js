@@ -111,7 +111,7 @@ const DeskLists = (() => {
     const recent=samples.slice(0,10).sort((a,b)=>a-b);
     const middle=Math.floor(recent.length/2);
     const median=recent.length%2?recent[middle]:(recent[middle-1]+recent[middle])/2;
-    return {seconds:median*Math.ceil(stocks/Math.max(1,Math.min(8,config.research_concurrency??1))),perStock:median,samples:recent.length};
+    return {seconds:median*Math.ceil(stocks/Math.max(1,Math.min(100,config.research_concurrency??1))),perStock:median,samples:recent.length};
   }
 
   return {page,parseSymbols,dateNY,marketState,quoteState,duration,estimate};

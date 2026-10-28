@@ -132,6 +132,7 @@ def _gateway_failure_details(error):
                 r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
                 r"no news articles tagged|maintenance|rate limited|temporarily unavailable")
     safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
+                     r"MEMORY_(?:READ_REQUIRED|CHECKSUM_MISMATCH|CHECKSUM_CONFLICT|WIKILINK_REQUIRED|WIKILINK_REJECTED)|"
                      r"The upstream Gateway tool reported (?:a text error|an error)\.|"
                      r"GatewayIndex did not return (?:a domain catalog|command schemas)\.|"
                      r"GatewayIndex returned a malformed command\.|"
@@ -206,7 +207,9 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
                 else "local_inference_failure")
         if origin == "gateway":
             receipt.setdefault("error_details", _gateway_failure_details(exc))
-            if getattr(exc, "social_budget_expired", False):
+            if any(detail.get("message", "").startswith("MEMORY_") for detail in receipt["error_details"]):
+                receipt["failure_kind"] = "invalid_request"
+            elif getattr(exc, "social_budget_expired", False):
                 receipt["failure_kind"] = "screening_budget_exhausted"
             elif kind == "GatewayTimeout":
                 receipt["failure_kind"] = "service_timeout"
@@ -280,7 +283,8 @@ def source_failure_details(error):
             "transient_server" if status in {500, 502, 503, 504} else
             "transient_transport" if names.intersection({"Timeout", "TimeoutError", "ReadTimeout", "ConnectTimeout", "ConnectionError", "ConnectionResetError", "RemoteDisconnected", "IncompleteRead"}) else
             "invalid_response" if names.intersection({"ParseError", "JSONDecodeError", "UnicodeDecodeError"}) else
-            "invalid_request" if isinstance(error, (ValueError, TypeError)) else "source_unavailable")
+            "invalid_request" if isinstance(error, (ValueError, TypeError)) or any(
+                detail.get("message", "").startswith("MEMORY_") for detail in details) else "source_unavailable")
     return {"failure_kind": kind, "error_details": details,
             **({"http_status": status} if type(status) is int else {})}
 

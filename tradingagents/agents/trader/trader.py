@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage
 
+from tradingagents.agents.prompt_evidence import EvidencePrompt
 from tradingagents.agents.context import (
     get_desk_execution_policy,
     get_instrument_context_from_state,
@@ -13,18 +14,17 @@ from tradingagents.agents.context import (
 )
 from tradingagents.agents.schemas import DeskTraderProposal, TraderProposal, render_trader_proposal
 from tradingagents.agents.structured import (
-    NO_EXTERNAL_TOOLS,
     bind_structured,
     invoke_structured_or_freetext,
 )
 
 
-def create_trader(llm):
-    structured_llm = bind_structured(llm, TraderProposal, "Trader")
+def create_trader(llm, *, workflow):
+    structured_llm = bind_structured(llm, TraderProposal, 'Trader', workflow=workflow)
 
     def trader_node(state):
         company_name = state["company_of_interest"]
-        instrument_context = get_instrument_context_from_state(state)
+        instrument_context = get_instrument_context_from_state(state, workflow)
         investment_plan = state["investment_plan"]
         # The research plan digests the debate but loses exact price structure;
         # give the Trader the technical market report so entry/stop levels are
@@ -32,16 +32,15 @@ def create_trader(llm):
         # report is empty when the user did not select the market analyst, so
         # only offer it (and the grounding instruction) when it has content.
         market_report = (state["market_report"] or "").strip()
-        portfolio_context = get_portfolio_context_from_state(state)
+        portfolio_context = get_portfolio_context_from_state(state, workflow)
         policy = get_desk_execution_policy(state)
 
+        evidence = EvidencePrompt(workflow)
         if market_report:
             grounding = (
-                "Ground concrete price levels (entry, stop-loss, position sizing) in the collected "
-                "market snapshot's dated values. Treat the technical report as interpretation, "
-                "and use the research plan for direction and strategy. "
+                workflow.render('trader_grounding_desk' if policy else 'trader_grounding')
             )
-            report_section = f"Technical Market Report:\n{market_report}\n\n"
+            report_section = workflow.render('trader_report_section', evidence=evidence.add('technical market report', market_report))
         else:
             grounding = ""
             report_section = ""
@@ -50,55 +49,21 @@ def create_trader(llm):
             {
                 "role": "system",
                 "content": (
-                    "You are a trading agent analyzing market data to make investment decisions. "
-                    "Based on your analysis, provide a specific recommendation to buy, sell, or hold. "
-                    + grounding
-                    # Entry/stop are numeric price fields. Asking for concrete
-                    # levels invites a percentage ("15%"), which is not a price
-                    # and fails the structured parse (#1288).
-                    + "State entry price and stop-loss as absolute price levels in the "
-                    "instrument's quote currency (for example 189.5), never a percentage "
-                    "or a range; convert a percentage distance to the price level it "
-                    "implies, or omit the field if you cannot state a number. "
-                    + NO_EXTERNAL_TOOLS
-                    + get_language_instruction()
+                    workflow.render('trader_system_desk' if policy else 'trader_system', grounding=grounding, NO_EXTERNAL_TOOLS=workflow.text('no_external_tools'), get_language_instruction=get_language_instruction(workflow))
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"Here is the research team's investment plan for {company_name}. "
-                    f"{instrument_context}\n\n"
-                    f"{get_verified_market_context_from_state(state)}\n\n"
-                    f"{report_section}"
-                    f"{portfolio_context}\n\n"
-                    f"Proposed Investment Plan:\n{investment_plan}\n\n"
-                    "Make an informed, strategic trading decision.\n\n"
-                    "## Output\n\n"
-                    "Write these sections, in this order, starting with the action "
-                    "on its own line:\n\n"
-                    "- **Action**: exactly one of Buy / Hold / Sell. A research "
-                    "rating describes desired exposure relative to a benchmark; it is not "
-                    "automatically an order. Preserve the committee's reasoning. With no "
-                    "holding to reduce and no permitted shorting, avoiding a purchase is Hold. "
-                    "Do not invent a short entry or stop for an unavailable action.\n"
-                    "- **Reasoning**: why, against the plan and the price structure\n"
-                    "- **Entry Price**, **Stop Loss**, **Position Sizing**: when you can state them"
+                    workflow.render('trader_user_desk' if policy else 'trader_user', company_name=company_name, instrument_context=instrument_context, get_verified_market_context_from_state=get_verified_market_context_from_state(state, workflow), report_section=report_section, portfolio_context=portfolio_context, evidence_research_investment_plan=evidence.add('research investment plan', investment_plan))
                 ),
             },
         ]
-        if policy:
-            for message in messages:
-                message["content"] = message["content"].replace("entry, stop-loss, position sizing", "advisory entry and stop-loss")
-                message["content"] = message["content"].replace("sized by how strong the case is", "with quantity determined by configured desk policy")
-                message["content"] = message["content"].replace(
-                    "**Entry Price**, **Stop Loss**, **Position Sizing**: when you can state them",
-                    "**Entry Price**, **Stop Loss**: advisory conditional levels when supported; leave Position Sizing unset because configured policy owns quantities")
 
         trader_plan = invoke_structured_or_freetext(
-            bind_structured(llm, DeskTraderProposal, "Trader") if policy else structured_llm,
+            bind_structured(llm, DeskTraderProposal, 'Trader', workflow=workflow) if policy else structured_llm,
             llm,
-            messages,
+            [*messages, *evidence.messages("")[1:]],
             render_trader_proposal,
             "Trader",
         )

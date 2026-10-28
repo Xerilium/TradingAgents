@@ -1,0 +1,1 @@
+Overall sentiment direction. Exactly one of: Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish. Use Mixed when sources point in clearly different directions. Use Neutral only when all sources are genuinely silent or non-committal.

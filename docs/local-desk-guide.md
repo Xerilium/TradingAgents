@@ -599,6 +599,38 @@ state-changing effects are blocked with their actual reason. A blocked continuat
 is not silently retried as fresh research. These source controls have not been
 accepted through an actual continued research run.
 
+## Edit research workflows and prompts
+
+Open Workflows directly above Settings. Select a saved workflow and Load it.
+The page shows its Mermaid flow, a dedicated YAML editor and a separate prompt
+editor. Select an agent in the flow to open a related prompt, or choose an agent,
+shared, conditional, output-schema or portfolio prompt from the selector.
+
+The diagram represents the validated desktop graph. Synthetic joins, checks and
+boundaries explain the flow; they are not additional agents. Round summaries
+group the runtime's per-turn checks. The optional CLI local-memory branch is not
+active in the desktop. Use zoom, fit and scroll controls to inspect the flow.
+
+Edit YAML, then Preview changes to refresh the diagram. A stale indication means
+the picture does not reflect the current draft. Preview does not save or run
+anything. Edit prompts independently; each file has isolated undo and selection.
+Save writes the complete bundle. Save as uses an inline name field to create a
+named copy. Invalid input and save conflicts preserve draft text.
+
+Use for new research selects a saved workflow without launching research. New
+runs load the bundle once, including queued stocks. Later saves and activation
+affect later runs. A new joint portfolio call captures its own bundle.
+
+Files live under application/workflows in the active profile. Development uses
+.local-workspace/development/application/workflows. The current pointer selects
+a workflow's active file folder for atomic saves; it is not a history feature.
+Updates preserve authored files.
+
+Keep named placeholders from the supplied prompts and double literal braces.
+Workflow YAML controls topology, model tiers and graph limits. Provider/model
+connections, token budgets, concurrency and Laya device remain in Settings.
+Risk checks, approval and separate broker submission remain independent.
+
 ## Research agents and Maenifold
 
 The market, news, and fundamentals analysts receive the eight commands in

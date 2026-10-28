@@ -14,6 +14,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
+from urllib.parse import quote
 
 from .app_database import ApplicationDatabase
 from .config import DeskConfig
@@ -111,8 +112,22 @@ def artifacts(root, value):
         yield relative, payload
 
 
+def _readonly_sqlite_uri(database):
+    if os.name == "nt":
+        name = str(database)
+        if name.upper().startswith("\\\\?\\UNC\\"):
+            name = "\\\\" + name[8:]
+        elif re.match(r"^\\\\\?\\[A-Za-z]:\\", name):
+            name = name[4:]
+        if name.startswith("\\\\") and not name.startswith("\\\\?\\"):
+            # SQLite expects UNC as a path, not as the URI authority.
+            return "file://" + quote(name.replace("\\", "/"), safe="/:") + "?mode=ro"
+        return Path(name).as_uri() + "?mode=ro"
+    return database.as_uri() + "?mode=ro"
+
+
 def records(database, resolve_artifact=None):
-    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+    with closing(sqlite3.connect(_readonly_sqlite_uri(database), uri=True)) as connection:
         connection.execute("PRAGMA trusted_schema=OFF")
         if connection.execute("PRAGMA user_version").fetchone()[0] != ApplicationDatabase.VERSION:
             raise ValueError("Backup database schema version is unsupported")
@@ -191,36 +206,37 @@ def backup(service):
     staged_database = directory / (identity + ".sqlite3")
     try:
         files = {}
-        # Capture one generation; immutable artifact reads and compression need no writer lock.
-        with service.maintenance, service.store.lock, service.store.database.transaction():
-            if (any(not future.done() for future in service.research_futures | service.data_jobs.futures)
-                    or any(run["status"] in {"queued", "running", "cancelling"} for run in service.store.data["runs"])):
-                raise ValueError("Research/data writers are active. Wait for them to finish before backup")
-            with closing(sqlite3.connect(service.store.database.path)) as source, closing(sqlite3.connect(staged_database)) as target:
-                source.backup(target)
-                target.commit()
-            journal_records = records(staged_database.resolve())
-            files["application/desk.sqlite3"] = staged_database.read_bytes()
-            scopes = [("application", service.store.directory, journal_records)]
-            history_raw = None
-            history_json_source = False
-            history_path = None
-            if service.history_directory:
-                history_path = service.history_directory / "desk.json"
-                if (service.history_directory / "desk.sqlite3").exists():
-                    # Export the read-only history snapshot as data, without recovery writes.
-                    history_raw = json.dumps(service.store.read_existing(service.history_directory), allow_nan=False).encode()
-                else:
-                    history_raw = history_path.read_bytes()
-                    history_json_source = True
-                history = json.loads(history_raw)
-                validate_journal(history)
-                files["history/desk.json"] = history_raw
-                scopes.append(("history", service.history_directory, history))
-            application_directory = service.store.directory
-        for scope, root, value in scopes:
-            for relative, payload in artifacts(root, value):
-                files[scope + "/" + relative] = payload
+        # Hold maintenance until all referenced artifacts have been captured.
+        with service.maintenance:
+            with service.store.lock, service.store.database.transaction():
+                if (any(not future.done() for future in service.research_futures | service.data_jobs.futures)
+                        or any(run["status"] in {"queued", "running", "cancelling"} for run in service.store.data["runs"])):
+                    raise ValueError("Research/data writers are active. Wait for them to finish before backup")
+                with closing(sqlite3.connect(service.store.database.path)) as source, closing(sqlite3.connect(staged_database)) as target:
+                    source.backup(target)
+                    target.commit()
+                journal_records = records(staged_database.resolve())
+                files["application/desk.sqlite3"] = staged_database.read_bytes()
+                scopes = [("application", service.store.directory, journal_records)]
+                history_raw = None
+                history_json_source = False
+                history_path = None
+                if service.history_directory:
+                    history_path = service.history_directory / "desk.json"
+                    if (service.history_directory / "desk.sqlite3").exists():
+                        # Export the read-only history snapshot as data, without recovery writes.
+                        history_raw = json.dumps(service.store.read_existing(service.history_directory), allow_nan=False).encode()
+                    else:
+                        history_raw = history_path.read_bytes()
+                        history_json_source = True
+                    history = json.loads(history_raw)
+                    validate_journal(history)
+                    files["history/desk.json"] = history_raw
+                    scopes.append(("history", service.history_directory, history))
+                application_directory = service.store.directory
+            for scope, root, value in scopes:
+                for relative, payload in artifacts(root, value):
+                    files[scope + "/" + relative] = payload
         for name in ("constituents.csv", "sp500-constituents.csv"):
             path = application_directory / name
             if path.is_file() and not path.is_symlink():
@@ -452,7 +468,7 @@ def retain_damaged_authority(service, database, destination):
     try:
         directory, _ = active_paths(service.original_root, None)
         source = (directory / "desk.sqlite3").resolve()
-        with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as connection:
+        with closing(sqlite3.connect(_readonly_sqlite_uri(source), uri=True)) as connection:
             connection.execute("PRAGMA trusted_schema=OFF")
             if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise ValueError("Original authority integrity is unproven")

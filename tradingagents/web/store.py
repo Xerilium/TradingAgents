@@ -152,6 +152,118 @@ class DeskStore:
                 lambda _: {"runs": self.data["runs"]}, {"runs": []})
             self.research_revision = saved["revision"]
 
+    def _research_cleanup_files(self, old, remaining, connection, run_ids):
+        """Find verified, unreferenced evidence without reading binary artifacts."""
+        from .recovery import references, MAX_EXPANDED
+
+        def paths(value, allowed_runs=None):
+            queue, seen, total = list(references(value)), {}, 0
+            while queue:
+                relative, digest = queue.pop()
+                if allowed_runs is not None and relative.split("/")[1] not in allowed_runs:
+                    continue
+                if relative in seen:
+                    if seen[relative] != digest:
+                        raise ValueError("Artifact identity has conflicting hashes")
+                    continue
+                seen[relative] = digest
+                if relative.endswith(".json"):
+                    target = self.directory / relative
+                    if (any(part.is_symlink() or getattr(part, "is_junction", lambda: False)()
+                            for part in (target, target.parent, target.parent.parent))
+                            or not target.resolve().is_relative_to(self.directory.resolve()) or not target.is_file()):
+                        raise ValueError("Evidence path is unavailable or unsafe")
+                    payload = target.read_bytes()
+                    total += len(payload)
+                    if total > MAX_EXPANDED or hashlib.sha256(payload).hexdigest() != digest:
+                        raise ValueError("Evidence JSON could not be verified")
+                    queue.extend(references(json.loads(payload)))
+            return seen
+
+        try:
+            candidates = paths(old, run_ids)
+            records = [json.loads(row[0]) for row in connection.execute(
+                "SELECT payload FROM app_records WHERE name != 'latest_research'")]
+            records.append(remaining)
+            for backup in self.directory.glob("desk.migration-*.json"):
+                if backup.is_symlink() or getattr(backup, "is_junction", lambda: False)():
+                    raise ValueError("Migration backup is a link")
+                records.append(json.loads(backup.read_text(encoding="utf-8")))
+            protected = paths(records)
+            eligible = {}
+            for relative, digest in candidates.items():
+                if relative in protected or relative.split("/")[1] not in run_ids:
+                    continue
+                target = self.directory / relative
+                if (any(part.is_symlink() or getattr(part, "is_junction", lambda: False)()
+                        for part in (target, target.parent, target.parent.parent))
+                        or not target.resolve().is_relative_to(self.directory.resolve()) or not target.is_file()):
+                    raise ValueError("Evidence path is unavailable or unsafe")
+                eligible[relative] = (digest, target.stat().st_size)
+            return eligible, []
+        except (OSError, ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
+            return {}, ["Some evidence could not be verified; research artifacts will be retained."]
+
+    def delete_research(self, symbols, expected_revision=None, preview=False):
+        """Remove selected latest results while preserving shared and pinned evidence."""
+        if (not isinstance(symbols, list) or not symbols or any(not isinstance(s, str) or not s or s != s.upper() for s in symbols)
+                or len(set(symbols)) != len(symbols)):
+            raise ValueError("Select one or more distinct uppercase ticker symbols.")
+        selected = set(symbols)
+        with self.lock:
+            known = {result["symbol"] for run in self.data["runs"] for result in run.get("results", [])}
+            if not selected <= known:
+                raise ValueError("Selected research is no longer available. Refresh and select again.")
+            old = copy.deepcopy({"runs": self.data["runs"]})
+            run_ids = {run["id"] for run in old["runs"] if any(result["symbol"] in selected for result in run.get("results", []))}
+            if any(str(UUID(run_id)) != run_id for run_id in run_ids):
+                raise ValueError("Invalid saved research run identity.")
+            remaining = copy.deepcopy(old)
+            count = 0
+            runs = []
+            for run in remaining["runs"]:
+                count += sum(result["symbol"] in selected for result in run.get("results", []))
+                run["results"] = [result for result in run.get("results", []) if result["symbol"] not in selected]
+                if not run["results"]:
+                    continue
+                run["symbols"] = [symbol for symbol in run.get("symbols", []) if symbol not in selected]
+                run["events"] = [event for event in run.get("events", []) if event.get("symbol") not in selected]
+                for origin in ("source", "gateway", "jev"):
+                    evidence = run.get(f"{origin}_evidence", {})
+                    evidence["attempts"] = [attempt for attempt in evidence.get("attempts", []) if attempt.get("symbol") not in selected]
+                runs.append(run)
+            remaining["runs"] = runs
+            if preview:
+                with self.database.transaction() as connection:
+                    revision = connection.execute("SELECT revision FROM app_records WHERE name='latest_research'").fetchone()
+                    revision = revision[0] if revision else 0
+                    if revision != self.research_revision:
+                        raise StoreConflict(revision)
+                    files, warnings = self._research_cleanup_files(old, remaining, connection, run_ids)
+                return {"symbols": symbols, "expected_revision": revision, "result_count": count,
+                        "artifact_count": len(files), "artifact_bytes": sum(size for _, size in files.values()), "warnings": warnings}
+            saved = self.database.update("latest_research", expected_revision, lambda _: remaining, {"runs": []})
+            self.data["runs"], self.research_revision = saved["data"]["runs"], saved["revision"]
+        deleted, warnings = 0, []
+        try:
+            with self.database.transaction() as connection:
+                files, warnings = self._research_cleanup_files(old, remaining, connection, run_ids)
+                for relative, (digest, size) in files.items():
+                    target = self.directory / relative
+                    try:
+                        if (any(part.is_symlink() or getattr(part, "is_junction", lambda: False)()
+                                for part in (target, target.parent, target.parent.parent))
+                                or not target.resolve().is_relative_to(self.directory.resolve())
+                                or target.stat().st_size != size or hashlib.sha256(target.read_bytes()).hexdigest() != digest):
+                            raise ValueError("Evidence changed")
+                        target.unlink()
+                        deleted += 1
+                    except (OSError, ValueError):
+                        warnings.append("Some evidence changed or could not be removed; it was retained.")
+        except (OSError, sqlite3.Error):
+            warnings.append("Evidence references could not be rechecked; remaining artifacts were retained.")
+        return {"deleted_symbols": symbols, "deleted_results": count, "deleted_artifacts": deleted, "warnings": list(dict.fromkeys(warnings))}
+
     def _artifact_reference(self, path, payload):
         return {"path": path.relative_to(self.directory).as_posix(),
                 "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "format": "json"}
@@ -459,7 +571,12 @@ class DeskStore:
         view = payload.decode("utf-8")  # Non-UTF-8 bodies are an explicit unsupported capture.
         marker = (r'''(?im)(?:^\s*|[{,]\s*|["'])[\w-]*(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'''
                   r'''["'\s]*[:=]|bearer\s+\S+|(?<![\w-])sk-(?:(?:proj|svcacct)-[a-zA-Z0-9_-]{16,}|[a-zA-Z0-9]{32,})(?![\w-])|-----BEGIN [A-Z ]*PRIVATE KEY''')
-        for _ in range(4):
+        screening_work = 0
+        screening_work_limit = 4 * 8 * 1024 * 1024
+        while True:
+            screening_work += len(view)
+            if screening_work > screening_work_limit:
+                raise SourceEvidenceError("Provider receipt secret screening exceeded its cumulative work limit; report the source format without pasting its body.")
             # Only the known pagination field name is exempted, never its value or other token fields.
             screened = re.sub(r'''(["'])next_page_token\1(?=\s*:)''', r'\1pagination_cursor\1', view) if allow_pagination_cursor else view
             if re.search(marker, screened):
@@ -469,8 +586,6 @@ class DeskStore:
             if decoded == view:
                 break
             view = decoded
-        else:
-            raise SourceEvidenceError("Provider receipt encoding exceeds the supported screening depth; report the source format without pasting its body.")
         relative = Path("reports") / run_id / f"{prefix}-{attempt_id}-{uuid4()}.bin"
         destination = self.directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)

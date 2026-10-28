@@ -1,0 +1,5 @@
+# Optional desktop CUDA runtime: Windows x64, CPython 3.12.
+# Install only after approval, with the desktop app fully stopped.
+# Other Torch dependencies are already pinned in the desk runtime.
+torch @ https://download-r2.pytorch.org/whl/cu130/torch-2.14.1%2Bcu130-cp312-cp312-win_amd64.whl \
+    --hash=sha256:0a09031e93632d14ef49553acd6211ece3ae9cdc0969a369b8c24e3cc4d15be9

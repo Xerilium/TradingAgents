@@ -1,56 +1,40 @@
 """One turn of a tool-using analyst, and its last turn once its tool rounds are spent."""
 
 import json
+import hashlib
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-WRAP_UP = (
-    "You have used every tool round this report allows. Write your final report "
-    "now from the tool results above, and say which data you could not retrieve."
-)
 
 
-def research_memory_guidance(tools):
+
+def research_memory_guidance(tools, workflow):
     names = {tool.name for tool in tools}
     guidance = [
-        " Use available external research tools to collect actual evidence for this analysis; reuse externally collected results already supplied."
-        " Memory and reasoning are context and analysis, never substitutes for external research or independently verified facts."
-        " Trace claims to their underlying external sources; repeated sources in memory, tool results or reasoning are not independent corroboration."
-        " Use prior company, project or domain knowledge only when relevant to this research."
-        " During tool-enabled research, make a small, proportionate retrieval pass; stop if results are irrelevant."
-        " Follow the available tools' schemas. Once tool rounds are exhausted, or during tool-free review,"
-        " do not call tools; use only retained results and disclose unperformed checks.",
-        " Before using any tool, read its description and schema. Gateway tools include canonical GetHelp text"
-        " fetched before this turn; read that guidance first. Use GetHelp to reread it when needed."
-        " Never guess a command's session lifecycle, required fields or completion rules.",
+        workflow.text('shared_memory_base'),
+        workflow.text('shared_memory_tools'),
     ]
     for name, instruction in (
-        ("maenifold_graph__BuildContext", "Use only a relevant existing concept returned by retrieval, with depth=1, maxEntities=5, includeContent=true. On CONCEPT_NOT_FOUND, resolve the anchor once with FindSimilarConcepts if available; never retry the missing anchor or mutate the corpus to make retrieval succeed."),
-        ("maenifold_graph__FindSimilarConcepts", "Before BuildContext, discover an existing anchor using conceptName and maxResults=5. Use only a directly relevant returned concept; if none exists or resolution fails, disclose no relevant memory and continue primary-source research. Never invent an anchor or force an unrelated match; similarity is not evidence."),
-        ("maenifold_memory__SearchMemories", "Search relevant company or domain notes, especially when graph context is unavailable; avoid indiscriminate retrieval."),
-        ("maenifold_memory__ReadMemory", "Read the strongest directly relevant source notes returned by retrieval before relying on them."),
-        ("maenifold_thinking__SequentialThinking", "Think through externally collected evidence as it becomes available: integrate findings, examine assumptions and conflicts, and identify gaps. Use response for source-linked reasoning, not pre-research planning or status logging. Start with thoughtNumber=0, response, nextThoughtNeeded=true and no sessionId. Continue with the actual returned sessionId, incremented thoughtNumber, response and nextThoughtNeeded=true. Complete with that sessionId, incremented thoughtNumber, response, nextThoughtNeeded=false and a conclusion string containing the completion report (ConfessionReport) covering outcomes and gaps. Do not send top-level thought or ConfessionReport fields."),
+        ("maenifold_graph__BuildContext", workflow.text('shared_memory_build_context')),
+        ("maenifold_graph__FindSimilarConcepts", workflow.text('shared_memory_find_similar')),
+        ("maenifold_memory__SearchMemories", workflow.text('shared_memory_search')),
+        ("maenifold_memory__ReadMemory", workflow.text('shared_memory_read')),
+        ("maenifold_thinking__SequentialThinking", workflow.text('shared_memory_thinking')),
     ):
         if name in names:
-            guidance.append(f" Use {name}: {instruction}")
+            guidance.append(workflow.render('shared_memory_tool_instruction', name=name, instruction=instruction))
     if "maenifold_graph__BuildContext" not in names:
-        guidance.append(" Graph context retrieval is unavailable in this tool set; use available memory retrieval proportionately.")
+        guidance.append(workflow.text('shared_memory_no_graph'))
     if not names.intersection({"maenifold_memory__SearchMemories", "maenifold_memory__ReadMemory", "maenifold_graph__BuildContext"}):
-        guidance.append(" Prior-memory retrieval is unavailable in this tool set; continue primary-source research under the existing coverage requirements.")
+        guidance.append(workflow.text('shared_memory_unavailable'))
     guidance.append(
-        " In the report, state which relevant prior notes influenced the analysis and cite their memory:// sources,"
-        " or state that none were found, retrieval was unavailable, or no retrieval was performed, as actually observed."
-        " Separate dated memory and its original sources from current primary evidence; check availability as of the analysis date"
-        " and never treat old prices as current. Report tool failures and unresolved gaps without inventing calls or citations."
-        " When available memory tools support updates and you learn reusable externally sourced findings, keep memory:// current:"
-        " read and reuse relevant notes, preserve checksum and lineage on edits, and retain source URLs, source/as-of dates, attribution and uncertainty."
-        " Distinguish historical memory from current observations; write nothing if nothing reusable is learned, and do not generalize beyond the evidence."
-        " Do not promote unsourced conclusions to verified durable knowledge. Existing required-data and report-format rules still apply."
+        workflow.text('shared_memory_final')
     )
     return "".join(guidance)
 
 
-def request_inputs(state, report_key, calls, *, required=None):
+def request_inputs(state, report_key, calls, *, required=None, workflow):
     required = {name for name, _ in calls} if required is None else set(required)
     message_id = f"required-{report_key}-inputs"
     requested = next((message for message in state["messages"] if getattr(message, "id", None) == message_id), None)
@@ -63,52 +47,65 @@ def request_inputs(state, report_key, calls, *, required=None):
         if missing:
             raise ValueError(f"Research inputs incomplete for {report_key}: {', '.join(sorted(set(missing)))}")
         return None
-    return {"messages": [AIMessage(content="Request these inputs once. Disclose unavailable enrichment and its cause; distinguish failed collection from no matches. Use retained evidence, limit unsupported conclusions, and do not fabricate missing values.", id=message_id, tool_calls=[
+    return {"messages": [AIMessage(content=workflow.text('shared_request_inputs'), id=message_id, tool_calls=[
         {"name": name, "args": args, "id": f"{message_id}-{index}"}
         for index, (name, args) in enumerate(calls)
     ])], report_key: ""}
 
 
-def take_turn(prompt, llm, tools, messages):
+def project_history(messages, workflow):
+    """Keep each identical filing once without changing saved tool evidence."""
+    seen, projected = {}, []
+    for message in messages:
+        if isinstance(message, ToolMessage) and isinstance(message.content, str):
+            starts = list(re.finditer(r"(?m)^# [^\n]+ complete [^\n]+ filing: period [^\n]+\nSource: [^\n]+\n", message.content))
+            if starts:
+                parts = [message.content[:starts[0].start()]]
+                for index, start in enumerate(starts):
+                    end = starts[index + 1].start() if index + 1 < len(starts) else len(message.content)
+                    filing = message.content[start.start():end]
+                    digest = hashlib.sha256(filing.encode("utf-8")).hexdigest()
+                    if digest in seen:
+                        parts.append(start.group() + workflow.render('shared_duplicate_filing', response_id=seen[digest], digest=digest))
+                    else:
+                        seen[digest] = message.tool_call_id
+                        parts.append(filing)
+                message = message.model_copy(update={"content": "".join(parts)})
+        projected.append(message)
+    return projected
+
+
+def take_turn(prompt, llm, tools, messages, *, workflow):
     """The analyst's reply and its report, which stays empty while it calls tools.
 
     Told to wrap up, it answers without tools: a model offered tools may call one
     whatever it is told. Its earlier calls and their results reach it as text,
     since a provider may refuse a history holding tool calls when none are bound.
     """
-    # Multiple statement tools may return the same complete filing. Keep it once
-    # in the model input; every original response remains in saved source evidence.
-    seen, unique = {}, []
-    for message in messages:
-        if (isinstance(message, ToolMessage) and isinstance(message.content, str)
-                and message.name in {"get_balance_sheet", "get_cashflow", "get_income_statement"}
-                and "All statements, notes and management discussion follow;" in message.content):
-            if message.content in seen:
-                message = message.model_copy(update={"content": f"Identical source content to tool response {seen[message.content]}; read that full response above."})
-            else:
-                seen[message.content] = message.tool_call_id
-        unique.append(message)
-    messages = unique
-    if messages and isinstance(messages[-1], HumanMessage) and messages[-1].content == WRAP_UP:
+    messages = project_history(messages, workflow)
+    if messages and isinstance(messages[-1], HumanMessage) and messages[-1].content == workflow.text('wrap_up'):
         # The prompt lists the tools it offers; a model told of tools it cannot
         # call may still try, and some providers then answer with nothing.
-        prompt = prompt.partial(tool_names="none; your tool rounds are spent")
-        result = (prompt | llm).invoke(_as_text(messages))
+        prompt = prompt.partial(tool_names=workflow.text('shared_tools_spent'))
+        result = (prompt | llm).invoke(_as_text(messages, workflow))
         return result, result.content
     result = (prompt | llm.bind_tools(tools)).invoke(messages)
     return result, "" if result.tool_calls else result.content
 
 
-def _as_text(messages):
+def _as_text(messages, workflow):
     """The history with its tool calls and tool results written out as plain messages."""
     written = []
-    for message in messages:
+    for message in project_history(messages, workflow):
         if isinstance(message, AIMessage) and message.tool_calls:
             said = message.content if isinstance(message.content, str) else ""
             calls = "; ".join(f"{c['name']}({json.dumps(c['args'], default=str)})" for c in message.tool_calls)
-            written.append(AIMessage(content=f"{said}\n[Called {calls}]".strip()))
+            written.append(AIMessage(content=workflow.render('shared_called_tools', said=said, calls=calls).strip()))
         elif isinstance(message, ToolMessage):
-            written.append(HumanMessage(content=f"[{message.name or 'Tool'} returned]\n{message.content}"))
+            written.append(HumanMessage(content=workflow.render('shared_tool_returned', name=message.name or 'Tool', response_id=message.tool_call_id)))
+            written.append(HumanMessage(content=message.content,
+                additional_kwargs={"research_evidence": True, "research_evidence_source": message.tool_call_id,
+                                   "source_label": message.name or "Tool"}))
         else:
             written.append(message)
     return written

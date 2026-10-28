@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,7 @@ from tradingagents.llm_clients import create_tier_client, tier_provider
 from tradingagents.memory import TradingMemoryLog, settlement
 from tradingagents.memory.reflection import Reflector
 from tradingagents.reporting import write_report_tree
+from tradingagents.workflows import WorkflowBundle, bundled_files
 
 from .conditional_logic import ConditionalLogic
 from .propagation import Propagator
@@ -52,6 +55,8 @@ class TradingAgentsGraph:
         supplemental_tools: list[BaseTool] | None = None,
         social_screen_factory=None,
         local_memory=True,
+        cancellation=None,
+        workflow=None,
     ):
         """Initialize the trading agents graph and components.
 
@@ -65,7 +70,20 @@ class TradingAgentsGraph:
             local_memory: Include the CLI's local decision log; the desk uses Maenifold instead.
         """
         self.debug = debug
-        self.config = config or DEFAULT_CONFIG
+        if workflow is None:
+            # CLI callers can still supply their existing selection and limits;
+            # capture them in a run-local YAML definition before validation.
+            source = bundled_files()
+            definition = yaml.safe_load(source["workflow.yaml"])
+            definition["analysts"] = list(selected_analysts)
+            for name in definition["limits"]:
+                if config and name in config:
+                    definition["limits"][name] = config[name]
+            source["workflow.yaml"] = yaml.safe_dump(definition, sort_keys=False)
+            workflow = WorkflowBundle.from_files(source)
+        self.workflow = workflow
+        self.config = {**(config or DEFAULT_CONFIG), **self.workflow.definition["limits"]}
+        selected_analysts = tuple(self.workflow.definition["analysts"])
         self.callbacks = callbacks or []
         self.supplemental_tools = tuple(supplemental_tools or ())
 
@@ -77,6 +95,9 @@ class TradingAgentsGraph:
         extra = {"callbacks": self.callbacks} if self.callbacks else {}
         self.deep_thinking_llm = create_tier_client(self.config, "deep", **extra).get_llm()
         self.quick_thinking_llm = create_tier_client(self.config, "quick", **extra).get_llm()
+        if cancellation is not None:
+            self.deep_thinking_llm = cancellation.wrap(self.deep_thinking_llm)
+            self.quick_thinking_llm = cancellation.wrap(self.quick_thinking_llm)
 
         self.memory_log = TradingMemoryLog(self.config) if local_memory else None
 
@@ -100,6 +121,7 @@ class TradingAgentsGraph:
             supplemental_tools=self.supplemental_tools,
             social_screen_factory=social_screen_factory,
             exclude_fred=self.config.get("exclude_fred", False),
+            workflow=self.workflow,
         )
 
         self.propagator = Propagator(
@@ -123,7 +145,7 @@ class TradingAgentsGraph:
         graph regardless of entry point.
         """
         identity = resolve_instrument_identity(ticker)
-        return build_instrument_context(ticker, asset_type, identity, trade_date)
+        return build_instrument_context(ticker, asset_type, identity, trade_date, workflow=self.workflow)
 
     def _memory_as_of(self, trade_date) -> str | None:
         """Point-in-time cutoff for past-context lessons (#1251).
@@ -187,11 +209,16 @@ class TradingAgentsGraph:
         and loads them alongside the analysts (see ``_memory_step``).
         """
         trade_date = _validate_trade_date(trade_date)
+        identity = resolve_instrument_identity(company_name)
+        if asset_type == "stock" and not identity.get("quote_type"):
+            raise ValueError("Instrument type could not be verified; research cannot choose company or ETF inputs. Retry when the profile source is available.")
+        if asset_type == "stock" and identity.get("quote_type", "").upper() == "ETF":
+            asset_type = "etf"
         return self.propagator.create_initial_state(
             company_name,
             trade_date,
             asset_type=asset_type,
-            instrument_context=self.resolve_instrument_context(company_name, asset_type, trade_date),
+            instrument_context=build_instrument_context(company_name, asset_type, identity, trade_date, workflow=self.workflow),
             portfolio_context=portfolio.render(company_name) if portfolio is not None else "",
         )
 

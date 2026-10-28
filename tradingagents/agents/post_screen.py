@@ -7,8 +7,8 @@ evidence, never research approval or trading authority.
 Jev answers typed questions with calibrated probabilities. Each StockTwits or
 Reddit post is asked two: is it about the instrument, and which way does it
 lean on the instrument's stock. Code turns the answers into what the Sentiment
-Analyst reads: posts that are clearly about something else are dropped, and a
-stance count over the rest heads the source's block.
+Analyst reads: all fetched posts are retained, with fallible relevance and
+stance annotations and a count heading the source block.
 
 Configured by TypeSafe's own SDK variables, ``TYPESAFE_API_KEY``,
 ``TYPESAFE_DEFAULT_MODEL`` and ``TYPESAFE_BASE_URL`` (OpenRouter serves Jev at
@@ -19,6 +19,7 @@ block says screening was unavailable.
 import asyncio
 import copy
 import hashlib
+import json
 import logging
 import math
 import os
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 # Social classification is evidence, never permission to place an order.
 _LAYA_LANE = threading.Condition()
 _LAYA_QUEUE = deque()
-SOCIAL_ADMISSION_VERSION = "stance-contract-v2"
+SOCIAL_ADMISSION_VERSION = "probability-contract-v3"
 LAYA_QUESTIONS = {
     "about": {"kind": "yes_no", "instructions": "Is this post about {instrument}: the company, its stock, products or outlook?",
               "criteria": {
@@ -69,6 +70,33 @@ def _distribution(answer, labels):
                    for v in values.values()) or abs(sum(values.values()) - 1) > .001):
         raise ValueError("invalid probability distribution")
     return values
+
+
+def interpret_laya_answers(response):
+    """Interpret SDK probabilities without inventing an authority grade."""
+    answers = response.get("answers", {}) if isinstance(response, dict) else {}
+    if (not isinstance(answers, dict) or not isinstance(answers.get("about"), dict)
+            or answers["about"].get("kind") != "yes_no"
+            or not isinstance(answers.get("stance"), dict) or answers["stance"].get("kind") != "choice"):
+        raise ValueError("invalid typed social answers")
+    about_answer, stance = answers["about"], answers["stance"]
+    about = _distribution(about_answer, ("true", "false"))["true"]
+    probabilities = _distribution(stance, ("bullish", "bearish", "neutral"))
+    choice = stance.get("value")
+    if choice not in probabilities or probabilities[choice] != max(probabilities.values()):
+        raise ValueError("invalid winning stance")
+    tie = list(probabilities.values()).count(probabilities[choice]) != 1
+    return {"relevance_reason": ("below_relevance_threshold" if about < _OFF_TOPIC_BELOW else
+                                 "relevance_uncertain" if about <= 1 - _OFF_TOPIC_BELOW else "above_relevance_threshold"),
+            "stance_reason": ("tie" if tie else "below_stance_threshold" if probabilities[choice] < _STANCE_CONFIDENCE else "unique_winner_at_threshold"),
+            "relevance_prediction": "off_topic" if about < _OFF_TOPIC_BELOW else "retained",
+            "about_probability": about,
+            "relevance_uncertain": _OFF_TOPIC_BELOW <= about <= 1 - _OFF_TOPIC_BELOW,
+            "relevance_grade": about_answer.get("grade", "unknown"),
+            "stance": (choice if probabilities[choice] >= _STANCE_CONFIDENCE
+                       and list(probabilities.values()).count(probabilities[choice]) == 1 else "unclear"),
+            "raw_prediction": choice, "stance_grade": stance.get("grade", "unknown"),
+            "stance_probability": probabilities[choice]}
 
 
 @contextmanager
@@ -159,9 +187,14 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
             return _laya_payload(result)
 
     def screen(posts):
+        acquisition = getattr(screen, "acquisition", None)
         keep = [True] * len(posts)
         evidence = {"status": "empty" if not posts else "unavailable", "source": source,
                     "admission_version": SOCIAL_ADMISSION_VERSION,
+                    "acquisition": copy.deepcopy(acquisition) if acquisition else None,
+                    "decision_policy": {"version": SOCIAL_ADMISSION_VERSION, "relevance_threshold": _OFF_TOPIC_BELOW,
+                                        "stance_threshold": _STANCE_CONFIDENCE, "stance_requires_unique_winner": True,
+                                        "calibrated": False},
                     "model": "multilingual", "counts": dict.fromkeys(
                         ("bullish", "bearish", "neutral", "unclear", "off_topic", "unscreened"), 0),
                     "posts": [], "total_count": len(posts)}
@@ -171,6 +204,8 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                          "provenance": "complete fetched Reddit title/body" if source == "reddit" else "source message body",
                          "status": "unscreened", "model": "multilingual"})
         if retained is not None:
+            if retained.get("admission_version") != SOCIAL_ADMISSION_VERSION:
+                raise ValueError("Saved social labels use a different interpretation contract and cannot be reassigned.")
             if [row["text_sha256"] for row in rows] != [row["text_sha256"] for row in retained["posts"]]:
                 raise ValueError("Saved social inputs differ from the supplied source; original labels cannot be reassigned.")
             rows[:] = copy.deepcopy(retained["posts"])
@@ -179,8 +214,13 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
 
         def progress():
             evidence["counts"] = dict.fromkeys(evidence["counts"], 0)
+            evidence["relevance_counts"] = dict.fromkeys(("retained", "uncertain", "off_topic"), 0)
             for row in rows:
                 evidence["counts"][row["stance"] if row["status"] == "classified" else "unscreened"] += 1
+                if row["status"] == "classified":
+                    relevance = ("off_topic" if row.get("relevance_prediction") == "off_topic" else
+                                 "uncertain" if row.get("relevance_uncertain") else "retained")
+                    evidence["relevance_counts"][relevance] += 1
             if on_progress:
                 on_progress(copy.deepcopy(evidence), budget)
         try:
@@ -264,32 +304,7 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                             rows[index].update(error="Full input could not be verified; original post retained", result=response)
                             continue
                         rows[index].update(token_budget=counts, result=response)
-                        answers = response.get("answers", {}) if isinstance(response, dict) else {}
-                        if (not isinstance(answers, dict) or not isinstance(answers.get("about"), dict)
-                                or answers["about"].get("kind") != "yes_no"
-                                or not isinstance(answers.get("stance"), dict) or answers["stance"].get("kind") != "choice"):
-                            raise ValueError("invalid typed social answers")
-                        about = _distribution(answers.get("about"), ("true", "false"))["true"]
-                        stance = answers.get("stance")
-                        probabilities = _distribution(stance, ("bullish", "bearish", "neutral"))
-                        choice = stance.get("value")
-                        if choice not in probabilities or probabilities[choice] != max(probabilities.values()):
-                            raise ValueError("invalid winning stance")
-                        about_answer = answers["about"]
-                        # Dropping evidence is an action: only the relevance answer's
-                        # own confident contract may exclude it. Reconsider/absent
-                        # contracts keep the post, even if P(about) is below .3.
-                        relevance_certain = about_answer.get("grade") == "auto_execute"
-                        # Classifier mistakes must not remove source evidence from the analyst.
-                        keep[index] = True
-                        stance_grade = stance.get("grade", "unknown")
-                        label = (choice if stance_grade == "auto_execute" and probabilities[choice] >= _STANCE_CONFIDENCE
-                                 else "unclear")
-                        rows[index].update(status="classified", relevance_prediction="off_topic" if about < _OFF_TOPIC_BELOW and relevance_certain else "retained",
-                                           about_probability=about, relevance_uncertain=not relevance_certain,
-                                           relevance_grade=about_answer.get("grade", "unknown"),
-                                           stance=label, raw_prediction=choice, stance_grade=stance_grade,
-                                           stance_probability=probabilities[choice])
+                        rows[index].update(status="classified", **interpret_laya_answers(response))
                         progress()
                 if evidence.get("stop_reason"):
                     break
@@ -315,31 +330,72 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
         counts = evidence["counts"]
         evidence["status"] = ("empty" if not posts else "unavailable" if counts["unscreened"] == len(posts)
                               else "partial" if counts["unscreened"] else "completed")
-        if counts["unscreened"] == len(posts) and evidence.get("stop_reason"):
+        if acquisition and acquisition.get("status") in {"unavailable", "limited"}:
+            evidence["status"] = acquisition["status"] if not posts or evidence["status"] == "completed" else "partial"
+        if posts and counts["unscreened"] == len(posts) and evidence.get("stop_reason"):
             evidence["status"] = "deferred"
         uncertain_relevance = sum(row.get("relevance_uncertain", False) for row in rows)
         evidence["relevance_uncertain_count"] = uncertain_relevance
         classified = len(posts) - counts["unscreened"]
         evidence["classified_count"] = classified
         evidence["retained_count"] = sum(keep)
-        note = ("Laya social sentiment: " + ", ".join(f"{n} {key}" for key, n in counts.items())
-                + f". Coverage: {classified} of {len(posts)} fetched posts classified; {sum(keep)} retained. "
+        note = ("Laya stance counts (include all classified posts): "
+                + ", ".join(f"{counts[key]} {key}" for key in ("bullish", "bearish", "neutral", "unclear", "unscreened"))
+                + ". Separate relevance counts among classified posts: "
+                + ", ".join(f"{n} {key}" for key, n in evidence["relevance_counts"].items())
+                + ". An off-topic post's stance is not directional evidence for this instrument. "
+                + f"Coverage: {classified} of {len(posts)} fetched posts classified; {sum(keep)} retained. "
                 + f"{uncertain_relevance} retained posts have uncertain relevance. "
-                + "All fetched posts are retained for analyst review, including classifier off-topic predictions. Classifier relevance and stance are fallible annotations; correct them from the original text. Uncertain or missing stance contracts count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a separate signal. "
+                + "All fetched posts are retained for analyst review, including classifier off-topic predictions. Classifier relevance and stance are fallible annotations; correct them from the original text. Stance predictions below the probability threshold or tied for the lead count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a separate signal. "
                 + (f"Screening deferred: {evidence['stop_reason']}; fetched posts remain available, not a source failure. " if evidence.get("stop_reason") else "")
                  + (f"Screening error: {evidence['error']} " if evidence.get("error") else "")
                 + "Unscreened is not neutral. Classification is evidence, not trade approval.")
+        if acquisition and acquisition.get("status") in {"unavailable", "limited"}:
+            note += " Reddit acquisition " + acquisition["status"] + ": " + str(acquisition.get("reason") or acquisition.get("coverage", "")) + "."
         evidence.update(note=note, completed_at=datetime.now(UTC).isoformat())
         screen.evidence = evidence
         if on_evidence:
             on_evidence(copy.deepcopy(evidence))
-        annotations = ["Classifier annotations (ID = source:SHA256 of exact screened text; labels are fallible):"]
+        questions = copy.deepcopy(LAYA_QUESTIONS)
+        for question in questions.values():
+            question["instructions"] = question["instructions"].format(instrument=instrument)
+        # The local adapter converts yes_no to the SDK's noul type without
+        # changing instruction or ordered criteria text.
+        if hasattr(gateway, "predict_batch"):
+            questions = {key: {"type": "noul" if q["kind"] == "yes_no" else q["kind"],
+                               "instructions": q["instructions"], "criteria": q["criteria"]}
+                         for key, q in questions.items()}
         for row in rows:
-            annotations.append(f"{source}:{row['text_sha256']} | status={row['status']} | "
-                               f"stance={row.get('stance', 'unknown')} | raw_prediction={row.get('raw_prediction', 'unknown')} | "
-                               f"stance_grade={row.get('stance_grade', 'unknown')}")
-        return keep, note + "\n" + "\n".join(annotations)
+            result = row.get("result") or {}
+            supplied = result.get("inference", {}).get("questions") if isinstance(result, dict) else None
+            if isinstance(supplied, dict) and supplied:
+                questions = supplied
+                break
+        rendered_choices = next((row.get("result", {}).get("inference", {}).get("rendered_choices")
+                                 for row in rows if isinstance(row.get("result"), dict)
+                                 and row["result"].get("inference", {}).get("rendered_choices")), None)
+        annotations = ["Classifier annotations (ID = source:SHA256 of exact screened text; scores are uncalibrated and labels are fallible):",
+                       "about.noul is P(true), with P(false) = 1 - P(true); stance.probabilities is the choice distribution. answer_confidence is the top-answer probability; confidence measures distribution concentration (for noul, max(P(true), P(false))). action.act_probability is a separate model-head score, not authority or trade approval.",
+                       "Questions: " + json.dumps(questions, ensure_ascii=False),
+                       "Decision policy: " + json.dumps(evidence["decision_policy"], ensure_ascii=False)]
+        if rendered_choices:
+            annotations.append("SDK rendered choices in order: " + json.dumps(rendered_choices, ensure_ascii=False))
+        for row in rows:
+            result = row.get("result") or {}
+            raw = result.get("raw_result", result) if isinstance(result, dict) else {}
+            answers = raw.get("answers", {}) if isinstance(raw, dict) else {}
+            # Preserve the entire answer object: choice distribution, P(true),
+            # answer_confidence, confidence, and action are distinct fields.
+            detail = {key: row.get(key) for key in ("status", "relevance_prediction", "relevance_uncertain",
+                      "relevance_reason", "stance", "raw_prediction", "stance_reason") if key in row}
+            if answers:
+                detail["model_answers"] = answers
+            annotations.append(f"{source}:{row['text_sha256']} | " + json.dumps(detail, ensure_ascii=False))
+        screen.decision_context = "\n".join(annotations)
+        return keep, note if screen.separate_decisions else note + "\n" + screen.decision_context
 
+    screen.decision_context = None
+    screen.separate_decisions = False
     screen.evidence = None
     return screen
 

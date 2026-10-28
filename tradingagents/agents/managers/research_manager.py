@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tradingagents.agents.prompt_evidence import EvidencePrompt
 from tradingagents.agents.context import (
     get_desk_execution_policy,
     get_instrument_context_from_state,
@@ -11,66 +12,28 @@ from tradingagents.agents.context import (
 )
 from tradingagents.agents.schemas import DeskResearchPlan, ResearchPlan, render_research_plan
 from tradingagents.agents.structured import (
-    NO_EXTERNAL_TOOLS,
     bind_structured,
     invoke_structured_or_freetext,
 )
 
 
-def create_research_manager(llm):
-    structured_llm = bind_structured(llm, ResearchPlan, "Research Manager")
+def create_research_manager(llm, *, workflow):
+    structured_llm = bind_structured(llm, ResearchPlan, 'Research Manager', workflow=workflow)
 
     def research_manager_node(state) -> dict:
-        instrument_context = get_instrument_context_from_state(state)
+        instrument_context = get_instrument_context_from_state(state, workflow)
         policy = get_desk_execution_policy(state)
         history = state["investment_debate_state"].get("history", "")
 
         investment_debate_state = state["investment_debate_state"]
 
-        prompt = f"""As the Research Manager and debate facilitator, your role is to critically evaluate this round of debate and deliver a clear, actionable investment plan for the trader.
-
-{instrument_context}
-{get_verified_market_context_from_state(state)}
-
-{get_portfolio_context_from_state(state)}
-
-{policy}
-
----
-
-**Rating Scale** (use exactly one):
-- **Buy**: Strong conviction in the bull thesis; recommend taking or growing the position
-- **Overweight**: Constructive view; recommend gradually increasing exposure
-- **Hold**: Balanced view; recommend maintaining the current position
-- **Underweight**: Cautious view; recommend trimming exposure
-- **Sell**: Strong conviction in the bear thesis; recommend exiting or avoiding the position
-
-The debate always contains conflicting arguments; deciding which side is stronger is the job, so conflict alone is not a reason to Hold. Commit to the side with the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not manufacture a direction to appear decisive. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.
-Strategic actions must respect the supplied holdings and shorting policy. Do not trim or exit a zero position or imply an unpermitted short. Keep the relative investment rating distinct from the feasible transaction.
-
----
-
-**Debate History:**
-{history}
-
-## Output
-
-Write these sections, in this order, starting with the recommendation on its own line:
-
-- **Recommendation**: exactly one of Buy / Overweight / Hold / Underweight / Sell
-- **Rationale**: which arguments decided it
-- **Strategic Actions**: concrete steps for the trader, sized against a standard allocation
-
-{NO_EXTERNAL_TOOLS}""" + get_language_instruction()
-        if policy:
-            prompt = prompt.replace(", sized by how decisively it wins", "")
-            prompt = prompt.replace("concrete steps for the trader, sized against a standard allocation",
-                                    "advisory thesis and conditions; configured desk policy determines proposal quantities")
+        evidence = EvidencePrompt(workflow)
+        prompt = workflow.render('research_manager_desk' if policy else 'research_manager', instrument_context=instrument_context, get_verified_market_context_from_state=get_verified_market_context_from_state(state, workflow), get_portfolio_context_from_state=get_portfolio_context_from_state(state, workflow), policy=policy, evidence_debate_history=evidence.add('debate history', history), NO_EXTERNAL_TOOLS=workflow.text('no_external_tools')) + get_language_instruction(workflow)
 
         investment_plan = invoke_structured_or_freetext(
-            bind_structured(llm, DeskResearchPlan, "Research Manager") if policy else structured_llm,
+            bind_structured(llm, DeskResearchPlan, 'Research Manager', workflow=workflow) if policy else structured_llm,
             llm,
-            prompt,
+            evidence.messages(prompt),
             render_research_plan,
             "Research Manager",
         )

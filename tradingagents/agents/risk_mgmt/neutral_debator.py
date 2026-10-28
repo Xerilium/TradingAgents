@@ -1,3 +1,4 @@
+from tradingagents.agents.prompt_evidence import EvidencePrompt
 from tradingagents.agents.context import (
     get_instrument_context_from_state,
     get_language_instruction,
@@ -8,7 +9,7 @@ from tradingagents.agents.context import (
 )
 
 
-def create_neutral_debator(llm):
+def create_neutral_debator(llm, *, workflow):
     def neutral_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
         history = risk_debate_state.get("history", "")
@@ -16,38 +17,24 @@ def create_neutral_debator(llm):
 
         current_aggressive_response = opponent_argument_or_opening(
             risk_debate_state.get("current_aggressive_response", ""), "aggressive analyst"
-        )
+        , workflow)
         current_conservative_response = opponent_argument_or_opening(
             risk_debate_state.get("current_conservative_response", ""), "conservative analyst"
-        )
+        , workflow)
 
-        market_research_report = report_or_absent(state["market_report"], "market")
-        sentiment_report = report_or_absent(state["sentiment_report"], "sentiment")
-        news_report = report_or_absent(state["news_report"], "news")
-        fundamentals_report = report_or_absent(state["fundamentals_report"], "fundamentals")
-        instrument_context = get_instrument_context_from_state(state)
-        portfolio_context = get_portfolio_context_from_state(state)
+        market_research_report = report_or_absent(state["market_report"], "market", workflow)
+        sentiment_report = report_or_absent(state["sentiment_report"], "sentiment", workflow)
+        news_report = report_or_absent(state["news_report"], "news", workflow)
+        fundamentals_report = report_or_absent(state["fundamentals_report"], "fundamentals", workflow)
+        instrument_context = get_instrument_context_from_state(state, workflow)
+        portfolio_context = get_portfolio_context_from_state(state, workflow)
 
         trader_decision = state["trader_investment_plan"]
 
-        prompt = f"""As the Neutral Risk Analyst, your role is to provide a balanced perspective, weighing both the potential benefits and risks of the trader's decision or plan. You prioritize a well-rounded approach, evaluating the upsides and downsides while factoring in broader market trends, potential economic shifts, and diversification strategies.Here is the trader's decision:
+        evidence = EvidencePrompt(workflow)
+        prompt = workflow.render('neutral_debator', evidence_trader_investment_plan=evidence.add('trader investment plan', trader_decision), instrument_context=instrument_context, portfolio_context=portfolio_context, get_verified_market_context_from_state=get_verified_market_context_from_state(state, workflow), evidence_market_research_report=evidence.add('market research report', market_research_report), evidence_sentiment_report=evidence.add('sentiment report', sentiment_report), evidence_news_report=evidence.add('news report', news_report), evidence_fundamentals_report=evidence.add('fundamentals report', fundamentals_report), evidence_debate_history=evidence.add('debate history', history), evidence_aggressive_analyst_latest_argument=evidence.add('aggressive analyst latest argument', current_aggressive_response), evidence_conservative_analyst_latest_argument=evidence.add('conservative analyst latest argument', current_conservative_response)) + get_language_instruction(workflow)
 
-{trader_decision}
-
-Your task is to challenge both the Aggressive and Conservative Analysts, pointing out where each perspective may be overly optimistic or overly cautious. Use insights from the following data sources to support a moderate, sustainable strategy to adjust the trader's decision:
-
-{instrument_context}
-{portfolio_context}
-{get_verified_market_context_from_state(state)}
-Market Research Report: {market_research_report}
-Social Media Sentiment Report: {sentiment_report}
-Latest World Affairs Report: {news_report}
-Company Fundamentals Report: {fundamentals_report}
-Here is the current conversation history: {history} Here is the last response from the aggressive analyst: {current_aggressive_response} Here is the last response from the conservative analyst: {current_conservative_response}. If there are no responses from the other viewpoints yet, present your own argument based on the available data.
-
-Engage actively by analyzing both sides critically, addressing weaknesses in the aggressive and conservative arguments to advocate for a more balanced approach. Challenge each of their points to illustrate why a moderate risk strategy might offer the best of both worlds, providing growth potential while safeguarding against extreme volatility. Focus on debating rather than simply presenting data, aiming to show that a balanced view can lead to the most reliable outcomes. Output conversationally as if you are speaking without any special formatting.""" + get_language_instruction()
-
-        response = llm.invoke(prompt)
+        response = llm.invoke(evidence.messages(prompt))
 
         argument = f"Neutral Analyst: {response.content}"
 

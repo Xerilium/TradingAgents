@@ -1,0 +1,3 @@
+Collected market facts, separate from analyst interpretations and debate. Source: get_verified_market_snapshot; state verified_market_snapshot; snapshot text SHA-256 {digest}.
+Use its dated prices, indicators and movement directions to check report claims. Flag conflicts instead of repeating or silently reconciling them. Distinguish a net gain between stated endpoints from consecutive gains: a net gain may include a down interval. Use adjacent dated changes for streak claims and preserve stated coverage gaps. This snapshot does not establish current quotes, bar finality or missing source provenance.
+

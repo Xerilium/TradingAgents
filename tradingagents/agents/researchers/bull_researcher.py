@@ -1,3 +1,4 @@
+from tradingagents.agents.prompt_evidence import EvidencePrompt
 from tradingagents.agents.context import (
     get_instrument_context_from_state,
     get_language_instruction,
@@ -7,7 +8,7 @@ from tradingagents.agents.context import (
 )
 
 
-def create_bull_researcher(llm):
+def create_bull_researcher(llm, *, workflow):
     def bull_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         history = investment_debate_state.get("history", "")
@@ -15,12 +16,12 @@ def create_bull_researcher(llm):
 
         current_response = opponent_argument_or_opening(
             investment_debate_state.get("current_response", ""), "bear analyst"
-        )
-        market_research_report = report_or_absent(state["market_report"], "market")
-        sentiment_report = report_or_absent(state["sentiment_report"], "sentiment")
-        news_report = report_or_absent(state["news_report"], "news")
-        fundamentals_report = report_or_absent(state["fundamentals_report"], "fundamentals")
-        instrument_context = get_instrument_context_from_state(state)
+        , workflow)
+        market_research_report = report_or_absent(state["market_report"], "market", workflow)
+        sentiment_report = report_or_absent(state["sentiment_report"], "sentiment", workflow)
+        news_report = report_or_absent(state["news_report"], "news", workflow)
+        fundamentals_report = report_or_absent(state["fundamentals_report"], "fundamentals", workflow)
+        instrument_context = get_instrument_context_from_state(state, workflow)
         asset_type = state.get("asset_type", "stock")
         target_label = "stock" if asset_type == "stock" else "asset"
         fundamentals_label = (
@@ -29,28 +30,10 @@ def create_bull_researcher(llm):
             else "Asset fundamentals report (may be unavailable for crypto)"
         )
 
-        prompt = f"""You are a Bull Analyst advocating for investing in the {target_label}. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
+        evidence = EvidencePrompt(workflow)
+        prompt = workflow.render('bull_researcher', target_label=target_label, instrument_context=instrument_context, get_verified_market_context_from_state=get_verified_market_context_from_state(state, workflow), evidence_market_research_report=evidence.add('market research report', market_research_report), evidence_sentiment_report=evidence.add('sentiment report', sentiment_report), evidence_news_report=evidence.add('news report', news_report), fundamentals_label=fundamentals_label, evidence_fundamentals_report=evidence.add('fundamentals report', fundamentals_report), evidence_debate_history=evidence.add('debate history', history), evidence_opposing_analyst_latest_argument=evidence.add('opposing analyst latest argument', current_response)) + get_language_instruction(workflow)
 
-Key points to focus on:
-- Growth Potential: Highlight the company's market opportunities, revenue projections, and scalability.
-- Competitive Advantages: Emphasize factors like unique products, strong branding, or dominant market positioning.
-- Positive Indicators: Use financial health, industry trends, and recent positive news as evidence.
-- Bear Counterpoints: Critically analyze the bear argument with specific data and sound reasoning, addressing concerns thoroughly and showing why the bull perspective holds stronger merit.
-- Engagement: Present your argument in a conversational style, engaging directly with the bear analyst's points and debating effectively rather than just listing data.
-
-Resources available:
-{instrument_context}
-{get_verified_market_context_from_state(state)}
-Market research report: {market_research_report}
-Social media sentiment report: {sentiment_report}
-Latest world affairs news: {news_report}
-{fundamentals_label}: {fundamentals_report}
-Conversation history of the debate: {history}
-Last bear argument: {current_response}
-Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position.
-""" + get_language_instruction()
-
-        response = llm.invoke(prompt)
+        response = llm.invoke(evidence.messages(prompt))
 
         argument = f"Bull Analyst: {response.content}"
 

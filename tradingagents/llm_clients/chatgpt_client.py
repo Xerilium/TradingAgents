@@ -50,7 +50,8 @@ def _codex_path() -> str:
 class _AppServer:
     """One bounded stdio RPC connection, with no credential handling."""
 
-    def __init__(self, timeout: float):
+    def __init__(self, timeout: float, cancelled=None):
+        self.cancelled = cancelled
         self.deadline = time.monotonic() + timeout
         self.messages: queue.Queue = queue.Queue()
         self.events: deque = deque()
@@ -84,23 +85,46 @@ class _AppServer:
         child_env = {key: value for key, value in os.environ.items() if key.upper() not in excluded_env}
         self.workspace = tempfile.TemporaryDirectory(prefix="tradingagents-research-")
         try:
-            catalog = subprocess.run(
+            self._check_request()
+            catalog = subprocess.Popen(
                 [args[0], "mcp", "list", "--json", *args[4:]], cwd=self.workspace.name,
-                env=child_env, capture_output=True, text=True, encoding="utf-8",
-                check=True, timeout=max(0.1, self.deadline - time.monotonic()),
+                env=child_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
-            for entry in json.loads(catalog.stdout):
+            try:
+                while True:
+                    remaining = self._check_request()
+                    try:
+                        stdout, stderr = catalog.communicate(timeout=min(remaining, 0.1))
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                self._check_request()
+                if catalog.returncode:
+                    raise subprocess.CalledProcessError(catalog.returncode, catalog.args, stdout, stderr)
+            finally:
+                if catalog.poll() is None:
+                    catalog.kill()
+                    try:
+                        catalog.communicate(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        _LOGGER.warning("Could not reap Codex MCP catalog process promptly")
+            for entry in json.loads(stdout):
                 name = entry["name"]
                 if not isinstance(name, str) or not name:
                     raise ValueError("Invalid MCP server name")
                 args.extend(["-c", f"mcp_servers.{name}.enabled=false"])
+            self._check_request()
             self.process = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
                 env=child_env, cwd=self.workspace.name,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
+        except (InterruptedError, TimeoutError):
+            self._cleanup_workspace()
+            raise
         except OSError as exc:
             self._cleanup_workspace()
             raise RuntimeError("Codex app-server could not start. Check the Codex CLI and its permissions.") from exc
@@ -375,8 +399,7 @@ class ChatGPTChatModel(BaseChatModel):
         remaining = kwargs.get("_request_deadline", time.monotonic() + self.timeout) - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("ChatGPT request timed out.")
-        server = _AppServer(min(self.timeout, remaining))
-        server.cancelled = cancelled
+        server = _AppServer(min(self.timeout, remaining), cancelled=cancelled)
         try:
             _initialize_chatgpt(server)
             dynamic = [{"type": "namespace", "name": _NAMESPACE, "description": "TradingAgents functions", "tools": [{

@@ -165,6 +165,17 @@ class DeskHandler(BaseHTTPRequestHandler):
                 return
             self._send(200, discover(config))
             return
+        if path == "/api/workflows":
+            try:
+                query = parse_qs(url.query, keep_blank_values=True)
+                if set(query) - {"name"} or any(len(v) != 1 for v in query.values()):
+                    raise ValueError("Invalid workflow query")
+                result = (self.server.service.workflows.load(query["name"][0]) if "name" in query
+                          else self.server.service.workflows.catalog())
+                self._send(200, result)
+            except (ValueError, OSError) as exc:
+                self._send(400, {"error": str(exc)})
+            return
         if path == "/api/portfolio-model":
             self._send(200, self.server.service.proposed_portfolio())
             return
@@ -304,6 +315,10 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/ui-instrument.css": "ui-instrument.css",
             "/static/ui-orders.css": "ui-orders.css",
             "/static/ui-research-journal.css": "ui-research-journal.css",
+            "/static/workflows.js": "workflows.js",
+            "/static/vendor/workflow-tools/workflow-tools.js": "vendor/workflow-tools/workflow-tools.js",
+            "/static/vendor/workflow-tools/THIRD-PARTY-NOTICES.txt": "vendor/workflow-tools/THIRD-PARTY-NOTICES.txt",
+            "/static/ui-workflows.css": "ui-workflows.css",
             "/static/recovery.js": "recovery.js",
         }
         if getattr(self.server.service, "recovery_only", False):
@@ -358,7 +373,7 @@ class DeskHandler(BaseHTTPRequestHandler):
         try:
             request_path = urlsplit(self.path).path
             length = int(self.headers.get("Content-Length", "0"))
-            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else 65536
+            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else (2 * 1024 * 1024 if request_path == "/api/workflows" else 65536)
             if not 0 < length <= maximum or self.headers.get("Transfer-Encoding"):
                 raise ValueError("Request body exceeds the supported endpoint size boundary.")
             if self.headers.get_content_type() != "application/json":
@@ -385,7 +400,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
                 return
             if service.browse_only and path not in {
-                    "/api/credentials", "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model"}:
+                    "/api/credentials", "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model", "/api/research/delete", "/api/workflows"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
@@ -411,6 +426,13 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.refresh()
             elif path == "/api/config":
                 result = service.save_config(data["changes"], expected_revision=data["expected_revision"])
+            elif path == "/api/workflows":
+                from .workflows import WorkflowConflict
+                try:
+                    result = service.workflows.apply(data)
+                except WorkflowConflict as exc:
+                    self._send(409, {"error": str(exc)})
+                    return
             elif path == "/api/portfolio-model":
                 result = service.model_portfolio(data)
             elif path == "/api/workspace":
@@ -465,6 +487,8 @@ class DeskHandler(BaseHTTPRequestHandler):
                     analysis_date=data.get("analysis_date"),
                     exclude_fred=data.get("exclude_fred", False),
                 )
+            elif path == "/api/research/delete":
+                result = service.delete_research(data)
             elif path == "/api/runs/local-laya":
                 result = service.screen_saved_posts(data)
             elif path == "/api/runs/cancel":

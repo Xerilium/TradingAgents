@@ -7,10 +7,10 @@
 .strategy-workspace input,.strategy-workspace select,.strategy-workspace textarea,.research-workspace #research-review textarea,.research-workspace #research-review select{background:var(--field,var(--ground));color:var(--ink);border:1px solid var(--line);padding:var(--space-2);max-width:100%}
 .research-workspace>.run-toolbar{flex:none;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-2)}
 .research-workspace #run-select{flex:1;min-width:180px;max-width:650px}
-.research-workspace .research-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,2fr);overflow:hidden;gap:var(--space-3)}
-.research-workspace .symbol-list{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.research-workspace .research-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,2fr);grid-template-rows:minmax(0,1fr);overflow:hidden;gap:var(--space-3)}
+.research-workspace .symbol-list{height:100%;min-height:0;overflow:auto;display:flex;flex-direction:column}
 .research-workspace .research-rows{flex:1;min-height:60px;overflow:auto}
-.research-workspace .queue-progress{flex:none;max-height:190px;overflow:auto}
+.research-workspace .queue-progress{flex:none;max-height:min(190px,30%);overflow:auto}
 .research-workspace .research-detail-panel{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
 .research-workspace .result-top{flex:none;padding:var(--space-3)}
 .research-workspace .research-detail-panel>.workspace-tabs{padding:0 var(--space-3) var(--space-2)}
@@ -54,3 +54,9 @@
 @media(max-width:850px){.journal-layout{grid-template-columns:minmax(250px,1fr) minmax(250px,1fr)}.research-workspace .research-layout{grid-template-columns:190px minmax(0,1fr)}}
 @media(max-width:600px){.research-workspace .research-layout{display:flex;flex-direction:column;overflow:auto}.research-workspace .symbol-list{max-height:240px;flex:none;overflow:auto}.research-workspace .research-detail-panel{flex:none;min-height:320px}.research-workspace .queue-progress{max-height:90px;overflow:auto}.journal-layout{height:auto;min-height:100%;display:flex;flex-direction:column}.journal-layout>.panel{max-height:70vh;min-height:180px;overflow:auto}}
 @media(max-height:650px){.research-workspace{overflow:auto}.research-workspace .research-layout{flex:none;height:360px}}
+
+.research-delete { flex: none; padding: var(--space-2) var(--space-3); }
+.research-delete .selection-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.research-delete-preview { margin-top: var(--space-3); max-height: 12rem; overflow: auto; }
+.research-delete-row { display: flex; align-items: center; gap: var(--space-2); padding-left: var(--space-3); }
+.research-delete-row .research-symbol { flex: 1; min-width: 0; }

@@ -1,0 +1,1 @@
+Request these inputs once. Disclose unavailable enrichment and its cause; distinguish failed collection from no matches. Use retained evidence, limit unsupported conclusions, and do not fabricate missing values.

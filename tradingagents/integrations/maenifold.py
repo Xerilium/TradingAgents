@@ -222,6 +222,56 @@ def _is_result_envelope(value: Any) -> bool:
     )
 
 
+class MemoryEditRejected(GatewayRejected, ValueError):
+    """A local or upstream memory edit validation rejection."""
+
+
+def _safe_memory_rejection(value):
+    """Recognize only stable validation categories; never return server text."""
+    texts = []
+    if isinstance(value, dict):
+        for key in ("error", "message"):
+            item = value.get(key)
+            if isinstance(item, str):
+                texts.append(item)
+            elif isinstance(item, dict):
+                texts.extend(str(item.get(key, "")) for key in ("code", "message"))
+        texts.extend(block.get("text", "") for block in value.get("content", [])
+                     if isinstance(block, dict) and block.get("type") == "text")
+    elif isinstance(value, str):
+        texts.append(value)
+    text = " ".join(texts).lower()
+    if "checksum mismatch" in text:
+        return "MEMORY_CHECKSUM_CONFLICT: ReadMemory again, reconcile the current note, and supply its exact new checksum."
+    if "filtered_wikilinks" in text or ("wikilink" in text and ("excluded" in text or "must contain" in text)) or "must contain at least one [[concept]]" in text:
+        return "MEMORY_WIKILINK_REJECTED: Use a meaningful canonical [[concept]] and reconcile the note before retrying."
+    return None
+
+
+def _memory_read_identity(value):
+    """Read the canonical URI and checksum only from the successful response."""
+    if isinstance(value, dict):
+        data = value.get("data", value)
+        if isinstance(data, dict):
+            uri, checksum = data.get("uri"), data.get("checksum")
+            if isinstance(uri, str) and uri.startswith("memory://") and isinstance(checksum, str) and checksum:
+                return uri, checksum
+    elif isinstance(value, str):
+        uri = re.search(r"(?m)^URI: (memory://[^\r\n]+)\r?$", value)
+        checksum = re.search(r"(?m)^Checksum: ([^\r\n]+)\r?$", value)
+        if uri and checksum:
+            return uri.group(1), checksum.group(1)
+    return None
+
+
+def _meaningful_wikilink(content):
+    for match in re.finditer(r"(?<!\[)\[\[([^\[\]\r\n]+)\]\](?!\])", content):
+        name = match.group(1)
+        if name == name.strip() and any(char.isalnum() for char in name) and not any(c in name for c in "|#"):
+            return True
+    return False
+
+
 def _raise_reported_error(value: dict[str, Any]) -> None:
     if (
         value.get("isError") is True
@@ -236,6 +286,8 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
             for block in value.get("content") or []
         ))
     ):
+        if rejection := _safe_memory_rejection(value):
+            raise MemoryEditRejected(rejection)
         # Do not echo arbitrary upstream payloads: system configuration results
         # can contain secrets. Callers receive a stable, non-secret error.
         error = value.get("error")
@@ -285,6 +337,8 @@ def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
             parsed = json.loads(value)
         except (ValueError, TypeError):
             if value.lstrip().lower().startswith(("error:", "tool error:")):
+                if rejection := _safe_memory_rejection(value):
+                    raise MemoryEditRejected(rejection) from None
                 if re.search(r"\b429\b|too many requests|rate.?limit", value, re.I):
                     raise GatewayRateLimited() from None
                 from tradingagents.dataflows.router import _gateway_failure_details
@@ -774,6 +828,8 @@ def build_langchain_tools(
         if date.fromisoformat(trade_date) > datetime.now(ZoneInfo("America/New_York")).date():
             raise GatewayError("The analysis date cannot be in the future.")
     tools, help_names = [], []
+    memory_lock = threading.Lock()
+    memory_aliases, memory_checksums = {}, {}
     for domain in domains if domains is not None else tuple(ANALYSIS_COMMANDS):
         if domain not in ANALYSIS_COMMANDS:
             raise GatewayError(f"Domain is not permitted for analysis tools: {domain}.")
@@ -801,12 +857,45 @@ def build_langchain_tools(
                             if (selected.domain == "maenifold.thinking" and selected.name == "SequentialThinking"
                                     and not bounded.get("sessionId") and bounded.get("thoughtNumber", 0) != 0):
                                 raise GatewayRejected("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; continue using the returned sessionId.")
-                            value = gateway.execute(selected.domain, selected.name, bounded)
+                            is_memory = selected.domain == "maenifold.memory"
+                            editing = is_memory and selected.name == "EditMemory" and not bounded.get("learn")
+                            identifier = bounded.get("identifier")
+                            if editing:
+                                with memory_lock:
+                                    uri = memory_aliases.get(identifier)
+                                    checksum = memory_checksums.get(uri)
+                                if not checksum:
+                                    raise MemoryEditRejected("MEMORY_READ_REQUIRED: ReadMemory with checksum first, then reconcile and edit the same URI or identifier.")
+                                if bounded.get("checksum") != checksum:
+                                    raise MemoryEditRejected("MEMORY_CHECKSUM_MISMATCH: Supply the exact checksum from the last ReadMemory, including all characters; reread and reconcile if uncertain.")
+                                if (str(bounded.get("operation", "")).lower() in {"append", "prepend", "replace_section"}
+                                        and not _meaningful_wikilink(bounded.get("content", ""))):
+                                    raise MemoryEditRejected("MEMORY_WIKILINK_REQUIRED: Include a meaningful canonical [[concept]] in the supplied content.")
+                            try:
+                                value = gateway.execute(selected.domain, selected.name, bounded)
+                            finally:
+                                if editing:
+                                    # A successful or uncertain edit makes the last read stale.
+                                    with memory_lock:
+                                        memory_checksums.pop(uri, None)
+                            if (is_memory and selected.name == "ReadMemory" and not bounded.get("raw")
+                                    and not bounded.get("learn") and bounded.get("includeChecksum", True)):
+                                identity = _memory_read_identity(value)
+                                if identity:
+                                    read_uri, read_checksum = identity
+                                    with memory_lock:
+                                        memory_aliases[identifier] = read_uri
+                                        memory_aliases[read_uri] = read_uri
+                                        memory_checksums[read_uri] = read_checksum
                         except GatewayError as exc:
                             from tradingagents.dataflows.router import tool_failure_details
                             rule = getattr(exc.__cause__, "validator", None)
                             guidance = f" Correct the advertised schema rule {rule}; use only supported fields and include required completion fields." if rule else ""
-                            raise ToolException(json.dumps(tool_failure_details(exc)) + guidance) from exc
+                            safe_memory = (str(exc) if isinstance(exc, GatewayRejected) and
+                                           str(exc).startswith(("MEMORY_READ_REQUIRED:", "MEMORY_CHECKSUM_MISMATCH:",
+                                                                "MEMORY_CHECKSUM_CONFLICT:", "MEMORY_WIKILINK_REQUIRED:",
+                                                                "MEMORY_WIKILINK_REJECTED:")) else "")
+                            raise ToolException(json.dumps(tool_failure_details(exc)) + guidance + (" " + safe_memory if safe_memory else "")) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 

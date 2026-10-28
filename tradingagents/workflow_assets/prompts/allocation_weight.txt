@@ -1,0 +1,1 @@
+Fraction of model capital, from 0 to 1.

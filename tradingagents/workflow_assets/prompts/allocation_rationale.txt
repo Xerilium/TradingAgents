@@ -1,0 +1,1 @@
+Research-backed reason for this positive or zero allocation.

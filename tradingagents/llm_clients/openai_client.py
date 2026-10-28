@@ -1,4 +1,6 @@
 import logging
+import json
+from contextvars import ContextVar
 import os
 import re
 from collections.abc import Callable
@@ -7,14 +9,20 @@ from typing import Any
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from langchain_core.messages import AIMessage
+from langchain_core.callbacks.manager import AsyncCallbackManager
 from langchain_openai import ChatOpenAI
+from pydantic import PrivateAttr
 
+from .context_budget import budget_limits, plan, set_output_limit
 from .api_key_env import get_api_key_env
 from .base_client import BaseLLMClient, normalize_content
 from .capabilities import get_capabilities
 from .validators import validate_model
 
 logger = logging.getLogger(__name__)
+
+_async_local_payload = ContextVar("async_local_payload", default=None)
+_budget_summary = ContextVar("budget_summary", default=False)
 
 
 class NormalizedChatOpenAI(ChatOpenAI):
@@ -55,6 +63,39 @@ class NormalizedChatOpenAI(ChatOpenAI):
         return super().with_structured_output(schema, method=method, **kwargs)
 
 
+_TOKEN_ERROR_CODES = frozenset({
+    "invalid_prompt", "vision_disabled", "invalid_request", "invalid_request_error",
+    "context_length_exceeded", "model_not_found", "rate_limit_exceeded",
+    "server_error", "timeout", "overloaded", "request_too_large",
+})
+_TOKEN_ERROR_PARAMS = frozenset({
+    "model", "messages", "tools", "tool_choice", "max_tokens",
+    "max_completion_tokens", "temperature", "top_p", "content",
+})
+
+
+class _ContextBudgetExceeded(ValueError):
+    pass
+
+
+def _tokenization_error(stage, exc):
+    """Report safe diagnostics without exposing server messages or request data."""
+    details = [f"stage={stage}", f"error={type(exc).__name__}"]
+    status = getattr(exc, "status_code", None)
+    if type(status) is int and 100 <= status <= 599:
+        details.append(f"http_status={status}")
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict):
+            for key, allowed in (("code", _TOKEN_ERROR_CODES), ("param", _TOKEN_ERROR_PARAMS)):
+                value = error.get(key)
+                if isinstance(value, str) and value in allowed:
+                    details.append(f"{key}={value}")
+    return RuntimeError("Exact server tokenization is unavailable; cannot enforce the total token limit ("
+                        + ", ".join(details) + ").")
+
+
 class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
     """OpenAI-compatible client for arbitrary local servers (LM Studio, vLLM,
     llama.cpp via the generic ``openai_compatible`` provider).
@@ -66,8 +107,12 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
     """
 
     max_total_tokens: int | None = None
+    _budget_notes: dict = PrivateAttr(default_factory=dict)
 
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        cached = _async_local_payload.get()
+        if cached is not None:
+            return cached
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         if self.max_total_tokens is None:
             return payload
@@ -80,32 +125,135 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
         # extra_body exactly as the SDK does for the final completion request.
         body = dict(payload)
         body.update(body.pop("extra_body", {}) or {})
+        stage = "apply-template"
         try:
             client = self.root_client.with_options(timeout=30)
+            output, buffer, available = budget_limits(self.max_total_tokens, payload)
+            raw_total = 0
+            for message in body.get("messages", []):
+                content = message.get("content")
+                if content:
+                    stage = "tokenize"
+                    raw = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+                    counted_raw = client.post(root + "/tokenize", cast_to=dict,
+                        body={"content": raw, "model": body["model"], "parse_special": True, "add_special": False})
+                    raw_tokens = counted_raw["tokens"]
+                    if not isinstance(raw_tokens, list) or any(type(token) is not int for token in raw_tokens):
+                        raise ValueError("invalid tokenizer response")
+                    raw_total += len(raw_tokens)
+            if raw_total > self.max_total_tokens - buffer:
+                raise _ContextBudgetExceeded(f"Request may exceed server context and needs compaction: measured content={raw_total}, total={self.max_total_tokens}, output={output}, buffer={buffer}.")
+            stage = "apply-template"
             rendered = client.post(root + "/apply-template", cast_to=dict, body=body)
             prompt = rendered["prompt"]
             if not isinstance(prompt, str):
                 raise ValueError("invalid template response")
+            stage = "tokenize"
             counted = client.post(root + "/tokenize", cast_to=dict,
                 body={"content": prompt, "model": body["model"], "parse_special": True, "add_special": False})
             tokens = counted["tokens"]
             if not isinstance(tokens, list) or any(type(token) is not int for token in tokens):
                 raise ValueError("invalid tokenizer response")
-        except Exception:
-            raise RuntimeError("Exact server tokenization is unavailable; cannot enforce the total token limit.") from None
-        remaining = self.max_total_tokens - len(tokens)
-        if remaining <= 0:
-            raise ValueError("The request input exhausts the configured total token limit.")
-        output = payload.pop("max_tokens", None)
-        completion = payload.get("max_completion_tokens")
-        extra = payload.get("extra_body") or {}
-        limits = [remaining] + [v for v in (output, completion, extra.get("max_tokens"),
-                                               extra.get("max_completion_tokens")) if v is not None]
-        payload["max_completion_tokens"] = min(limits)
-        if extra:
-            extra.pop("max_tokens", None)
-            extra.pop("max_completion_tokens", None)
+        except (InterruptedError, _ContextBudgetExceeded):
+            raise
+        except Exception as exc:
+            raise _tokenization_error(stage, exc) from None
+        return self._limit_payload(payload, tokens)
+
+    def _limit_payload(self, payload, tokens):
+        output, buffer, available = budget_limits(self.max_total_tokens, payload)
+        if len(tokens) > available:
+            raise ValueError(f"Request exceeds context budget and needs compaction: input={len(tokens)}, available={available}, output={output}, buffer={buffer}.")
+        set_output_limit(payload, output)
         return payload
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        if self.max_total_tokens is None:
+            return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        parts = urlsplit(str(self.root_client.base_url))
+        path = parts.path.rstrip("/")
+        if path.endswith("/v1"):
+            path = path[:-3]
+        root = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
+        client = self.root_async_client.with_options(timeout=30)
+        callback_config = None
+        if run_manager is not None:
+            callbacks = AsyncCallbackManager(
+                handlers=list(run_manager.handlers),
+                inheritable_handlers=list(run_manager.inheritable_handlers),
+                parent_run_id=run_manager.run_id,
+                tags=list(run_manager.tags), inheritable_tags=list(run_manager.inheritable_tags),
+                metadata=dict(run_manager.metadata), inheritable_metadata=dict(run_manager.inheritable_metadata),
+            )
+            callback_config = {"callbacks": callbacks}
+
+        async def count_text(text):
+            try:
+                counted = await client.post(root + "/tokenize", cast_to=dict,
+                    body={"content": text, "model": self.model_name, "parse_special": True, "add_special": False})
+                tokens = counted["tokens"]
+                if not isinstance(tokens, list) or any(type(token) is not int for token in tokens):
+                    raise ValueError("invalid tokenizer response")
+                return len(tokens)
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                raise _tokenization_error("tokenize", exc) from None
+
+        def make_payload(items):
+            return super(LocalCompatibleChatOpenAI, self)._get_request_payload(items, stop=stop, **kwargs)
+
+        async def count_payload(items):
+            payload = make_payload(items)
+            body = dict(payload)
+            body.update(body.pop("extra_body", {}) or {})
+            try:
+                rendered = await client.post(root + "/apply-template", cast_to=dict, body=body)
+                prompt = rendered["prompt"]
+                if not isinstance(prompt, str):
+                    raise ValueError("invalid template response")
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                raise _tokenization_error("apply-template", exc) from None
+            return await count_text(prompt)
+
+        async def summarize(prompt, target):
+            token = _budget_summary.set(True)
+            try:
+                response = await self.ainvoke(prompt, config=callback_config, max_tokens=target)
+            finally:
+                _budget_summary.reset(token)
+            if response.response_metadata.get("finish_reason") == "length":
+                raise ValueError("Context compaction exceeded its output limit; original evidence was retained.")
+            return response.content if isinstance(response.content, str) else ""
+
+        async def emit(data):
+            from langchain_core.callbacks import adispatch_custom_event
+            if run_manager is not None:
+                await adispatch_custom_event("research_context_budget", {"total_tokens": self.max_total_tokens, **data},
+                                             config=callback_config)
+
+        payload = make_payload(messages)
+        if _budget_summary.get():
+            actual = await count_payload(messages)
+            output, buffer, available = budget_limits(self.max_total_tokens, payload)
+            if actual > available:
+                raise ValueError(f"Compaction request exceeds context budget: input={actual}, available={available}, output={output}, buffer={buffer}.")
+            planned = messages
+            await emit({"stage": "request", "input_tokens": actual, "output_reserved": output, "buffer": buffer})
+        else:
+            planned, actual, output = await plan(messages, payload, self.max_total_tokens,
+                                                  count_text, count_payload, summarize, emit, self._budget_notes,
+                                                  (self.model_name, repr(payload.get("reasoning_effort")),
+                                                   repr((payload.get("extra_body") or {}).get("reasoning"))))
+        payload = make_payload(planned)
+        set_output_limit(payload, output)
+        token = _async_local_payload.set(payload)
+        try:
+            return await super()._agenerate(planned, stop=stop, run_manager=run_manager, **kwargs)
+        finally:
+            _async_local_payload.reset(token)
 
     def with_structured_output(self, schema, *, method=None, **kwargs):
         resolved = method or get_capabilities(self.model_name).preferred_structured_method

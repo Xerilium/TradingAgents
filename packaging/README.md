@@ -1,8 +1,9 @@
 # Desktop release preparation
 
 Windows x64 and macOS 26+ Apple Silicon use separate private Python runtimes.
-The Windows NSIS installer uses zlib compression to keep packaging time practical
-for the bundled runtimes; do not restore the slower solid-LZMA default casually.
+The Windows NSIS installer disables compression to reduce packaging work for the
+bundled runtimes. Installers are larger; do not re-enable compression without
+the user's approval.
 The exact pinned Torch and Nautilus releases do not publish Intel macOS wheels.
 macOS builds must run and be verified on a matching macOS host.
 
@@ -24,6 +25,13 @@ copied. Inspect the printed payload size before bundling. A failed preparation
 may leave partial generated files; remove only the identified build directories
 and payload before retrying.
 
+The installer contains CPU seed runtimes and a separate `payload/app` project
+wheel extraction. On first launch the host copies each seed into the profile's
+`runtimes/desk` and `runtimes/native` through staging directories. Later app
+updates do not replace these runtimes or their dependencies. An incomplete
+existing runtime or staging directory is reported rather than overwritten.
+The app resource contains the platform Nautilus integrity manifest.
+
 After `npm ci` in `desktop`, build with the Tauri CLI and the real updater
 configuration overlay. Set `TAURI_SIGNING_PRIVATE_KEY` to the external publisher
 key path; do not copy the private key into the checkout or payload. Keep the
@@ -37,3 +45,40 @@ release and files are published. For a multi-platform release, merge platform
 entries into one manifest before publication. Review and retain the prior signed
 installer and a data backup before replacing an installed version; do not assume
 that an older version can read a migrated database.
+
+## Optional Windows Laya CUDA runtime
+
+The standard Windows payload contains CPU-only PyTorch. Laya's Research setting
+uses CUDA only when the private runtime has a CUDA build and a compatible
+NVIDIA device/driver. Otherwise it reports CPU fallback. Apple Silicon macOS
+uses the standard Torch package's MPS backend; it needs no CUDA package.
+
+`laya-cuda-windows.lock` pins the official Torch 2.14.1 CUDA 13.0 wheel for the
+desktop's Windows x64 / Python 3.12 runtime. Its existing non-CUDA dependencies
+are already in the desk lock. The CUDA wheel alone is about 1.99 GB before
+unpacking, so keep it out of the standard uncompressed NSIS bundle.
+
+This is an operator preparation step, not a Settings download action. Obtain
+approval and stop the installed app through its tray before changing its private
+runtime. For the production profile's persistent runtime, from this checkout with
+the existing `uv` available:
+
+```powershell
+rtk proxy uv pip install --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages --no-deps --require-hashes --only-binary :all: --reinstall -r packaging/laya-cuda-windows.lock
+```
+
+Leave system Python, the native Nautilus runtime and GPU drivers unchanged.
+For a legacy installation that keeps its runtimes inside the installer folder,
+stop the app and migrate both runtimes into the production profile's `runtimes`
+directory before updating, preserving its existing CUDA installation. Later
+app updates leave those runtimes alone. For deliberate maintenance of a stopped
+private runtime, the removal command is:
+
+```powershell
+rtk proxy uv pip uninstall --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages torch
+```
+
+After launch, select GPU while research is idle and inspect the actual device and
+fallback status. Package preparation and source support do not establish GPU
+inference acceptance on a Windows or Mac host. Do not modify a running instance
+or install this optional package without the user's go-ahead.

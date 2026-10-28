@@ -22,7 +22,7 @@ TOOLS = (
 )
 
 
-def create_news_analyst(llm, tools=None):
+def create_news_analyst(llm, tools=None, *, workflow):
     tools = TOOLS if tools is None else tuple(tools)
     def news_analyst_node(state):
         current_date = state["trade_date"]
@@ -33,35 +33,22 @@ def create_news_analyst(llm, tools=None):
             *[(get_macro_indicators.name, {"indicator": indicator, "curr_date": current_date})
               for indicator in ("cpi", "core_pce", "unemployment", "fed_funds_rate", "10y_treasury", "yield_curve", "real_gdp", "vix")
               if any(tool.name == get_macro_indicators.name for tool in tools)],
-        ], required=())
+        ], required=(), workflow=workflow)
         if required:
             return required
         asset_type = state.get("asset_type", "stock")
         asset_label = "company" if asset_type == "stock" else "asset"
-        instrument_context = get_instrument_context_from_state(state)
+        instrument_context = get_instrument_context_from_state(state, workflow)
 
         system_message = (
-            f"You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Use the available tools: get_news(start_date, end_date) for news about the {asset_label} under analysis, get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news, get_macro_indicators(indicator, curr_date, look_back_days) to ground macro commentary in actual data from FRED (e.g. 'cpi', 'core_pce', 'unemployment', 'fed_funds_rate', '10y_treasury', 'yield_curve'), and get_prediction_markets(topic, limit) for live market-implied probabilities of forward-looking events (e.g. 'Fed rate cut', 'recession 2026', geopolitical or sector events). Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
-            + " Use read_research_source for primary confirmation of material headlines and catalysts. Search matches are not verified news; do not infer earnings dates from prediction-market resolution dates. State publication dates and distinguish full article evidence from headline-only evidence."
-            + " If a syndicated article is blocked, follow the issuer's own investor-relations/news pages or the original regulator statement; one blocked URL does not establish that primary evidence is unavailable."
-            + " Before discussing an upcoming earnings event in the final report, retrieve its official issuer calendar or reporting-date announcement. Resolve material primary-source checks while tools remain available; distinguish a failed request from a check you did not perform."
-            + research_memory_guidance(tools)
-            + get_language_instruction()
+            workflow.render('news_analyst', asset_label=asset_label, research_memory_guidance=research_memory_guidance(tools, workflow), get_language_instruction=get_language_instruction(workflow))
         )
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " Report what your tools support; another agent decides the trade."
-                    " You have access to the following tools: {tool_names}."
-                    " Today's date is {current_date}; treat it as 'now' for all analysis and tool-call date ranges. {instrument_context}\n"
-                    "{system_message}",
+                    workflow.template('analyst_wrapper'),
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
@@ -72,7 +59,7 @@ def create_news_analyst(llm, tools=None):
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(instrument_context=instrument_context)
 
-        result, report = take_turn(prompt, llm, tools, state["messages"])
+        result, report = take_turn(prompt, llm, tools, state["messages"], workflow=workflow)
 
         return {
             "messages": [result],

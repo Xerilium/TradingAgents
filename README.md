@@ -47,7 +47,7 @@ a broker order.
 | OpenAI-compatible provider / Unsloth | Alternative model endpoint selected in Research settings. Requires a working compatible server and loaded model. | Installing or opening Unsloth does not load a model. It is not the active provider when Codex is selected. |
 | Maenifold Gateway | MCP transport and schema discovery for tools. Research agents receive the configured memory and graph commands plus SequentialThinking; the app also uses selected data commands. | Gateway availability is separate from model availability and the broker connection. |
 | Maenifold memory / graph / thinking | Durable notes, related-context retrieval, concept navigation and structured reasoning. Commands are discovered and validated against their schemas. | Research memory is separate from the app's saved research and SQLite records. |
-| Laya | One app-owned local Python Router batches original social posts for relevance and bullish/bearish/neutral sentiment. Retains raw probabilities, model identity, token coverage and uncertainty as research evidence. | The Python API supplies no Gateway contract grades: missing grades remain unknown and stance counts remain unclear. Screening is not a trade signal, approval or order. |
+| Laya | An app-owned local Python Router batches original social posts for relevance and bullish/bearish/neutral sentiment. Retains raw outputs, model identity, token coverage and uncertainty as research evidence. | Pinned Laya 0.4.14 supplies probabilities without Gateway grades; absent grades do not themselves imply uncertainty. Screening is not a trade signal, approval or order. |
 | Jev | Optional framework/CLI social screening through TypeSafe/OpenRouter settings. The browser desk injects Laya instead. | It is not a selectable desk fallback, the same service as Laya, or implied to have run by a generic evidence message. |
 | NautilusTrader | Native trading node, instruments, orders/events, cache, risk engine, portfolio accounting and isolated historical evaluation. Runs in the separate native Python environment. | Having the engine installed does not expose every upstream feature in this app. |
 | Custom Alpaca integration | App-owned market-data and execution clients connect Nautilus interfaces to Alpaca REST and trading updates. Handles source observations, mappings and reconciliation. | This is not an assertion that Nautilus ships or configures the whole application workflow automatically. |
@@ -213,13 +213,29 @@ the joint portfolio uses Deep's controls. Blank reasoning leaves the server's
 default. Supported levels depend on the model and provider.
 
 For OpenAI-compatible servers, the total budget includes the rendered prompt,
-tool schemas/results and generated tokens. When set, the client uses the
-server's `/apply-template` and `/tokenize` endpoints to count the full input,
-then caps generation at the smaller of the output limit and remaining total.
-It never truncates evidence. An exhausted total or unavailable exact tokenizer
-is reported as an error. Other providers cannot use this total-budget control.
+tool schemas/results and generated tokens. With a total set, the client reserves
+the full output allowance and a safety buffer of 1% of the total, rounded up.
+For 110,000 total and 30,000 output, the input ceiling is 78,900 tokens and the
+buffer is 1,100. The client uses the selected model's server tokenizer, not a
+generic local estimate. `/tokenize` measures evidence before large requests reach
+`/apply-template`; the final rendered request, including its tools and framing,
+is counted again before generation. Missing exact counting remains an error.
 
-Blank output uses the remaining total budget when a total is set, otherwise
+Desk research removes identical filing copies while preserving distinct statement
+tables. When necessary, it reads oversized evidence in measured chunks and builds
+labeled, source-linked derived notes. Every selected source segment is processed;
+raw source results remain saved. Notes are model output and can contain errors:
+they are not verbatim source text or independent corroboration. Analysts can use
+`read_research_source` with `query`, `start_line`, and `line_count` to verify exact
+passages; the full retrieved source remains captured. Activity records request
+budgets and chunk coverage. Instructions and tool schemas are not summarized.
+Compaction calls use the same configured model and reasoning level and remain
+interruptible by Stop. An impossible scaffold, failed compaction, or truncated
+notes fail explicitly rather than dropping evidence. Synchronous callers enforce
+the same reserves but report when input needs compaction; automatic compaction
+is in the desk's async research path. Other providers cannot use this total control.
+
+Blank output reserves one quarter of a configured total; without a total it uses
 the server default. Output can include reasoning tokens. Codex and ChatGPT
 subscription sign-in manage their own token limits, so both length controls
 are disabled for those providers; reasoning remains available.
@@ -242,7 +258,7 @@ saved provider rather than configuring an unrelated service.
 4. Choose **Run research (N)** and review the workload dialog.
 5. Choose **Start N-stock research**.
 
-Set **Settings → Research → Concurrent stocks** to 1–8 (default 1).
+Set **Settings → Research → Concurrent stocks** to 1–100 (default 1).
 New batches use that limit; changing it does not resize an existing run.
 Each stock has its own fresh graph, reports and evidence attribution.
 The next cycle replaces the previous result for each selected ticker, including
@@ -250,8 +266,13 @@ its local Laya annotation. Other tickers keep their latest result. There is no
 historical run selector, desk resume, persisted LangGraph checkpoint or replay
 ledger. Maenifold remains the long-term memory; the desk neither reads nor
 extends the separate CLI decision-memory log.
-Selected analyst roles can also work concurrently within a stock. A failure,
-rate limit or stop prevents further stock dispatch; in-flight work settles first.
+Selected analyst roles can also work concurrently within a stock. By default,
+a failed stock is recorded and the remaining stocks continue. Research settings
+has **Stop cycle if a stock fails**; enabling it stops further stock dispatch
+after a failure while already-running work settles. The policy is captured when
+a run starts. Provider rate-limit protections remain in effect.
+Stop cancels queued stocks immediately and interrupts active model requests
+through their async SDK connections. It blocks retries and later model calls.
 Local Laya social screening packs up to five independent posts into each
 `Router.predict_batch` call, with one bounded device lane across stocks.
 It does not call the Gateway or concatenate posts into one state.
@@ -268,9 +289,12 @@ The workload dialog displays the limit, models and date. Duration estimates use
 observed stock durations and the selected limit; shared-service load can increase
 the actual time. Cost may be unavailable.
 
-**Stop run** is a research control, not an order cancellation. Completed reports
-are retained. Do not start duplicate batches because a long-running screen
-has not yet changed.
+**Stop run** keeps the app running and preserves completed and partial reports.
+The status stays **cancelling** while workers release their resources, then becomes
+**cancelled**. A source request already fetching data or a local Laya device pass
+may finish cleanup; neither can start another model call after Stop. The external
+model server releases its work when it observes the closed connection. Research
+Stop does not cancel broker orders or stop the model server.
 
 The service checks the requested date/configuration revision, model readiness,
 account observation and worker ownership before admission. Current-date research
@@ -303,6 +327,30 @@ to both tiers. Future settings changes do not rewrite saved run configuration.
 - **Sources:** retained inputs and coverage.
 - **Activity:** recorded progression and calls.
 - **Setup:** configuration for a new cycle.
+
+### Delete selected research
+
+In Research, use the checkboxes beside tickers to select saved results for
+deletion. **Select matching** includes all results that match the current search
+and status filter, across pages. **Select outside universe** selects saved
+tickers that are no longer monitored. This selection is separate from selecting
+stocks for a new research run and does not change the monitored universe.
+
+Choose **Delete selected research** to preview the exact tickers, result count
+and removable evidence files, then choose **Confirm deletion**. This removes
+those latest results, their reports and activity. It deletes only report files
+that are no longer referenced by surviving records or retained migration
+backups. If file safety cannot be verified, the results are removed but files
+are retained with a warning. Notes, drafts, orders, journal records, their
+supporting evidence and Maenifold memory remain separate.
+
+Cleanup requires research, saved-post screening and portfolio modelling to be
+idle. If saved research changes after the preview, review a new preview before
+deleting. The local API uses `POST /api/research/delete` with
+`{"symbols":["INTC"],"preview":true}` first, then the same symbols with
+`"confirm":true` and the returned `"expected_revision"` and `"preview_token"`.
+Only the latest preview is accepted. It uses the normal
+session and CSRF protections and does not retry a deletion automatically.
 
 Ratings such as **Underweight** express the saved research's preferred exposure.
 They do not by themselves mean “sell shares now.” If the account holds no shares,
@@ -345,6 +393,13 @@ prefetched Sentiment does not receive that same tool loop. The allowlist is:
 This includes durable mutations, not just read-only retrieval. Research guidance
 requires relevant citations, checksums for editing and explicit confirmation for
 deletion. A graph relationship is a retrieval aid, not verified financial evidence.
+Analysts must preserve the exact checksum returned by `ReadMemory`, including
+trailing punctuation, and reread and reconcile after a conflict. Memory-write
+validation failures are distinct from service outages. Durable notes need
+meaningful WikiLinks, scope, evidence and a `## Source` section; thinking-session
+logs remain episodic reasoning. A partial market observation must not be stored
+or reported as a verified final close. These instructions and mechanical
+validation do not guarantee that an agent's factual conclusions are correct.
 Maenifold owns long-term memory and durable lessons. The desk does not keep
 a local decision/reflection log.
 
@@ -370,11 +425,14 @@ across StockTwits and Reddit. Limit exhaustion is distinct from transport or
 schema failure. A missing source is not a fabricated neutral result. Inspect the specific saved error:
 connection failure, invalid arguments and missing evidence are different faults.
 
-Laya records original post text/hashes, raw probabilities, model identity and
-measured coverage. Direct Python results have no contract grades; these remain
-unknown and stance counts remain unclear, with raw predictions retained.
-Classifier off-topic predictions do not discard original posts from
-analyst review. StockTwits user Bullish/Bearish tags, Laya classifications and the
+Laya 0.4.14 records original post text/hashes, raw outputs, model identity and
+measured coverage. After coverage and finite, normalized distributions are
+validated, a unique stance winner with probability at least 0.5 is counted;
+ties and lower probabilities remain unclear. The SDK confidence field is not
+the winning probability, and an absent grade is not itself uncertainty.
+Relevance uses its own probabilities, and every post remains available for
+analyst review. Being screened does not guarantee a usable prediction. Validate
+the actual raw predictions against stored labels and rendered counts end to end. StockTwits user Bullish/Bearish tags, Laya classifications and the
 analyst's sentiment report are different signals. Unclear/unscreened does not
 mean neutral; a classification contract never supplies trading authority.
 
@@ -394,13 +452,27 @@ cancellation failures can prevent completion. Partial or failed social screening
 prevents completion; saved source errors remain visible in Source coverage and
 Activity.
 
+Receipt capture screens decoded text until it stops changing, then stores the
+original bytes. The receipt size limit remains 8 MiB, with a separate cumulative
+screening-work limit. Nested encoding alone does not fail after a fixed number
+of passes. A capture failure names the actual Gateway or Jev operation and its
+recorded cause; a successful tool call does not establish that its receipt was
+saved. Failed captures are not silently treated as complete evidence.
+
 ### Data sources and historical meaning
+
+Laya runs in an app-owned worker process. Saving a CPU/GPU device change while
+screening is idle stops the previous worker before loading its replacement.
+Exiting the GPU worker releases its CUDA/MPS context as well as the model;
+the desk process does not own the classifier's accelerator context. Diagnostics
+report the worker PID, requested device, actual device and any CPU fallback.
 
 | Research evidence | Default path |
 | --- | --- |
 | OHLCV, indicators, deterministic market snapshot | Yahoo Finance / yfinance |
 | Financial statements | SEC EDGAR, then configured/supported Yahoo fallback |
 | Company overview, insider context, company/global news | Yahoo by default |
+| ETF profile, holdings, fees and distributions | Yahoo fund data; fund-specific issuer pages for SGOV/SHY and Vanguard factsheet PDF for BND |
 | Macro series | FRED |
 | Prediction markets | Polymarket |
 | Social discussion | StockTwits / Reddit |
@@ -411,6 +483,20 @@ comma-separated vendor list defines the fallback chain; the router does not
 silently add vendors. The `default` sentinel permits available implementations.
 Alpaca desk quotes and Yahoo research bars can therefore have different feeds,
 capture times and price bases.
+
+ETF routing uses the provider's `quoteType`, not a ticker-name guess. If the
+instrument type cannot be verified, research stops with a classification error.
+ETF fundamentals request fund data instead of company balance sheets, cash-flow
+statements, earnings or insider transactions. All analyst and decision prompts
+receive the ETF identity. Bond-fund analysis distinguishes yield definitions,
+duration, maturity, credit quality, costs and distributions. Missing values and
+source dates remain explicit; top holdings are not a complete holdings claim.
+Other ETFs use Yahoo fund data and its supplied website when available. Current
+fund snapshots are unavailable for historical runs without verified vintages.
+
+Reddit collection shares a process-wide gate and rate-limit cooldown. Transient
+requests use bounded retries and honor `Retry-After`; unavailable discussion is
+never reported as zero posts. Backoff does not guarantee anonymous Reddit access.
 
 Historical safeguards vary: SEC uses filing dates and FRED pins vintages.
 Current Yahoo profiles, undated statements and live documents can be withheld
@@ -700,6 +786,56 @@ availability or proves point-in-time vintages. Separate native processes restric
 inherited environments and use temporary directories; this is application-level
 separation, not an OS security sandbox. Results never authorize broker orders.
 
+## Workflows
+
+Open **Workflows**, directly above Settings, to inspect and edit a research
+workflow. The diagram leads the studio; the inspector has Prompt and YAML tabs.
+Editing identifies the loaded draft, Active identifies the workflow selected
+for new research, and the saved-workflow selector chooses what **Load** will open.
+
+Select an agent in the diagram to open its primary prompt. Search files by name
+or purpose, and use related agent, shared and schema groups to navigate relevant
+files. These relationships are navigation aids, not an assembled runtime prompt.
+
+The diagram comes from the same validated YAML. It shows selected analysts,
+joins, model tiers, round limits and final output. Router diamonds summarize
+rounds; the runtime checks its counter after every turn. Join, router and boundary
+shapes are visual summaries rather than extra agents. The desktop's optional
+CLI local-memory branch is inactive and omitted. Zoom, fit and scrolling keep
+the flow readable.
+
+Editing YAML marks the diagram stale. **Preview changes** validates and renders
+the draft without saving, activating or starting research. An invalid draft
+retains its text and shows an error.
+
+**Save** writes the complete workflow and prompt bundle. **Save as** opens an
+inline name field for a separate named copy. **Discard changes** returns to saved
+text. Each file retains an isolated editor buffer, undo history, selection and
+scroll position. Concurrent-edit conflicts preserve the draft; use **Save as** to keep a separate
+copy, or reload the other browser's saved changes before saving again.
+
+**Use for new research** selects the saved workflow for future runs. Loading,
+saving and activating do not start a run or place an order. Each new research
+run reads the complete bundle once into memory, including all queued stocks.
+Later edits affect new runs. A new joint portfolio call also captures its own
+bundle.
+
+Editable bundles live under the active profile's application/workflows directory.
+The current file in each named workflow points to the active file folder; this is
+an atomic-save mechanism, not a workflow history. Production and development
+remain isolated. Defaults are seeded once using existing graph settings, and
+upgrades preserve authored files. No rebuild is needed for later text edits.
+
+Use the simple named placeholders provided in each prompt; double literal
+braces. The YAML controls agents, model tiers, connections and graph limits.
+Provider connections, model names, token settings, concurrency and CPU/GPU stay
+in Settings. Risk checks, exact order approval and separate submission retain
+their existing roles. This change does not tune prompts or add an investment mandate.
+
+The editor and renderer are bundled locally and load when Workflows opens. Their
+source and reproducible build are in desktop/workflow-ui; third-party notices
+ship with the static bundle.
+
 ## Settings
 
 - **Account:** connection identity and native start/stop controls.
@@ -713,6 +849,8 @@ of the workflow. Configuring one does not configure all three. A connected
 status alone does not establish order readiness or every feature's acceptance.
 
 ## Operations and storage
+
+Review saved social decisions with independent human labels using the file-only helper in [Laya social review](docs/laya-validation.md). It reports saved predictions without inference and exports SDK evaluation rows only when the original questions and human labels are available.
 
 ### Local Laya setup and portability
 
@@ -729,6 +867,18 @@ transformers **5.20.2**, tokenizers **0.23.3**, huggingface-hub **2.3.0** and
 safetensors **0.8.0** in the `paper` extra. The standalone
 [`convaiinnovations/laya-multilingual`](https://huggingface.co/convaiinnovations/laya-multilingual/tree/1720e3e3357cfe1e281542e223f8273b0890ca34)
 checkpoint is fixed at revision `1720e3e3357cfe1e281542e223f8273b0890ca34`.
+
+**Settings → Research → Laya device** selects **CPU** (the default) or **GPU**.
+GPU uses CUDA on supported Windows NVIDIA hardware and MPS on supported Macs.
+Save after research and local screening finish. Saving unloads the old model
+before the replacement loads. The status shows the requested
+device, actual resident device and any CPU fallback. Loading does not claim an
+active device. Inference-time CPU fallbacks are recorded separately from the
+resident device; a GPU-resident model does not prove every batch used the GPU.
+GPU unavailability or a failed GPU load falls back to CPU with a visible reason.
+Windows needs the optional CUDA-enabled private runtime described in
+[release preparation](packaging/README.md#optional-windows-laya-cuda-runtime).
+Selecting GPU does not download packages, restart the app or start research.
 
 The following commands describe checkout development setup, not the installed
 app. For an existing checkout/environment, use the already-installed `uv` to freeze

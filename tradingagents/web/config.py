@@ -36,7 +36,9 @@ class DeskConfig(BaseModel):
     max_debate_rounds: int = Field(default=1, ge=1, le=3)
     max_risk_discuss_rounds: int = Field(default=1, ge=1, le=3)
     max_tool_rounds: int = Field(default=8, ge=1, le=20)
-    research_concurrency: int = Field(default=1, ge=1, le=8, strict=True)
+    research_concurrency: int = Field(default=1, ge=1, le=100, strict=True)
+    research_stop_on_failure: bool = Field(default=False, strict=True)
+    laya_device: Literal["cpu", "gpu"] = "cpu"
     social_screen_timeout_seconds: int = Field(default=600, ge=1)
     social_screen_max_posts: int = Field(default=100, ge=1)
     selected_analysts: list[Literal["market", "social", "news", "fundamentals"]] = Field(

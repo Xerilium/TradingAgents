@@ -1,0 +1,1 @@
+Verify the ETF report against the supplied evidence: fund identity, dates, units, yield definitions, fees, duration, holdings coverage and credit risks. Disclose missing metrics and source gaps. Return only the corrected report without unsupported claims.

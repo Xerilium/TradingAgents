@@ -424,3 +424,39 @@ This objective is not achieved by the completed-social-only pass above.
   a new complete run. Retained reports, provider settings and evidence remain
   intact. No restart or research rerun was performed. This batch adds 29
   production lines and zero test lines (score delta -29; documentation excluded).
+
+Pending: DNS/TLS error receipts from `read_research_source` omit the requested
+URL and withhold the cause, limiting diagnosis. Retained v2 reports remain unchanged.
+
+
+Reddit acquisition status now travels separately from screening: unavailable and
+limited feeds remain coverage gaps, while a successful empty feed stays empty.
+Validate this with a live source receipt and inspect the source and aggregate UI;
+a rate-limited run cannot establish successful Reddit acquisition.
+
+Real TER validation exposed that stance counts include off-topic posts. Relevance
+counts are now separate; retained source text and stance predictions are unchanged.
+
+
+### Laya Windows acceptance — 27 October 2026
+
+- Installed 0.6.15 matches the reviewed source. Actual CPU/CUDA/CPU switching
+  stopped the CUDA worker and restored the original CPU setting. Real retained
+  CPU, CUDA, unavailable-CUDA fallback, cancellation/recovery and screening
+  deadline observations are recorded in [the Laya guide](laya-validation.md).
+- One TER run `a217737b-20e5-46dd-9719-1ace8529e2e9` failed in 50.58 seconds:
+  the configured Qwen tokenization endpoint on local port 8899 refused the
+  connection. No sentiment report or final decision was produced. No rerun.
+- All 58 StockTwits posts were classified and retained. Exact questions, choices,
+  scores, token coverage and separate relevance counts are visible in the UI.
+  Reddit is limited, with its actual history-window reason, rather than empty.
+- A separate valid current Reddit query returned an empty sample within its
+  declared recent scope. This does not prove historical absence or 429 recovery.
+- Five saved posts were annotated in 1.531 seconds; all existing reports stayed
+  unchanged. The source-bound human review packet has 58 unreviewed labels.
+- The Sources prose dropped Reddit's acquisition reason although structured
+  evidence retained it. A narrow service repair now carries that evidence into
+  the coverage summary. Historical model reports remain unchanged.
+- MPS is explicitly unverified; the user will validate Mac after GitHub push.
+  Laya prediction accuracy and successful downstream Qwen receipt are not proven.
+  No tests, synthetic posts, unrelated checks or broad research reruns were used.

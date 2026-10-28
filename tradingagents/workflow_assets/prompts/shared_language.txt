@@ -1,0 +1,1 @@
+ Write your entire response in {lang}, except the labelled lines the format asks for (the "**Rating**:" line, "FINAL TRANSACTION PROPOSAL:"): keep their label and value in English, exactly as specified.

@@ -12,7 +12,7 @@ from tradingagents.dataflows.vendors.yahoo.fundamentals import get_company_profi
 logger = logging.getLogger(__name__)
 
 
-def get_language_instruction() -> str:
+def get_language_instruction(workflow) -> str:
     """Return a prompt instruction for the configured output language.
 
     Returns empty string when English (default), so no extra tokens are used.
@@ -29,13 +29,11 @@ def get_language_instruction() -> str:
     # label and value: a translated rating line leaves the reader prose to
     # search, where a negated rating ("not a Sell") reads as the call (#1435).
     return (
-        f" Write your entire response in {lang}, except the labelled lines the format"
-        f" asks for (the \"**Rating**:\" line, \"FINAL TRANSACTION PROPOSAL:\"):"
-        f" keep their label and value in English, exactly as specified."
+        workflow.render('shared_language', lang=lang)
     )
 
 
-def opponent_argument_or_opening(text: str, opponent: str) -> str:
+def opponent_argument_or_opening(text: str, opponent: str, workflow) -> str:
     """Opponent's latest argument, or an explicit opening marker when empty.
 
     The first speaker in each debate round receives an empty opponent response;
@@ -46,9 +44,7 @@ def opponent_argument_or_opening(text: str, opponent: str) -> str:
     text = (text or "").strip()
     if text:
         return text
-    return f"(The {opponent} has not spoken yet — open the debate with your own case.)"
-
-
+    return workflow.render('shared_opponent_opening', opponent=opponent)
 def _clean_identity_value(value: Any) -> str | None:
     """Return a trimmed string, or None for empty / placeholder-ish values."""
     if not isinstance(value, str):
@@ -110,6 +106,7 @@ def build_instrument_context(
     asset_type: str = "stock",
     identity: Mapping[str, str] | None = None,
     trade_date: str | None = None,
+    *, workflow,
 ) -> str:
     """Describe the exact instrument so agents preserve identity and ticker.
 
@@ -127,20 +124,17 @@ def build_instrument_context(
     is_crypto = asset_type == "crypto"
     instrument_label = "asset" if is_crypto else "instrument"
     context = (
-        f"The {instrument_label} to analyze is `{ticker}`. "
-        "The tools serve this instrument; refer to it by this exact ticker in every report and recommendation, "
-        "preserving any exchange suffix (e.g. `.TO`, `.L`, `.HK`, `.T`, `-USD`)."
+        workflow.render('shared_instrument', instrument_label=instrument_label, ticker=ticker)
     )
 
     identity = identity or {}
     name = identity.get("company_name") or identity.get("name")
-    label = "Name" if is_crypto else "Company"
+    label = "Fund" if asset_type == "etf" else "Name" if is_crypto else "Company"
     details = []
     if is_historical(trade_date):
         if name:
             details.append(
-                f"{label}: {name} (its current name, given only to identify it; "
-                f"on {trade_date} it may have been named differently)"
+                workflow.render('shared_historical_identity', label=label, name=name, trade_date=trade_date)
             )
     else:
         if name:
@@ -157,20 +151,21 @@ def build_instrument_context(
 
     if details:
         context += (
-            f" Resolved identity: {'; '.join(details)}. "
-            "Do not substitute a different company or ticker unless a tool "
-            "result explicitly disproves this resolved identity."
+            workflow.render('shared_resolved_identity', details='; '.join(details))
         )
 
+    if asset_type == "etf":
+        context += (
+            workflow.text('shared_etf')
+        )
     if is_crypto:
         context += (
-            " Treat it as a crypto asset rather than a company, and do not "
-            "assume company fundamentals are available."
+            workflow.text('shared_crypto')
         )
     return context
 
 
-def get_instrument_context_from_state(state: Mapping[str, Any]) -> str:
+def get_instrument_context_from_state(state: Mapping[str, Any], workflow) -> str:
     """Return the instrument context for the current run.
 
     Prefers the identity-resolved context computed once at run start and
@@ -185,32 +180,25 @@ def get_instrument_context_from_state(state: Mapping[str, Any]) -> str:
     return build_instrument_context(
         str(state["company_of_interest"]),
         state.get("asset_type", "stock"),
+        workflow=workflow,
     )
 
 
-def get_verified_market_context_from_state(state: Mapping[str, Any]) -> str:
+def get_verified_market_context_from_state(state: Mapping[str, Any], workflow) -> str:
     """Carry the collected snapshot into decisions without fetching or summarizing it."""
     text = state.get("verified_market_snapshot")
     ticker, day = str(state.get("company_of_interest", "")).upper(), state.get("trade_date")
     if (not ticker or not day or not isinstance(text, str)
             or not text.startswith(f"## Verified market data snapshot for {ticker}\n")
             or f"- Requested analysis date: {day}" not in text.splitlines()):
-        return ("Collected market snapshot: unavailable for this ticker and analysis date. "
-                "Report prose is analysis, not verified numeric evidence; do not substitute current data.")
+        return (workflow.text('shared_snapshot_missing'))
     return (
-        "Collected market facts, separate from analyst interpretations and debate. "
-        "Source: get_verified_market_snapshot; state verified_market_snapshot; "
-        f"snapshot text SHA-256 {hashlib.sha256(text.encode('utf-8')).hexdigest()}.\n"
-        "Use its dated prices, indicators and movement directions to check report claims. "
-        "Flag conflicts instead of repeating or silently reconciling them. Distinguish a net gain "
-        "between stated endpoints from consecutive gains: a net gain may include a down interval. "
-        "Use adjacent dated changes for streak claims and preserve stated coverage gaps. "
-        "This snapshot does not establish current quotes, bar finality or missing source provenance.\n\n"
+        workflow.render('shared_snapshot', digest=hashlib.sha256(text.encode('utf-8')).hexdigest())
         + text
     )
 
 
-def report_or_absent(text: str, source: str) -> str:
+def report_or_absent(text: str, source: str, workflow) -> str:
     """An analyst's report, or a marker saying it was never produced.
 
     A report is empty when its analyst was not selected, refused, or returned
@@ -221,10 +209,10 @@ def report_or_absent(text: str, source: str) -> str:
     text = (text or "").strip()
     if text:
         return text
-    return f"(No {source} report in this run: it is not available, not an empty finding.)"
+    return workflow.render('shared_report_absent', source=source)
 
 
-def get_portfolio_context_from_state(state: Mapping[str, Any]) -> str:
+def get_portfolio_context_from_state(state: Mapping[str, Any], workflow) -> str:
     """Return the caller's portfolio block, or a notice that none was given.
 
     A run without portfolio context must not read as a flat book: the agents
@@ -236,11 +224,9 @@ def get_portfolio_context_from_state(state: Mapping[str, Any]) -> str:
     if isinstance(context, str) and context.strip():
         return context + ("\n\n" + policy if policy else "")
     if policy:
-        return "Portfolio holdings and cash were not provided.\n\n" + policy
+        return workflow.text('shared_portfolio_holdings_missing') + policy
     return (
-        "Portfolio context: not provided. You do not know the caller's current "
-        "holdings or cash, so do not assume a flat book; give direction and "
-        "sizing guidance in terms the caller can apply to their own position."
+        workflow.text('shared_portfolio_missing')
     )
 
 

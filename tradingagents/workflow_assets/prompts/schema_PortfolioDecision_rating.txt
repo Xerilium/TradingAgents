@@ -1,0 +1,1 @@
+The final position rating. Exactly one of Buy / Overweight / Hold / Underweight / Sell, picked based on the analysts' debate. Conflicting arguments alone are not a reason to Hold: commit to the stronger side, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after weighing, or too thin to support a call.

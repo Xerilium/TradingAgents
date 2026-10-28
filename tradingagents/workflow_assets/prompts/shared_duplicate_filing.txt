@@ -1,0 +1,1 @@
+Identical full filing supplied in tool response {response_id}; read it there. SHA-256: {digest}.

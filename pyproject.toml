@@ -18,8 +18,10 @@ dependencies = [
     "markdown-it-py>=4.0",
     "packaging>=24.0",
     "pandas>=3.0.6",
+    "pypdf>=6.1",
     "python-dotenv>=1.0.0",
     "pytz>=2025.2",
+    "PyYAML==6.0.3",
     "questionary>=2.1.0",
     "requests>=2.32.4",
     "rich>=14.0.0",
@@ -66,8 +68,8 @@ include = ["tradingagents*", "cli*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
-tradingagents = ["assets/*.svg", "assets/runtime-manifests/*.json"]
-"tradingagents.web" = ["static/*", "static/vendor/*/*/*"]
+tradingagents = ["assets/*.svg", "assets/runtime-manifests/*.json", "workflow_assets/*", "workflow_assets/prompts/*", "workflow_assets/prompts/*/*"]
+"tradingagents.web" = ["static/*", "static/vendor/*/*/*", "static/vendor/workflow-tools/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

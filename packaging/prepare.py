@@ -56,6 +56,19 @@ def package_dir(python: Path) -> Path:
     return Path(value)
 
 
+def stage_app(wheel: Path, manifest: bytes) -> None:
+    """Stage replaceable project code separately from the persistent runtimes."""
+    app = PAYLOAD / "app"
+    if app.exists():
+        shutil.rmtree(app)
+    app.mkdir(parents=True)
+    with zipfile.ZipFile(wheel) as archive:
+        archive.extractall(app)
+    target = app / "tradingagents/assets/runtime-manifests/nautilus-v1-runtime-manifest.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(manifest)
+
+
 def native_manifest(tag: str, lock: Path) -> dict:
     with urllib.request.urlopen(f"https://pypi.org/pypi/nautilus-trader/{NAUTILUS}/json") as response:
         releases = json.load(response)["urls"]
@@ -138,6 +151,7 @@ def main() -> None:
     for relative, expected in manifest["installed_files"].items():
         if digest(native_site / relative) != expected["sha256"]:
             raise RuntimeError(f"Installed native file differs from official wheel: {relative}")
+    stage_app(wheels[0], (json.dumps(manifest, indent=2) + "\n").encode())
     revision = subprocess.check_output(["rtk", "proxy", "git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(["rtk", "proxy", "git", "status", "--porcelain", "--untracked-files=all"], cwd=ROOT, text=True).strip())
     provenance = {"source_revision": revision, "working_changes_present": dirty,

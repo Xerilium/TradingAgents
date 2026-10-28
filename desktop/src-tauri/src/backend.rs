@@ -22,6 +22,32 @@ fn python(root: &Path) -> PathBuf {
     if cfg!(windows) { root.join("python.exe") } else { root.join("bin/python3") }
 }
 
+fn persistent_runtime(payload: &Path, profile: &Path, kind: &str) -> Result<PathBuf, String> {
+    let destination = profile.join("runtimes").join(kind);
+    if fs::symlink_metadata(&destination).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound) {
+        fs::create_dir_all(profile.join("runtimes")).map_err(|e| e.to_string())?;
+        let seed = payload.join(kind);
+        let mut copy = Command::new(python(&seed));
+        copy.args(["-I", "-c", "import pathlib,shutil,sys; s,d=map(pathlib.Path,sys.argv[1:]); t=d.with_name(d.name+'.staging'); shutil.copytree(s,t,symlinks=True,copy_function=shutil.copy2); t.rename(d)"])
+            .arg(&seed).arg(&destination).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            copy.creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0);
+        }
+        let result = copy.output().map_err(|e| format!("Cannot seed {kind} runtime: {e}"))?;
+        if !result.status.success() {
+            return Err(format!("Cannot seed {kind} runtime: {}. Existing files were not replaced.", String::from_utf8_lossy(&result.stderr)));
+        }
+    }
+    let site = if cfg!(windows) { destination.join("Lib/site-packages") } else { destination.join("lib") };
+    if !fs::symlink_metadata(&destination).is_ok_and(|m| m.file_type().is_dir())
+        || !python(&destination).is_file() || !site.is_dir() {
+        return Err(format!("The persistent {kind} runtime is incomplete at {}. It was not replaced.", destination.display()));
+    }
+    Ok(python(&destination))
+}
+
 impl Backend {
     pub fn spawn(payload: &Path, profile: &Path, port: u16, development: bool)
         -> Result<(Self, mpsc::Receiver<()>), String>
@@ -45,10 +71,11 @@ impl Backend {
         let venv_python = |root: &Path| {
             if cfg!(windows) { root.join("Scripts/python.exe") } else { root.join("bin/python3") }
         };
-        let desk = source.as_ref().map_or_else(|| python(&payload.join("desk")),
-            |root| venv_python(&root.join(".venv")));
-        let native = source.as_ref().map_or_else(|| python(&payload.join("native")),
-            |root| venv_python(&root.join(".venv-nautilus-v1")));
+        let (desk, native) = if let Some(root) = &source {
+            (venv_python(&root.join(".venv")), venv_python(&root.join(".venv-nautilus-v1")))
+        } else {
+            (persistent_runtime(payload, profile, "desk")?, persistent_runtime(payload, profile, "native")?)
+        };
         if !desk.is_file() || !native.is_file() {
             return Err("The packaged Python runtimes are missing. Reinstall TradingAgents.".into());
         }
@@ -72,7 +99,13 @@ impl Backend {
                 "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('tradingagents.web.server',run_name='__main__')"])
                 .arg(root);
         } else {
-            command.args(["-I", "-u", "-m", "tradingagents.web.server"]);
+            let app = payload.join("app");
+            if !app.join("tradingagents/web/server.py").is_file() {
+                return Err("The packaged application code is missing. Reinstall TradingAgents.".into());
+            }
+            command.args(["-I", "-u", "-c",
+                "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('tradingagents.web.server',run_name='__main__')"])
+                .arg(app);
         }
         command.args(["--desktop-control", "--port", &port.to_string(), "--data-dir"])
             .arg(profile.join("application")).arg("--history-dir").arg(profile.join("research"))
