@@ -131,3 +131,23 @@ The integrated prompt builder protects the decision record from compaction, but
 actual downstream model receipt of that payload remains **unverified** until the
 configured model server is running and a request succeeds. Starting that external
 server, changing providers and repeating research were not part of this check.
+
+
+## Follow-on 0.6.16 installation
+
+Windows 0.6.16 includes the independently reviewed acquisition-summary repair.
+The installer completed with exit 0 at the canonical Programs location. Actual
+installed hashes match committed source for the Laya runtime, post screen,
+sentiment analyst, protected evidence builder, Reddit collector, service and UI.
+All nine saved-record payload fingerprints match the pre-update live backup.
+The paper account reconnected, Laya returned ready on the original CPU setting,
+and the preserved Social and Local Laya batch reports opened in the built-in
+browser. No further inference or research was run after this diagnostic repair;
+the earlier generated coverage prose remains historical evidence.
+
+Installer SHA-256: `d5c1f82ef891b4b8e7feada4bebc05281636f69d03dea5f509f33a3bd9ff9a80`.
+The adjacent 448-byte Tauri updater signature was created with the existing key,
+bound to version 0.6.16. This is updater signing, not Windows Authenticode.
+Local installation snapshots are `packaging/build/release-{before,after}-0616.json`
+and `release-installed-0616.json`; the UI capture is `laya-windows-0616.png` in
+the operator's visualization folder. Runtime and CUDA dependencies were not rebuilt.
