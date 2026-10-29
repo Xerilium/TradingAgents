@@ -29,7 +29,7 @@ Source links use repository paths under tradingagents/web unless stated otherwis
 - **Provider:** the external market-data source named in the UI, such as Yahoo or Alpaca/IEX. A configured provider can still fail or lack data.
 - **Source-only:** control or behavior confirmed in code but not visible in this live sample because the needed saved data/result was absent.
 - **Draft:** current form edits not yet saved or run. Previewing a draft does not mean it has been saved or executed.
- Source references point to one-based lines in `tradingagents/web/static/app.js` unless another file is named. “Observed” means seen in the live browser on 2026-10-24. “Source-only” means the conditional control or behavior was verified in implementation but its data-dependent state was not present in the live browser. Repeated rows share one schema.
+ Source references name the function or identifier in `tradingagents/web/static/app.js` unless another file is named; line numbers drift, so search for the name. “Observed” means seen in the live browser on 2026-10-24 (a dated historical check, not a current state). “Source-only” means the conditional control or behavior was verified in implementation but its data-dependent state was not present in the live browser. Repeated rows share one schema.
 
 ## User and assistant operating rules
 
@@ -42,29 +42,29 @@ Source links use repository paths under tradingagents/web unless stated otherwis
 
 ## Common navigation and status
 
-**Observed.** App navigation shows Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts and Settings. Global header shows account mode, account identifier, universe name, current page, “Find a symbol” combo box, market session and snapshot time, and Refresh. The left footer shows local workspace/Maenifold MCP, configured account, snapshot market data and currency. The order-pause control shows “New orders not paused · manage”; it is outside this reference scope.
+**Observed (2026-10-24; navigation re-checked against source).** App navigation shows ten workspaces: Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings (`workspaceLabels`). The top bar shows the universe name and current page as a breadcrumb, the “Find a symbol” combo box, a status line (market open/closed with snapshot time, or “No account snapshot”) and Refresh. The sidebar shows the account identity (for example “Account unverified”), the order-pause control (“New orders not paused · manage”) and the Nautilus gateway status. The left footer shows local workspace/Maenifold MCP, configured account, snapshot market data and currency. Pause and gateway controls are outside this reference scope.
 
 **Effects and status.** Dashboard/Markets show account observation/quote timestamps and source age. “Market closed” plus a last quote from the prior session is not a live executable price. Keep observed account state separate from quote freshness and saved daily OHLCV.
 
-**Source.** Navigation, page rendering and event delegation: `app.js:2789–2846`; dashboard data/panels: `app.js:407–430`.
+**Source.** Navigation and page rendering: `renderChrome()`, `renderWorkspace()`; dashboard data/panels: `renderOverview()`, `dashboardPanel()`.
 
 ## Dashboard
 
-**Observed page header.** Account observed timestamp and USD; “View portfolio” link. Live sample said Account verified, account observed Oct 24, equity/cash/buying power $100,000, position value $0 and 0 open orders. These are account observations, not a broker action.
+**Page header.** Account observed timestamp and USD; “View portfolio” link. When alerts need attention, `dashboardAttentionSummary()` adds a banner (“N alerts need attention”) with a **View alerts** link above the header. Historical 2026-10-24 sample: Account verified, equity/cash/buying power $100,000, position value $0 and 0 open orders. These are account observations, not a broker action.
 
 **Account ledger.** Equity, Cash, Buying power, Long position value, Open orders. If a value is unavailable, it is labeled unavailable; do not infer zero.
 
 **Dashboard panel selectors.** Watch, Chart, Research, Positions, Orders switch the content panes. They do not submit transactions.
 - **Watch** embeds the configured stock list.
 - **Chart** embeds the selected instrument summary/chart with “Open instrument”; that button opens the instrument workspace.
-- **Research** shows saved recommendation/status and date for the selected instrument; “Open research”/inspect opens the record.
-- **Positions** and **Orders** summarize observed holdings and orders.
-- **Watchlist table:** search; Show choices All stocks, Selected for research, Held positions, Needs research today, Missing quotes, Stale quotes; Select N matches; Clear selection; batch selector. Each symbol has a research-inclusion checkbox separate from the symbol/open checkbox, quote price, change and expandable Price source and time. Pagination size 25/50/100 and Previous/Next when multiple pages.
-- **Update quotes** requests a quote update when Nautilus is connected and the action is enabled. “Updating…”, last-update failure, reconnect-needed, snapshot feed and checked time communicate state. “Edit index” links to Settings.
+- **Research** (panel “Saved research”) shows saved recommendation/status and date for the selected instrument; **Open saved research** opens the record in Research.
+- **Positions** (“Broker holdings · actual account exposure”, with a “Find positions” search and a CSV button) and **Orders** (panel “Open orders”) summarize observed holdings and orders. Each pane links to its workspace as “View <workspace>”. Empty states: “No open positions” / “Account not loaded”, “No open orders in the current observation.”
+- **Watchlist table:** search (“Search symbols”); Show choices All stocks, Selected for research, Held positions, Needs research today, Missing quotes, Stale quotes; Select N matches; Clear selection; a count “N selected across all pages”. Each symbol has a research-inclusion checkbox separate from the symbol button, quote price, change and expandable Price source and time. Columns are Symbol, Last, Change. The pager (Rows 25/50/100, Previous/Next, “p / pages”) is always shown; its buttons are disabled at the ends.
+- **Update quotes** requests a quote update when Nautilus is connected and the action is enabled. “Updating...”, last-update failure, reconnect-needed, snapshot feed and checked time communicate state; the panel also shows “N configured stocks · M selected for research” and “Latest quotes: Nautilus / Alpaca snapshot, polled every 30s”. When Nautilus is disconnected a **Connect Nautilus** button appears. “Edit index” links to Settings.
 
 **Prerequisites/effects.** Search and Show filter rows. Select N matches and Clear selection affect only the research batch list. Opening a symbol/instrument does not silently change selected research symbols. Update quotes is a data request, not an order; do not trigger when only demonstrating the page.
 
-**Source.** `watchlist()` and row/list toolbar: `app.js:339–370`; dashboard panel markup: `app.js:407–430`; shared delegated handlers: `app.js:1284+`.
+**Source.** `watchlist()`, `listToolbar()`, `listPager()`, `positionsTable()`, `renderOverview()`, `dashboardPanel()`; shared click handlers are the `document.addEventListener('click', …)` block with `data-action` values such as `inspect` and `select-symbol`.
 
 ## Markets
 
@@ -74,19 +74,19 @@ Markets has four workspace tabs: **Watchlists**, **Universe**, **Screener**, **S
 
 **Observed controls.**
 - Search symbol or company text field.
-- View watchlist selector. Live values: All configured stocks; Shortlist; Shortlist (import 2); Research review; Shortlist (import 3); Research review (import 2). User-created list values vary by saved workspace.
-- Expand **Filters, list management and batch actions**.
-- **Universe views:** All; Owned (includes outside universe); Has saved research; No saved research; Research needs human review; Future research priorities; Price missing; Price stale; Gainers; Decliners. These are filters; counts reflect current view.
-- **Min |change| ≥**: no minimum, 0.5%, 1%, 2%, 3%, 5%.
-- **Sort by**: Symbol, Company, Price, Change %, Move size %, Price age, Research date, Saved rating. Sort direction button toggles descending/ascending. Clear filters resets filters.
-- **List management:** New watchlist name + Create from selected; selection count; Select all filtered; Clear selection; Export selected observed holdings CSV; Edit list target selector (only existing saved list names); Add to [target]; Remove from [target]; Review research for selected stocks.
+- View watchlist selector. Live values on 2026-10-24: All configured stocks; Shortlist; Shortlist (import 2); Research review; Shortlist (import 3); Research review (import 2). User-created list values vary by saved workspace.
+- Expand **Filters, list management and batch actions** (summary shows “· N selected”).
+- **Universe views:** All; Owned · includes outside universe; Has saved research; No saved research; Research needs human review; Future research priorities; Price missing; Price stale; Gainers; Decliners. These are filters; counts reflect current view.
+- **Min |change| ≥**: 0% · no minimum, 0.5%, 1%, 2%, 3%, 5%.
+- **Sort by**: Symbol, Company, Price, Change %, Move size %, Price age, Research date, Saved rating. The sort direction button toggles Ascending ↑ / Descending ↓. Clear filters resets filters.
+- **List management:** New watchlist name + Create from selected; selection count (“Batch selection: N stocks”); Select all filtered; Clear selection; Export selected observed holdings CSV; Edit list target selector (only existing saved list names); Add to [target]; Remove from [target]; Review research for selected stocks.
 - Expand **Manage universe columns** for column visibility/order controls; expand **Snapshot provenance and data boundaries** for source meanings.
 - Table column headers are sortable: Stock/company, Latest price, Change %, Price age, Saved research. The Markets header Batch checkbox selects all filtered stocks. Markets renders the full filtered table; it has no list-page controls. Dashboard and Research have separate paginated lists. Per row: one batch inclusion checkbox; a ticker inspection button with pressed state; company text; expandable **Why in this view / source time**; price, change, source timestamp and age/freshness note; recommendation and research date. Do not apply Dashboard’s page-scoped selection rule to this Markets table.
-- An outside-universe discovery list can appear separately. It does not become configured universe membership or holdings unless the user adds it through the eligible retained-result action or Settings. Membership does not create a holding.
+- An outside-universe discovery list (“Watchlist stocks outside configured universe”, with **Inspect SYMBOL** buttons) can appear separately. It does not become configured universe membership or holdings unless the user adds it through the eligible retained-result action or Settings. Membership does not create a holding.
 
 **Purpose and boundary.** Search, views, change threshold, sort and column controls change what is shown. “Create from selected” and Add/Remove write named watchlist membership; named lists do not start research, change the configured universe, create holdings or modify broker orders. “Review research for selected stocks” opens the workload confirmation for a new research run; only the separate Start action admits it. The CSV control exports selected observed holdings, not hypothetical universe holdings.
 
-**Source.** `watchlist()`: `app.js:339+`; Markets tabs and table shell: `app.js:2789–2846`; list/discovery binding: `app.js:1879–1900` and shared event delegation `app.js:1284+`. The live sample had 7 configured stocks, all with retained research and a market-closed quote roughly one day old; shown ages are from event timestamps.
+**Source.** `liveView()`, `renderViews()`, `renderTable()`, `renderColumns()`, `COLUMN_OPTIONS`, `createWatchlist()`, `bulkShortlist()` in `app.js`; Markets tabs and shell: `renderMarkets()`, `layoutMarkets()`; Screener/Saved scans binding: `bindDiscovery()`, `bindScanner()`. The 2026-10-24 historical live sample had 7 configured stocks, all with retained research and a market-closed quote roughly one day old; shown ages are from event timestamps.
 
 ### Screener
 
@@ -111,7 +111,7 @@ Markets has four workspace tabs: **Watchlists**, **Universe**, **Screener**, **S
 - Previous page / Next page; Add selected matches to watchlist selector and **Add selected matches** changes only that named list. An eligible outside-universe result also has **Add this symbol to configured universe**. That action is separate and writes the configured universe from a retained completed result; it is not the list-add action. Disabled/invalid symbols cannot be added. Settings remains another route to edit the configured universe.
 - Prior/next uses the saved criteria and changes offset by 25. Pages are not proof of full-market completeness; a missing provider total stays unknown.
 
-**Source and effect.** Discovery markup and request/save/paging handlers: `app.js:1879–1900`. Provider collection is a separate explicit action from editing or saving criteria; adding matches changes only the selected named list. Yahoo discovery is not Alpaca tradability or a quote feed.
+**Source and effect.** Discovery markup and request/save/paging handlers: `discoveryMarkup()`, `bindDiscovery()`, `discoveryInspection()`. Provider collection is a separate explicit action from editing or saving criteria; adding matches changes only the selected named list. Yahoo discovery is not Alpaca tradability or a quote feed.
 
 ### Saved scans
 
@@ -137,7 +137,7 @@ Markets has four workspace tabs: **Watchlists**, **Universe**, **Screener**, **S
 
 **Boundary.** A draft is not a saved immutable revision. Saving does not run it. Run/schedule/data-collection actions are separate and require authorization. Runs and Matches were opened and were empty. Populated result rows and run statuses remain source-only.
 
-**Source.** `scannerMarkup()` and scan binding: `app.js:1729–1777`; Markets tab mount: `app.js:2789+`.
+**Source.** `scannerMarkup()`, `scannerMarkupContent()`, `scannerProgramMarkup()`, `bindScanner()`; Markets tab mount: `renderMarkets()`.
 
 ## Instrument workspace
 
@@ -149,9 +149,9 @@ Four instrument tabs:
 - **Options:** Alpaca US option contract discovery.
 - **Position:** observed holdings (or explicit no-position state) and an embedded Human trade proposal with **Entry** and **Review** steps. It is present even when the instrument has no holding. The ticket fields include side, shares, order type, limit, duration, session, replacement, and notes; its preview/save controls prepare terms, not an approved or submitted order. See the Orders reference for full ticket validation and authority.
 
-Source composition/selection: `instrumentView()`, `instrumentMarkup()`, `bindInstrument()`: `app.js:2572–2610`. Viewing a different symbol leaves research batch selection unchanged.
+Source composition/selection: `instrumentView()`, `instrumentMarkup()`, `bindInstrument()`. Viewing a different symbol leaves research batch selection unchanged.
 
-**Position routes.** Dashboard → Positions has Symbol, Quantity, Avg. cost, Market value, Unrealized P/L, and Weight columns. A holding row exists only when a position is observed. Its symbol action (`data-action="inspect"`) opens Research for that stock and selects its latest retained result when available; it does not directly open a Markets instrument. That holding-row route remains source-only because the current account has no positions. For a stock you do not hold, use the Dashboard watchlist or Markets, then **Open instrument** where offered. Inside a stock instrument workspace, **Position** renders the embedded Human trade proposal even when no holding is shown. **Back to universe** closes the current detail; it does not prove a route through Markets. Source: `positionsTable()` (`app.js:340+`), delegated `inspect` handler (`app.js:1284+`), `instrumentView()` / `instrumentMarkup()` (`app.js:2572–2610`).
+**Position routes.** Dashboard → Positions has Symbol, Quantity, Avg. cost, Market value, Unrealized P/L, and Weight columns. A holding row exists only when a position is observed. Its symbol action (`data-action="inspect"`) opens Research for that stock and selects its latest retained result when available; it does not directly open a Markets instrument. That holding-row route remains source-only because the current account has no positions. For a stock you do not hold, use the Dashboard watchlist or Markets, then **Open instrument** where offered. Inside a stock instrument workspace, **Position** renders the embedded Human trade proposal even when no holding is shown. **Back to universe** closes the current detail; it does not prove a route through Markets. Source: `positionsTable()`, the delegated `inspect` click handler, `instrumentView()` / `instrumentMarkup()`.
 
 ### Instrument Options and contract discovery
 
@@ -167,7 +167,7 @@ Source composition/selection: `instrumentView()`, `instrumentMarkup()`, `bindIns
 - **Selected contracts · retained across restart** lists each contract/feed/selection time and provides **Open manual premium ticket**. **Prepare atomic long-only package from selected contracts** is disabled until at least two contracts are selected. The package editor then requires 2–4 distinct retained contracts and current native contract/premium evidence. Opening a ticket is order preparation, not approval or submission.
 - The UI documents supported preparation as long single-leg call/put, whole contracts, buy-to-open or sell-to-close, MARKET/LIMIT/STOP/STOP_LIMIT, DAY/GTC, regular session. Short opening and full settlement acceptance are outside this profile. Exercise and do-not-exercise use separate reviewed instructions.
 
-The request path is `bindOptions()` and `optionMarkup()` in `tradingagents/web/static/app.js:1861–1876`. The service action `option_discovery()` in `tradingagents/web/service.py:999–1079` calls `AlpacaREST.option_contracts()` in `alpaca_readonly.py:79–101`, saves its raw source artifact and exact observation, validates an explicit feed and retained revision, persists selection, and reconfigures native subscriptions. The UI renders the filtered chain and exact details in `instrumentMarkup()` in `app.js:2573–2587`. Chart plotting and pointer interaction are in `market-chart.js`; app assets vendor Lightweight Charts and its drawing plugin under `tradingagents/web/static/vendor/`. No `chart_workspace.js` exists in this checkout. It rejects unsupported feed, missing selection, stale revision, invalid mapping, or mixed feeds. Option selections and observations are retained in the discovery store. Native quote errors and dated quote receipt remain separate from contract metadata. No claim of OPRA entitlement or broker execution follows from a listed contract or quote.
+The request path is `bindOptions()` and `optionMarkup()` in `tradingagents/web/static/app.js`; it posts `option_contracts`, `option_select` and `option_feed` actions to `/api/discovery`. The service action `DeskService.option_discovery()` in `tradingagents/web/service.py` calls `AlpacaREST.option_contracts()` in `alpaca_readonly.py`, saves its raw source artifact and exact observation, validates an explicit feed and retained revision, persists selection, and reconfigures native subscriptions. The UI renders the filtered chain and exact details in `instrumentMarkup()`/`instrumentView()` in `app.js` (Expiration and Type selectors, `instrument-option-side`). Chart plotting and pointer interaction are in `market-chart.js`; app assets vendor Lightweight Charts and its drawing plugin under `tradingagents/web/static/vendor/`. No `chart_workspace.js` exists in this checkout. It rejects unsupported feed, missing selection, stale revision, invalid mapping, or mixed feeds. Option selections and observations are retained in the discovery store. Native quote errors and dated quote receipt remain separate from contract metadata. No claim of OPRA entitlement or broker execution follows from a listed contract or quote.
 
 Exercise/DNE instructions are a separate human-only flow. See the Orders reference for its review, approval, submission, unknown-outcome and interlock rules. This Options guide covers contract discovery and quote subscription only.
 
@@ -189,7 +189,7 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 - Current-market retained history form (conditional/source-only until switched to current context): **Symbol mapping as-of date · America/New_York** is the exact mapping-date label. Other fields/actions: bar interval 1Min, 5Min, 15Min, 30Min, 1Hour, 1Day; Start date; End date; symbol mapping as-of date (America/New_York); adjustment basis raw/split/dividend/all; Request this stock’s chart range; Request required 252-session daily baseline; Request selected list (count) with these dates. Saved current-market cache selector has Latest retained interval and dated cached entries. These request buttons collect provider bars and must not be pressed during browse-only guidance.
 - **Compare retained cache:** None or another symbol cache with the same interval, listed with symbol, dates, adjustment and capture time. Compatibility requires recorded context, interval, provider, feed, adjustment, aggregation and currency. Unmatched times are excluded. Choosing comparison does not collect data; current context/history is prerequisite. If history is absent, Comparison shows that retained current-market history is required.
 
-**Source.** Current cache controls: `app.js:1439–1475`; source evidence composition around `app.js:1463–1480`; chart tab assignment: `app.js:2599–2610`; historical price/copy controls are emitted with chart evidence/readout around `app.js:2489+`.
+**Source.** Current cache controls: `marketEvidence()`, `bindMarketEvidence()` and `loadCurrentHistory()` in app.js; source evidence composition: `savedChart()`; chart inspector tab assignment: `bindInstrument()`; historical price/copy controls: `chartPriceControls()`.
 
 ### Chart inspector: Studies and formulas
 
@@ -215,7 +215,7 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 
 **Result controls (transform result observed; other result types and active-job actions are source-only).** Calculation status, total budget, error/queue wait and queue/execution/termination evidence disclosure; Cancel this calculation when queued/running; calculation ID/source pin/result hash/derivation identity; coverage/provisional-inputs disclosure; when seasonality exists, Yearly value scale Common scale across years or Separate labeled scale per year; derived chart event selector by logical ordinal; exact derived geometry disclosure; actual retained source bar selector/readout Open/High/Low/Close/Source volume; **Open this actual bar in the raw chart** selects the exact contributing bar in the normal full-history chart; full definitions/algorithm/precision/init/source evidence disclosure. Clicking a derived event or source bar is inspection, not an execution price. Only raw source OHLC copy controls can prepare a manual ticket price.
 
-**Source.** Chart analysis UI, editor and action handlers: `app.js:1526–1585`; rendering of SVG, series, seasonality, exact readout and click/keyboard event inspection: `static/market-chart.js:184–224`; inspector switch and load button: `app.js:2599–2610`.
+**Source.** Chart analysis UI, editor and action handlers: `chartAnalysisPanel()`, `analysisSettings()`, `analysisPreview()`, `analysisTrace()`, `analysisAction()`, `bindChartAnalysis()` in app.js; rendering of SVG, series, seasonality and derived display: `transformDisplay()`, `seriesDisplay()`, `seasonalityDisplay()`, `mountAnalysis()` in `static/market-chart.js`; inspector grouping, tab switch and **Open saved calculations** button: `bindInstrument()` in app.js.
 
 ### Chart inspector: Drawings
 
@@ -231,7 +231,7 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 - Create alert from eligible saved numeric annotation creates an alert draft for separate explicit save; no alert is started by drawing save.
 - On comparison chart drawing controls are disabled; switch to OHLC first.
 
-**Source.** `drawingPanel()` and scope/control generation: `app.js:1493–1508`; interaction and persistence: `app.js:1513–1523`; chart inspector grouping: `app.js:2599–2609`.
+**Source.** `drawingPanel()`, `bindDrawings()` and `draftDrawingAlert()` in app.js; chart pointer and keyboard handling: `annotations()` in `static/market-chart.js`; chart inspector grouping: `bindInstrument()`.
 
 ### Chart inspector: Comparison
 
@@ -239,7 +239,7 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 
 **Source-only when eligible.** Choose Current-market context · IEX cache, then choose another retained current-market cache (same chart interval). Compare cache list contains no comparison plus symbol/date/adjustment/capture-time entries. Selection is client-side and does not request provider data. Comparison requires matching context, timeframe, provider/feed, adjustment, aggregation, currency. Matched retained timestamps only; no assumed joins or future quotes. Chart attribution shows which primary/secondary cache and exact matched rows. Drawing placement is disabled on the comparison chart. There is no observed live comparison result in the verified cache state.
 
-**Source.** Cache list/build and comparison control: `app.js:1439–1468`; conditional comparison rendering: `app.js:2600–2604`; chart comparison and timestamp matching: `static/market-chart.js:226+` and the current comparison source module.
+**Source.** Cache list/build and comparison control: `marketEvidence()`, `bindMarketEvidence()`, `loadCurrentHistory()` in app.js; inspector grouping: `bindInstrument()`; chart comparison and timestamp matching: `compare()` in `static/market-chart.js`.
 
 ### Chart inspector: Saved calculations
 
@@ -247,73 +247,79 @@ Exercise/DNE instructions are a separate human-only flow. See the Orders referen
 
 **Observed for the completed META Heikin-Ashi calculation above.** Loaded exact saved calculation buttons show definition/kind/revision/status and created time. Conditional result presents frozen source pin, output/result hash and derivation identity, coverage status, queue/termination evidence; current draft changes do not change the immutable result. Reopen selects that exact result; calculation is not rerun.
 
-**Source.** Inspector placeholder: `app.js:2602, 2609`; saved calculation list/button: `app.js:1565–1568, 1570–1574`.
+**Source.** Inspector placeholder and **Open saved calculations** button: `bindInstrument()`; saved calculation list/button: `savedCalculationMarkup()`.
 
 ### Instrument Research
 
 Research view inside an instrument shows:
 
 - **Investor note · [symbol]** textarea (“Your rationale and questions”), Save note; status “No saved note · notes do not run research or authorize trading.” This is authored local text, separate from research runs.
-- **Review this saved revision** identifies run, revision, research date, age and observed gaps. Human disposition choices: Choose a disposition, reviewed, needs_review, deferred. Review notes textarea. **Prioritize future research · does not start a job** checkbox. **Save revision review** stores the human review separately from research. Saved opposing arguments and source text disclosure contains debate artifacts when present; otherwise says no separate debate artifact.
-- **[symbol] saved research** shows saved rating/date/revision/completed status and advisory disclaimer. Saved report selector values: final trade decision; fundamentals report; investment debate state; investment plan; market report; news report; risk debate state; sentiment report; source coverage; trader investment plan. Report provenance disclosure.
+- **Review this saved revision** identifies run, revision, research date, age and observed gaps. **Human disposition** choices: Choose a disposition, reviewed, needs_review, deferred. **Review notes** textarea. **Prioritize future research · does not start a job** checkbox. **Save revision review** stores the human review separately from research. **Saved opposing arguments and source text** disclosure contains debate artifacts when present; otherwise says no separate debate artifact was saved.
+- **[symbol] saved research** shows saved rating/date/revision/status and an advisory note. The **Saved report** selector lists the saved report keys with underscores shown as spaces (for example final trade decision, fundamentals report, investment debate state, investment plan, market report, news report, risk debate state, sentiment report, source coverage, trader investment plan; only keys present in the saved result appear). **Saved report provenance** disclosure.
 - **News, business facts and dated events** states provider observations are separate from immutable research and quote entitlement is not implied. **Request supplementary data from an existing provider** disclosure; currently empty state says no supplementary evidence saved and categories remain unavailable. Opening the disclosure is not itself a request; explicit provider request must be separately authorized.
 
-**Observed AAPL status.** No held position. Saved current recommendation is Overweight; quote/source age displayed; review remains “No saved disposition”; note unsaved; supplementary evidence empty. Do not convert any recommendation or saved claim into a live-price assessment.
+**Observed AAPL status (dated 2026-10-24 sample, not current).** No held position. Saved current recommendation was Overweight; quote/source age displayed; review remained “No saved disposition”; note unsaved; supplementary evidence empty. Do not convert any recommendation or saved claim into a live-price assessment.
 
-**Source.** `reviewEditor()`: `app.js:2477–2486`; saved report/supplementary area in Research render: `app.js:2489+`; instrument view composition: `app.js:2572–2586`.
+**Source.** `reviewEditor()` (review form and **Save revision review**); `savedResearch()` (saved report selector and **Saved report provenance**); `supplementaryEvidence()`; instrument view composition: `instrumentMarkup()`; `renderResearchReview()` in the Research workspace Summary tab.
 
 ## Research workspace
 
-**Page boundary.** Top status “Latest recommendations, reports, and source evidence”; current latest research date/run and status; buttons Prepare order from this research, Open instrument, Saved orders. Preparing a ticket does not approve or submit it. Research stays advisory.
+**Page boundary.** Header “Latest recommendations, reports, and source evidence.” with **New research** (opens Setup) and, only while a run is active, **Stop run**. Toolbar: “Latest research per ticker / [trade date]” with a run status badge (or “No current research. Use Setup to start a cycle.”), then buttons **Prepare order from this research** (disabled without a saved result), **Open instrument** and **Saved orders**. Preparing a ticket does not approve or submit it. Research stays advisory.
 
 ### Research list and batch selection
 
-- Find research text search.
-- Show selector: Latest stocks, Completed, Incomplete, Running, Queued, Failed, Cancelled.
-- Summary shows N/N latest stocks finished; progress indicator; completed/incomplete/failed/interrupted/cancelled/running/queued counts.
-- Select failed/unfinished for a new run.
-- Per row: a ticker button selects the report to inspect. It does not include/exclude the ticker from the next batch. The row also shows social-screening status and rating/status. Pagination size is 25/50/100 with Previous/Next. Batch checkboxes are in Dashboard and Markets.
+- **Find research** text search (placeholder “Search symbols”).
+- **Show** selector: Latest stocks, Completed, Incomplete, Running, Queued, Failed, Cancelled.
+- Summary shows “N / N latest stocks finished”; progress indicator; completed/incomplete/failed/interrupted/cancelled/running/queued counts; a remaining-time estimate while stocks are queued or running.
+- **Select failed / unfinished for a new run** replaces the next batch selection with unfinished configured stocks and opens Setup; it does not retry or resume.
+- Per row: a ticker button selects the report to inspect. It does not include/exclude the ticker from the next batch. The row shows the saved-result label and rating/status badge. Pagination size is 25/50/100 with Previous/Next. Batch checkboxes are in Dashboard and Markets.
+- Per row checkbox “Select SYMBOL research for deletion” and the delete panel above the list: “N selected for deletion”, **Select matching**, **Select outside universe**, **Clear selection**, **Delete selected research**. The last button opens a preview (“Delete research for N tickers?”, result/artifact counts) with **Confirm deletion** and **Cancel**. Preview and confirm use `/api/research/delete`; confirm sends the preview token and expected revision. Deletion is disabled while a run, portfolio modeling or local Laya screening is active. It removes only the saved latest research and its artifacts; orders, notes and journal entries are kept. This is a destructive write; do not use it unless the user asks.
 - Current store is “Latest research per ticker”; do not instruct the user to resume history or replay older runs.
 
 ### Research detail tabs
 
-**Summary.** Latest recommendation/rating; Executive Summary; Investment Thesis; Price Target; Time Horizon; Full source artifact disclosure. Review this saved revision and Investor note controls are described under Instrument Research.
+**Summary.** “Latest recommendation” heading with a rating/status badge and the saved final trade decision (or “No final recommendation is saved. Partial reports remain available in Reports.”). The decision text usually has Executive Summary, Investment Thesis, Price Target and Time Horizon sections; these come from the saved report text. **Full source artifact** disclosure under the report. Review this saved revision and Investor note controls are described under Instrument Research.
 
-**Reports.** Saved report index tabs:
-1. Portfolio decision
-2. Market analysis
-3. Fundamentals
-4. News analysis
-5. Sentiment analysis
-6. Research committee decision
-7. Trader proposal
-8. Social sentiment
-9. Source coverage
+**Reports.** Saved report index buttons (only reports present in the saved result appear), in this order when present:
+1. Portfolio decision (`final_trade_decision`)
+2. Decision (`decision`)
+3. Market analysis
+4. Fundamentals
+5. News analysis
+6. Sentiment analysis
+7. Research committee decision
+8. Trader proposal
+9. Laya items, then any other saved keys alphabetically (for example Social sentiment and Source coverage)
 
-Selecting a report changes the displayed saved report. Full source artifact is a disclosure where provided. Social sentiment report explains Laya as individual-post annotation, not trade approval; Reddit and Stocktwits show fetched/retained/screened counts and stance buckets. Unclear means classification uncertainty; unscreened means no usable classification, neither means neutral. Per-post evidence can expose text, provenance/hash, classification status, probabilities/raw prediction, stance grade, model identity/cache/device/package/revision, token budget and raw answers/usage. **Screen 5 saved posts locally** is a separate local annotation action; it does not refetch source, call the research model or change recommendation, but it changes evidence, so do not click unless requested.
+Bull / bear debate and Risk committee are not in this index; they appear on the Debate tab.
+
+Selecting a report changes the displayed saved report. Full source artifact is a disclosure where provided. Social sentiment report explains Laya as individual-post annotation, not trade approval; Reddit and Stocktwits show fetched/retained/screened counts and stance buckets. Unclear means classification uncertainty; unscreened means no usable classification, neither means neutral. Per-post evidence can expose text, provenance/hash, classification status, probabilities/raw prediction, stance grade, model identity/cache/device/package/revision, token budget and raw answers/usage. **Screen N saved posts locally** (N is the saved Stocktwits post count, at most 5; shows “Local batch running” while active) is a separate local annotation action; it does not refetch source, call the research model or change recommendation, but it changes evidence, so do not click unless requested.
 
 **Debate.** Bull / bear debate and Risk committee selectors. They display saved debate artifacts; no debate rerun occurs on selection. Reports can contain separate “Full source artifact” disclosure.
 
 **Sources.** Saved source links (for example SEC filings and news); **Exact saved result identity, source metadata, and coverage** disclosure shows exact run/revision/source receipts/coverage.
 
-**Activity.** Shows recorded events, “latest 40 of 500”, JSON control, chronological event list with source receipt and status. JSON is an export control; don’t click if the user only asks to inspect.
+**Activity.** **Run activity** panel: “Recorded events · latest N of M” (the server retains at most the latest 500 events; the panel gets the latest 40, so for example “latest 40 of 500”), a **JSON** button, and a newest-first list with time, symbol/stage and message. Below it can appear a readiness note with a **Research settings** link and a **Data source diagnostics** disclosure. JSON downloads the selected run (`/api/runs/<id>`); don’t click if the user only asks to inspect.
 
-**Setup.** New research batch lists exact checked symbols and date. Shows Inspected stock separately and warns inspection does not change research batch. Links: Choose batch stocks in Markets; Research models and limits in Settings. **Run research (N)** opens a confirmation dialog; it does not start a run. The dialog shows selected count and exact symbols, configured universe count, max parallel stocks, analysts, fast/deep model tiers, New York trade date, estimated duration based on completed samples (or no completed observations), and states there is no cost estimate. The separate **Start N-stock research** button submits `/api/runs` and begins work. Close the dialog to cancel before admission. Do not click Start during a read-only walkthrough. No autosave means Setup only previews the batch; it does not start anything until the confirmation action.
+**Setup.** **New research batch** lists “Batch stocks for new research:” (exact checked symbols) and shows “Inspected stock:” separately with a note that inspection does not change the research batch. Links: **Choose batch stocks in Markets**; **Research models and limits** (goes to Settings → Research: provider, Deep and Fast model names, per-role Max total tokens, Max output tokens and Reasoning level, concurrency and social limits). Graph structure, analyst selection, model tiers and graph limits are managed in the **Workflows** workspace; research runs use the active workflow. The run button shows **Run research (N)**; it reads **Configure research** (link to Settings) when research is not ready, and “Existing-record review - new research disabled” in browse-only mode. **Run research (N)** opens a confirmation dialog titled “Research N stocks”; it does not start a run. The dialog text says the universe remains M configured stocks, that up to the configured concurrency run at once, and that it places no orders. Rows: Research graph (“Defined by the active workflow”), Fast analysis and Deep reasoning model names, Trade date (New York), Estimated duration (from completed samples, or no completed observations). It states there is no cost estimate and has a “Selected symbols (N)” disclosure. The separate **Start N-stock research** button submits `/api/runs` with the symbols and config revision, and begins work. Close the dialog to cancel before admission. Do not click Start during a read-only walkthrough. Setup only previews the batch; nothing starts until the confirmation action.
 
-**Earlier observed sample.** Seven latest stocks were labeled completed: AAPL, AMZN, GOOGL, META, MSFT, NFLX and NVDA. Some retained reports showed gaps, including Reddit 429. The current completion check marks saved results **Incomplete** if any of the seven required reports are missing or either social source has unfinished screening. Reports remain readable, but incomplete results are excluded from joint proposed allocation. An empty source response is allowed; a failed fetch is not an empty response. Inspect Source coverage and Activity for optional gaps. Do not infer missing data to be neutral or current.
+**Earlier observed sample (dated 2026-10-24).** Seven latest stocks were labeled completed: AAPL, AMZN, GOOGL, META, MSFT, NFLX and NVDA. Some retained reports showed gaps, including Reddit 429. The current completion check marks saved results **Incomplete** if any of the seven required reports (market, sentiment, news, fundamentals, investment plan, trader investment plan, final trade decision) are missing or either social source has unfinished screening. Reports remain readable, but incomplete results are excluded from joint proposed allocation. An empty source response is allowed; a failed fetch is not an empty response. Inspect Source coverage and Activity for optional gaps. Do not infer missing data to be neutral or current.
 
-**Source.** Research workspace: `app.js:626+`; report index renderer: `app.js:799–801`; revision review: `app.js:2477–2486`; tabs and setup state/rendering around `app.js:2460–2508`; run/list handlers around `app.js:1284+`.
+**Source.** Research workspace: `renderResearch()` (tabs, Setup, header, toolbar), `researchCollection()`, `researchDeletePanel()`, `researchButton()`, `renderReports()`, `renderEvents()`, `researchSources()`, `savedLayaAction()`, `reviewResearch()`, `launchResearch()`; revision review: `reviewEditor()` / `renderResearchReview()`; research delete: `/api/research/delete`.
 
 ## Live evidence and limits
 
-- Browser observed: Dashboard shell/account ledger/panels/watchlist; all four Markets tabs and Watchlists filter disclosure; AAPL instrument Chart, Research, Options, Position; the five current chart inspectors; saved-definition/index loading for AAPL and META; Research Summary, Reports, Debate, Sources, Activity, Setup; populated saved AAPL report/review and source data.
-- Additional live checks on 25 October: one META Heikin-Ashi definition save/calculation, event selection, exact saved-result reopening and source-bar opening; one META option contract-page request, populated eligibility disclosure, and local type filtering. These actions created one definition, one calculation and one retained option page. They supersede earlier empty-state observations for these paths.
-- Not exercised live: Yahoo screener requests/results/pagination; Saved scan saves/runs/matches; new IEX history collection and populated comparisons; other chart algorithms, cancellation and import/export; drawing save/alert creation; option subscription/feed changes, quotes and ticket preparation; research admission and saved-post rescreening. The guide traces these effects in source but does not present them as observed runtime results.
-- The scan and screen empty states are not product failures. AAPL has no retained current-market cache in the observed view. META has an existing daily IEX cache; loading that cache does not prove new collection or comparison. No observed AAPL position means Position offers proposal fields but no holdings.
+Historical dated observations (24–25 October 2026 browser checks; not re-verified from code and not current account facts):
+
+- Browser observed on 24 October: Dashboard shell/account ledger/panels/watchlist; all four Markets tabs and Watchlists filter disclosure; AAPL instrument Chart, Research, Options, Position; the five chart inspectors; saved-definition/index loading for AAPL and META; Research Summary, Reports, Debate, Sources, Activity, Setup; populated saved AAPL report/review and source data.
+- Additional live checks on 25 October 2026: one META Heikin-Ashi definition save/calculation, event selection, exact saved-result reopening and source-bar opening; one META option contract-page request, populated eligibility disclosure, and local type filtering. These actions created one definition, one calculation and one retained option page. They superseded earlier empty-state observations for these paths.
+- Not exercised in those checks: Yahoo screener requests/results/pagination; Saved scan saves/runs/matches; new IEX history collection and populated comparisons; other chart algorithms, cancellation and import/export; drawing save/alert creation; option subscription/feed changes, quotes and ticket preparation; research admission and saved-post rescreening. The guide traces these effects in source but does not present them as observed runtime results.
+- The scan and screen empty states are not product failures. AAPL had no retained current-market cache in the observed view. META had an existing daily IEX cache; loading that cache does not prove new collection or comparison. No observed AAPL position means Position offers proposal fields but no holdings.
 - Never claim side-effect workflows were exercised from opening the page or reading their controls.
+
 ## Source-only control detail: price drawings on Chart
 
-The browser showed the Chart inspector. No drawing was created, edited, saved, removed, rebound, or used to make an alert. The following details are source-only (app.js:1490–1524; chart pointer gestures: market-chart.js drawing controller and app.js:1520–1523).
+The browser showed the Chart inspector. No drawing was created, edited, saved, removed, rebound, or used to make an alert. The following details are source-only (`drawingPanel()`, `bindDrawings()` in app.js; chart pointer gestures: `annotations()` in market-chart.js).
 
 - Scope is shown as symbol, timeframe, context, feed and adjustment. A saved annotation matches a pane by symbol, timeframe and current/saved context. Full scope also records instrument ID, currency, provider, feed, adjustment, session and unit. If scope differs, the panel shows an incompatibility warning. The annotation remains inspectable. The app does not silently rebind it.
 - **New annotation** choices are horizontal-line, trend-line, and text.
@@ -337,7 +343,7 @@ The browser showed the Chart inspector. No drawing was created, edited, saved, r
 
 ## Source-only chart analysis control inventory
 
-The Chart inspector can expand **Chart analysis · transforms, studies, seasonality and formulas**. The browser saw the collapsed panel only; all controls below are source-only (app.js:1526–1595 and following analysis handlers).
+The Chart inspector can expand **Chart analysis · transforms, studies, seasonality and formulas**. The browser saw the collapsed panel only; all controls below are source-only (`chartAnalysisPanel()`, `analysisSettings()` and `analysisAction()` in app.js).
 
 - **Load saved definitions and calculation index** reads the saved definition list and calculation index. It does not collect market data or place an order. If metadata is unavailable, the app shows an error.
 - **Saved definition revision** choices are **New definition** and retained definitions with kind and revision. Selecting a saved definition loads that exact revision and its pinned dependencies.
@@ -358,12 +364,12 @@ The Chart inspector can expand **Chart analysis · transforms, studies, seasonal
 
 ## Review evidence
 
-Baseline source review: `b632a22`; current follow-up uses `580f1c8`, 2026-10-25. Browser observations are limited to the views and actions explicitly recorded above. Source-only effects were not run. The older 2026-10-24 examples are dated records, not current account facts.
+Historical review markers: baseline source review commit `b632a22`; follow-up commit `580f1c8`, both 2026-10-25. They are dated records, not a check of the current code (later commits, such as `9c0e0c8` which removed chart playback, changed it). Browser observations are limited to the views and actions explicitly recorded above as historical. Source-only effects were not run. The older 2026-10-24 examples are dated records, not current account facts.
 
 ## Source-to-result paths
 
 - Research admission: `reviewResearch` captures selected symbols and configuration revision. `launchResearch` posts them to `/api/runs`. `DeskService._start_run` checks date, configuration, models, account observation, configured membership, current-day snapshots and the one-active-run limit. A queued run then owns fresh per-stock graphs. Account context is captured at run creation; a historical analysis date does not reconstruct historical holdings.
-- All four standard analyst roles are requested by the desk. Fast/deep model roles are described in the Settings reference. A completed request receipt proves a boundary returned, not useful data or a correct conclusion. Required collection/report failures and incomplete social coverage stay visible. Inspect the latest stock status, Source coverage and Activity together.
+- The run takes its analyst selection, graph and limits from the active workflow (Workflows workspace); Fast/deep model roles and their token/reasoning budgets are set in Settings → Research. A completed request receipt proves a boundary returned, not useful data or a correct conclusion. Required collection/report failures and incomplete social coverage stay visible. Inspect the latest stock status, Source coverage and Activity together.
 - `DeskStore` retains only the newest cycle for each ticker. It also keeps the latest result’s source receipts. Restarted unfinished research fails rather than resuming; unfinished receipts become unknown. Terminal callbacks can be labeled late and saved for the retained result. None of this recreates historical research checkpoints.
 - Screener requests use `discoveryMarkup` / `bindDiscovery` and `market_discovery.py`; only an exact successful retained result can support adding a discovery symbol to the configured universe. Yahoo discovery is separate from Alpaca entitlement/tradability.
 - Scans save immutable definitions and use the selected saved revision for Run/Schedule. Saving a new revision cancels active runs of its prior revision. Imports require `scan-definitions-v1`, 1–1,000 definitions and valid chart dependencies; imported schedules/attention are off. Stale scan/workspace revisions reject writes. A Follow import must map to a local list. Source: `scannerAction`, `bindScanner`, `market_discovery.py`.
@@ -454,13 +460,14 @@ Guided named-input rows have **Input name**, **Remove input**, and **Add named i
 ## Source map
 
 - tradingagents/web/static/app.js: shell, Dashboard, Markets and Research renderers; delegated event handlers; option discovery widget; chart inspector and study/drawing/source controls; research list and report tabs; local view state; workspace save UI.
+- tradingagents/web/static/lists.js (`DeskLists`: paging, duration estimate), report-format.js (`DeskReports`: report text rendering), workflows.js (Workflows workspace, active workflow), command-controls.js (explicit human order command forms), recovery.js (recovery UI).
 - tradingagents/web/static/nautilus.js: native account/runtime status and session-profile rendering.
-- tradingagents/web/static/market-chart.js: chart rendering, comparison alignment and pointer/drawing interactions.
+- tradingagents/web/static/market-chart.js: chart rendering, comparison alignment (`compare()`), pointer/drawing interactions (`annotations()`) and derived analysis display (`mountAnalysis()`).
 - tradingagents/web/static/vendor/lightweight-charts/ and vendor/lightweight-charts-drawing/: pinned chart and drawing libraries.
 - tradingagents/web/market_discovery.py: retained Yahoo discovery and option discovery records/state.
 - tradingagents/web/alpaca_readonly.py: Alpaca contract lookup and option quote reads.
 - tradingagents/web/service.py: discovery routing, source retention and native subscription configuration.
-- tradingagents/web/market_history.py and market_evidence.py: retained market-history requests, evidence and chart source identity.
+- tradingagents/web/market_history.py and market_evidence.py: retained market-history requests, evidence and chart source identity; stock_evidence.py: supplementary evidence requests.
 - tradingagents/web/workspace.py and store.py: revisioned workspace persistence and local records.
 - Research orchestration continues through tradingagents/web/service.py into the TradingAgents graph; saved latest-per-ticker records and artifacts use store.py.
 

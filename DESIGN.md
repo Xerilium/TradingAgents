@@ -87,25 +87,25 @@ typography:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
     fontSize: "26px"
     fontWeight: 600
-    lineHeight: 1.3
-    letterSpacing: "-.025em"
+    lineHeight: 1.2
+    letterSpacing: "-.02em"
   headline:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
     fontSize: "22px"
     fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "-.015em"
+    lineHeight: 1.3
+    letterSpacing: "-.012em"
   title:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
-    fontSize: "16px"
-    fontWeight: 620
-    lineHeight: 1.5
+    fontSize: "18px"
+    fontWeight: 600
+    lineHeight: 1.35
     letterSpacing: "0"
   body:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
     fontSize: "16px"
     fontWeight: 400
-    lineHeight: 1.65
+    lineHeight: 1.45
   report:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
     fontSize: "16px"
@@ -114,18 +114,18 @@ typography:
   label:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
     fontSize: "13px"
-    fontWeight: 550
-    lineHeight: 1.5
+    fontWeight: 600
+    lineHeight: 1.45
   action:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif'
     fontSize: "14px"
-    fontWeight: 600
-    lineHeight: 1.5
-  code:
-    fontFamily: 'ui-monospace, Consolas, monospace'
-    fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.45
+  code:
+    fontFamily: 'ui-monospace, Consolas, monospace'
+    fontSize: "13px"
+    fontWeight: 400
+    lineHeight: 1.65
 rounded:
   control: "3px"
   badge: "2px"
@@ -134,12 +134,12 @@ rounded:
 spacing:
   chip-gap: "5px"
   control-block: "8px"
-  panel-block: "11px"
+  panel-block: "16px"
   grid: "12px"
-  panel-inline: "13px"
+  panel-inline: "16px"
   section: "16px"
   workspace-top: "20px"
-  workspace-inline: "21px"
+  workspace-inline: "16px"
   workspace-bottom: "24px"
 components:
   button-primary:
@@ -174,7 +174,7 @@ components:
     textColor: "{colors.ink}"
     typography: "{typography.body}"
     rounded: "{rounded.control}"
-    padding: "8px 10px"
+    padding: "8px 12px"
   panel:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
@@ -183,25 +183,20 @@ components:
     backgroundColor: "{colors.instrument-header}"
     textColor: "{colors.ink}"
     typography: "{typography.title}"
-    padding: "11px 13px"
+    padding: "16px"
   navigation-active:
     backgroundColor: "{colors.nav-active-surface}"
     textColor: "{colors.nav-active-text}"
     rounded: "0"
     padding: "8px 12px"
-  symbol-chip:
-    backgroundColor: "#293a47"
-    textColor: "#c1d0db"
-    rounded: "{rounded.badge}"
-    padding: "3px 5px"
   status-verified:
     backgroundColor: "#203a2d"
     textColor: "{colors.status-success-text}"
     rounded: "{rounded.badge}"
-    padding: "3px 6px"
+    padding: "4px 8px"
 ---
 
-# Design System: TradingAgents
+# Design System: TradingAgents Paper Desk
 
 ## Overview
 
@@ -219,7 +214,7 @@ The visual system keeps research, proposals, and broker execution legible as sep
 - System typography with aligned, tabular financial figures.
 - Responsive stacking that preserves instrument context.
 
-Extracted from the current cascade in `tradingagents/web/static/app.css`, the shell in `tradingagents/web/static/index.html`, and the rendered component templates in `tradingagents/web/static/app.js`. The final dark `:root` and subsequent workstation rules supersede earlier light definitions. This document records the implemented system; it is not a complete application QA verdict. The surface brief is `.impeccable/surface-brief-paper-desk.md`.
+Extracted from the current cascade in `tradingagents/web/static/app.css` and the workspace stylesheets `ui-workflows.css`, `ui-markets.css`, `ui-instrument.css`, `ui-orders.css` and `ui-research-journal.css`, the shell in `tradingagents/web/static/index.html`, and the rendered component templates in `tradingagents/web/static/app.js`. The final dark `:root` and subsequent workstation rules supersede earlier light definitions. This document records the implemented system; it is not a complete application QA verdict. The surface brief is `.impeccable/surface-brief-paper-desk.md`.
 
 ## Colors
 
@@ -227,7 +222,7 @@ The palette uses cool charcoal layers for long reading sessions, with a pale gre
 
 ### Primary
 
-- **Desk Green** (`accent`): primary buttons, active chart tabs, links, the brand mark, and active navigation treatment.
+- **Desk Green** (`accent`): primary buttons, active tabs, links, the brand mark, and active navigation treatment.
 - **Green Hover** (`accent-hover`): primary button hover fill and border.
 - **Green Wash** (`accent-wash`): retained root wash token; the current status badges use their explicit component variants.
 - **Positive Green** (`positive`): gains, positive quote changes, completed research stages, and upward candles.
@@ -255,7 +250,7 @@ The palette uses cool charcoal layers for long reading sessions, with a pale gre
 
 ## Color palettes
 
-Success, error, warning and information states use distinct foreground, border and surface tones across the workstation. These component-specific tones intentionally extend the base semantic colors while preserving the same status meaning. Compact cards and fields share the 4px radius documented as `rounded.compact`.
+Success, error, warning and information states use distinct foreground, border and surface tones across the workstation. These component-specific tones intentionally extend the base semantic colors while preserving the same status meaning. Desk fields and panels use the 3px control radius (`rounded.control`); the 4px `rounded.compact` value applies only to the configured-universe workspace, which overrides `--radius`.
 
 ## Typography
 
@@ -263,22 +258,20 @@ Success, error, warning and information states use distinct foreground, border a
 
 The typography resembles a native trading workstation. Compact labels remain subordinate to instrument symbols and account values; reports gain breathing room through line height rather than a new font.
 
-- **Headline:** page headings and Dashboard account values use the 22px heading token.
-- **Title:** section headings use the existing compact hierarchy.
-- **Body:** general UI text uses 16px; data cells use 14px.
+- **Headline:** page headings use the 26px display token; section headings are 22px and Dashboard account values use the 22px heading token.
+- **Title:** panel and section headings use the 18px section token.
+- **Body:** general UI text uses 16px with 1.45 leading; paragraphs and reports use 1.65; data cells use 14px.
 - **Report:** analyst text uses the body role, preserves whitespace, and wraps long tokens.
-- **Label:** table headings and supporting captions use the 13px metadata token.
-- **Action:** standard buttons and navigation controls use the 14px UI token; compact metadata variants can use 13px.
+- **Label:** table headings (600 weight) and supporting captions use the 13px metadata token.
+- **Action:** standard buttons and navigation controls use the 14px UI token at regular weight; compact metadata variants can use 13px.
 
-**The Numeric Alignment Rule.** Keep table cells and account values in tabular numerals. Right-align numeric columns and left-align instrument identity.
+**The Numeric Alignment Rule.** Keep table cells and account values in tabular numerals and left-align instrument identity. Right-align numeric columns where the workspace defines them (for example the watchlist); right alignment is not applied to every table.
 
 ## Layout
 
-The desktop shell places a vertical navigation sidebar beside the workspace and its context bar. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
+The desktop shell places a vertical navigation sidebar (172px, widening to 208px from 1100px) beside the workspace and its context bar. The workspace pages are Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
 
-The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist keeps a nonshrinking table area and outer scrolling when its controls need more space. Research launch stays beside batch selection; inspecting a stock does not change the selected batch.
-
-Workspaces follow the existing user jobs documented in docs/user-workflows.md. Model proposal is separate from actual positions and performance. Stock details name their originating list on return; research evidence leads its reading view, with notes and destructive bulk actions secondary.
+The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist and its table remain scrollable when their controls need more space.
 
 | Condition | Implemented behavior |
 | --- | --- |
@@ -300,7 +293,7 @@ Normal workspace surfaces are flat. Layering comes from the dark canvas, lighter
 
 ## Shapes
 
-Controls, panels, and account containers use the compact control radius. Status badges and symbol chips use the smaller badge radius; the dialog uses the dialog radius. These are restrained corner treatments on rectangular tools. Navigation controls retain a visible active state. Circular marks identify status or research stages.
+Controls, panels, and account containers use the compact control radius. Status badges use the smaller badge radius; the dialog uses the dialog radius. These are restrained corner treatments on rectangular tools. Navigation controls retain a visible active state. Circular marks identify status or research stages.
 
 One-pixel borders carry structural separation. Avoid turning the ledger or instrument grid into detached rounded tiles.
 
@@ -308,19 +301,17 @@ One-pixel borders carry structural separation. Avoid turning the ledger or instr
 
 ### Buttons
 
-Compact, explicit actions with a minimum height of 32px; the small variant uses 27px. Primary actions use Desk Green and dark text. Ordinary actions use Control Slate. Quiet actions remove the resting fill and border. Destructive actions use a rose border, dark rose fill, and Loss Rose text.
+Compact, explicit actions with a minimum height of 36px. Primary actions use Desk Green and dark text. Ordinary actions use Control Slate. Quiet actions remove the resting fill and border. Destructive actions use a rose border, dark rose fill, and Loss Rose text.
 
-Hover changes fill and border. All buttons inherit 160ms ease transitions for background, text, and border color. Keyboard focus uses a three-pixel focus outline with a three-pixel offset. Disabled buttons retain their label, use half opacity, and show a not-allowed cursor. The mobile page-heading action has a more specific 9px 11px padding rule.
+Hover changes fill and border. All buttons inherit 160ms ease transitions for background, text, and border color. Keyboard focus uses a two-pixel accent outline with a two-pixel offset. Disabled buttons retain their label, use half opacity, and show a not-allowed cursor.
 
-### Status badges and symbol chips
+### Status badges
 
-Status badges are compact labeled rectangles. Green represents completion, accepted/verified states, or positive ratings; blue covers running and pending states; amber covers review, blocked, hold, and stopping states; rose covers failures, rejected states, or negative ratings. Neutral covers other named states.
-
-Symbol chips are buttons. Hover uses a green-toned surface; selection uses a brighter border, green fill, and `aria-pressed`. The selected symbol remains consistent across the linked instruments.
+Status badges are compact labeled rectangles (4px 8px padding). Green represents completion, accepted/verified states, or positive ratings; blue covers running and pending states; amber covers review, blocked, hold, and stopping states; rose covers failures, rejected states, or negative ratings. Neutral covers other named states. The selected symbol remains consistent across the linked instruments through selection state, not a chip component.
 
 ### Panels and ledger
 
-Each panel has a ruled outer boundary, a lighter header, and a flush body. Standard headers have a minimum height of 49px. Tables meet the panel edges. Empty panels preserve their title and show an explanation of what is absent and the relevant next action.
+Each panel has a ruled outer boundary, a lighter header, and a flush body. Panel headers use 16px padding; Dashboard headers have a 40px minimum height and watchlist headers use 12px padding. Tables meet the panel edges. Empty panels preserve their title and show an explanation of what is absent and the relevant next action.
 
 The ledger uses large tabular values with smaller labels and context lines. Missing broker values remain visibly unavailable.
 
@@ -334,9 +325,13 @@ Global navigation combines small line icons with text in the desktop sidebar. Th
 
 ### Linked instruments
 
-Selecting a ticker updates the daily OHLC chart, quote strip, and research inspector. The selected table row uses a green-toned fill, while pointer hover uses a cooler surface. Chart tabs switch between instrument history and account equity; period controls are compact text buttons. Up/down candles use separate fills and strokes; volume bars have reduced opacity.
+Selecting a ticker updates the daily OHLC chart, quote strip, and research inspector. The selected table row uses a green-toned fill, while pointer hover uses a cooler surface. The chart is the SVG renderer in `app.js` (`stockChart()`); there is no chart-tab control. Up/down candles use separate fills and strokes; volume bars have reduced opacity.
 
-Reports use disclosure sections with a visible expansion marker. The research-stage line uses five equal grid columns, labels that can wrap, and colored completion markers. Empty charts show a plain panel surface and an explicit absence message, with no decorative price series.
+Reports use disclosure sections with a visible expansion marker. Research is organized in Summary, Reports, Debate, Sources, Activity and Setup tabs; stage markers use colored completion indicators. Empty charts show a plain panel surface and an explicit absence message, with no decorative price series.
+
+### Workflows studio and other workspaces
+
+The Workflows workspace is a studio grid (editor, generated diagram, inspector) styled in `ui-workflows.css`; its CodeMirror theme and Mermaid diagram are bundled from `desktop/workflow-ui`. Workspace stylesheets `ui-markets.css`, `ui-instrument.css` (quote strip and instrument tabs), `ui-orders.css` and `ui-research-journal.css` extend the shared tokens, and the Orders detail pane collapses at 1500px. Connected status uses `#268567`, distinct from the accent, and the browser theme color is `#182b3b`.
 
 ### Order preview and feedback
 
@@ -351,7 +346,7 @@ The only repeating motion is the existing 1.5s loading pulse. The reduced-motion
 - **Do** preserve the charcoal workspace, compact rectangular instruments, and green action language.
 - **Do** keep selected-symbol context consistent across the watchlist, chart, and evidence.
 - **Do** pair status colors with text and financial changes with signed values.
-- **Do** preserve tabular numerals and right-aligned financial columns.
+- **Do** preserve tabular numerals and the right-aligned financial columns where defined.
 - **Do** retain visible unavailable, loading, failed, and paused states.
 - **Do** keep broker timestamps and paper identity readable alongside the data they qualify.
 - **Do** preserve keyboard focus, native form controls, and reduced-motion behavior.
@@ -368,7 +363,7 @@ The only repeating motion is the existing 1.5s loading pulse. The reduced-motion
 
 ## Shared desktop tokens
 
-The single CSS token definition is the `:root` block in `tradingagents/web/static/app.css`.
+The shared CSS tokens are defined in the `:root` block in `tradingagents/web/static/app.css`; the configured-universe workspace (`#universe-review`) overrides several of them (accent, muted, line, radius, surface).
 Workspace styles consume these properties; do not add local copies of the type or spacing scale.
 
 | Role | Token | Value |
