@@ -269,6 +269,23 @@ The typography resembles a native trading workstation. Compact labels remain sub
 
 ## Layout
 
+The blueprint Foundation uses a 36px app bar and 40px workspace heading, with
+8px 12px 12px main padding and no workspace footer. Errors and recovery notices
+retain natural height. The symbol search, labeled account flags, local-draft
+counts, Alerts link, order-pause management and engine/stream/Laya observations
+use existing source state; unverified exposure displays UNKNOWN.
+
+Shared tabs use roving focus and Left/Right/Home/End keys. Single-key trader
+shortcuts yield to form controls, editable regions, CodeMirror, composition and
+open dialogs. Selection for inspection, research and deletion remains separate.
+Edited or loaded legacy tickets keep their instrument identity until explicit
+new/discard/reset; the docked drawer is a later implementation stage.
+
+At 1100px width or 800px height the Dashboard keeps its single-panel tabs;
+at 790px width the navigation becomes a scrolling horizontal row. The app bar
+wraps when controls need more space. These are CSS viewport rules; browser
+resizing does not establish actual Windows DPI acceptance.
+
 The desktop shell places a vertical navigation sidebar (172px, widening to 208px from 1100px) beside the workspace and its context bar. The workspace pages are Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
 
 The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist and its table remain scrollable when their controls need more space.

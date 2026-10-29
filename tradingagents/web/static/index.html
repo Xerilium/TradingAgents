@@ -34,17 +34,22 @@
       <nav id="navigation" aria-label="Main"></nav>
       <div class="sidebar-bottom">
         <div class="paper-identity" id="connection-identity" style="flex-wrap:wrap"><span class="status-dot disconnected"></span><strong>Account unverified</strong><span>Configured connection not yet observed</span></div>
-        <button id="pause-trading" class="sidebar-button" type="button">Pause execution</button>
         <div id="gateway-status" class="gateway-status"><span class="status-dot"></span><span>Checking gateway</span></div>
+        <div id="stream-status" class="gateway-status"><span class="status-dot pending"></span><span>Stream: unknown</span></div>
+        <div id="laya-shell-status" class="gateway-status"><span class="status-dot pending"></span><span>Laya: unknown</span></div>
         <span class="sidebar-footer">TradingAgents + maenifold</span>
       </div>
     </aside>
     <div class="workspace">
       <header class="topbar">
         <div class="breadcrumb"><span id="universe-name">FANGMAN</span><span class="breadcrumb-slash">/</span><span id="page-label">Dashboard</span></div>
-        <label class="context-search">Find a symbol <input id="context-symbol" list="context-symbols" placeholder="Symbol" autocomplete="off"><datalist id="context-symbols"></datalist></label>
+        <label class="context-search">Find symbol <input id="context-symbol" list="context-symbols" placeholder="Ctrl+K or /" autocomplete="off" aria-keyshortcuts="Control+k Meta+k /"><datalist id="context-symbols"></datalist></label>
+        <span id="account-blocked" class="badge amber" hidden>Account blocked</span>
+        <a id="shell-alerts" href="#alerts">Alerts: 0</a>
+        <button id="pause-trading" class="button button-small" type="button">Orders: Unconfirmed · Manage</button>
         <div class="topbar-actions"><span id="last-updated" class="muted">Waiting for connection</span><button id="refresh" class="button button-quiet button-small" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 8a7 7 0 0 1 11.6-3L20 8M4 16l2.3 3A7 7 0 0 0 18 16"/></svg><span>Refresh</span></button></div>
       </header>
+      <div id="shell-recovery" class="notice" role="status" hidden></div>
       <div id="order-status" class="notice" role="status">Checking order readiness…</div>
       <div id="notice" class="notice" role="status" hidden></div>
       <div id="settings-runtime-parking" hidden>
@@ -60,7 +65,6 @@
       </section>
       </div>
       <main id="main" tabindex="-1"><div class="initial-state"><div class="loading-bar"></div><h1>Opening your trading desk</h1><p>Connecting to your local TradingAgents service.</p></div></main>
-      <footer class="workspace-footer"><span>Local workspace · maenifold MCP · Configured Alpaca account</span><span>Snapshot market data · USD</span></footer>
     </div>
   </div>
   <div id="toast" class="toast" role="status" hidden></div>

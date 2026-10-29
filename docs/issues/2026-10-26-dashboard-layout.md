@@ -48,3 +48,105 @@ A visible development pass checked research selection/confirmation, Markets navi
 Development reported unavailable native credential storage and had no retained research, supported instrument receipts, drafts or populated account evidence. Populated report/basket-field behavior, simulation execution and broker lifecycles were not exercised. No research, model synthesis, simulations or broker actions were started. Production remained connected and its data/credentials were untouched.
 
 README.md now maps the integrated platform; docs/user-workflows.md and docs/platform-reference.md provide canonical journeys and capability boundaries. The operating guide and PRODUCT.md were replaced with current facts. Sixteen obsolete generated/reference files were removed; docs/nautilus-v1-runtime-manifest.json remains because runtime code uses it. No replacement audit dump was created.
+
+
+## 29 October: blueprint Step 1 Foundation
+
+Status: Foundation source committed with bounded compatibility evidence. Steps 2–5 are not implemented by this batch. Implementation authority: `docs/ui-redesign-implementation-plan.md` (v2 at `12e7700`), jointly read with `docs/ui-redesign-blueprint.md` frozen at `3770bbe`. Base revision: `477abaa`; the local commit containing this section is the candidate revision.
+
+Primary owns app.js, index.html, app.css, DESIGN.md and Git. No support-file editing was delegated. A fresh read-only source reviewer was already running when the human corrected the added per-step review; its one result was collected without another review. It found permanent pinning, compact-state rating/draft bindings, stale tab attributes, row-focus loss and shared evidence repaint scope. Primary corrected these in one source batch; the browser subsequently found the legacy renderer omitted the new pin notice, which was included in its existing pane extraction. No independent review pass or blanket acceptance of the corrected candidate is claimed.
+
+### Bounded preflight and design context
+
+The isolated development profile and repository desk/native Python executables existed. The development desk subsequently showed seven default FANGMAN symbols, no retained research or human proposals, unverified account state and native credential storage unavailable. No production export/restore, credential provisioning or model-weight provisioning was performed. These missing live inputs limit populated-state coverage; they do not block frontend implementation. Production stayed stopped and untouched.
+
+Impeccable Operate, its craft floor, PRODUCT.md and DESIGN.md were read. The one context-loader attempt used an unsupported target option; context was read directly afterward. A detector invocation with that same unsupported option did not scan; no detector pass is claimed. No design-sidecar drift repair was undertaken.
+
+### Implemented contracts and DOM handoff
+
+- `app.js`: `inspectSymbol`, `pinTicket`, `researchDeleteSelection`, empty initial research batch, explicit search Enter/Shift+Enter and inspection-independent checkbox changes. Legacy ticket forms retain their symbol, block another symbol's ticket/chart-copy path, and release only on explicit new/discard/reset. The docked drawer remains Step 2.
+- `captureRenderInput` / `restoreRenderInput` preserve focused form values, caret and local scroll across matching-context background renders, including exit/package fields. Existing draft models, report anchors and pane scroll retention remain in place.
+- `renderTablist` / `bindTablists`: native buttons with `role=tablist/tab`, `aria-selected`, roving tabindex and Left/Right/Home/End activation. Dashboard tabs use `#dashboard-panels-{watch,chart,research,positions,orders}` and `#dashboard-pane-*` with `aria-controls` / `aria-labelledby`.
+- `instrumentHeaderStrip(symbol)`: explicit quote/sizes and derived IEX spread, nullable capability flags, verified exposure gate, human-draft count, detailed-result-gated rating, age and saved raw-close drift. Dashboard consumes it; later workspace mounts stay in their assigned steps.
+- `stockEvidencePanel(symbol)` delegates to the single existing provider/SEC/corporate-action renderer inside UniverseReview. `UniverseReview.loadStockEvidence` and `bindStockEvidence(symbol)` expose the existing read/form binding. Async saved-evidence completion can repaint the matching Dashboard, Markets or Research mount. Existing `/api/stock-evidence` GET and explicit `/api/market-history` evidence POST contracts are unchanged; no provider job was requested.
+- Shell IDs: `#context-symbol`, `#shell-alerts`, `#account-blocked`, `#shell-recovery`, `#pause-trading`, `#gateway-status`, `#stream-status`, `#laya-shell-status`. Ten distinct SVG paths; 36px desktop app bar, compact workspace heading, main padding and no footer. Order-status control opens existing management; it does not change broker authority.
+- All four legacy helpers and call sites (`layoutOrders`, `layoutBasketGroups`, `layoutMarkets`, `compactScannerMarkup`) remain. Backend/API/static allowlist/export/import remain unchanged. No new served static files.
+
+### Observed compatibility and limits
+
+One bounded visible in-app-browser pass used actual development port 8099 and its isolated store. The normal development launcher performed its incremental Tauri dev startup; no release/package build occurred. Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings rendered. Workflows completed loading its catalog and showed Active: Default; no workflow activation/edit or research was performed. Broker, empty-research and unavailable-credential states remained explicit.
+
+The initial render failed because attention occurrences are a keyed object; the shell now uses Object.values before filtering. Historical console errors at 21:39 UTC belong to that failed initial load. No new error was observed in the subsequent page pass. This does not certify every control or populated state.
+
+Observed Foundation interactions: default 0 checked; typing J in the watch search retained input focus and inserted text rather than navigating; Ctrl+K focused symbol search; Shift+Enter checked AAPL while inspection remained GOOGL; tab ArrowRight selected Research with tabindex 0 and restored focus; repeated Markets X/Space kept focus on AAPL and preserved inspection separation; unsaved AAPL quantity 3 remained after inspecting MSFT and reopening the pinned ticket. No preview/save/approval/submission/cancel/replace, collection, research, simulation or model synthesis was invoked.
+
+CSS viewport observations: 1920×1080 and 1440×900 used a 36px bar and all Dashboard panes; 1100×800 and 790×800 used one Dashboard pane with reachable tabs and natural header wrapping. No horizontal document overflow was observed at these sizes. The 1500×900 viewport was used for the Markets ticket interaction. Actual Windows 125%–150% DPI remains unverified.
+
+Evidence: `.local-workspace/evidence/foundation-20261029/markets-pin-and-focus.png` and `dashboard-{1920x1080,1440x900,1100x800,790x800}.png`. These local captures contain the actual empty development state; no fabricated market or account inputs were used.
+
+Syntax: `node --check` passed all eight top-level `tradingagents/web/static/*.js` files. Corrections were followed by parser checks of the final changed app.js. `git diff --check` passed after removing the extra CSS EOF blank line. No tests were authored/run. Primary signs off on the Foundation source and the observed empty/unavailable-state compatibility only; real retained populated data, editor-local save, shared-evidence populated mounts, all exceptional broker lifecycles and the future docked drawer remain unverified or deferred as shown below.
+
+### Continuing requirement traceability
+
+Each row tracks the full blueprint requirement. Partial Foundation coverage never marks a later workspace requirement complete. Evidence categories are observed, source-reviewed, failed and unverified.
+
+| Requirement | File and function / remaining stage | Evidence | Verdict |
+|---|---|---|---|
+| US-01 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-02 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-03 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-04 | app.js instrumentHeaderStrip; complete Research mounting in Step 3 | source-reviewed | Foundation helper implemented; populated verdict unverified |
+| US-05 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-06 | app.js inspectSymbol/pinTicket/proposalEditor/chart-copy guards; drawer in Step 2 | observed | Legacy unsaved pin retention observed; drawer deferred |
+| US-07 | index.html; app.css shell; app.js pageHeader | observed | Foundation shell implemented; actual Windows DPI unverified |
+| US-08 | app.js readState/renderOverview; Dashboard refinements in Step 4 | observed | Empty initial batch and compatibility observed; full story deferred |
+| US-09 | app.js instrumentHeaderStrip; Markets mounting in Step 4 | source-reviewed | Shared helper implemented; scan/header composition deferred |
+| US-10 | app.js stockEvidencePanel/loadStockEvidence; mounts in Steps 3–4 | source-reviewed | Shared existing renderer exposed; populated evidence unverified |
+| US-11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-14 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-16 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-17 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-18 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-19 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-20 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-21 | app.js captureRenderInput/restoreRenderInput; Journal redesign in Step 5 | source-reviewed | Shared focus primitive implemented; full Journal story deferred |
+| US-22 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-23 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-24 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-25 | app.js renderTablist/bindTablists/traderShortcut; chart alternatives in later stages | observed | Foundation tabs/guards implemented; chart story remains partial |
+| E-01 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-02 | app.js instrumentHeaderStrip | source-reviewed | Nullable quote/size/derived-spread helper; populated feed unverified |
+| E-03 | app.js instrumentHeaderStrip | observed | Unknown capability state observed; true/false retained states unverified |
+| E-04 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-05 | app.js renderShellStatus; Settings in Step 5 | source-reviewed | Shell whitelist warning implemented; populated flag states unverified |
+| E-06 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-07 | app.js stockEvidencePanel/bindStockEvidence; Steps 3–4 | source-reviewed | Reusable existing evidence renderer; populated mounts unverified |
+| E-08 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-09 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-10 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-14 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| C-8 | app.js exposureKnown/instrumentHeaderStrip | observed | UNKNOWN observed on unverified account; verified positions unverified |
+| C-9 | app.js inspectSymbol/pinTicket/legacy ticket guards; Step 2 drawer | observed | Pin/retain/reopen observed; full drawer handoff deferred |
+| L1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L3 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L4 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L5 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L6 | app.js renderChrome; Orders/Settings remaining Steps 2/5 | observed | Shell Orders: Active/Paused wording; full cross-page story partial |
+| L7 | app.js iconPaths | source-reviewed | Ten distinct paths; journal alias removed |
+| L8 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L9 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L10 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L14 | app.js renderChrome; remaining Steps 2/5 | observed | Shell pause-management wording; cross-page work deferred |
+| U1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| U2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
