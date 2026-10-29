@@ -52,6 +52,7 @@
 .strategy-result-reading p,.strategy-result-reading h3,.strategy-result-reading h4,.strategy-result-reading details{margin-bottom:var(--space-3)}
 .strategy-headlines{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-block:var(--space-4);font-variant-numeric:tabular-nums}
 .strategy-headlines dd{margin:var(--space-1) 0 0;font-weight:600}.strategy-headlines dt{color:var(--muted)}
+.strategy-headlines small{display:block;overflow-wrap:anywhere;color:var(--muted);line-height:1.4;margin-top:var(--space-1)}
 .native-analyzer .order-facts{max-width:none}
 .journal-list-tools{display:flex;flex-wrap:wrap;align-items:end;gap:var(--space-2);padding-block:var(--space-3)}
 .journal-list-tools label{display:grid;gap:var(--space-1);flex:1 1 200px}

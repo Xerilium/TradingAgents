@@ -192,6 +192,7 @@ body{font-size:var(--text-ui)}h1{font-size:var(--text-heading);font-weight:600;l
 #universe-review.alerts-workspace #attention-workspace>.view-tabs button{flex:none;white-space:nowrap}
 #universe-review.alerts-workspace .proposal-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--space-3); }
 #universe-review.alerts-workspace .proposal-fields label { display:flex; flex-direction:column; }
+#universe-review.alerts-workspace .proposal-fields label[hidden] { display:none; }
 #universe-review.alerts-workspace pre { white-space:pre-wrap; overflow-wrap:anywhere; }
 .alert-inspector { padding:var(--space-3); max-height:65vh; display:flex; flex-direction:column; }
 .alert-inspector-body { min-height:0; overflow:auto; }
