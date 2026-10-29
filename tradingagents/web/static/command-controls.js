@@ -102,6 +102,7 @@ document.addEventListener('change',event=>{if(event.target.dataset.basketApprova
 document.addEventListener('click',async event=>{
  const button=event.target.closest('[data-imported-operation],[data-command-control],[data-approval-submit],[data-command-submit],[data-command-operation],[data-command-resolve],[data-basket-admit],[data-basket-pause],[data-basket-review],[data-basket-next]');
  if(!button||button.disabled||commandBusy)return;
+ if(button.dataset.approvalSubmit||button.dataset.commandSubmit||button.dataset.commandOperation||button.dataset.importedOperation||button.dataset.basketAdmit||button.dataset.basketNext)commandConfirmation=null;
  commandBusy=true;button.disabled=true;
  try{
  const action=button.dataset.commandControl;let request={commands_revision:state.commands.revision,investor_revision:state.investor?.revision};
