@@ -92,18 +92,18 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 
 | Requirement | File and function / remaining stage | Evidence | Verdict |
 |---|---|---|---|
-| US-01 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-02 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-03 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-04 | app.js instrumentHeaderStrip; complete Research mounting in Step 3 | source-reviewed | Foundation helper implemented; populated verdict unverified |
-| US-05 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-01 | app.js researchCollection/researchPickerSymbols/researchButton; ui-research-journal.css | source-reviewed | Inline paged universe picker, independent batch/delete checks, unfinished/today/clear and inspected-symbol fallback implemented; runtime unverified |
+| US-02 | app.js reviewResearch/launchResearch; index.html #research-dialog | source-reviewed | Explicit parameter popover, date replacement warning, exclude_fred, workflow/models/ETA, current-account/no-orders disclosure and first-symbol Summary focus implemented; launch unexercised |
+| US-03 | app.js researchProgress/researchVerdict/detailNotice | source-reviewed | Six distinct counts, additional legacy statuses retained, final-decision/status-gated verdict and request-bound loading implemented; populated runtime unverified |
+| US-04 | app.js renderResearch/instrumentHeaderStrip | source-reviewed | Shared verdict/date/raw-drift/exposure header mounted on Research; existing Foundation source guards retained; populated observations unverified |
+| US-05 | app.js researchSummary/researchDebateSummary/reviewEditor | source-reviewed | PM/trader six-line excerpts, named debate/risk participants and syntheses, four analyst excerpts/counts then compact disposition/note controls; above-fold layout unverified |
 | US-06 | app.js openTicket/closeTicket/renderTicket/proposalInput/ticketResearch; ui-orders.css drawer | source-reviewed | Step 2 source implements pinned 380px drawer, retention and exact-draft handoff; runtime unverified |
 | US-07 | index.html; app.css shell; app.js pageHeader | observed | Foundation shell implemented; actual Windows DPI unverified |
 | US-08 | app.js readState/renderOverview; Dashboard refinements in Step 4 | observed | Empty initial batch and compatibility observed; full story deferred |
 | US-09 | app.js instrumentHeaderStrip; Markets mounting in Step 4 | source-reviewed | Shared helper implemented; scan/header composition deferred |
 | US-10 | app.js stockEvidencePanel/evidenceRecords/loadStockEvidence/bindSupplementary; later mounts in Steps 3–4 | source-reviewed | Shared compact collection/read primitive repaired; empty state and form validation observed. Populated records and collection execution unverified. |
 | US-11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-12 | app.js researchSources/researchProvenance/researchActivityRows/researchActivity/loadResearchRun | source-reviewed | Full-run event/three-receipt union deduplicated by attempt_id, symbol/run and explicit failure filters, truthful provenance; populated runtime unverified |
 | US-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-14 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
@@ -114,42 +114,42 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | US-20 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-21 | app.js captureRenderInput/restoreRenderInput; Journal redesign in Step 5 | source-reviewed | Shared focus primitive implemented; full Journal story deferred |
 | US-22 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-23 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-23 | workflows.js workflowFitDiagram/workflowRenderDiagram/workflowRelated/workflowCanLeave; index.html; ui-workflows.css | source-reviewed | Fit All 0.15 floor, retained scrolling, retry, visible node-file chips, editor-local save, popup dismissal and in-app discard dialog; runtime unverified |
 | US-24 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-25 | app.js renderTablist/bindTablists/traderShortcut; chart alternatives in later stages | observed | Foundation tabs/guards implemented; chart story remains partial |
-| E-01 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-01 | app.js reviewResearch/launchResearch | source-reviewed | Existing POST /api/runs analysis_date/exclude_fred wiring implemented; no run executed |
 | E-02 | app.js instrumentHeaderStrip | source-reviewed | Nullable quote/size/derived-spread helper; populated feed unverified |
 | E-03 | app.js instrumentHeaderStrip | observed | Unknown capability state observed; true/false retained states unverified |
 | E-04 | app.js ticketContext/ticketSizing/proposalEditor; Portfolio remaining Step 4 | source-reviewed | Ticket quantity and available-exit/broker qty fields bound to ticket; Portfolio work deferred |
 | E-05 | app.js renderShellStatus; Settings in Step 5 | source-reviewed | Shell whitelist warning implemented; populated flag states unverified |
 | E-06 | app.js orderEligibility/approvalPanel | source-reviewed | All checks and blockers remain separate from ten-rule grouping; conditional-group details preserved |
-| E-07 | app.js evidenceRecords/stockEvidencePanel/bindSupplementary | source-reviewed | SEC statement/SIC, corporate-action and news rendering implemented from existing record schema; populated runtime evidence unverified. |
-| E-08 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-07 | app.js stockEvidencePanel/renderResearch; UniverseReview.bindStockEvidence | source-reviewed | Foundation shared saved-evidence renderer and exact collection controls mounted/bound on Research; no collection executed; populated runtime unverified |
+| E-08 | app.js renderReports/reportSocial/reportLocalLaya/savedLayaAction | source-reviewed | Original social sentiment and independent local_laya_batch shown separately; existing saved-post action preserved; no batch executed |
 | E-09 | command-controls.js commandControls/confirmCommand | source-reviewed | Separate submit/cancel/replace recovery requests unchanged; no unknown-outcome runtime observation |
 | E-10 | app.js fillsTable; nativeReport fee provenance | source-reviewed | Broker fills table plus retained native fee/source details; actual commissions/native_application unverified |
 | E-11 | app.js basketPanel/basketEvidence/basketSnapshot/basketScenario | source-reviewed | Direct basket targets, residuals, pending exposure and complete/partial scenarios; execution unverified |
 | E-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-14 | app.js renderShellStatus; index.html #stream-status | source-reviewed | Implemented in aaf2e3a; unknown stream state observed. Listening/connecting/not_started/disconnected transitions and optional gaps unverified. |
-| E-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-15 | app.js loadResearchRun/researchActivityRows/researchActivity/researchProvenance | source-reviewed | Full detail loads omitted compact-state attempts; event/source/gateway/Jev union with explicit failure/429 predicates and running/queued exclusion; runtime unverified |
 | C-8 | app.js exposureKnown/instrumentHeaderStrip | observed | UNKNOWN observed on unverified account; verified positions unverified |
 | C-9 | app.js ticket state/openTicket/renderTicket/bindInvestor/chart-copy guards; command-controls.js | source-reviewed | Step 2 source covers pinned identity, retention, source binding and exact saved handoff; integrated runtime pending |
 | L1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| L3 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| L4 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| L5 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L3 | app.js researchVerdict/researchSummary/researchCollection | source-reviewed | No research rating without completed status and saved final decision; cancelled says no verdict; runtime unverified |
+| L4 | app.js detailNotice/ensureResultDetail | source-reviewed | Loading text follows active detail requests, with explicit error/unavailable states after completion; runtime unverified |
+| L5 | workflows.js workflowFitDiagram/workflowChangeZoom/workflowRenderDiagram | source-reviewed | Default width-and-height fit with 0.15 floor, independent Fit Width, scroll fallback and Retry Diagram; runtime unverified |
 | L6 | app.js renderChrome; command-controls.js commandControls | source-reviewed | Shell and order-management status use Orders: Active/Paused; later Settings redesign deferred |
 | L7 | app.js iconPaths | source-reviewed | Ten distinct paths; journal alias removed |
 | L8 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| L9 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| L9 | app.js renderResearch/researchCollection; ui-research-journal.css | source-reviewed | Run identity moved to Technical record, single scrolling picker rail; independent delete paging; runtime unverified |
 | L10 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L14 | app.js renderChrome; command-controls.js commandControls | source-reviewed | Unified order pause status wording; runtime transitions unverified |
-| U1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| U2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| U1 | app.js researchCollection/reviewResearch/renderResearch | source-reviewed | Research launch and batch selection reachable within Research; no Markets selection hop; runtime unverified |
+| U2 | app.js launchResearch | source-reviewed | First launched symbol and Summary selected after successful launch/read; picker query/filter/page reset and row scroll; launch unexercised |
 
 
 ## 29 October: bounded Foundation repair after confession
@@ -223,3 +223,36 @@ The earlier Last-seed claim was incomplete: `service.py:_runtime_market` sets `q
 `commandConfirmationTerms` resolves predecessor and replacement command IDs independently. Replacement confirmations distinctly retain the predecessor command/broker observation, exact replacement command, and its approval (or the separately selected replacement approval). Existing basket execution IDs resolve through `basket_executions`, then its ordered `command_ids` and each retained command's approval; the confirmation includes stored terms, states, dependencies and frozen bindings, not inferred order terms. New-basket confirmations retain each selected approval. Missing exact replacement/basket terms prevent a confirmation. Captured terms are cloned. Requests, revision/source invalidation, in-flight guard, server rechecks, operation-specific recovery and session-only receipts are preserved. No new broker/backend action or receipt persistence was introduced.
 
 Traceability: US-06 / blueprint §5.3 pinned price sources → `app.js:ticketLastTrade`, `ticketContext`, `seedTicket`; US-16–US-19 / blueprint §6.6 exact command/basket confirmation → `command-controls.js:commandConfirmationTerms`, existing capture/confirmation handlers. Evidence is source-reviewed; runtime verdict remains unverified. Prescribed post-batch validation is all eight top-level JavaScript parser checks and `git diff --check`, recorded in the commit handoff. No browser cycle, broker request, tests, extra reviewer, build, production change or Step 3 was performed. Session-only receipts and unexercised broker states remain explicit acceptance limits.
+
+
+## 29 October: Step 3 Research and Workflows source delivery
+
+Authority and scope: delegated evaluator accepted Orders/ticket for progression at `c59aaa3` based on source and worker-reported static checks, explicitly leaving Step 2 runtime/broker coverage unverified. This is attributed progression authority within the human's implementation authorization, not blanket human runtime acceptance. Both `docs/ui-redesign-implementation-plan.md` and `docs/ui-redesign-blueprint.md` frozen at `3770bbe` (§§6.4/6.10, associated US/E/L/U contracts) govern this batch. Its containing local commit identifies the Step 3 revision. Primary authored all source/support changes and owns Git; no support worker/handoff, extra reviewer or per-page validation was dispatched.
+
+### Research contracts
+
+Research directly renders a paged, searchable universe/latest-result picker, independent `selectedSymbols` batch checks, and separate `researchDeleteSelection` management with its own query/filter/pagination. Inspection does not select a batch or deletion. Unfinished includes unresearched/incomplete stocks; Needs Research Today checks the saved New York trade date; clearing batch checks preserves inspection/deletion. An empty batch offers the inspected configured stock. Existing deletion preview/revision/generation and busy safeguards remain.
+
+`reviewResearch` fetches the current workflow catalog for active workflow and effective graph limits, pairs existing saved model settings with observed timing estimates or No timing yet, and opens a compact native auto popover with explicit Start Research. It includes optional New York analysis date (omitted for today), the visible latest-only historical replacement warning, exclude_fred, current-account/no-orders disclosure, cost uncertainty and optional keep-selection checkbox. Selection/config/server/store changes invalidate confirmation. A successful existing POST selects the first requested symbol and Summary unconditionally after the state read, clears picker search/filter, pages and scrolls to it; batch checks clear unless explicitly retained. Date/checkbox choices remain local until explicit launch. No launch was executed.
+
+The queue shows completed/incomplete/failed/cancelled/running/queued separately, retaining any additional legacy source status explicitly. Cancelled is muted and has no verdict. Research verdicts require completed status, loaded saved final_trade_decision and non-updating source. Loading text follows actual detail requests; error and no-loaded-detail states settle without an indefinite loading claim. Research mounts the shared instrument header (dated verdict, raw daily drift, exposure/UNKNOWN, quote source) and shared stockEvidencePanel with its existing binder and collection contract. T and Prepare consume the shared ticket in place, carrying the selected research context rather than rebuilding ticket forms.
+
+Summary orders six-line PM decision and Trader Proposal excerpts first, then named Bull/Bear and Aggressive/Neutral/Conservative argument excerpts with Research Manager/Risk Judge synthesis, then Market/Fundamentals/News/Sentiment excerpts and original Laya counts, then compact revision disposition/note/priority controls. Read full opens the original saved report; full source artifacts remain available. Separate authored investor notes remain accessible under their disclosure. Reports explicitly separate original research social_sentiment and independent local_laya_batch; the existing first-up-to-five-saved-StockTwits-post action remains unchanged and was not exercised.
+
+`loadResearchRun` reads the existing full-run GET because compact state omits attempts. Its cache is keyed by server/store/run identity, guarded across asynchronous returns, bounded, refreshed as live source summaries change, and has explicit pending/error/manual retry with retained older-data warning. Activity forms the union of run.events and all source_evidence/gateway_evidence/jev_evidence attempts, using attempt_id as one feed row while preserving contributing events/receipts. Missing attempt IDs remain independent entries. Selected-symbol filtering is default; Whole run exposes run-wide/unattributed records. Failures / Rate Limits matches explicit error/failed/cancelled/interrupted, finished-run unknown, capture_error, unavailable/partial/no_usable_coverage, HTTP 429/rate_limited or error events; queued/running receipts are excluded from the receipt-failure predicate. It does not infer failure from absence of success. Structured receipt details retain exact provenance. Source links show domains and report category/date; individual capture time is explicitly unavailable when not recorded. Vendor/memory chips retain receipt category, operation, symbol/run scope and source timestamps.
+
+### Workflows contracts
+
+Default Fit All uses both natural width and height with a 0.15 floor; Fit Width remains separately available. Manual zoom uses the same floor and the existing scrollable diagram remains reachable for oversized custom graphs. Mermaid failure shows Retry Diagram without a reload or fabricated graph. Node clicks retain existing primary prompt selection and now show primary/shared/schema file chips above the editor, with secondary groups disclosed. Ctrl/Cmd+S is bound only inside the workflow CodeMirror editors, respects composing/loading state and invokes the existing revision-protected save. About/Details/related-file popovers close on outside click/Escape; Escape restores a summary focus target.
+
+The persistent in-app discard dialog replaces Workflows native confirm for navigation, loading a different bundle and Discard Changes. Keep editing/Escape preserves drafts; explicit discard resets to saved files then resumes the captured destination/load. External browser unload protection remains the existing browser-managed beforeunload guard. Startup listeners use direct DOM lookup because workflows.js loads before app.js's selector helper. Existing workflow save, Save As, activate, conflict and stale-preview rules remain.
+
+### Source and validation evidence
+
+Changed source: app.js, index.html, workflows.js, ui-research-journal.css and ui-workflows.css; delivery evidence in this existing issue. No new served static file, backend/API, command action, export/import change, package, installation, provisioning, production change or Step 4–5 implementation. Existing Markets layout helpers remain. The shared ticket implementation and server approval/submission boundary are consumed, not duplicated. Step 3 adds Research tablist/roving-key use; US-25 remains partial across later pages/charts.
+
+Prescribed final gate: node --check across all eight top-level static JavaScript files and git diff --check after the source batch. The commit handoff reports actual results. No tests, mock/synthetic services, build, browser cycle, research/Laya/collection/simulation run, broker action, remote publication or extra reviewer. All changed interaction, above-fold/responsive/DPI behavior, launch/focus under real jobs, populated debates/social/provenance/Activity, editing/dialog/save and Mermaid rendering remain unverified runtime claims reserved for integrated validation. Existing Foundation observations do not validate this revision.
+
+DOM contract: #research-dialog[popover=auto], #research-analysis-date, #research-exclude-fred, #research-keep-selection, [data-dismiss-research], [data-action=confirm-research]; #research-symbol-SYM / #research-batch-SYM, [data-research-needs-today], [data-research-manage], independent research-delete list selectors; #research-tabs with [data-research-tab], [data-research-open], #research-detail-scroll; #research-whole-run, #research-failures-only, [data-refresh-research-activity]; existing #research-review fields/actions and shared stock evidence IDs. Workflows retains existing editor/node/save IDs, adds #workflow-zoom-width, [data-workflow-retry-diagram], visible #workflow-node-detail, #workflow-discard-dialog / #workflow-keep-editing / #workflow-confirm-discard. No worker independently changes these contracts.
+
+Step 3 source binding refinement before commit: unchanged Research markup and preserved Workflows editor render paths now update the existing shared drawer before their early return. This is necessary to consume it without rebuilding either workspace. Research picker rows have focusable button semantics outside native form controls so the guarded J/K/X/Space/Enter row shortcuts apply; checkboxes remain independent native inputs. The old empty-state Setup hop now focuses the inline picker. The final static gate follows this refinement.

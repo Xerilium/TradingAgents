@@ -73,9 +73,14 @@
     <form method="dialog"><button class="close-dialog icon-button" aria-label="Close order preview" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></form>
     <div id="order-preview"></div>
   </dialog>
-  <dialog id="research-dialog" aria-labelledby="research-dialog-title">
-    <form method="dialog"><button class="close-dialog icon-button" aria-label="Close research workload review" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></form>
+  <section id="research-dialog" class="research-confirm-popover" popover="auto" aria-labelledby="research-dialog-title">
     <div id="research-preview"></div>
+  </section>
+  <dialog id="workflow-discard-dialog" aria-labelledby="workflow-discard-title">
+    <h2 id="workflow-discard-title">Discard unsaved workflow changes?</h2>
+    <p>Your saved workflow stays unchanged.</p>
+    <button id="workflow-keep-editing" autofocus>Keep editing</button>
+    <button id="workflow-confirm-discard" class="button button-danger">Discard changes</button>
   </dialog>
 </body>
 </html>

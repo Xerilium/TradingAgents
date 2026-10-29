@@ -2,7 +2,17 @@
 
 const workflowEditor = {names: [], active: '', name: '', files: {}, saved: {}, revision: null, file: '', selected: '', loading: false, initialized: false, message: '', error: false, diagram: null, diagramFiles: null, prompt: '', saveAsOpen: false, saveAsName: '', saveAsError: '', view: 'prompts', node: '', search: '', tools: 'idle'};
 const workflowDirty = () => JSON.stringify(workflowEditor.files) !== JSON.stringify(workflowEditor.saved);
-function workflowCanLeave() { if (!workflowDirty()) return true; if (!confirm('Discard unsaved workflow changes?')) return false; workflowResetEditorStates(); workflowEditor.files = {...workflowEditor.saved}; workflowEditor.message = 'Changes discarded.'; workflowEditor.error = false; return true; }
+let workflowDiscardContinuation=null,workflowDiscardFocus=null;
+function workflowCanLeave(onDiscard=workflowRefresh) {
+ if(!workflowDirty())return true;
+ const dialog=$('#workflow-discard-dialog');if(dialog.open)return false;
+ workflowDiscardContinuation=onDiscard;workflowDiscardFocus=document.activeElement;dialog.showModal();return false;
+}
+document.getElementById('workflow-keep-editing').addEventListener('click',()=>$('#workflow-discard-dialog').close());
+document.getElementById('workflow-discard-dialog').addEventListener('close',()=>{workflowDiscardContinuation=null;if(workflowDiscardFocus?.isConnected)workflowDiscardFocus.focus({preventScroll:true});});
+document.getElementById('workflow-confirm-discard').addEventListener('click',()=>{
+ const continuation=workflowDiscardContinuation;workflowDiscardContinuation=null;workflowResetEditorStates();workflowEditor.files={...workflowEditor.saved};workflowEditor.message='Changes discarded.';workflowEditor.error=false;$('#workflow-discard-dialog').close();continuation?.();
+});
 window.addEventListener('beforeunload', event => { if (workflowDirty()) { event.preventDefault(); event.returnValue = ''; } });
 function workflowRefresh() { if (activePage === 'workflows') { workflowCaptureEditorStates(); render({force: true}); } }
 let workflowPollAt = 0, workflowPollPending = false, workflowCatalogGeneration = 0, workflowPreviewGeneration = 0;
@@ -42,7 +52,13 @@ function workflowSetBundle(result) {
 }
 async function workflowLoad() {
   const name = $('#workflow-select')?.value;
-  if (!name || (workflowDirty() && !confirm('Discard unsaved workflow changes and load the selected workflow?'))) return;
+  if (!name) return;
+  if(!workflowCanLeave(()=>workflowLoadNamed(name)))return;
+  await workflowLoadNamed(name);
+}
+async function workflowLoadNamed(name) {
+  if(workflowEditor.loading)return;
+  workflowFitMode='all';workflowDiagramScroll=null;
   ++workflowCatalogGeneration; ++workflowPreviewGeneration;
   workflowEditor.loading = true; workflowRefresh();
   try { const result = await api('/api/workflows?name=' + encodeURIComponent(name)); workflowResetEditorStates(); workflowSetBundle(result); workflowEditor.message = 'Workflow loaded.'; workflowEditor.error = false; }
@@ -173,9 +189,9 @@ function workflowRelated() {
   const agent = (groups.agent || (node.prompt_files || []).map((file, index) => ({file, description: index === 0 ? 'Primary prompt' : 'Related agent prompt'}))).filter(item => Object.hasOwn(workflowEditor.files, item.file));
   const shared = (groups.shared || []).filter(item => Object.hasOwn(workflowEditor.files, item.file));
   const schema = (groups.schema || []).filter(item => Object.hasOwn(workflowEditor.files, item.file));
-  const buttons = entries => `<div class="workflow-related-files">${entries.map(item => `<button type="button" class="button workflow-related-file" data-prompt="${esc(item.file)}"><strong>${esc(workflowPromptLabel(item.file))}</strong><span>${esc(item.description || workflowPromptDescription(item.file))}</span></button>`).join('')}</div>`;
+  const buttons = entries => `<div class="workflow-related-files">${entries.map(item => `<button type="button" class="button workflow-related-file" title="${esc(item.description || workflowPromptDescription(item.file))}" aria-pressed="${item.file===workflowEditor.prompt}" data-prompt="${esc(item.file)}"><strong>${esc(workflowPromptLabel(item.file))}</strong><span>${esc(item.description || workflowPromptDescription(item.file))}</span></button>`).join('')}</div>`;
   const extra = (label, entries) => entries.length ? `<details class="workflow-related-group"><summary>${esc(label)} (${entries.length})</summary>${buttons(entries)}</details>` : '';
-  return `<strong>${esc(node.name)}</strong><span>${esc(node.caption || (node.synthetic ? 'Visual summary, not a separate agent.' : 'Workflow agent.'))}</span>${agent.length ? buttons(agent) : '<span>No agent-specific prompt file.</span>'}${extra('Shared context and tools', shared)}${extra('Output schema fields', schema)}`;
+  return `<strong title="${esc(node.caption||'Workflow node')}">${esc(node.name)}</strong>${agent.length ? buttons(agent) : '<span>No agent-specific prompt file.</span>'}${extra('Shared context and tools', shared)}${extra('Output schema fields', schema)}`;
 }
 function workflowShowNode(id) {
   workflowEditor.node = id;
@@ -210,7 +226,7 @@ async function workflowPreview() {
   } catch (error) { if (current()) status.textContent = workflowPreviewState() + '. Preview unavailable: ' + workflowError(error); }
   finally { if (current()) button.disabled = false; }
 }
-let workflowDiagramSequence = 0, workflowDiagramObserver, workflowDiagramRemovalObserver, workflowFitMode = true, workflowDiagramScroll = null;
+let workflowDiagramSequence = 0, workflowDiagramObserver, workflowDiagramRemovalObserver, workflowFitMode = 'all', workflowDiagramScroll = null;
 async function workflowRenderDiagram() {
   const target = $('#workflow-diagram'), diagram = workflowEditor.diagram;
   if (!target || !diagram) return;
@@ -238,7 +254,7 @@ async function workflowRenderDiagram() {
       const activate = () => { workflowShowNode(id); if (path) { workflowSetView('prompts'); workflowSelectPrompt(path); } };
       el.addEventListener('click', activate); el.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } });
     }
-  } catch (error) { if (sequence === workflowDiagramSequence && target.isConnected) target.textContent = 'Unable to render the workflow: ' + error.message; }
+  } catch (error) { if (sequence === workflowDiagramSequence && target.isConnected) {target.innerHTML='<p class="negative">Unable to render the workflow: '+esc(error.message)+'</p><button data-workflow-retry-diagram>Retry Diagram</button>';target.querySelector('[data-workflow-retry-diagram]').addEventListener('click',workflowRenderDiagram);} }
 }
 let workflowYamlEditor, workflowPromptEditor, workflowEditorStates = {}, workflowZoom = 1;
 function workflowCaptureEditorStates() {
@@ -260,19 +276,21 @@ function workflowApplyZoom() {
 function workflowFitDiagram(target) {
   const svg = target?.querySelector('svg'); if (!svg) return;
   const naturalWidth = svg.viewBox?.baseVal?.width || 800;
-  workflowZoom = Math.max(.875, Math.min(2, (target.clientWidth - 32) / naturalWidth));
+  const naturalHeight=svg.viewBox?.baseVal?.height||svg.getBBox().height||800;
+  workflowZoom=Math.max(.15,Math.min(2,(target.clientWidth-32)/naturalWidth,...(workflowFitMode==='width'?[]:[(target.clientHeight-32)/naturalHeight])));
   workflowApplyZoom();
 }
 function workflowChangeZoom(mode) {
   const target = $('#workflow-diagram'), svg = target?.querySelector('svg'); if (!svg) return;
-  workflowFitMode = mode === 'fit';
+  workflowFitMode = mode === 'fit' ? 'all' : mode === 'width' ? 'width' : null;
   if (workflowFitMode) { workflowFitDiagram(target); target.scrollLeft = Math.max(0, (target.scrollWidth - target.clientWidth) / 2); }
-  else { workflowZoom = Math.max(.2, Math.min(2, workflowZoom + mode)); workflowApplyZoom(); }
+  else { workflowZoom = Math.max(.15, Math.min(2, workflowZoom + mode)); workflowApplyZoom(); }
 }
 function workflowSelectPrompt(path) {
   if (!Object.hasOwn(workflowEditor.files, path)) return;
   if (workflowPromptEditor && workflowEditor.prompt) workflowEditorStates[workflowEditor.prompt] = workflowPromptEditor.getState();
   workflowEditor.prompt = path;
+  document.querySelectorAll('#workflow-node-detail [data-prompt]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.prompt===path)));
   const select = $('#workflow-prompt-select'); if (select) select.value = path;
   const label = $('#workflow-prompt-path'); if (label) label.textContent = path;
   const guidance = $('#workflow-prompt-guidance'); if (guidance) guidance.textContent = workflowPromptGuidance(path);
@@ -301,8 +319,8 @@ function renderWorkflows() {
     ${!loaded ? `<p id="workflow-feedback" class="${w.error ? 'form-error' : 'muted'}" role="status" aria-live="polite">${esc(w.message || (w.loading ? 'Loading workflows…' : loaded ? (workflowDirty() ? 'Unsaved changes' : 'Saved workflow') : 'Choose a saved workflow and select Load to begin.'))}</p>` : ''}${w.error && !loaded ? `<button id="workflow-retry" class="button" ${disabled}>Try again</button>` : ''}
     ${!loaded ? `</div><div class="empty-state workflow-empty-state"><h2>Load a research workflow</h2><p>The workflow shows the Mermaid agent flow, 12 role-grouped prompt templates, and the stage and debate round limits in workflow.yaml. It shapes how analysts, bull and bear researchers, the trader, and risk debaters run on future research cycles. Loading it does not start a run.</p><div class="button-group"><button id="workflow-empty-load" class="button button-primary" type="button" ${disabled} ${w.names.length ? '' : 'disabled'}>Load ${esc(w.selected || w.active || 'Default')} workflow</button><a class="button" href="#research">Open Research</a></div></div>` : ''}
     ${loaded ? `<div class="workflow-actions"><p id="workflow-feedback" class="${w.error ? 'form-error' : 'muted'}" role="status" aria-live="polite">${esc(w.message || (w.loading ? 'Loading workflows…' : loaded ? (workflowDirty() ? 'Unsaved changes' : 'Saved workflow') : 'Choose a saved workflow and select Load to begin.'))}</p><div class="button-group"><button id="workflow-save" class="button button-primary" ${disabled} ${workflowDirty() ? '' : 'disabled'}>Save</button><button id="workflow-save-as" class="button" ${disabled}>Save as</button><button id="workflow-discard" class="button" ${disabled} ${workflowDirty() ? '' : 'disabled'}>Discard changes</button><button id="workflow-activate" class="button" ${disabled} ${w.active === w.name && !workflowDirty() ? 'disabled' : ''}>Use for new research</button></div><form id="workflow-save-as-form" class="workflow-save-as" ${w.saveAsOpen ? '' : 'hidden'}><label for="workflow-save-as-name">New workflow name</label><input id="workflow-save-as-name" class="form-control" value="${esc(w.saveAsName)}" autocomplete="off"><button class="button" type="submit">Save copy</button><button id="workflow-save-as-cancel" class="button" type="button">Cancel</button><span id="workflow-save-as-error" class="form-error" role="alert">${esc(w.saveAsError)}</span></form></div>
-    </div>${w.tools !== 'ready' ? `<div class="workflow-tool-state" role="status">${esc(toolMessage)} ${w.tools === 'error' ? '<button id="workflow-tools-retry" class="button">Try again</button>' : ''}</div>` : `<div class="workflow-pane-toolbars"><div class="workflow-flow-toolbar"><div class="workflow-section-head"><div><h2 id="workflow-flow-title">Workflow flow</h2><p id="workflow-preview-status" class="muted" role="status">${esc(workflowPreviewState())}</p></div><button id="workflow-preview" class="button" ${disabled}>Preview changes</button></div><div class="workflow-flow-controls"><details class="workflow-flow-details"><summary>About this diagram</summary><p>Diamonds summarize debate rounds; runtime checks occur after each turn. Boundary and join nodes are visual summaries. This desktop view shows selected analysts; optional CLI local memory is not active here. Saving or selecting a workflow does not start research.</p></details><div class="workflow-zoom" aria-label="Diagram zoom"><button id="workflow-zoom-out" class="button button-small" type="button" aria-label="Zoom out">−</button><span id="workflow-zoom-level">${Math.round(workflowZoom * 100)}%</span><button id="workflow-zoom-in" class="button button-small" type="button" aria-label="Zoom in">+</button><button id="workflow-zoom-fit" class="button button-small" type="button">Fit width</button></div><button type="button" class="workflow-inspector-jump" id="workflow-inspector-jump">Agent prompts</button></div></div><div class="workflow-inspector-controls"><div class="workflow-tabs" role="tablist" aria-label="Inspector view"><button id="workflow-prompts-tab" type="button" role="tab" aria-controls="workflow-prompts-panel" aria-selected="${w.view === 'prompts'}" tabindex="${w.view === 'prompts' ? '0' : '-1'}">Prompts</button><button id="workflow-yaml-tab" type="button" role="tab" aria-controls="workflow-yaml-panel" aria-selected="${w.view === 'yaml'}" tabindex="${w.view === 'yaml' ? '0' : '-1'}">Workflow YAML</button></div><div id="workflow-prompt-controls" class="workflow-prompt-controls" ${w.view === 'prompts' ? '' : 'hidden'}><div class="workflow-catalog"><div class="field"><label for="workflow-prompt-search">Search prompt files</label><input id="workflow-prompt-search" class="form-control" type="search" value="${esc(w.search)}" placeholder="Search name, path or purpose"></div><div class="field"><label for="workflow-prompt-select">Prompt file (${Object.keys(w.files).filter(path => path !== 'workflow.yaml').length})</label><select id="workflow-prompt-select" class="form-control" ${disabled}>${workflowPromptOptions(w)}</select></div></div><details class="workflow-details"><summary>Details</summary><div class="workflow-disclosure-content"><details class="workflow-node-disclosure"><summary>Related agent files</summary><div id="workflow-node-detail" class="workflow-node-detail" aria-live="polite">${workflowRelated()}</div></details><div class="workflow-guidance"><p id="workflow-prompt-path" class="workflow-path">${esc(w.prompt)}</p><p id="workflow-prompt-guidance" class="workflow-help">${esc(workflowPromptGuidance(w.prompt))} Groups help you browse; they do not describe the assembled runtime prompt. Placeholders in braces may be supplied at runtime.</p></div></div></details></div><details id="workflow-yaml-guidance" class="workflow-yaml-guidance" ${w.view === 'yaml' ? '' : 'hidden'}><summary>Workflow definition details</summary><div class="workflow-disclosure-content"><p>Configure stages, model tiers and round limits in workflow.yaml.</p></div></details></div></div><div class="workflow-studio"><section class="workflow-flow" aria-labelledby="workflow-flow-title"><div id="workflow-diagram" class="workflow-diagram" aria-label="Workflow flow diagram">${w.diagram ? 'Rendering workflow…' : 'Preview the workflow to see its validated flow.'}</div></section>
-    <section id="workflow-inspector" class="workflow-inspector" aria-label="Workflow inspector" tabindex="-1"><section id="workflow-prompts-panel" class="workflow-editor-panel" role="tabpanel" aria-labelledby="workflow-prompts-tab" ${w.view === 'prompts' ? '' : 'hidden'}><div id="workflow-prompt-editor" class="workflow-code"></div></section><section id="workflow-yaml-panel" class="workflow-editor-panel" role="tabpanel" aria-labelledby="workflow-yaml-tab" ${w.view === 'yaml' ? '' : 'hidden'}><div id="workflow-yaml-editor" class="workflow-code"></div></section></section></div>`}` : ''}</section>`;
+    </div>${w.tools !== 'ready' ? `<div class="workflow-tool-state" role="status">${esc(toolMessage)} ${w.tools === 'error' ? '<button id="workflow-tools-retry" class="button">Try again</button>' : ''}</div>` : `<div class="workflow-pane-toolbars"><div class="workflow-flow-toolbar"><div class="workflow-section-head"><div><h2 id="workflow-flow-title">Workflow flow</h2><p id="workflow-preview-status" class="muted" role="status">${esc(workflowPreviewState())}</p></div><button id="workflow-preview" class="button" ${disabled}>Preview changes</button></div><div class="workflow-flow-controls"><details class="workflow-flow-details"><summary>About this diagram</summary><p>Diamonds summarize debate rounds; runtime checks occur after each turn. Boundary and join nodes are visual summaries. This desktop view shows selected analysts; optional CLI local memory is not active here. Saving or selecting a workflow does not start research.</p></details><div class="workflow-zoom" aria-label="Diagram zoom"><button id="workflow-zoom-out" class="button button-small" type="button" aria-label="Zoom out">−</button><span id="workflow-zoom-level">${Math.round(workflowZoom * 100)}%</span><button id="workflow-zoom-in" class="button button-small" type="button" aria-label="Zoom in">+</button><button id="workflow-zoom-fit" class="button button-small" type="button">Fit All</button><button id="workflow-zoom-width" class="button button-small" type="button">Fit Width</button></div><button type="button" class="workflow-inspector-jump" id="workflow-inspector-jump">Agent prompts</button></div></div><div class="workflow-inspector-controls"><div class="workflow-tabs" role="tablist" aria-label="Inspector view"><button id="workflow-prompts-tab" type="button" role="tab" aria-controls="workflow-prompts-panel" aria-selected="${w.view === 'prompts'}" tabindex="${w.view === 'prompts' ? '0' : '-1'}">Prompts</button><button id="workflow-yaml-tab" type="button" role="tab" aria-controls="workflow-yaml-panel" aria-selected="${w.view === 'yaml'}" tabindex="${w.view === 'yaml' ? '0' : '-1'}">Workflow YAML</button></div><div id="workflow-prompt-controls" class="workflow-prompt-controls" ${w.view === 'prompts' ? '' : 'hidden'}><div class="workflow-catalog"><div class="field"><label for="workflow-prompt-search">Search prompt files</label><input id="workflow-prompt-search" class="form-control" type="search" value="${esc(w.search)}" placeholder="Search name, path or purpose"></div><div class="field"><label for="workflow-prompt-select">Prompt file (${Object.keys(w.files).filter(path => path !== 'workflow.yaml').length})</label><select id="workflow-prompt-select" class="form-control" ${disabled}>${workflowPromptOptions(w)}</select></div></div><details class="workflow-details"><summary>Details</summary><div class="workflow-disclosure-content"><div class="workflow-guidance"><p id="workflow-prompt-path" class="workflow-path">${esc(w.prompt)}</p><p id="workflow-prompt-guidance" class="workflow-help">${esc(workflowPromptGuidance(w.prompt))} Groups help you browse; they do not describe the assembled runtime prompt. Placeholders in braces may be supplied at runtime.</p></div></div></details></div><details id="workflow-yaml-guidance" class="workflow-yaml-guidance" ${w.view === 'yaml' ? '' : 'hidden'}><summary>Workflow definition details</summary><div class="workflow-disclosure-content"><p>Configure stages, model tiers and round limits in workflow.yaml.</p></div></details></div></div><div class="workflow-studio"><section class="workflow-flow" aria-labelledby="workflow-flow-title"><div id="workflow-diagram" class="workflow-diagram" aria-label="Workflow flow diagram">${w.diagram ? 'Rendering workflow…' : 'Preview the workflow to see its validated flow.'}</div></section>
+    <section id="workflow-inspector" class="workflow-inspector" aria-label="Workflow inspector" tabindex="-1"><section id="workflow-prompts-panel" class="workflow-editor-panel" role="tabpanel" aria-labelledby="workflow-prompts-tab" ${w.view === 'prompts' ? '' : 'hidden'}><div id="workflow-node-detail" class="workflow-node-detail" aria-label="Selected node prompt files" aria-live="polite">${workflowRelated()}</div><div id="workflow-prompt-editor" class="workflow-code"></div></section><section id="workflow-yaml-panel" class="workflow-editor-panel" role="tabpanel" aria-labelledby="workflow-yaml-tab" ${w.view === 'yaml' ? '' : 'hidden'}><div id="workflow-yaml-editor" class="workflow-code"></div></section></section></div>`}` : ''}</section>`;
 }
 function bindWorkflows() {
   if (workflowEditor.tools === 'idle') {
@@ -329,6 +347,7 @@ function bindWorkflows() {
   $('#workflow-zoom-in')?.addEventListener('click', () => workflowChangeZoom(.2));
   $('#workflow-zoom-out')?.addEventListener('click', () => workflowChangeZoom(-.2));
   $('#workflow-zoom-fit')?.addEventListener('click', () => workflowChangeZoom('fit'));
+  $('#workflow-zoom-width')?.addEventListener('click', () => workflowChangeZoom('width'));
   $('#workflow-inspector-jump')?.addEventListener('click', () => { const inspector = $('#workflow-inspector'); inspector?.scrollIntoView({block:'start'}); inspector?.focus({preventScroll:true}); });
   $('#workflow-save')?.addEventListener('click', () => workflowAction('save'));
   $('#workflow-save-as')?.addEventListener('click', () => { workflowEditor.saveAsOpen = true; workflowEditor.saveAsName = workflowEditor.name; workflowEditor.saveAsError = ''; $('#workflow-save-as-name').value = workflowEditor.saveAsName; $('#workflow-save-as-error').textContent = ''; $('#workflow-save-as-form').hidden = false; $('#workflow-save-as-name').focus(); $('#workflow-save-as-name').select(); });
@@ -336,5 +355,15 @@ function bindWorkflows() {
   $('#workflow-save-as-form')?.addEventListener('submit', event => { event.preventDefault(); workflowAction('save_as', $('#workflow-save-as-name').value); });
   $('#workflow-save-as-cancel')?.addEventListener('click', () => { workflowEditor.saveAsOpen = false; $('#workflow-save-as-form').hidden = true; $('#workflow-save-as').focus(); });
   $('#workflow-activate')?.addEventListener('click', () => workflowAction('activate'));
-  $('#workflow-discard')?.addEventListener('click', () => { if (!workflowCanLeave()) return; workflowEditor.files = {...workflowEditor.saved}; workflowEditor.message = 'Changes discarded.'; workflowEditor.error = false; workflowRefresh(); });
+  $('#workflow-discard')?.addEventListener('click', () => workflowCanLeave(workflowRefresh));
 }
+
+function workflowClosePopovers(target){
+ document.querySelectorAll('.workflow-workspace details[open]').forEach(detail=>{if(detail.matches('.workflow-flow-details,.workflow-details,.workflow-yaml-guidance,.workflow-related-group')&&(!target||!detail.contains(target)))detail.open=false;});
+}
+document.addEventListener('click',event=>{if(activePage==='workflows')workflowClosePopovers(event.target);});
+document.addEventListener('keydown',event=>{
+ if(activePage!=='workflows'||event.isComposing)return;
+ if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key.toLowerCase()==='s'&&event.target.closest?.('#workflow-inspector .cm-editor')){event.preventDefault();event.stopPropagation();if(workflowDirty()&&!workflowEditor.loading)workflowAction('save');}
+ if(event.key==='Escape'&&!$('#workflow-discard-dialog').open){const open=document.querySelector('.workflow-workspace details[open]');workflowClosePopovers();if(open){event.preventDefault();open.querySelector('summary')?.focus();}}
+});
