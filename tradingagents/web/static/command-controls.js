@@ -138,5 +138,5 @@ document.addEventListener('click',async event=>{
 document.addEventListener('click',event=>{
  const button=event.target.closest('[data-review-order]');if(!button)return;
  const proposal=state.investor?.data.proposals.find(p=>p.id===button.dataset.reviewOrder);if(!proposal)return;
- if(!navigatePage('orders'))return;render({force:true});UniverseReview.openProposal(proposal.terms.symbol,button,null,proposal.id);
+ navigatePage('orders',()=>{const current=state.investor?.data.proposals.find(item=>item.id===proposal.id);if(!current){setError('The saved draft changed while navigation was waiting.');render();return;}render({force:true});UniverseReview.openProposal(current.terms.symbol,button,null,current.id);});
 });
