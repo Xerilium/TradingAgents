@@ -245,4 +245,5 @@ tradingdesk.launch.json
 # Machine-local agent integration settings
 /.codex/config.toml
 /.codex/hooks.json
+/.codex_/
 /.mcp.json
