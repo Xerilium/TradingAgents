@@ -61,7 +61,8 @@ boundaries, source paths, and detailed operations. See the [local desk guide](do
 for the installed environment, recovery, and recorded acceptance evidence. For UI
 design review and the planned workspace redesign, see the [UI design critique](docs/ui-design-critique.md),
 [UI redesign blueprint (v3)](docs/ui-redesign-blueprint.md), and
-[professional trader audit](docs/ui-redesign-trader-audit.md).
+[professional trader audit](docs/ui-redesign-trader-audit.md). Engine data the UI
+does not yet show is ranked in [missed UI opportunities](docs/ui-missed-opportunities-nautilus.md).
 
 ## Start and operate
 
