@@ -23,9 +23,9 @@ silently replace failed research, truncate candidates or invent allocations.
 ## Cold start: understand the product before operating it
 
 Read [README.md](README.md) first for the platform map, then the
-[desk reference](docs/desk-reference.md) for every workspace, research providers and
+[platform reference](docs/platform-reference.md) for every workspace, research providers and
 tools, Nautilus, the custom Alpaca bridge, data sources, baskets, orders, storage,
-recovery and its [source map](docs/desk-reference.md#source-map).
+recovery and its [source map](docs/platform-reference.md#source-map).
 Distinguish source capability, observed UI behavior and proven broker execution.
 Read the actual saved provider/account settings; defaults are not active state.
 Keep component documentation in those files, not duplicated in this file.

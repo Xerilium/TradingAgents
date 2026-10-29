@@ -736,7 +736,7 @@ has not been accepted through a new broker order or browser exercise.
 
 - [Corrected product roadmap](tradingagents-build-roadmap.md): requirement reference,
   subject to subsequent explicit user corrections and feature freeze.
-- [19 October UAT index](uat/2026-10-19/README.md): committed plan, case ledger,
+- [19 October UAT index (historical)](https://github.com/Xerilium/TradingAgents/blob/1690752f32f3b6711d4c8f177975467def2a150e/docs/uat/2026-10-19/README.md): committed plan, case ledger,
   report and independent review. Result: 41 pass, 2 partial, 6 not exercised.
 - [20 October expanded report](../.local-workspace/evidence/expanded-uat-20261020/report.md),
   [69-case ledger](../.local-workspace/evidence/expanded-uat-20261020/final-ledger.md),
