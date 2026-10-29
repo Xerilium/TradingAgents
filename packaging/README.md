@@ -10,15 +10,14 @@ macOS builds must run and be verified on a matching macOS host.
 Use uv 0.12.22, Node, Rust, and the platform's native Tauri prerequisites. The
 Windows locks are generated with the checked-in installed-version constraints
 and contain wheel hashes. Review changes to the locks before a release. The
-macOS Apple Silicon locks were cross-resolved with `MACOSX_DEPLOYMENT_TARGET=26.0`
-and the arm64 macOS target; the build and runtime still require verification on
+macOS Apple Silicon locks were cross-resolved with `--python-platform aarch64-apple-darwin`
+(the macOS 26.0 deployment target is a build requirement; the lock headers do not record it); the build and runtime still require verification on
 macOS 26+. Do not reuse Windows wheel evidence for macOS.
 
 ## Normal app updates
 
-The default Tauri configuration includes only `payload/app`, its provenance,
-and the desktop launcher. It excludes both Python runtime seeds. The existing
-Tauri updater installs this app-only package; it does not reinstall dependencies.
+The default Tauri configuration bundles `payload/app`, its provenance, the desktop
+launcher and the configured icons. It excludes both Python runtime seeds. The existing Tauri updater installs this app-only package; it does not reinstall dependencies.
 
 For an ordinary code or prompt change, from the repository root run
 `rtk proxy .venv/Scripts/python.exe packaging/refresh_project.py` (use an
@@ -31,18 +30,32 @@ Then, from `desktop`, run `rtk proxy npm run build:release`. Supply the existing
 publisher key through `TAURI_SIGNING_PRIVATE_KEY`; never copy the key into
 the repository. Keep the update artifact and its `.sig` together.
 
-`packaging/release_metadata.py` creates `latest.json` and a SHA-256 sidecar
-for this signed app-only update. Supply the actual version, release tag,
-platform and output path. Publish only app-only artifacts to the updater feed.
+`packaging/release_metadata.py` writes the update manifest to the required
+`--output` path (name it `latest.json` for the feed) and a sibling
+`<installer name>.sha256` for this signed app-only update. Supply the actual
+installer, `--version`, `--tag`, `--platform` (`windows-x86_64` or `darwin-aarch64`)
+and output path. Publish only app-only artifacts to the updater feed.
 The generated GitHub URL is prospective until the matching release is published.
+
+For a signed Windows NSIS bundle without the full `tauri build`, run
+`packaging\bundle-windows.cmd <signing-key>` from `desktop`; it writes its exit code to
+`packaging/build/bundle-exit.txt`. `packaging\build-dev-windows.cmd` (also from `desktop`)
+makes a debug, no-bundle build with `tauri.dev.conf.json`; its exit code goes to
+`packaging/build/dev-exit.txt`. `npm run build:workflow-tools` rebuilds the
+vendored workflow-editor bundle (CodeMirror and Mermaid) in
+`tradingagents/web/static/vendor/workflow-tools`.
+
+The Tauri desktop version (`desktop/package.json`, `tauri.conf.json`, `Cargo.toml`)
+is versioned separately from the Python package (`tradingagents.__version__`).
 
 ## First installation and dependency changes
 
 Prepare dependencies once per platform/runtime release. From the repository root,
 run `rtk proxy .venv/Scripts/python.exe packaging/prepare.py` (or an existing
-Python 3.11+ on macOS). It requires both reviewed platform locks and clean generated
-payload/wheel directories. It downloads standalone Python and hash-locked wheels
-into `packaging/build`, installs dependencies into `payload/desk` and
+Python 3.11+ on macOS). It requires the current host's two reviewed platform locks,
+an absent `desktop/src-tauri/payload` directory and exactly one project wheel in
+`packaging/build/wheels`. It requires `uv` 0.12.22 and installs standalone Python 3.12.10
+(desk) and 3.13.7 (native) into `packaging/build`, then hash-locked wheels into `desktop/src-tauri/payload/desk` and
 `payload/native`, and stages `payload/app` with the verified Nautilus manifest.
 No user environment, data or credentials are copied. Do not repeat preparation
 for ordinary app changes.
@@ -51,8 +64,8 @@ For a full first-install package, use `npm run build:setup` from `desktop`.
 This explicitly adds `tauri.setup.conf.json`, including the runtime seeds,
 and disables updater artifacts. Use a separate `CARGO_TARGET_DIR` for this
 build and retain its full setup outside the normal update output. It must never
-be used as the updater feed's artifact. The existing signed 0.6.19 full installer
-remains a first-install package for its dependency set; install the current
+be used as the updater feed's artifact. A full installer from an earlier
+release remains a first-install package for its dependency set; install the current
 app-only update afterward.
 
 On first launch, full setup seeds `runtimes/desk` and `runtimes/native`
@@ -80,7 +93,7 @@ unpacking, so keep it out of the standard uncompressed NSIS bundle.
 
 This is an operator preparation step, not a Settings download action. Obtain
 approval and stop the installed app through its tray before changing its private
-runtime. For the production profile's persistent runtime, from this checkout with
+runtime. The production profile is `%USERPROFILE%\.cache\trader\production`. For its persistent runtime, from this checkout with
 the existing `uv` available:
 
 ```powershell

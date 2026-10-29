@@ -64,17 +64,17 @@ for the installed environment, recovery, and recorded acceptance evidence.
 
 On Windows, open the installed TradingAgents desktop or Start menu shortcut.
 The installed app serves `http://127.0.0.1:8098/` and uses its private production
-profile under `%USERPROFILE%\.cache\trader\production`. The tray provides
-Open, Restart, Check for updates, Open logs, and Quit. Refer to the local guide
+profile under `%USERPROFILE%\.cache\trader\production`. The tray shows a status line
+and provides Open, Restart, Check for updates, Open logs, and Quit. Refer to the local guide
 for verified behavior and recovery; do not assume every tray operation or broker
 order type has been accepted in every environment.
 
-For isolated development, run `rtk proxy .\Start-TradingDesk-Dev.cmd` from the
-checkout. It uses port 8099 and `%USERPROFILE%\.cache\trader\development`,
+For isolated development, run `.\Start-TradingDesk-Dev.cmd` from the
+checkout (it requires npm and the `rtk` command-line tool). It uses port 8099 and `%USERPROFILE%\.cache\trader\development`,
 separate from production data and credentials. The repository's
 `Start-TradingDesk.cmd` opens the installed production app. Desktop credentials
-use the operating system's credential store, with separate production and
-development namespaces; do not put secrets in served assets or backups.
+use the operating system's credential store (Windows Credential Manager or macOS Keychain), managed through Settings, with separate production and
+development namespaces; do not put secrets in served assets or backups. macOS 26+ on Apple Silicon is a packaging target that still needs verification on a Mac; the verified paths in this guide are Windows.
 
 Normal releases update the app and launcher while preserving installed private
 runtimes. Full dependency setup is a separate operation. See the
@@ -85,4 +85,4 @@ and [source reference](docs/desk-reference.md#source-map).
 
 This repository extends [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents).
 The browser desk and integrations described here are specific to this fork. See
-the [license](LICENSE) and third-party notices for their respective terms.
+the [license](LICENSE) and the notices under `tradingagents/web/static/vendor/` for their respective terms.
