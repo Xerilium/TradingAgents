@@ -150,8 +150,18 @@ Live facts: 3 completed (AMZN Hold, INTC Underweight, TER Sell), 21 cancelled, 1
 6. Destructive or committing actions lack a confirm and a "done" message (Orders submit, Journal reload, Alert remove).
 7. Disabled buttons give no reason.
 
+## Redesign blueprint and review records
+
+The critique above has been translated into a complete, contract-verified UI redesign blueprint and reviewed across multiple models and a professional stock trader rubber-duck pass:
+
+- [UI Redesign Blueprint (v3 Master Spec)](ui-redesign-blueprint.md) — 5 user personas, 28 user stories with acceptance criteria, 84%–91% data-height budget, and ASCII wireframes for all 10 tabs.
+- [Professional Stock Trader Rubber-Duck Audit](ui-redesign-trader-audit.md) — fresh Sonnet 5.5 and Grok 4.7 trader-lens critique (price drift vs. research date, live position/working-order/draft strip on every decision screen, PM decision above the fold, docked order proposal drawer, click-to-seed limit prices, sizing %, and populated holdings table).
+- [Sonnet 5.5 Wireframe & UX Review](ui-redesign-review-sonnet.md)
+- [Grok 4.7 Wireframe & UX Review](ui-redesign-review-grok.md)
+- [Gemini 4 Argon Wireframe & UX Review](ui-redesign-review-argon.md)
+
 ## Still to do
 
-- Check live: does the Research panel stay on the old stock after starting? (U2). Does double-clicking Submit send twice?
-- Contrast and focus order were not measured by any reviewer.
-- Pick which fixes to build first. Suggested order: clarify wording, harden (confirm and done messages, tab roles, disabled reasons), polish (number formatting), distill (history form, filters, Research setup), layout (Positions, Open orders, one-place research start).
+- Check live during implementation: does the Research panel focus the first batch stock on launch (U2), and does Stage 3 Submit block duplicate clicks?
+- Measure contrast and keyboard focus order during the 4 implementation workstreams defined in `docs/ui-redesign-blueprint.md`.
+- Execute the 4 implementation workstreams (Shell/Tablist/Icons, Research & Workflows, Dashboard/Markets/Portfolio, Orders/Strategy Lab/Journal/Alerts/Settings), rebuild the app-only payload, and verify live in the Browser Canvas.
