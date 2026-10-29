@@ -159,6 +159,7 @@ The critique above has been translated into a complete, contract-verified UI red
 - [Sonnet 5.5 Wireframe & UX Review](ui-redesign-review-sonnet.md)
 - [Grok 4.7 Wireframe & UX Review](ui-redesign-review-grok.md)
 - [Gemini 4 Argon Wireframe & UX Review](ui-redesign-review-argon.md)
+- [UI Missed Opportunities (All Components)](ui-missed-opportunities.md) and [Nautilus & Execution Missed Opportunities](ui-missed-opportunities-nautilus.md) — 20+ existing backend and Nautilus 1.231.0 capabilities (historical `analysis_date` runs, SEC EDGAR XBRL statements, corporate actions, quote sizes, intraday P/L, `qty_available`, 10-rule policy table, Nautilus `stats_pnls`/`stats_returns` win rate & profit factor, market open/close countdown, HTML tear sheets, and 5-day alpha reflection) mapped into the blueprint.
 
 ## Still to do
 

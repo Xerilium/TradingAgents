@@ -501,3 +501,26 @@ When we move from this blueprint to code implementation, the work splits cleanly
 4. **Workstream 4 — Orders, Strategy Lab, Journal, Alerts & Settings (`app.js`, `command-controls.js`, `nautilus.js`, `ui-orders.css`):**
    - Direct 2-column DOM rendering (deleting `layoutOrders`/`layoutMarkets` post-render scraping), 1-line order readiness + inline confirm/receipt + `resolve_never_dispatched` recovery, Strategy Lab 3-step accordion rail, Journal focus-safe search + 1-row outcome table + guarded revert, Alerts grouped restarts + 3 quick rule templates, Settings Basic vs. Advanced split + isolated Restore Danger Zone.
 
+---
+
+## 8. High-Value Backend Capabilities Surfaced in v3+ (`docs/ui-missed-opportunities.md`)
+
+Our backend-to-UI audit ([`docs/ui-missed-opportunities.md`](ui-missed-opportunities.md) and [`docs/ui-missed-opportunities-nautilus.md`](ui-missed-opportunities-nautilus.md)) identified 20+ existing backend and Nautilus 1.231.0 capabilities that were previously hidden or dumped as raw JSON. They slot cleanly into the wireframes above:
+
+1. **Global Shell (`6.1`):**
+   - **Market Open/Close Countdown (`state.clock.next_open` / `next_close`):** Pass `next_open` and `next_close` through `service.py:2162` so `lists.js` `marketState()` renders `"Market Closed · Opens in 11h 32m"`.
+   - **Live Broker Trade Stream Dot (`state.nautilus.trade_stream`):** Show `Stream: Listening` dot next to `Nautilus OK`.
+   - **Account Restriction Chip (`state.account.trading_blocked` / `account_blocked`):** Show a warning chip if Alpaca blocks or suspends trading.
+2. **Markets & Research (`6.3`, `6.4`):**
+   - **Historical Point-in-Time Research Date & `exclude_fred` (`POST /api/runs`):** Expose optional `analysis_date` and `exclude_fred` inside the Research Confirm Popover.
+   - **Asset Capability Badges & Displayed Quote Sizes (`state.nautilus.market_data`):** Show `Bid $252.40 (300) x Ask $252.60 (100) · 8 bps` plus `Fractional ✓` / `Overnight Halted` badges.
+   - **SEC EDGAR Point-in-Time Financials, Corporate Actions & Alpaca News (`/api/stock-evidence`):** Surface an `[Evidence & Filings]` drawer with XBRL Balance Sheet / Income / Cash Flow, Ex-Dividend / Split dates, and SIC industry.
+   - **Local Laya Post Screening (`/api/runs/local-laya`) & Standalone HTML Tear Sheet (`report_html.py`):** Surface `[Screen Saved Posts Locally]` on Sentiment and `[Export HTML Tear Sheet]` in the Research header.
+3. **Portfolio & Orders (`6.5`, `6.6`):**
+   - **Today's Intraday P/L & `qty_available` (`state.positions`):** Add `Today P/L` (`unrealized_intraday_pl`) and `Avail Qty` (`qty_available`) to Positions and the Order Ticket.
+   - **10-Rule Policy Value vs. Limit Table (`policy_evaluation.py`):** Show all 10 policy checks with observed value vs. limit (failing rules first) instead of a `<pre>` JSON block, plus bracket `stop_loss_estimate_before_fees`.
+   - **Structured Fills Table (`state.fills`) & Basket Weight/Turnover Table (`baskets.py`):** Replace `<pre>` JSON dumps in `Orders → Fills` and `Orders → Baskets` with tabular views including `Fee Provenance (actual / modeled)` and `Turnover %`.
+4. **Strategy Lab & Journal (`6.7`, `6.8`):**
+   - **Nautilus `BacktestResult` Portfolio Analyzer Metrics (`stats_pnls`, `stats_returns`):** Surface `Win Rate`, `Profit Factor`, `Expectancy`, and `Sharpe` alongside Walk-Forward Fold tables and Closed-Trade lists.
+   - **Benchmark Alpha Settlement & Analyst Self-Reflection (`settlement.py`, `reflection.py`):** Surface `5d Return`, `5d Alpha vs. SPY`, and the 2–4 sentence `Reflection Lesson` in `Journal → Decisions & Outcomes`.
+
