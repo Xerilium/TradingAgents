@@ -1,41 +1,48 @@
 # Paper trading desk
 
-For the current relocated installation, use the [local launch and user guide](local-desk-guide.md).
-It includes file locations, the five-page workflow and dated UAT coverage.
+> **Historical record. Not the current operator guide.**
+>
+> This file is not the guide for the installed app. The port-8088 MCP-Alpaca
+> `.paper-desk` instructions are a historical record of the pre-Nautilus paper
+> desk. The section below, formerly titled "Current assembly: Nautilus paper
+> desk," describes a superseded source launcher. It is not the installed Tauri
+> desk.
+>
+> For the current port-8098 Tauri + NautilusTrader desk, use
+> [README.md](../README.md), [desk reference](desk-reference.md), and
+> [local desk guide](local-desk-guide.md). Production is
+> `http://127.0.0.1:8098`. Development is port 8099. Do not follow the launch
+> steps in this file.
 
-## Current assembly: Nautilus paper desk
+## Superseded source launcher
 
-Open Start-TradingDesk.cmd from this project. It uses Launch-TradingDesk.py and
-tradingdesk.launch.json with the existing approved Python environments and
-explicit application/history directories. It requires an already migrated SQLite
-store; it does not install dependencies, migrate data, change PowerShell policy
+`Start-TradingDesk.cmd` now starts
+`%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`. It does not
+read `tradingdesk.launch.json`, and that file is not in this checkout. The
+steps below record what the old source launcher claimed. Do not use them.
+
+The old source launcher used `Launch-TradingDesk.py` and
+`tradingdesk.launch.json` with the existing approved Python environments and
+explicit application/history directories. It required an already migrated SQLite
+store; it did not install dependencies, migrate data, change PowerShell policy
 or take over a mismatched running service.
 
-Keep tradingdesk.launch.json local. Its fields are application, history,
-native_python, credentials_file and port; the four path values identify existing
-local directories/files. Credentials and runtime records are not repository assets.
-
-The configured browser address is http://127.0.0.1:8098. Start/stop the native
-worker through the browser. The official Nautilus v1 cache runs in memory.
-SQLite application-only backup/restore remains available in Health.
-
-The normal desk supports explicit per-order approval and submission through
-Nautilus to Alpaca, plus authorized cancellation and replacement. Approval alone
-does not submit an order. The operator's pause choice is separate from approval.
-The optional --browse-only flag selects restricted review mode, disabling new
-research and order authority; the normal launcher does not set that flag.
-Current account observations, local human proposals, saved research, journal
-and stock evidence remain available. Saved
-research inputs never fall back to a live fetch; current history uses the separate
-current-market data workflow.
+That old JSON file named application, history, native_python, credentials_file
+and port. Credentials and runtime records were not repository assets. The old
+text also said backup and restore lived in Health. They do not. Current backup
+and restore are under **Settings → Diagnostics → Local records**. `--browse-only`
+is a `python -m tradingagents.web.server` flag, not a `Start-TradingDesk.cmd`
+flag. The old launcher did not set it.
 
 See [the signed-off UAT record](uat/2026-10-19/README.md) for exercised behavior
 and the approval, broker-event and new-research paths that were not executed.
 
-## Legacy setup (superseded for this assembly)
+## Legacy setup: pre-Nautilus port-8088 desk
 
-The execution and installation instructions below describe the previous desk.
-They are not the launch procedure or execution authority for this assembly.
+The execution and installation instructions below are the historical
+pre-Nautilus MCP-Alpaca `.paper-desk` record. They are not the launch procedure
+or execution authority for the installed port-8098 Tauri desk. The daily
+workflow and later sections in this file belong to that historical record.
 
 Use the project's Python environment. Install the optional dependencies when
 setting up a new checkout:
@@ -83,6 +90,9 @@ both displayed model fields to match it. Remove that override to select separate
 deployments. An API key alone or an image-only deployment is insufficient.
 
 ## Daily workflow
+
+The steps in this section and the sections after it describe the historical
+desks above. They are not the current port-8098 workflow.
 
 1. Refresh the connection. Review account cash, holdings, market-data timestamps,
    and any source errors. Prices and candles use Alpaca's IEX feed.

@@ -43,6 +43,12 @@ References: [Laya 0.4.14 answers and calibration](https://raw.githubusercontent.
 [Laya evaluation format](https://github.com/NandhaKishorM/laya/blob/main/docs/evals.md).
 
 
+The Windows 0.6.15 and 0.6.16 sections below are dated observations. They are
+not install instructions and do not identify the current package. This
+checkout's desktop package version is 0.6.22 in `desktop/src-tauri/tauri.conf.json`.
+This source recheck does not claim that 0.6.22 is installed or signed. The
+review commands above still match `scripts/laya_review.py`.
+
 ## Windows release 0.6.15: observed paths
 
 Validation on 27 October 2026 used original retained TER and VECO posts with

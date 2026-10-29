@@ -57,7 +57,9 @@ quote.
 
 An instrument has **Chart, Research, Options and Position** tabs. Chart
 inspectors are **Studies and formulas, Drawings, Comparison, Saved calculations,
-Source data and Playback**.
+and Source data**. There is no Playback inspector. Commit `9c0e0c8` removed
+chart playback controls. A Dashboard chart caption can still say **Historical
+playback** when a retained object has `playback`; that caption is not a control.
 
 Choose between immutable saved research inputs and separately collected
 current-market IEX history. Selecting a cache reads retained data; it does not
@@ -900,9 +902,12 @@ do not bundle or reinstall them. See [release preparation](../packaging/README.m
 
 Its desk log is `logs\desk.log` under that profile. The development launcher uses source
 environments and `%USERPROFILE%\.cache\trader\development` on port 8099. It does not copy
-production credentials or share the production profile. The older
-`Start-TradingDesk.cmd` opens the installed production app. The old
-`tradingdesk.launch.json` is not the installed app's launch configuration.
+production credentials or share the production profile. `Start-TradingDesk.cmd`
+starts `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`. It is
+not a source launcher and does not read `tradingdesk.launch.json`. That file is
+not in this checkout. `Launch-TradingDesk.py` still expects it. **Settings →
+Diagnostics → Local records → Launch and restart** still describes that old
+JSON launcher. Do not follow that in-app text.
 
 Maenifold Gateway defaults to `http://localhost:8080/mcp`. Provider endpoints
 and broker endpoints are separate configuration.
@@ -934,9 +939,13 @@ The prior source-linked application and history directories remain under
 `.local-workspace/evidence/runtime-staging/20261017T024233Z-e3f9548d/` as
 preserved source data. Credentials are private; never print or commit them.
 
-The Windows 0.6.2 installer and signature were produced and installed locally,
+A Windows 0.6.2 installer and signature were produced and installed locally,
 with native credential storage and the paper-account connection verified in
-Settings. The update feed
+Settings. That is a dated observation, not the current package version. This
+checkout's desktop package version is 0.6.22 in `desktop/src-tauri/tauri.conf.json`
+and `desktop/package.json`. This source recheck does not claim that 0.6.22 is
+installed or signed. The drawing-plugin path `lightweight-charts-drawing/0.6.2`
+is a library version, not the app version. The update feed
 has not been published and an end-to-end update has not been proven. The macOS
 dependency locks target macOS 26 or later on Apple silicon; no macOS build or
 acceptance has been completed.
@@ -1013,18 +1022,18 @@ deleting a directory does not clear an already-running process's memory.
 
 | Area | Entry points |
 | --- | --- |
-| Desktop host and development launcher | `desktop/`, `Start-TradingDesk-Dev.cmd`; legacy source launcher: `Start-TradingDesk.cmd`, `Launch-TradingDesk.py`, `tradingdesk.launch.json` |
+| Desktop host and launchers | `desktop/`; installed-app launcher `Start-TradingDesk.cmd`; development launcher `Start-TradingDesk-Dev.cmd`. `Launch-TradingDesk.py` still expects `tradingdesk.launch.json`, which is not in this checkout. |
 | Web/API and orchestration | `tradingagents/web/server.py`, `service.py`, `config.py` |
 | Browser composition | `tradingagents/web/static/app.js`, `index.html`, `app.css`, `ui-*.css` |
-| Charts | `web/static/market-chart.js`, vendored `lightweight-charts/5.2.1` and drawing plugin `0.6.2` |
+| Charts | `tradingagents/web/static/market-chart.js`, vendored `lightweight-charts/5.2.1` and drawing plugin `lightweight-charts-drawing/0.6.2` |
 | Research graph and analysts | `tradingagents/graph/`, `tradingagents/agents/` |
 | Model adapters | `tradingagents/llm_clients/factory.py`, `chatgpt_client.py`, `openai_client.py` |
-| MCP and research tools | `tradingagents/integrations/maenifold.py`, `agents/analysts/turn.py` |
-| Source routing and social screening | `tradingagents/dataflows/router.py`, `dataflows/vendors/`, `agents/post_screen.py` |
-| Native runtime and broker bridge | `web/nautilus_runtime.py`, `nautilus_worker.py`, `nautilus_v1.py`, `alpaca_readonly.py`, `alpaca_stream.py`, `alpaca_reports.py` |
-| Proposals, groups and policy | `web/investor.py`, `baskets.py`, `linked_orders.py`, `approval_review.py`, `admission.py`, `execution_lifecycle.py`, `policy_evaluation.py` |
-| Data/history/evaluation | `web/market_history.py`, `history_coverage.py`, `market_discovery.py`, `evaluation.py`, `evaluation_worker.py` |
-| Persistence and outcomes | `web/app_database.py`, `store.py`, `workspace.py`, `decision_journal.py`, `performance.py`, `attention.py` |
+| MCP and research tools | `tradingagents/integrations/maenifold.py`, `tradingagents/agents/analysts/turn.py` |
+| Source routing and social screening | `tradingagents/dataflows/router.py`, `tradingagents/dataflows/vendors/`, `tradingagents/agents/post_screen.py` |
+| Native runtime and broker bridge | `tradingagents/web/nautilus_runtime.py`, `nautilus_worker.py`, `nautilus_v1.py`, `alpaca_readonly.py`, `alpaca_stream.py`, `alpaca_reports.py` |
+| Proposals, groups and policy | `tradingagents/web/investor.py`, `baskets.py`, `linked_orders.py`, `approval_review.py`, `admission.py`, `execution_lifecycle.py`, `policy_evaluation.py` |
+| Data/history/evaluation | `tradingagents/web/market_history.py`, `history_coverage.py`, `market_discovery.py`, `evaluation.py`, `evaluation_worker.py` |
+| Persistence and outcomes | `tradingagents/web/app_database.py`, `store.py`, `workspace.py`, `decision_journal.py`, `performance.py`, `attention.py` |
 
 Implementation details can be traced directly to:
 
@@ -1041,14 +1050,18 @@ Implementation details can be traced directly to:
 
 ### Documentation coverage
 
-This guide was assembled from the primary checkout at `515ef0a` on 23 October
-2026, with four domain readers and an independent reader checking their own
-browser views and source. Inspection covered all nine workspaces, saved META
-research, provider configuration, empty account/order/performance states and
-existing analysis/maintenance controls. This establishes the documented labels
-and source contracts, not successful execution of every scenario. No new broker
-order, calculation, scan, optimization, simulation, backup or restore was run
-for documentation. Ordinary navigation can autosave view preferences.
+The 23 October 2026 assembly, from primary checkout `515ef0a`, is historical.
+Four domain readers and an independent reader checked their own browser views
+and source. That inspection covered the nine workspaces then present, saved
+META research, provider configuration, empty account/order/performance states
+and existing analysis/maintenance controls. It established labels and source
+contracts, not successful execution of every scenario. No new broker order,
+calculation, scan, optimization, simulation, backup or restore was run for
+that assembly. Ordinary navigation can autosave view preferences.
+
+A source-only recheck on 28 October 2026 used checkout `1690752`. It corrected
+the launcher, chart inspectors, package version and source-map paths recorded
+above. It did not repeat the browser inspection and does not claim a new UAT.
 
 Current runtime defects belong in the existing local issues. In particular,
 having one completed META record does not erase the later interrupted FANGMAN

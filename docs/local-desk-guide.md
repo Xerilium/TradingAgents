@@ -82,7 +82,9 @@ findings; its captured output was truncated, so full lint is not claimed clean.
 
 ### Saved-plan simulation profile
 
-The Decision journal has **Simulate a saved plan**. Load local plans/data, select
+**Strategy lab → Simulations** has **Simulate a saved plan**. Journal does not.
+Journal views are **Decisions**, **Position outcomes**, **Notes**, and
+**Account history**. Load local plans/data, select
 an exact revision and a complete raw daily-history receipt, and enter starting
 cash, timezone-qualified dates, decision availability, fees, fill probabilities,
 random seed and latency. Review the explicit USD scenario assumption and empty
@@ -168,8 +170,10 @@ verification does not establish a live connection or live execution acceptance.
 2. Open <http://127.0.0.1:8098> if the browser did not open automatically.
    The installed app uses port **8098** and the production profile under
    `%USERPROFILE%\.cache\trader\production`.
-3. Expand **Nautilus connection**. If stopped, choose **Start Nautilus**. Wait for
-   connected account status and prices before relying on current observations.
+3. Open **Settings → Account**. In **Nautilus connection**, if the engine is
+   stopped, choose **Start Nautilus**. That section is not a collapsed expander
+   on the opening page. Wait for connected account status and prices before
+   relying on current observations.
 4. Confirm the account is paper, check cash/equity/buying power, and inspect
    missing prices and timestamps. A refreshed account does not mean a new market
    price event, particularly while the market is closed.
@@ -188,8 +192,10 @@ For isolated source development, run `rtk proxy .\Start-TradingDesk-Dev.cmd`
 from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
 checkout's `.venv` and `.venv-nautilus-v1` and
 `%USERPROFILE%\.cache\trader\development`. It does not copy production credentials or
-share production settings or data. `Start-TradingDesk.cmd` opens the installed
-production app. The old `tradingdesk.launch.json` is not its launch configuration.
+share production settings or data. `Start-TradingDesk.cmd` starts the installed
+production app. It does not read `tradingdesk.launch.json`. **Settings →
+Diagnostics → Local records → Launch and restart** still describes that old
+file. Do not follow that in-app text.
 
 Manage Alpaca credentials in **Settings → Account** and other API keys in
 **Settings → Integrations**. The desktop app uses Windows Credential Manager
@@ -216,11 +222,15 @@ native store. Verify the observed paper/live account before preparing orders.
 | Preserved local evidence and backups | `.local-workspace` and existing repository-local backup folders |
 
 Old paths inside dated evidence remain provenance, not launch instructions.
-The signed Windows 0.6.2 installer and its signature exist and the update is
-installed locally. Windows Credential Manager storage and the paper-account
-connection were verified in Settings on 27 October 2026. The update feed is
-not published and an end-to-end update has not been proven. macOS dependency
-locks target macOS 26 or later on Apple silicon; no macOS build has been made.
+A signed Windows 0.6.2 installer existed and that update was installed locally.
+Windows Credential Manager storage and the paper-account connection were
+verified in Settings on 27 October 2026. That observation does not identify the
+current package. This checkout's desktop package version is 0.6.22. This
+source recheck does not claim that 0.6.22 is installed or signed. The update
+feed is not published and an end-to-end update has not been proven. macOS
+dependency locks target macOS 26 or later on Apple silicon; no macOS build has
+been made.
+
 The installed desk still depends on a signed-in Codex installation and an
 external Maenifold service for those integrations.
 
@@ -229,15 +239,22 @@ fresh data or commit databases, credentials, environment files or backup archive
 
 ## Everyday workflow
 
+The navigation has ten workspaces: **Dashboard**, **Portfolio**, **Markets**,
+**Research**, **Orders**, **Strategy lab**, **Journal**, **Alerts**,
+**Workflows**, and **Settings**. **Simulate a saved plan** is **Strategy lab →
+Simulations**. Reusable experiments are **Strategy lab → Experiments**.
+
 | Page | How to use it |
 | --- | --- |
-| Portfolio overview | Check account balances and holdings; scan the universe using search, filters, sorting and columns. Select stocks to organize watchlists. Open a stock's market evidence and available charts before relying on an agent recommendation. |
-| Agent research | Choose a stock's latest saved result. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
-| Orders and drafts | Create or review a local proposal or basket. Check symbol, side, quantity, order type, limit price when applicable and time in force. Read readiness reasons. Approve exact terms, then separately Submit only when intentionally placing an order. |
-| Settings | Edit the named universe or import a Symbol/Ticker CSV or text list, review and save. Model/provider changes apply to future research. Connected-service status identifies the account and price feed. |
-| Decision journal | Inspect saved decisions, research links, proposals and baskets. Record follow-up notes and export selected records. Reporting uses available records and configured periods; absent data is not fabricated performance. |
+| Portfolio | Check account balances and holdings; scan the universe using search, filters, sorting and columns. Select stocks to organize watchlists. Open a stock's market evidence and available charts before relying on an agent recommendation. |
+| Research | Choose a stock's latest saved result. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
+| Orders | Create or review a local proposal or basket. Check symbol, side, quantity, order type, limit price when applicable and time in force. Read readiness reasons. Approve exact terms, then separately Submit only when intentionally placing an order. |
+| Settings | Categories are Account, Research, Trading rules, Integrations, and Diagnostics. Start and stop Nautilus from Account. Edit the named universe, import a Symbol/Ticker CSV, and change models or provider under Research. Those changes apply to future research. Account and Integrations identify the observed account and price feed. |
+| Journal | Views are Decisions, Position outcomes, Notes, and Account history. Inspect saved decisions, research links, proposals and baskets. Record follow-up notes and export selected records. Reporting uses available records and configured periods; absent data is not fabricated performance. |
 
-The research provider can use the existing Codex ChatGPT sign-in (`chatgpt`).
+The desk default provider is `codex`, with models `gpt-6-sol` and `gpt-6-luna`.
+`codex` uses the existing Codex sign-in. `chatgpt` is a separate accepted
+provider, not the name of the Codex desk adapter.
 Maenifold's configured default endpoint is `http://localhost:8080/mcp`; it serves
 research integration, not the Nautilus engine. New research can require that
 service and provider authentication. No new research was run in the latest UAT.
@@ -372,7 +389,7 @@ remain labeled historical. No reports are captured automatically.
 
 In Orders, expand **Native risk limits and cached reports**, choose **positions**,
 then select **Capture native table** explicitly. This reads the native cache without
-refreshing a provider. In Decision journal, use **Reload saved journal** to inspect
+refreshing a provider. In **Journal**, use **Reload saved journal** to inspect
 the retained position lifecycles. No position report is captured automatically.
 
 Each lifecycle appears once, with links from all contributing commands and exact
@@ -430,8 +447,8 @@ not been exercised through actual alerts, notifications or source-reader request
 ## Browser alert notifications
 
 Rules continue to use the existing attention monitor and saved occurrences.
-In the overview, open **Browser notifications**, then select **Enable browser
-notifications** to request browser permission and opt in for this profile.
+In **Alerts → Delivery**, open **Browser notifications**, then select **Enable
+browser notifications** to request browser permission and opt in for this profile.
 Notifications are off by default. Enabling starts a new cursor without replaying
 the unread backlog. Tabs sharing the profile claim each occurrence once.
 
@@ -648,7 +665,7 @@ later authorized desk restart; this review did not restart or launch research.
 
 ## Read-only smoke test
 
-Open all five pages in the actual browser. Confirm connected Nautilus/account
+Open the ten workspaces in the actual browser. Confirm connected Nautilus/account
 status, price coverage for the saved universe, readable saved research, visible
 order readiness, persisted settings and journal entries. Capture results and
 errors. Do not approve, submit, cancel, replace, launch research or restore a
@@ -852,7 +869,7 @@ Unknown outcomes have no blind-retry control. Actual attributable evidence or a 
 
 ### Reusable strategy experiments (D61 source integration)
 
-In **Decision journal → Reusable strategy experiments**, load the saved definitions and retained daily data. Use the guided entry/exit condition editor, matching operand units and finite integer/decimal parameter domains; save an immutable strategy revision before preview. The supported account scope is one USD equity, whole shares and empty starting holdings. Choose MARKET, LIMIT or STOP_LIMIT and DAY/GTC, with optional linked take-profit and stop/stop-limit protection. Applicable price operands freeze at the completed decision bar as exact positive USD cents, without rounding. Native FULL-entry protection may leave partial entry exposure unprotected; rule exit cancels the working entry and its live protection, waits for actual native terminal events/late fills, then exits actual residual holdings. No pyramiding or duplicate exits. Wider assets remain open.
+In **Strategy lab → Experiments**, load the saved definitions and retained daily data. Use the guided entry/exit condition editor, matching operand units and finite integer/decimal parameter domains; save an immutable strategy revision before preview. The supported account scope is one USD equity, whole shares and empty starting holdings. Choose MARKET, LIMIT or STOP_LIMIT and DAY/GTC, with optional linked take-profit and stop/stop-limit protection. Applicable price operands freeze at the completed decision bar as exact positive USD cents, without rounding. Native FULL-entry protection may leave partial entry exposure unprotected; rule exit cancels the working entry and its live protection, waits for actual native terminal events/late fills, then exits actual residual holdings. No pyramiding or duplicate exits. Wider assets remain open.
 
 Selected timing is native OHLC-path next modeled open: public TradeTickDataWrangler, fixed 100 ms compressed OHLC offsets and seed None, with trade execution enabled and bar execution disabled. A close tick precedes the completed decision bar; the next generated open tick updates the native book before a queued intent. This is not an actual session open, tick/BBO or liquidity reconstruction. DAY uses the declared session boundary. Converter/path, source identity, volume allocation/floor, precision and model flags remain bound in the immutable preview.
 
