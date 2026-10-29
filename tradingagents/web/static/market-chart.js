@@ -155,16 +155,16 @@ window.DeskMarketChart=(()=>{
       mounted.set(element,{chart,key,onDispose});
       if(comparison){
         chart.priceScale('right').applyOptions({mode:library.PriceScaleMode.Normal});
-        comparison.series.forEach((item,index)=>{const line=chart.addSeries(library.LineSeries,{color:['#86d6ab','#e6c17d'][index],title:item.symbol+' close index',priceScaleId:'right',priceLineVisible:false});line.setData(item.points.map(point=>({time:point.time,value:point.value})));});
+        comparison.series.forEach((item,index)=>{const line=chart.addSeries(library.LineSeries,{color:['#86d6ab','#e6c17d'][index],title:item.symbol+' close index',lineStyle:index===0?0:2,priceScaleId:'right',priceLineVisible:false});line.setData(item.points.map(point=>({time:point.time,value:point.value})));});
       }else{
-        const candles=chart.addSeries(library.CandlestickSeries,{upColor:color('--positive'),downColor:color('--negative'),borderVisible:false,wickUpColor:color('--positive'),wickDownColor:color('--negative')});
+        const candles=chart.addSeries(library.CandlestickSeries,{upColor:color('--positive'),downColor:color('--paper'),borderVisible:true,borderUpColor:color('--positive'),borderDownColor:color('--negative'),wickUpColor:color('--positive'),wickDownColor:color('--negative')});
         candles.setData(bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));
         mounted.get(element).controller=annotations(element,chart,candles,bars,options);
         const volume=chart.addSeries(library.HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'volume'});
         volume.priceScale().applyOptions({scaleMargins:{top:.82,bottom:0},visible:false});
         volume.setData(bars.map(b=>({time:b.t,value:b.v,color:b.c>=b.o?'#386c58':'#704650'})));
         indicators.filter(i=>/sma|ema/i.test(i.name)).forEach((item,index)=>{
-          const series=chart.addSeries(library.LineSeries,{color:['#e6c17d','#86d6ab','#a5b3c0'][index%3],lineWidth:1,title:item.name,priceLineVisible:false});
+          const series=chart.addSeries(library.LineSeries,{color:['#e6c17d','#86d6ab','#a5b3c0'][index%3],lineWidth:1,lineStyle:index%3,title:item.name,priceLineVisible:false});
           const dates=new Set(bars.map(b=>b.t));series.setData(normalize(item.points,timeframe).filter(p=>dates.has(p.t)&&Number.isFinite(p.value)).map(p=>({time:p.t,value:p.value})));
         });
       }

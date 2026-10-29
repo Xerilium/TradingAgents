@@ -444,3 +444,11 @@ body{font:var(--text-body)/var(--leading-ui) var(--font)}
  .topbar #last-updated{white-space:normal}
  #main .page-heading{height:auto;flex-wrap:wrap}
 }
+
+/* Step 4: source-bound trader scan and chart alternatives. */
+#main .dashboard-grid .watchlist-table{table-layout:auto;min-width:780px}#main .dashboard-grid .watchlist-table th,#main .dashboard-grid .watchlist-table td{width:auto;white-space:nowrap}#main .dashboard-grid .watchlist-table td:last-child{white-space:normal;min-width:130px}
+#main .dashboard-grid>[data-dashboard-pane]{min-height:0;overflow:auto}#main .dashboard-grid .dashboard-panel,#main .dashboard-grid [data-dashboard-pane=positions]>.panel{display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden}#main .dashboard-grid .panel-body{min-height:0;flex:1;overflow:auto}#main .dashboard-grid .chart-wrap{min-height:200px;overflow:auto;flex:1}
+#main .account-ledger{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.chart-legend{font-size:var(--text-meta);color:var(--muted);padding:var(--space-1)}.chart-data-table{padding:var(--space-1)}.chart-data-table>.table-scroll{max-height:260px;overflow:auto}.chart-data-table summary{min-height:32px;cursor:pointer}
+.candle-down>rect:not(.volume-bar){fill:var(--paper);stroke:var(--negative);stroke-width:1.3}.candle-up>rect:not(.volume-bar){fill:var(--positive);stroke:var(--positive)}.chart-period-controls{display:flex;gap:var(--space-1);flex-wrap:wrap}
+.performance-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--space-2)}.performance-tile{min-width:0;border:1px solid var(--line);padding:var(--space-2)}.performance-tile strong{font-size:var(--text-heading)}.performance-tile p{font-size:var(--text-meta);overflow-wrap:anywhere}.performance-empty{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);min-height:64px;max-height:120px;overflow:auto;padding:var(--space-3);border:1px solid var(--line)}.performance-empty>svg{width:24px;height:24px}.portfolio-performance{overflow:auto}.performance-export>button{display:block}.performance-controls{display:flex;flex-wrap:wrap;align-items:end;gap:var(--space-2)}
+@media(max-width:1100px){.performance-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.performance-tiles{grid-template-columns:1fr}}

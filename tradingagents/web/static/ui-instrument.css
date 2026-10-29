@@ -85,3 +85,5 @@
  #universe-review.markets-workspace #instrument-chart .saved-evidence.analysis-visible{grid-template-rows:auto minmax(200px,1fr) auto minmax(150px,1fr) minmax(120px,1fr);overflow:auto}
  #universe-review.markets-workspace #instrument-chart .analysis-visible .chart-inspectors{grid-row:5}
 }
+
+.instrument-workspace>.instrument-header-strip{flex:none;padding:var(--space-2);border-bottom:1px solid var(--line)}.history-backfill-bar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;padding:var(--space-1);font-size:var(--text-meta)}.history-more{padding:var(--space-1)}.history-more>summary{cursor:pointer;min-height:32px}.history-more[open]{max-height:45vh;overflow:auto}#instrument-evidence{overflow:auto}#instrument-chart .current-market>h3{display:none}.instrument-tabs [data-prepare-order]{margin-left:auto}.instrument-workspace .chart-legend{flex:none}
