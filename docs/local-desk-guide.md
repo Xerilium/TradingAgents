@@ -194,8 +194,11 @@ checkout's `.venv` and `.venv-nautilus-v1` and
 `%USERPROFILE%\.cache\trader\development`. It does not copy production credentials or
 share production settings or data. `Start-TradingDesk.cmd` starts the installed
 production app. It does not read `tradingdesk.launch.json`. **Settings →
-Diagnostics → Local records → Launch and restart** still describes that old
-file. Do not follow that in-app text.
+Diagnostics → Local records → Launch and restart** describes
+`Start-TradingDesk.cmd` /
+`%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` and
+`%USERPROFILE%\.cache\trader\production`. `Launch-TradingDesk.py` in the
+repository root remains a legacy script.
 
 Manage Alpaca credentials in **Settings → Account** and other API keys in
 **Settings → Integrations**. The desktop app uses Windows Credential Manager

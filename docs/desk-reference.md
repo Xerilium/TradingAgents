@@ -264,6 +264,9 @@ to both tiers. Future settings changes do not rewrite saved run configuration.
 
 ### Read results
 
+When no saved report exists for the selected stock, Research shows
+**Open Research Setup**.
+
 - **Summary:** saved recommendation and conclusion.
 - **Reports:** individual analyst findings.
 - **Debate:** research and risk discussion.
@@ -569,7 +572,8 @@ flows. Time-weighted return needs actual before/after valuations at each flow.
 Missing flow boundaries and sessions are not interpolated. Benchmark comparison
 uses matching completed sessions and split-adjusted USD price data; reinvested
 dividends and benchmark costs are excluded. An empty history cannot produce a
-meaningful performance curve.
+meaningful performance curve. **Portfolio Performance** then offers
+**Collect account history in Journal**.
 
 Journal position outcomes require proven native/source relationships. It does
 not arbitrarily attribute an entire position's P&L to one research decision.
@@ -582,7 +586,8 @@ local evaluation. Do not rely on an alert to execute an exit.
 ### Alert rules and delivery
 
 **Inbox** retains occurrences and exact evidence; opening evidence and
-acknowledging an occurrence are separate. **Rules** supports a name, compatible
+acknowledging an occurrence are separate. An empty Inbox offers
+**Create an alert rule**. **Rules** supports a name, compatible
 target and up to 16 flat ALL/ANY conditions. Targets include a stock, global
 account condition, fixed proposal, watchlist snapshot or followed list.
 Conditions include price thresholds, absolute movement, missing/stale sources,
@@ -669,8 +674,12 @@ complete market screen.
 ### Saved strategies and walk-forward experiments
 
 **Strategy lab** has Simulations, Experiments and Saved strategies, with Setup,
-Runs and Results / Compare views. The experiment profile uses one regular-session
-USD equity, whole-share sizing and empty initial holdings. Declarative rules
+Runs and Results / Compare views. Opening **Runs** or **Results** before
+loading sources shows **Go to Setup** or **Load saved plans and data**. Those
+actions return to setup or load saved evaluation sources; they do not start a
+run or invent results. The
+experiment profile uses one regular-session USD equity, whole-share sizing and
+empty initial holdings. Declarative rules
 are not arbitrary Python. Entry/exit rules combine ALL/ANY of 1–16 conditions;
 operands are OHLC prices, supported indicators, constants or finite parameters.
 Comparisons are above, below, cross above and cross below. Up to eight parameters
@@ -735,6 +744,9 @@ Open **Workflows**, directly above Settings, to inspect and edit a research
 workflow. The diagram leads the studio; the inspector has Prompt and YAML tabs.
 Editing identifies the loaded draft, Active identifies the workflow selected
 for new research, and the saved-workflow selector chooses what **Load** will open.
+When no workflow is loaded, the studio shows a **Load a research workflow**
+empty state. Its primary action is `Load <selected> workflow`
+(`#workflow-empty-load`), in addition to the toolbar load control.
 
 Select an agent in the diagram to open its primary prompt. Search files by name
 or purpose, and use related agent, shared and schema groups to navigate relevant
@@ -905,9 +917,11 @@ environments and `%USERPROFILE%\.cache\trader\development` on port 8099. It does
 production credentials or share the production profile. `Start-TradingDesk.cmd`
 starts `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`. It is
 not a source launcher and does not read `tradingdesk.launch.json`. That file is
-not in this checkout. `Launch-TradingDesk.py` still expects it. **Settings →
-Diagnostics → Local records → Launch and restart** still describes that old
-JSON launcher. Do not follow that in-app text.
+not in this checkout. `Launch-TradingDesk.py` in the repository root remains a
+legacy script and still expects it. **Settings → Diagnostics → Local records →
+Launch and restart** describes `Start-TradingDesk.cmd` /
+`%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` and
+`%USERPROFILE%\.cache\trader\production`.
 
 Maenifold Gateway defaults to `http://localhost:8080/mcp`. Provider endpoints
 and broker endpoints are separate configuration.

@@ -29,7 +29,7 @@ Live observation on 28 October 2026 (read-only `GET /api/workflows` on port 8098
 Top of page:
 
 - **Editing:** the loaded workflow name (**None** until one loads) and **Active:** the active workflow (**None selected** if unknown). The active name refreshes from `/api/workflows` every 30 seconds while the page is open. A failed refresh shows “(last known; refresh failed)”.
-- **Load saved workflow** (select) and **Load**. Nothing is loaded until you select **Load**; the page says “Choose a saved workflow and select Load to begin.” If the catalog read failed, **Try again** rereads it. Loading with unsaved edits asks “Discard unsaved workflow changes and load the selected workflow?”.
+- **Load saved workflow** (select) and **Load** (`#workflow-load`). Nothing is loaded until you select **Load**. When no workflow is loaded (**Editing: None**), the studio shows a **Load a research workflow** empty state with a primary `Load <selected> workflow` button (`#workflow-empty-load`) in addition to the toolbar `#workflow-load` button, plus an **Open Research** link. If the catalog read failed, **Try again** rereads it. Loading with unsaved edits asks “Discard unsaved workflow changes and load the selected workflow?”.
 
 After a workflow loads, a status line reads **Unsaved changes** or **Saved workflow** (or the last message, such as “Workflow loaded.”, “Workflow saved.”, “Selected for new research.”, “Changes discarded.”) and four buttons appear:
 
