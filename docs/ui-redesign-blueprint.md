@@ -1,438 +1,470 @@
-# UI Redesign Blueprint: Personas, Workflows, and Wireframes
+# UI Redesign Blueprint (v2 — Council-Reconciled Master Spec)
 
-This document defines the user personas, user stories, workflow rules, screen-space budgets, and wireframes for redesigning the TradingAgents desktop workspace. No UI code should be rewritten until this blueprint is reviewed and approved.
+This document is the reconciled UI redesign blueprint for the TradingAgents desktop workspace (`http://127.0.0.1:8098/`). It synthesizes the baseline wireframes with independent audits by **Claude Sonnet 5.5** (`docs/ui-redesign-review-sonnet.md`), **Grok 4.7** (`docs/ui-redesign-review-grok.md`), and **Gemini 4 Argon** (`docs/ui-redesign-review-argon.md`).
 
 - **Design system:** Keep the dark charcoal desk palette, green action accents, and tabular numbers from `DESIGN.md`.
-- **Core safety rule:** Keep research, order staging, order approval, and broker submission strictly separate (`PRODUCT.md`).
-- **Why we are redesigning:** The current UI wastes up to three-quarters of the screen on stacked headers, explanatory paragraphs, filter buttons, and always-on management bars, leaving a cramped box for actual data. Core tasks—like picking a stock and running research—are split across multiple pages.
+- **Core safety rule:** Keep research, order preparation (proposals), order approval, and broker submission strictly separate (`PRODUCT.md`).
+- **No fake backend fields:** Every wireframe element maps 1:1 to real fields and endpoints in `tradingagents/web/static/app.js`, `workflows.js`, and `server.py`.
 
 ---
 
-## 1. What We Learned from Industry Leaders
+## 1. What the Sonnet / Grok / Argon Council Fixed in v2
 
-We benchmarked against **Fidelity Active Trader Pro**, **Interactive Brokers (IBKR) Desktop**, **TradingView Desktop**, **Koyfin**, and **FinChat / Fiscal.ai**:
+All three reviewers agreed the initial v1 draft diagnosed the right pain points (no stock picker on Research, 270px+ of stacked headers/filters/prose eating the page, and walls of text instead of scannable views) but caught critical flaws that v2 corrects:
 
-1. **80%+ of the screen is data, not chrome (TradingView / IBKR Desktop):**
-   - Industry desks use a single 36–40px toolbar per pane. Search, filter, sort, and the primary action sit on one line.
-   - Bulk-delete bars, data-backfill forms, and advanced filters stay hidden inside a popover or toggle until clicked.
-2. **One-click symbol linking across panels (Active Trader Pro / TradingView):**
-   - Clicking a stock in any list immediately updates the chart, quote header, research summary, and order ticket.
-   - Starting a batch job automatically focuses the first active stock so the screen never looks frozen.
-3. **Structured research cards instead of walls of text (Koyfin / FinChat):**
-   - Equity terminals never open with a 1,000-word essay. They open with a **Verdict Strip** (Rating, Date, Coverage status, Action button), a **4-Analyst Scorecard** (Market, Fundamentals, News, Social), and a **Bull vs. Bear Split Card**. Full prose sits below in an expandable section.
-4. **Self-contained workspaces:**
-   - You never have to visit Page A to select a ticker just to click "Run" on Page B. Every workspace has an inline symbol picker or universe selector right where the action happens.
-
----
-
-## 2. User Personas
-
-### Persona 1: Alex — Daily Active Desk Operator (Primary)
-- **Goal:** Scan a 10–30 stock universe before the open or after the close, run AI research on movers, read the verdict and bull/bear case in under a minute, and stage paper orders.
-- **Frustrations with current UI:**
-  - Has to go to Markets to pick stocks, then switch to Research to start the run, and then click a stock manually before the right panel updates.
-  - Has to scroll past 270px+ of headers, filter strips, and delete buttons just to see 3 rows of stocks.
-  - Keyboard navigation breaks on fake tabs (`aria-pressed` buttons instead of arrow-key tabs).
-
-### Persona 2: Jordan — Methodical Swing & Fundamental Researcher
-- **Goal:** Audit the evidence chain behind a recommendation—checking analyst reports, bull vs. bear arguments, dated news sources, coverage gaps, and past decision outcomes.
-- **Frustrations with current UI:**
-  - The Research progress bar is solid green and says "24 / 24 finished" when 21 stocks were cancelled and only 3 finished.
-  - Sees a red "Sell" badge right next to "No final recommendation is saved."
-  - Hits walls of Portfolio Manager text, raw internal words (`human_proposal`, `needs_review`), raw UUIDs, and 25 repeated JSON blocks in Alerts.
-
-### Persona 3: Morgan — Workflow & Strategy Architect
-- **Goal:** Customize the multi-agent workflow graph/prompts in Workflows and test strategy hypotheses in Strategy Lab.
-- **Frustrations with current UI:**
-  - The Workflows diagram is clipped and cannot fit the whole 18-node flow on screen at once.
-  - Has to hunt through a 94-option dropdown with cut-off file names to edit a prompt.
-  - Faces a 30-field wall of inputs and a 90-word legalistic checkbox in Strategy Lab Setup.
+1. **Separated "Inspected Stock" from "Checked Research Batch":**
+   - Clicking a stock row changes only `selectedSymbol` (the stock you are reading in the chart or report pane).
+   - Checking a box changes `selectedSymbols` (the batch to run research on). The toolbar explicitly says `2 checked · reading AMZN`. Filtering a list never changes what is checked, and the app never starts with all 24 universe stocks pre-checked.
+2. **Kept the Compact Research Confirmation Step:**
+   - Clicking **Run Research (N)** opens the compact confirmation popover (`reviewResearch`: stock count, models, New York trade date, ETA if timing samples exist or `"No timing yet"`, and `"Places no orders"`). Once confirmed, the UI automatically selects and scrolls to the **first stock in the batch**.
+3. **Used the Real 7-State Research Progress Counts:**
+   - Replaced the misleading green `24/24 finished` bar with the 7 real backend counts (`completed`, `incomplete`, `interrupted`, `failed`, `cancelled`, `running`, `queued`). Cancelled is neutral slate, never green.
+   - A rating badge (`Buy`, `Hold`, `Underweight`, `Sell`) appears **only** when a final recommendation is saved. Cancelled stocks show `Cancelled — no verdict`, and `"Loading..."` clears immediately when loading ends.
+4. **Grounded Research Cards in Real Stored Artifacts:**
+   - Since analyst reports are stored as markdown (`result.reports`), the 4 Analyst Cards display the report's saved status (`Saved` / `Missing` / `Stopped`) plus the **first-paragraph excerpt** (labeled `Excerpt`), real **Laya social stance counts** (`result.social_sentiment`), and real **`completion_gaps`**.
+   - Preserved all **5 evidence tabs** on Research: `Summary`, `Reports`, `Debate & Risk`, `Sources`, and `Activity` (filtered to the inspected stock by default, with a `Whole run` toggle).
+5. **Cut Fixed Top Chrome to `80px` (`84%–91%` Data Height):**
+   - Deleted `.workspace-footer` (`+36px`), deleted multi-paragraph page headers, and removed duplicate account numbers from the global top bar.
+   - The 5 real account figures (`Equity`, `Cash`, `Buying Power`, `Long Value`, `Open Orders` — no invented `Day P/L`) appear in a single `40px` strip on **Dashboard** and **Portfolio** only.
+6. **Restored Every Real Desk Capability (Zero Dropped Features):**
+   - **Markets:** Kept `Universe & Watchlists`, `Yahoo Screener`, and `Saved Scans`; kept `Chart`, `Research`, `Options` (disabled with a reason when empty), and `Position & Ticket`; kept the collapsible `.chart-inspectors` drawer (`Studies & Formulas`, `Drawings`, `Comparison`, `Source Data`); kept 25/50/100 paging for up to 1,000 stocks.
+   - **Portfolio vs. Orders:** Kept **Portfolio → Proposed** strictly for the session-only joint deep-model synthesis (`$10,000` model capital, explicit exclusions, no direct order staging) and kept **Human Baskets** in **Orders → Baskets**.
+   - **Orders:** Preserved the 3-stage safety chain (`1. Draft & Save Revision → 2. Check & Approve Exact Revision → 3. Submit Separately to Broker`) plus **Uncertain Outcome Recovery (`resolve_never_dispatched`)**.
+   - **Strategy Lab:** Preserved both real engines (`Saved-Plan Simulations` and `Walk-Forward Experiments` with declarative rules & Optuna/Grid search) and the required **Save Immutable Preview** gate before running.
+   - **Settings:** Preserved all 5 categories (`Account & Engine`, `Research & Models`, `Universe & Keys`, `Trading Rules & Native Cache`, `Diagnostics & Backup`).
 
 ---
 
-## 3. User Stories & Acceptance Criteria
+## 2. Industry Leader Patterns Adopted
+
+Benchmarked against **Fidelity Active Trader Pro**, **IBKR Desktop (Mosaic)**, **TradingView Desktop**, **Koyfin**, and **FinChat / Fiscal.ai**:
+
+| Platform | Pattern Adopted | How It Applies to TradingAgents |
+|---|---|---|
+| **Fidelity Active Trader Pro** | **Focus Symbol vs. Batch Set + Multi-Step Ticket Preview** | Clicking a row updates linked panes (`selectedSymbol`); checkboxes control the batch (`selectedSymbols`). Order tickets require Save Draft → Check/Approve → Submit. |
+| **IBKR Desktop (Mosaic)** | **Single-Line Toolbar + Docked Sub-Modes** | Watchlists, Yahoo Screener, and Saved Scans switch inside one `40px` Markets bar while the right-hand instrument pane stays docked. |
+| **TradingView Desktop** | **85%+ Canvas + Collapsible Right Inspector Drawer** | Chart Studies, Drawings, Comparison, and Source Data stay in the collapsible `.chart-inspectors` drawer so the chart gets full width and height. |
+| **Koyfin** | **Dense Tabular Scorecards + Signed Formatting** | Uniform `tabular-nums`, signed green/rose percentages, compact 1-line empty states, and 25/50/100 paging. |
+| **FinChat / Fiscal.ai** | **Verdict & Provenance First, Prose Second** | Research opens with Verdict + Coverage Gaps + Analyst Excerpts + Bull/Bear columns + Source domains/dates before the expandable Portfolio Manager text. |
+
+---
+
+## 3. User Personas & Anti-Persona
+
+1. **Alex — Daily Active Desk Operator (Primary):** Scans a 10–1,000 stock universe, checks movers on Research or Markets, runs AI research, reads the verdict and bull/bear case in under a minute, and prepares paper orders.
+2. **Jordan — Methodical Fundamental Researcher:** Audits the full evidence chain—analyst reports, bull vs. bear debate, dated source links, HTTP 429 coverage gaps, and Decision Journal outcomes.
+3. **Morgan — Workflow & Strategy Architect:** Customizes the 18-node agent workflow and 94 prompt files in Workflows, and runs saved-plan simulations and walk-forward experiments in Strategy Lab.
+4. **Sam — First-Run Operator:** Opens the desk with an empty account, no cached price bars, or unset quote-age limits; needs calm, 1-line setup guidance instead of red error walls or clipped buttons.
+5. **Riley — Recovery & Operations Operator:** Handles service restarts, paused order gates, or timed-out order commands (`outcome_unknown`) without risking duplicate broker submissions.
+6. **Anti-Persona — Autonomous Autopilot Trader:** Nobody uses this desk for one-click unreviewed trading. Every shortcut preserves separate preparation, approval, and submission.
+
+---
+
+## 4. Complete User Stories & Acceptance Criteria (US-01 to US-28)
 
 | ID | Persona | User Story | Acceptance Criteria |
 |---|---|---|---|
-| **US-01** | Alex | As an operator on the **Research** tab, I want to pick one or more stocks (from my universe or by typing a symbol) and click **Run research** right on the Research page. | Research header includes an inline stock picker + quick "Select universe" / "Select unfinished" options and the **Run research (N)** button. Zero trips to Markets required. |
-| **US-02** | Alex | When I start a research run, I want the screen to immediately focus the first running stock and show honest live progress. | Launching research switches focus to the first queued/running stock, scrolls it into view in the left list, and updates a segmented status bar (`Running 1 of 4 · 0 done · 0 failed`). |
-| **US-03** | Jordan | When a research run is cancelled or has failures, I want the progress bar and badges to tell the truth at a glance. | Progress bar segments Completed (green), Running (blue), Cancelled (neutral slate), and Failed (rose). Text reads `3 of 24 completed · 21 cancelled`. |
-| **US-04** | Jordan | When I open a stock on **Research**, I want to see the verdict, analyst breakdown, coverage gaps, and bull/bear summary before any long essay. | Summary opens with: (1) Verdict Strip (rating only if saved, date, coverage status), (2) 4 Analyst Cards, (3) Bull vs. Bear 2-column summary, (4) Review/Note bar, and (5) expandable full Portfolio Manager decision. |
-| **US-05** | Alex | On every page, I want at least **80% of the window** dedicated to data (charts, tables, reports, diagrams) rather than labels, boxes, and filter buttons. | Total vertical chrome above the main workspace panes is capped at ~100–110px (top bar + single 40px toolbar). Bulk-delete bars and backfill forms are hidden until toggled. |
-| **US-06** | Alex | When I finish reading research on a stock, I want a one-click way to draft an order for that stock without re-typing the symbol. | Research Verdict Strip includes a **"Draft order for [SYMBOL]"** button that opens Orders pre-filled with the symbol (still requiring explicit review, approval, and submission). |
-| **US-07** | Alex | On **Dashboard**, I want to see my account summary, watchlist, chart, open positions/orders, and latest research in a clean 2x2 grid with nothing clipped. | At desktop resolution (1920x1080+), all 4 quadrants fit without cut-off buttons or double scrollbars. Empty states are compact (max 2 lines + 1 button). |
-| **US-08** | Alex | On **Markets**, I want the watchlist and price chart side-by-side at full height, with history download tucked away unless a stock needs bars. | Markets uses a 2-column split (32% Watchlist, 68% Chart + Bar table). The 10-field history form collapses into a 1-line "Missing price history — Fetch daily bars" banner. |
-| **US-09** | Alex | On **Orders**, I want to see immediately whether order execution is active or paused, why a button is disabled, and get a clear confirmation before and after submitting, cancelling, or replacing an order. | Top status pill shows `Orders active` or `Orders paused`. Readiness blockers show on 1 visible line. Submit/Cancel/Replace show an inline confirmation step and a timestamped receipt banner. |
-| **US-10** | Morgan | On **Workflows**, I want to see the entire agent diagram at once and click any node to edit its prompt. | Diagram pane supports a true **Fit all** zoom (down to 35%), takes full workspace height on the left, and clicking any agent node opens its prompt in the right-hand editor. |
-| **US-11** | Morgan | On **Strategy Lab**, I want a simple 3-step setup on the left and simulation results on the right, without a 30-field wall. | Left rail (340px) groups Strategy, Universe/Dates, and Risk into compact sections; right pane shows the Equity Curve, Key Metrics table, and Run Comparison. |
-| **US-12** | Jordan | Across all pages, I want plain English labels instead of internal code words, hashes, and raw JSON dumps. | Words like `human_proposal`, `needs_review`, `STOP_LIMIT`, and raw UUIDs are replaced with plain labels (`Human proposal`, `Needs review`, `Stop limit`). Raw JSON moves inside a collapsed `Technical record` drawer. |
+| **US-01** | Alex | Pick stocks and start research directly on **Research**. | Research toolbar has an inline universe search/picker, `Select unfinished`, `Clear`, and `Run Research (N)` (which opens the compact confirm popover). Zero trips to Markets required. |
+| **US-02** | Alex | Auto-focus the first running stock when research starts. | Confirming a run sets `selectedSymbol` to the first symbol in the batch, scrolls it into view in the left list, and opens `Summary`. |
+| **US-03** | Jordan | See honest 7-state run progress at a glance. | Progress strip shows `completed`, `incomplete`, `interrupted`, `failed`, `cancelled`, `running`, and `queued`. Cancelled is neutral slate, never green `"finished"`. |
+| **US-04** | Jordan | See the verdict, analyst excerpts, social counts, and debate before long prose. | Research `Summary` shows: (1) Verdict Strip (rating badge only if saved, trade date, completion gaps), (2) 4 Analyst Excerpt Cards + Laya social counts, (3) Bull/Bear & Risk excerpts, (4) Disposition link, and (5) expandable full Portfolio Manager decision. |
+| **US-05** | Alex | Dedicate **84%–91% of viewport height** to data panes. | Fixed top chrome is capped at `~80px` (`36px` App Bar + `40px` Workspace Bar + `6px` status strip). `.workspace-footer` and multi-paragraph page headers are removed. |
+| **US-06** | Alex | Prepare an order from Research without skipping safety gates. | Clicking `Prepare Order` stages/opens a human order proposal with linked research context; approval and broker submission remain separate steps. |
+| **US-07** | Alex | View Dashboard without clipped buttons or 24 pre-checked rows. | Watchlist starts with `0 checked`. Empty Positions and Open Orders use compact 2-line states that never clip at `1080p` or `900p`. |
+| **US-08** | Alex | Inspect charts at full height on Markets with 1-line history backfill. | Markets uses a 2-column split (left list with 25/50/100 pager; right Chart/Research/Options/Position pane). The 10-field backfill form collapses into a 1-line bar (`[Get 252 daily bars] [More ▾]`). |
+| **US-09** | Riley | See order readiness, confirm exact terms, and recover from uncertain outcomes. | Orders shows a 1-line readiness banner, 3 explicit stages (Draft → Approve → Submit), inline confirm + receipt for Submit/Cancel/Replace, and `resolve_never_dispatched` recovery when an order outcome is unknown. |
+| **US-10** | Morgan | Fit the entire 18-node workflow diagram on screen and click nodes to edit prompts. | Workflows adds `Fit All` (zoom floor `0.25`), shows a Retry banner if rendering fails, and loads a node's primary prompt and related files when clicked. |
+| **US-11** | Morgan | Run both Saved-Plan Simulations and Walk-Forward Experiments cleanly. | Strategy Lab exposes both real engines in a 3-step left accordion (`360px`) with the required immutable preview gate, and shows equity curves + metrics on the right. |
+| **US-12** | Jordan | Read plain English labels everywhere, with raw hashes/JSON in `Technical record`. | Replaces `human_proposal`, `needs_review`, `STOP_LIMIT`, and raw UUIDs with plain labels; moves raw JSON/hashes into `<details>Technical record</details>`. |
+| **US-13** | Sam | See calm 1-line first-run actions on empty panes. | Empty panes show one plain sentence and one next-step button (e.g., `[Collect Account History in Journal →]`), never a 1660×817px empty SVG or empty table headers. |
+| **US-14** | Alex | Keep `selectedSymbol` (reading) separate from `selectedSymbols` (checked batch). | Clicking a row never changes checkboxes; checking a box never changes the inspected stock. Toolbar displays `N checked · reading SYM`. |
+| **US-15** | Alex | Filter and retry failed or unfinished research stocks in one click. | Research queue includes a `Select unfinished / failed (N)` action that populates the batch set and opens the confirm popover. |
+| **US-16** | Alex | Stop an active research run safely. | `Stop run` is visible while a run is active, confirms once, and marks remaining queued symbols as `Cancelled`. |
+| **US-17** | Alex | Delete saved research records behind a `Manage / Delete` toggle. | The 5-control delete toolbar and delete checkboxes stay hidden until `[Manage]` is toggled, then show a preview confirmation before deleting. |
+| **US-18** | Jordan | Switch watchlists, use the Shortlist, and customize columns on Markets. | Markets list toolbar includes the watchlist switcher, `[+ New]`, `[Columns ▾]`, and `[Manage]` without stacking multiple bars. |
+| **US-19** | Jordan | Run Yahoo Screener and Saved Multi-Timeframe Scans on Markets. | Top Markets tablist switches cleanly between `Universe & Watchlists`, `Yahoo Screener`, and `Saved Scans`. |
+| **US-20** | Jordan | Record and search decision notes without losing input focus. | Typing in `#decision-search` on Journal filters rows in place without rebuilding the input or losing caret focus. |
+| **US-21** | Jordan | Use Chart Studies, Drawings, Comparison, and Option Chains on Markets. | Right-hand `.chart-inspectors` drawer toggles open on demand; `Options` tab is disabled with a clear tooltip when a stock has no option data. |
+| **US-22** | Morgan | Synthesize the session-only AI Proposed Model Portfolio on Portfolio. | `Portfolio → Proposed` runs joint synthesis over completed research with `$10,000` model capital, showing whole shares, residual cash, and excluded stocks separately from Human Baskets. |
+| **US-23** | Riley | Prevent double-submission on Order Submit, Cancel, and Replace. | In-flight buttons disable immediately on click and require a 2-step inline confirmation showing exact terms. |
+| **US-24** | Riley | Spot and resolve `recovery_required` states immediately after a restart. | When `commands.recovery_required` is true, a 1-line header banner links directly to the Orders recovery controls. |
+| **US-25** | Riley | Use one consistent phrase for the order gate across the entire app. | Sidebar, Top Bar, Orders, and Settings all use `Orders: Active` / `Orders: Paused` (`[Pause new orders]` / `[Resume new orders]`), never mixing `"unblocked"` or `"Stop Nautilus"`. |
+| **US-26** | All | Navigate all tabs and dialogs with the keyboard. | All sub-tabs use WAI-ARIA `role="tablist"` with roving `tabindex` and Left/Right arrow keys; popovers and `<dialog>` modals close on `Escape` and restore focus. |
+| **US-27** | All | Read every chart via a text summary and expandable data table. | All 4 SVG charts (Dashboard, Markets, Portfolio Performance, Strategy Lab) use hollow down-candles, dashed/solid legends, and a `<details>` table of recent observations. |
+| **US-28** | Alex | Manage the 1,000-stock universe, 10 trading rules, and native cache captures in Settings. | Settings preserves all 5 categories (`Account & Engine`, `Research & Models`, `Universe & Keys`, `Trading Rules & Native Cache`, `Diagnostics & Backup`) with progressive disclosure. |
 
 ---
 
-## 4. Screen Real-Estate & Layout Rules (The Anti-Clutter Contract)
+## 5. Screen Real-Estate & Anti-Clutter Contract
 
-1. **The 80/20 Viewport Rule:**
-   - **Global Top Bar:** max `48px` tall (Paper/Live badge, 5 compact account figures, Global Symbol Search, Order Execution status pill, Alerts bell).
-   - **Workspace Toolbar:** max `40px` tall (Page title + primary tabs + right-aligned primary action).
-   - **Data Canvas:** the remaining **88%+ of vertical height** (`~990px` on a 1080p screen, `~1200px` on a 1300p screen) belongs strictly to data panes.
-2. **No Stacked Control Bars:**
-   - Never stack a search row, a 10-button filter row, a sort row, and a 5-button delete row.
-   - Use **one row**: `[Search input] [View: All (24) v] [Sort: Symbol v] ... [Manage] [Primary Action]`.
-   - Clicking `[Manage]` reveals row checkboxes and bulk actions (`Select all`, `Delete selected`) in place.
-3. **No Prose Walls Above Data:**
-   - Remove multi-paragraph explanations above tables and forms. If a safety or scope note is needed, keep it to **one sentence (max 1 line)** with a `Details` link.
-4. **One Scrollbar Per Column:**
-   - The page body itself does not scroll on split-pane workspaces (`Dashboard`, `Markets`, `Research`, `Orders`, `Workflows`). Each pane scrolls independently with a single scrollbar.
-5. **Real Accessible Tabs Everywhere:**
-   - Every sub-tab bar uses real `role="tablist"` / `role="tab"` semantics, arrow-key navigation, 40–44px hit targets, and a high-contrast active underline.
+1. **Pixel Budget on Desktop (`1920×1080` and `1440×900`):**
+   - **Global App Bar:** `36px` single line (Workspace title, Symbol search, Quote/Account freshness timestamp, Alerts bell with unread count, `Orders: Active / Paused` pill).
+   - **Workspace Toolbar:** `40px` single line (Sub-tabs with `role="tablist"` + batch status chip + primary action).
+   - **Status / Progress Strip:** `6px` bar + `24px` 1-line summary only when active or needed.
+   - **Footer:** Removed (`0px`, saving `36px`).
+   - **Result:** **84% to 91% of vertical height** belongs strictly to data panes.
+2. **One Focus Symbol (`selectedSymbol`) vs. One Batch Set (`selectedSymbols`):**
+   - Row click = inspect (`selectedSymbol`).
+   - Checkbox = batch (`selectedSymbols`).
+   - Delete checkboxes in Research live only inside the `[Manage]` mode and never overwrite `selectedSymbols`.
+3. **Direct DOM Rendering (No Post-Render DOM Scraping):**
+   - Delete fragile post-render DOM-moving helpers (`layoutOrders`, `layoutBasketGroups`, `layoutMarkets`, `compactScannerMarkup`, and sibling-scraping loops in `renderAlerts`/`renderSettingsDiagnostics`). Render directly into the target 2-column and tabpanel templates.
 
 ---
 
-## 5. What Each Tab Does (Information Architecture)
+## 6. Page-by-Page Reconciled Wireframes
 
-We keep the 10 left-rail workspaces so no backend capability is lost, but give each a distinct icon, a single clear job, and zero duplicate clutter:
-
-| Left Nav Tab | Distinct Icon | Primary Job | Key Change from Current UI |
-|---|---|---|---|
-| **1. Dashboard** | Grid | 10-second morning check: Account KPIs, Watchlist, Chart, Positions/Orders, and Latest Research Verdict. | Fixed 2x2 grid below compact KPI bar; no clipped buttons; no 24-row pre-selection. |
-| **2. Markets** | Candlestick | Inspect price action, technical overlays, and universe membership; trigger research on selected symbols. | 2-column full-height split (Watchlist left, Chart right). 10-field history form collapsed into a 1-line bar. |
-| **3. Research** | Microscope / Spark | Pick stocks, launch/monitor AI research runs, and read structured analyst verdicts, debates, and sources. | **Pick stocks & run directly here.** Replace Setup tab with an inline Launch Bar. Replace PM prose wall with Verdict Card + 4 Analyst Cards + Bull/Bear split. |
-| **4. Portfolio** | Briefcase | Monitor broker-reconciled holdings, build/review the AI Proposed Basket, and track Historical Performance. | Formatted signed currency/P&L numbers, 3-KPI strip, capped empty-chart height, plain English reconciliation status. |
-| **5. Orders** | Ticket / Check | Stage manual or research-backed orders, check readiness, approve, submit to Alpaca, and manage open orders. | 2-column layout (Order Ticket & Impact left, Open Orders & Fills right). Always-visible readiness line + confirm/receipt flow. |
-| **6. Strategy Lab** | Sliders / Lab | Configure and run Nautilus backtests and Optuna experiments; compare simulated equity curves. | 2-column layout (Compact 3-part setup left, Results & Equity Curve right). Short 1-line simulation disclaimer. |
-| **7. Journal** | Book | Review past trading decisions, human dispositions, position outcomes, and account history snapshots. | Master-detail table + inspector instead of 12-paragraph walls. Safe confirm before reloading/discarding notes. |
-| **8. Alerts** | Bell | Triage triggered price/freshness alerts and create simple alert rules from templates. | Unread badge on Inbox, grouped restart rows ("25 service restarts"), and 3 one-click rule templates ("Price above/below", "Data stale"). |
-| **9. Workflows** | Nodes / Graph | Inspect the multi-agent graph, click nodes to edit prompts/YAML, preview, save, and activate for new runs. | Full-height split: 50% Diagram (with true "Fit all" zoom) + 50% Editor. Click any node to load its prompt. |
-| **10. Settings** | Gear | Configure broker keys, AI model tiers, safety/order pause controls, and backups/diagnostics. | Group 20+ research fields into Basic (Provider & Models) vs. Advanced. Separate read-only Diagnostics from Danger Zone restore. |
-
----
-
-## 6. Page-by-Page Wireframes
-
-### 6.1 Global Shell (Applies to All Pages)
+### 6.1 Global Shell (`index.html` — `36px` App Bar, `188px` Nav Rail, Zero Footer)
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| [PAPER DESK]  Equity $100,000  Cash $100,000  Buying Power $100,000  Day P/L $0.00   [Find: ___] |
-|               Broker: Alpaca Paper (Verified) · Orders: Active · Alerts: 0 unread                |
-+------------------+-------------------------------------------------------------------------------+
-| TradingAgents    |  WORKSPACE HEADER + SUB-TABS + PRIMARY ACTION (single 40px bar)               |
-|                  +-------------------------------------------------------------------------------+
-| [ ] Dashboard    |                                                                               |
-| [ ] Markets      |                                                                               |
-| [*] Research     |                                                                               |
-| [ ] Portfolio    |                     88% OF SCREEN HEIGHT = DATA PANES                         |
-| [ ] Orders       |                     (Zero stacked prose banners or filter walls)              |
-| [ ] Strategy Lab |                                                                               |
-| [ ] Journal      |                                                                               |
-| [ ] Alerts   (0) |                                                                               |
-| [ ] Workflows    |                                                                               |
-| [ ] Settings     |                                                                               |
-|                  |                                                                               |
-| ---------------- |                                                                               |
-| Engine: Connected|                                                                               |
-| Market: Closed   |                                                                               |
-+------------------+-------------------------------------------------------------------------------+
++---------------+------------------------------------------------------------------------------------------+
+| TradingAgents | RESEARCH · PNIS (24)    [Find symbol: AMZN___]    Quotes 16:00 ET [⟳]   [🔔 1] [Orders:  |
+| Paper Desk    |                                                                          Active ▾]       |
++---------------+------------------------------------------------------------------------------------------+
+| [⊞] Dashboard | WORKSPACE TOOLBAR (40px): [Role="tablist" Sub-Tabs] · Scope Chip · Primary Action        |
+| [📈] Markets  +------------------------------------------------------------------------------------------+
+| [🔬] Research*|                                                                                          |
+| [💼] Portfolio|                           DATA CANVAS (84% – 91% OF HEIGHT)                              |
+| [🧾] Orders(1)|                   • Zero multi-paragraph prose banners above tables                      |
+| [🧪] Strat Lab|                   • Single independent scrollbar per pane                                |
+| [📓] Journal  |                   • All tabs use role="tablist" + ArrowLeft/ArrowRight                   |
+| [🔔] Alerts(1)|                                                                                          |
+| [🕸] Workflows|                                                                                          |
+| [⚙] Settings  |                                                                                          |
+| ------------- |                                                                                          |
+| ● Nautilus OK |                                                                                          |
+| ● Laya CPU OK |                                                                                          |
+| ● Market Closd|                                                                                          |
++---------------+------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-### 6.2 Dashboard (`#overview`) — 2x2 Linked Command Grid
+### 6.2 Dashboard (`#overview`) — 5-KPI Strip + Unclipped Linked Grid
 
-- **Purpose:** Instant overview without scrolling. Clicking any row in the Watchlist updates the Chart (top-right) and Research Verdict (bottom-right).
-- **Space budget:** Top KPI strip `48px`, 2x2 grid takes `90%` of height (`55%` top row, `35%` bottom row).
+- **Contract notes:** Uses the 5 real `state.account` fields (`Equity`, `Cash`, `Buying Power`, `Long Value`, `Open Orders`). Watchlist starts with `0 checked`. Bottom panes use compact 2-line empty states so buttons never clip (fixes L1). Chart uses hollow down-candles (`□`), solid up-candles (`■`), a visible overlay legend, and an expandable recent-bars table.
 
 ```text
-+------------------------------------------+-------------------------------------------------------+
-| WATCHLIST (24)   [Search] [Filter v] [+] | AMZN $252.51 (+1.14%)   [1D] [1W] [1M] [Indicators v] |
-+------------------------------------------+-------------------------------------------------------+
-| SYM    LAST     CHG%    RESEARCH  ACTION |  260 |          .|.                                   |
-| AMZN * $252.51  +1.14%  Hold      [Run]  |  255 |      .|. | |  .|.                              |
-| INTC   $22.40   -0.85%  Underwt   [Run]  |  250 |  .|. | |      | |                              |
-| TER    $108.12  -1.40%  Sell      [Run]  |  245 |________________________________________________|
-| AAPL   $231.10  +0.42%  Cancelled [Run]  |  Vol |  ||  |||  ||  ||||                             |
-| NVDA   $141.80  +2.10%  Cancelled [Run]  |  [v Show recent price bars table (keyboard/screen)]   |
-+------------------------------------------+-------------------------------------------------------+
-| POSITIONS (0) | OPEN ORDERS (0)          | LATEST RESEARCH: AMZN               [Open Research ->]|
-+------------------------------------------+-------------------------------------------------------+
-| No open positions in Alpaca Paper.       | [HOLD]  Completed Oct 28 · Default workflow           |
-| Cash available: $100,000.00              | • Market: Bullish trend above 20d MA                  |
-|                                          | • Fundamentals: AWS margin expansion intact           |
-| [Browse Markets]   [Draft Order]         | • Risk: Valuation stretched; 1 news rate-limit gap    |
-| (Compact — never clips at bottom!)       | [Read full report]              [Draft AMZN Order ->] |
-+------------------------------------------+-------------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| DASHBOARD · Account observed Oct 28, 20:35 ET               0 checked [Run Research] [Open Portfolio ->] |
++----------------------------------------------------------------------------------------------------------+
+| EQUITY $100,000.00 | CASH $100,000.00 | BUYING POWER $100,000.00 | LONG VALUE $0.00 | OPEN ORDERS 0      |
++--------------------------------------------------+-------------------------------------------------------+
+| WATCHLIST: PNIS (24)          [Update Quotes]    | AMZN · $252.51 (+1.14%) · IEX 16:00 ET (Closed)       |
+| [Search...] [View: All (24) v] [Manage]          | Period: [1W] [*1M*] [3M] [6M]       [Open in Markets] |
++--------------------------------------------------+-------------------------------------------------------+
+| SYM     LAST      CHG%    RESEARCH    QUOTE AGE  | Legend: ■ Up  □ Down  — SMA20 ($248.10) - - SMA50     |
+| AMZN *  $252.51   +1.14%  [Hold]      Closed     |  260 |          .|.                                   |
+| INTC    $22.40    -0.85%  [Underwt]   Closed     |  255 |      .|. |■|  .|.                              |
+| TER     $108.12   -1.40%  [Sell]      Closed     |  250 |  .|. |□|      |■|                              |
+| AAPL    $231.10   +0.42%  Cancelled   Closed     |  245 |________________________________________________|
+| GOOGL   $182.30   -0.12%  Cancelled   Closed     |  Vol |  ||  |||  ||  ||||   Source: Saved 1Day (IEX)  |
+| 1–24 of 24                   Rows: [25v] [<] [>] | [▸ Recent OHLCV bars table (22 sessions)]             |
++-------------------------------+------------------+-----------------------------------+-------------------+
+| SAVED RESEARCH: AMZN          | POSITIONS (0)                    | OPEN ORDERS (0)                       |
++-------------------------------+----------------------------------+---------------------------------------+
+| [HOLD] · Trade date Oct 28    | No open positions in Alpaca.     | No open orders waiting at Alpaca.     |
+| First line of saved decision  | [Browse Markets]                 | 1 saved draft proposal (SGOV).        |
+| [Read Report] [Prepare Order] | (Compact — never clips!)         | [Open Orders & Drafts (1)]            |
++-------------------------------+----------------------------------+---------------------------------------+
 ```
 
 ---
 
-### 6.3 Markets (`#markets`) — Full-Height Watchlist + Chart Inspector
+### 6.3 Markets (`#markets`) — Universe/Watchlists, Screener, Saved Scans & Full Instrument Studio
 
-- **Purpose:** Screen the universe, inspect charts and historical bars, manage symbols, and kick off research right from the selected stock or checked rows.
-- **Key fix:** The 10-control history backfill form is collapsed into a single 36px bar when history is missing (`No local price bars for AAPL · [Fetch 1Y daily bars] [Custom range v]`). The 10 filter buttons become one `View` dropdown.
+- **Contract notes:** Preserves all 3 real Markets modes (`Universe & Watchlists`, `Yahoo Screener`, `Saved Scans`) and all 4 real Instrument tabs (`Chart`, `Research`, `Options`, `Position & Ticket`). Includes the collapsible `.chart-inspectors` drawer (`Studies & Formulas`, `Drawings`, `Comparison`, `Source Data`) and the `Current IEX Cache` vs. `Immutable Saved Research Inputs` context switcher. Collapses the 10-field backfill form into 1 line (`[Get 252 daily bars] [More ▾]`). Hides duplicate company subtitle when `companyName(sym) === sym` (fixes L13).
 
 ```text
-+-----------------------------------+--------------------------------------------------------------+
-| UNIVERSE: PNIS (24)  [+ Add Sym]  | AMZN · Amazon.com Inc.   $252.51 (+1.14%) · Quote 16:00 ET   |
-| [Search...] [View: All v] [Manage]| [Chart] [Price Bars Table] [Fundamentals]   [Run Research]   |
-+-----------------------------------+--------------------------------------------------------------+
-| SYM     PRICE    CHG%   HISTORY   | Timeframe: [1D] [1W] [1M] [1Y]  Overlays: [SMA20] [Drawings] |
-| AMZN *  $252.51  +1.14% 1,255 bars| +----------------------------------------------------------+ |
-| AAPL    $231.10  +0.42% Missing   | |                                                          | |
-| GOOGL   $182.30  -0.12% Missing   | |                 FULL-HEIGHT OHLCV CHART                  | |
-| META    $590.40  +1.85% Missing   | |                 (75% of right-pane height)               | |
-| MSFT    $428.15  +0.33% Missing   | |                                                          | |
-| NVDA    $141.80  +2.10% Missing   | +----------------------------------------------------------+ |
-| TER     $108.12  -1.40% Missing   | | DATA BACKFILL & FRESHNESS (1-line bar, expandable)       | |
-| ... (single clean scrollbar)      | | 1,255 daily bars cached through Oct 28 · [Refresh bars]  | |
-|                                   | +----------------------------------------------------------+ |
-| (When [Manage] is clicked:        | | KEY STATS: Open $249.80 · High $254.90 · Low $249.10     | |
-|  shows checkboxes + [Run (N)]     | |            Volume 38.2M · Saved Research: HOLD (Oct 28)  | |
-|  + [Remove from universe])        | +----------------------------------------------------------+ |
-+-----------------------------------+--------------------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| MARKETS   [*Universe & Watchlists (24)*] [Yahoo Screener] [Saved Scans]   0 checked · [Run Research (0)] |
++----------------------------------------+-----------------------------------------------------------------+
+| List: [All Universe: PNIS (24) v] [+New]| AMZN · $252.51 (+1.14%) · Bid $252.40 / Ask $252.60 · Closed   |
+| [Search...] [View: All v] [Sortv] [Ed] | Tabs: [*Chart*] [Research] [Options (none)] [Position & Ticket] |
++----------------------------------------+-----------------------------------------------------------------+
+| SYM     PRICE    CHG%   BARS    RATING | Context: [Current IEX Cache v]  Interval: [*1Day*] [1Hr] [15m]  |
+| AMZN *  $252.51  +1.14% 1,255   [Hold] | Drawers: [Studies & Formulas] [Drawings] [Comparison] [Source▾] |
+| INTC    $22.40   -0.85% Missing [Undwt]| +-------------------------------------------------------------+ |
+| TER     $108.12  -1.40% Missing [Sell] | | History: 1,255 daily bars cached (Oct 28) · [Refresh] [More]| |
+| AAPL    $231.10  +0.42% Missing Canceld| +-------------------------------------------------------------+ |
+| GOOGL   $182.30  -0.12% Missing Canceld| |                                                             | |
+| META    $590.40  +1.85% Missing Canceld| |             FULL-HEIGHT LIGHTWEIGHT CHART                   | |
+| MSFT    $428.15  +0.33% Missing Canceld| |        (Hollow down-candles, volume, drawings,              | |
+| NVDA    $141.80  +2.10% Missing Canceld| |         and 1-click "Copy price to ticket" anchor)          | |
+| 1–24 of 24             [25v] [<] 1 [>] | |                                                             | |
+| (Clicking [Ed] toggles batch checks,   | +-------------------------------------------------------------+ |
+|  [Select page], [Columns▾], [Remove])  | [▸ Selected bar readout & OHLCV table (a11y / keyboard)]        |
++----------------------------------------+-----------------------------------------------------------------+
 ```
 
 ---
 
-### 6.4 Research (`#research`) — Self-Contained Picker, Honest Progress, Structured Verdict
+### 6.4 Research (`#research`) — Inline Picker + Confirm Dialog, 7-State Progress, & Real Excerpts
 
-- **Solves User Issues U1 & U2 and Critique L3/P1s:**
-  1. **Pick & Run right here (U1):** Top launch bar lets you pick any symbol(s) (`[+ Pick stocks: AMZN, NVDA... v]`, `[All Universe (24)]`, `[Retry Unfinished (21)]`) and click **`[Run Research (N)]`** without ever visiting Markets.
-  2. **Auto-focus & live progress on launch (U2):** Starting a run immediately selects the first running ticker, scrolls the left rail to it, and shows a live stage indicator (`Stage 2/5: Bull vs. Bear Debate...`).
-  3. **Honest Run Bar:** Replaces the fake full-green `24/24 finished` bar with a 4-color segmented bar (`3 Completed · 21 Cancelled · 0 Failed`).
-  4. **No Fake "Sell" Badge (L3):** If a stock has no saved final recommendation (e.g. cancelled before completion), the badge says **`[CANCELLED — NO VERDICT]`** in neutral slate, never a red `Sell` badge.
-  5. **Structured Summary instead of a Prose Wall:** Leads with the Verdict Strip, 4 Analyst Cards, and Bull vs. Bear columns.
+- **Solves U1, U2, L3, L4, and Research P1s:**
+  - **Pick & Run on Research (U1):** Check stocks in the left rail or use `[Pick / Unfinished (21) v]` in the toolbar, then click `[▶ Run Research (N)]` to open the compact confirmation dialog (`reviewResearch`: count, models, trade date, ETA if available, `"Places no orders"`).
+  - **Auto-focus on launch (U2):** Starting a run sets `selectedSymbol` to the first symbol in the batch, scrolls it into view, and opens `Summary`.
+  - **7-State Progress Strip:** Shows `3 completed · 21 cancelled · 0 failed · 0 incomplete · 0 interrupted · 0 running`.
+  - **No Fake "Sell" Badge (L3) or Stuck Loading Notice (L4):** Cancelled/unfinished stocks display `Cancelled — no verdict` and clear `"Loading..."` immediately.
+  - **5 Evidence Tabs:** `Summary`, `Reports (7)`, `Debate & Risk`, `Sources (9)`, `Activity (40)`.
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| RESEARCH LAUNCH & RUN BAR (44px):                                                                |
-| Stocks: [AMZN, INTC + Add/Pick v] [Select Unfinished (21)] [Run Research (2)]  Workflow: Default |
-| Last Run: [===3 Completed===|---------21 Cancelled---------] 3 of 24 completed · Run cancelled   |
-+----------------------------+---------------------------------------------------------------------+
-| RESEARCH LIST (24)         | AMZN · Amazon.com Inc.                     [Draft Order for AMZN ->]|
-| [Search] [Show: All v] [Ed]| Tabs: [*Summary*] [Bull vs Bear] [Analyst Reports (4)] [Sources (9)]|
-+----------------------------+---------------------------------------------------------------------+
-| SYM    STATUS     VERDICT  | +-----------------------------------------------------------------+ |
-| AMZN * Completed  [HOLD]   | | VERDICT: [HOLD] · Completed Oct 28, 19:42 · Workflow: Default   | |
-| INTC   Completed  [UNDERWT]| | Coverage: 4/4 analysts finished · 1 warning (News HTTP 429)     | |
-| TER    Completed  [SELL]   | +-----------------------------------------------------------------+ |
-| AAPL   Cancelled  —        |                                                                     |
-| GOOGL  Cancelled  —        | ANALYST SCORECARD (Click any card to open full report):             |
-| META   Cancelled  —        | +---------------+ +---------------+ +---------------+ +-----------+ |
-| MSFT   Cancelled  —        | | MARKET        | | FUNDAMENTALS  | | NEWS          | | SOCIAL    | |
-| NVDA   Cancelled  —        | | Neutral-Bull  | | Strong cash   | | Mixed macro   | | Screened  | |
-| NFLX   Cancelled  —        | | Above 50d SMA | | AWS margins + | | 1 rate limit  | | Laya 0.4  | |
-| ...                        | +---------------+ +---------------+ +---------------+ +-----------+ |
-| (Single scrollbar;         |                                                                     |
-|  auto-scrolls to active    | DEBATE & RISK SYNTHESIS:                                            |
-|  stock when run starts.    | +-------------------------------+ +-------------------------------+ |
-|  Clicking [Ed] toggles     | | BULL CASE (Researcher)        | | BEAR CASE (Researcher)        | |
-|  checkboxes & Delete bar)  | | • AWS backlog accelerating    | | • Retail capex compression    | |
-|                            | | • Operating leverage in N.A.  | | • Multiple near 5-yr peak     | |
-|                            | +-------------------------------+ +-------------------------------+ |
-|                            |                                                                     |
-|                            | YOUR DISPOSITION: [Needs review v]  Note: [________________] [Save] |
-|                            | [> Read full Portfolio Manager decision (18,400 chars)]             |
-+----------------------------+---------------------------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| RESEARCH  [Pick: 2 checked (AMZN, INTC) v] [Select Unfinished (21)] [Clear]   [▶ Run Research (2)...]    |
++----------------------------------------------------------------------------------------------------------+
+| [===3 Completed===|-------------21 Cancelled-------------] 3 completed · 21 cancelled · 0 running        |
++-----------------------------+----------------------------------------------------------------------------+
+| STOCKS (24)  [Show: All v]  | AMZN · Reading (Completed Oct 28)   [Open in Markets] [Prepare Order ->]   |
+| [Search...]        [Manage] | Tabs: [*Summary*] [Reports (7)] [Debate & Risk] [Sources (9)] [Activity]   |
++-----------------------------+----------------------------------------------------------------------------+
+| [ ] SYM   STATUS    VERDICT | +------------------------------------------------------------------------+ |
+| [x] AMZN* Completed [HOLD]  | | VERDICT: [HOLD] · Trade Date: 2026-10-28 · Workflow: Default           | |
+| [x] INTC  Completed [UNDWT] | | Coverage: 7/7 reports saved · 1 gap (News rate limit HTTP 429)         | |
+| [ ] TER   Completed [SELL]  | +------------------------------------------------------------------------+ |
+| [ ] AAPL  Cancelled —       |                                                                            |
+| [ ] GOOGL Cancelled —       | ANALYST REPORT EXCERPTS (First saved paragraph · click to open full text): |
+| [ ] META  Cancelled —       | +-----------------+ +-----------------+ +-----------------+ +------------+ |
+| [ ] MSFT  Cancelled —       | | MARKET [Saved]  | | FUNDAMENTALS    | | NEWS [1 gap]    | | SENTIMENT  | |
+| [ ] NVDA  Cancelled —       | | Excerpt: first  | | Excerpt: first  | | Excerpt: first  | | Laya CPU:  | |
+| 1–24 of 24   [25v] [<] 1 [>]| | saved lines...  | | saved lines...  | | saved lines...  | | Bull/Bear  | |
+| (Row click = inspect;       | | [Open report ->]| | [Open report ->]| | [Open report ->]| | counts     | |
+|  Checkbox = run batch;      | +-----------------+ +-----------------+ +-----------------+ +------------+ |
+|  [Manage] = delete mode)    |                                                                            |
+|                             | COMMITTEE DEBATE & RISK EXCERPTS (Saved text from debate state):           |
+|                             | +-----------------------------------+ +----------------------------------+ |
+|                             | | BULL vs BEAR DEBATE (Saved)       | | RISK & TRADER PROPOSAL (Saved)   | |
+|                             | | Clipped first lines of bull, bear,| | Clipped first lines of trader    | |
+|                             | | and research manager synthesis... | | plan and 3-way risk discussion...| |
+|                             | | [Read full debate ->]             | | [Read risk debate ->]            | |
+|                             | +-----------------------------------+ +----------------------------------+ |
+|                             |                                                                            |
+|                             | DISPOSITION: [Needs review v]  Note: [________________________] [Save]     |
+|                             | [▸ Read full Portfolio Manager decision (`final_trade_decision`)]          |
+|                             | [▸ Technical record (Run ID, config revision, artifact details)]           |
++-----------------------------+----------------------------------------------------------------------------+
 ```
 
 ---
 
-### 6.5 Portfolio (`#portfolio`) — Reconciled Holdings, Proposed Basket, & Performance
+### 6.5 Portfolio (`#portfolio`) — Reconciled Holdings, Session-Only Proposed Model, & Performance
 
-- **Fixes:** Formats all currency/percentage columns with signs and colors, caps the empty Performance chart icon to a compact box, and puts plain-English reconciliation status in a single top strip.
-
-```text
-+--------------------------------------------------------------------------------------------------+
-| PORTFOLIO    Tabs: [*Positions (0)*]  [Proposed Basket (1)]  [Performance]                       |
-| Reconciliation: Clean · Alpaca Paper matches local ledger as of 20:35 ET      [Refresh Account]  |
-+--------------------------------------------------------------------------------------------------+
-| +----------------------+ +----------------------+ +----------------------+ +-------------------+ |
-| | NET EQUITY           | | CASH & SWEEP         | | OPEN POSITIONS VALUE | | UNREALIZED P/L    | |
-| | $100,000.00          | | $100,000.00 (100%)   | | $0.00 (0 positions)  | | $0.00 (0.00%)     | |
-| +----------------------+ +----------------------+ +----------------------+ +-------------------+ |
-|                                                                                                  |
-| OPEN POSITIONS                                                                                   |
-| +----------------------------------------------------------------------------------------------+ |
-| | No open positions in your Alpaca Paper account.                                              | |
-| | Start by researching stocks or reviewing your saved human basket (1 deferred proposal: SGOV).| |
-| | [Go to Research]    [Review Proposed Basket (1)]    [Stage Manual Order]                     | |
-| +----------------------------------------------------------------------------------------------+ |
-| [> Technical reconciliation record (raw broker snapshot & epoch details)]                        |
-+--------------------------------------------------------------------------------------------------+
-```
-
-*(On **Proposed Basket**, the top half shows the Human Basket vs. AI Portfolio Synthesis side-by-side with clear "Stage to Orders" actions; on **Performance**, if no position captures exist yet, a compact 140px card explains how captures work and offers `[Capture current account snapshot]` without a giant 800px empty SVG.)*
-
----
-
-### 6.6 Orders (`#orders`) — Two-Column Execution & Order Book
-
-- **Fixes:** Always shows the top readiness line (never hidden inside a collapsed drawer), uses one consistent term (`Pause new orders` / `Orders active`), explains why any button is disabled, and adds an inline confirmation + receipt banner for Submit, Cancel, and Replace.
+- **Contract notes:** Keeps **Proposed Model Portfolio** (`POST /api/portfolio-model`, session-only joint synthesis with `$10,000` default model capital and explicit exclusions) strictly separate from Human Baskets (`Orders → Baskets`). Formats numbers with `money()`, `percent()`, and `color()`. Hides empty table headers (L11) and caps the empty Performance state to `140px` with a visible `[Collect Account History in Journal →]` button (L2).
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| ORDERS & EXECUTION   Status: [Orders Active] [Pause New Orders]   Broker: Alpaca Paper Connected |
-| Readiness: Ready for paper orders · Cash available: $100,000.00 · Cash account (no shorting)     |
-+----------------------------------------+---------------------------------------------------------+
-| STAGE & APPROVE ORDER (40% width)      | OPEN ORDERS & RECENT FILLS (60% width)                  |
-| Source: [Manual Ticket v] [Load Basket]| Tabs: [*Open Orders (0)*] [Staged Proposals (1)] [Fills]|
-+----------------------------------------+---------------------------------------------------------+
-| Symbol:   [AMZN      ]  Last: $252.51  | STAGED PROPOSALS AWAITING ACTION:                       |
-| Side:     [(*) Buy  ( ) Sell        ]  | SYM   SIDE  QTY  TYPE    STATUS     ACTION              |
-| Quantity: [10        ]  whole shares   | SGOV  BUY   1    Market  Deferred   [Load into Ticket]  |
-| Type:     [Limit     v]                |                                                         |
-| Limit $:  [252.00    ]  TIF: [DAY v]   | OPEN BROKER ORDERS (0):                                 |
-|                                        | No open orders working at Alpaca Paper.                 |
-| ESTIMATED IMPACT:                      |                                                         |
-| Est. Cost:        $2,520.00 (2.5% eq)  | ------------------------------------------------------- |
-| Cash After Order: $97,480.00           | LAST ACTION RECEIPT:                                    |
-| Saved Research:   HOLD (Oct 28)        | No orders submitted in this session.                    |
-|                                        | (When submitted, shows: "Sent BUY 10 AMZN LMT $252.00   |
-| Step 1: [Approve Exact Terms]          |  to Alpaca Paper at 14:02:11 ET · Broker ID #9f8a...")  |
-| Step 2: [Submit to Alpaca Paper]       |                                                         |
-| (Disabled until Step 1 is checked;     | [> Technical order audit & SHA-256 verification]        |
-|  shows inline confirm before sending)  |                                                         |
-+----------------------------------------+---------------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| PORTFOLIO   Tabs: [*Positions (0)*]  [Proposed Model Portfolio]  [Performance]         [Refresh Account] |
++----------------------------------------------------------------------------------------------------------+
+| EQUITY $100,000.00 | CASH $100,000.00 | LONG VALUE $0.00 | UNREALIZED P/L $0.00 (0.00%) | SYNC: Clean ✓  |
++----------------------------------------------------------------------------------------------------------+
+| (TAB 1: POSITIONS — hides empty table headers when 0 positions; shows compact 120px card:)               |
+| +------------------------------------------------------------------------------------------------------+ |
+| | No open positions in your connected Alpaca Paper account (Cash account, long only).                  | |
+| | [Browse Universe in Markets]    [Open Proposed Model Portfolio]    [Open Orders & Baskets (1)]       | |
+| +------------------------------------------------------------------------------------------------------+ |
+| [▸ Technical reconciliation record (native cache, broker snapshot & epoch details)]                      |
+|                                                                                                          |
+| (TAB 2: PROPOSED MODEL PORTFOLIO — Session-only joint synthesis; never stages orders directly:)          |
+| +------------------------------------------------------------------------------------------------------+ |
+| | JOINT AI MODEL PORTFOLIO (Session-Only Advisory Synthesis · Separate from Human Baskets & Orders)    | |
+| | Model Capital (USD): [$10,000.00 ]  [▶ Model Portfolio]   Eligible: 3 of 24 stocks · 21 excluded     | |
+| | ---------------------------------------------------------------------------------------------------- | |
+| | SYM    TARGET WT   WHOLE SHARES   REF PRICE (DATED)          REF VALUE    RATIONALE & ENTRY          | |
+| | AMZN   25.00%      9 shares       $252.51 (Oct 28, IEX)      $2,272.59    [▸ View rationale & rules] | |
+| | Residual Cash: $7,727.41 · Excluded (21): AAPL (cancelled), GOOGL (cancelled), INTC (0% weight)...   | |
+| +------------------------------------------------------------------------------------------------------+ |
+|                                                                                                          |
+| (TAB 3: PERFORMANCE — Capped 140px empty state when <2 captures exist, fixing L2:)                       |
+| +------------------------------------------------------------------------------------------------------+ |
+| | View: [*Equity*] [Returns %]   Saved Interval: [No saved intervals v]   Basis: Broker-reported USD   | |
+| | [📈 24px] Needs at least 2 saved account-history observations. [Collect Account History in Journal->]| |
+| +------------------------------------------------------------------------------------------------------+ |
 ```
 
 ---
 
-### 6.7 Strategy Lab (`#strategy`) — Left Parameter Rail + Right Results Canvas
+### 6.6 Orders (`#orders`) — 3-Stage Order Lifecycle, Baskets, & Uncertain Command Recovery
 
-- **Fixes:** Replaces the 30-field single-column form and 90-word legalistic consent wall with a compact 340px 3-step parameter rail on the left and a full-height Results & Runs workspace on the right.
+- **Contract notes:** Preserves the 3-stage safety chain (`1. Draft & Save Revision → 2. Check & Approve Exact Revision → 3. Submit Separately to Broker`), progressive disclosure for `Options / Multi-Leg / Exits / Replacement`, `Orders → Baskets` (`Targets`, `Impact`, `Drafts`), always-visible 1-line readiness blocker, inline confirmation + timestamped receipt for Submit/Cancel/Replace, and `resolve_never_dispatched` recovery when an order command times out.
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| STRATEGY LAB   Scope: Simulations run on cached bars only and never place broker orders. [Details]|
-+------------------------------------+-------------------------------------------------------------+
-| SIMULATION SETUP (340px rail)      | RESULTS & RUNS   Tabs: [*Latest Result*] [Compare Runs (0)] |
-+------------------------------------+-------------------------------------------------------------+
-| 1. STRATEGY & UNIVERSE             | EQUITY CURVE & BENCHMARK                                    |
-| Template: [SMA Crossover    v]     | +---------------------------------------------------------+ |
-| Symbols:  [AMZN             v]     | |                                                         | |
-| Dates:    [2025-10-01] to [Today]  | |               SIMULATED EQUITY CHART                    | |
-|                                    | |          (With toggleable [Table View] for a11y)        | |
-| 2. CAPITAL & RISK                  | +---------------------------------------------------------+ |
-| Starting Cash: [$100,000    ]      |                                                             |
-| Max Position:  [20%         ]      | SUMMARY METRICS:                                            |
-| Fast / Slow:   [10 ] / [50  ]      | Return   Sharpe   Max Drawdown   Win Rate   Trade Count     |
-| [> Advanced fees & slippage (4)]   |  —        —        —              —          —              |
-|                                    |                                                             |
-| 3. RUN                             | SIMULATED TRADES & LOG:                                     |
-| [x] I understand this is a model   | Run a simulation on the left or [Load saved experiment]     |
-| [Run Simulation] [Save Strategy]   | to inspect trade-by-trade entries and exits.                |
-+------------------------------------+-------------------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| ORDERS   [*Single Order Ticket*] [Open Orders (0)] [Proposals & History (1)] [Baskets]  [Orders: Active▾]|
++----------------------------------------------------------------------------------------------------------+
+| Readiness: Ready for paper orders · Cash $100,000.00 · Cash account (no shorting) · Policy rev 1         |
++---------------------------------------------+------------------------------------------------------------+
+| STAGE 1: DRAFT & SAVE ORDER PROPOSAL (44%)  | STAGE 2 & 3: APPROVAL, SUBMISSION & OPEN ORDERS (56%)      |
++---------------------------------------------+------------------------------------------------------------+
+| Asset: [*US Equity*] [US Option / MLeg]     | SELECTED PROPOSAL: SGOV · Revision #2 (Deferred)           |
+| Symbol: [SGOV    ]  Side: [(*) Buy ( ) Sell]| Terms: BUY 1 SGOV · MARKET · DAY · Regular session         |
+| Qty:    [1       ]  Type: [Market        v] | Estimated Cost: ~$100.32 · Cash After: ~$99,899.68         |
+| TIF:    [DAY     v] Sess: [Regular       v] | ---------------------------------------------------------- |
+| [▸ Exits (Bracket/OTO/OCO) & Replacement]   | STAGE 2: POLICY CHECK & EXACT-REVISION APPROVAL            |
+| [▸ Evidence Scopes & Linked Research]       | Policy Check: Passed all 10 trading rules     [Check Order]|
+|                                             | [Approve Exact Revision #2] (Single-use, bound to SHA-256) |
+| [Preview Impact]    [Save Draft Revision]   | ---------------------------------------------------------- |
+|                                             | STAGE 3: SEPARATE BROKER SUBMISSION                        |
+|                                             | [Submit Approved Order to Alpaca Paper] (Confirms terms)   |
+|                                             | Last Receipt: None this session.                           |
+|                                             | (If outcome_unknown: [! Uncertain outcome — Refresh first] |
+|                                             |  [Refresh Status] [Check if Submit Was Never Sent])        |
+|                                             | [▸ Technical record (Terms SHA-256, policy & audit IDs)]   |
++---------------------------------------------+------------------------------------------------------------+
 ```
 
 ---
 
-### 6.8 Journal (`#journal`) — Master-Detail Decision & Outcome Ledger
+### 6.7 Strategy Lab (`#strategy`) — Saved-Plan Simulations & Walk-Forward Experiments
 
-- **Fixes:** Eliminates the 12-paragraph walls per position group and the unguarded "Reload saved journal (discard unsaved notes)" button. Uses a scannable table on the left and a clean inspector on the right.
+- **Contract notes:** Preserves both real evaluation engines (`Saved-Plan Simulations` and `Walk-Forward Experiments` with declarative rules & Optuna/Grid search) and the required **Save Immutable Preview** gate before running. Places `[Load Saved Plans & Data]` below the heading (fixes L10), keeps a 2-line visible scope notice, and orders right-pane tabs as `[*Preview & Results*] [Runs & Compare]`.
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| DECISION JOURNAL   Tabs: [*Decisions & Dispositions*] [Position Outcomes] [Account History]      |
-| [Search symbol or note...]  [Filter: All Dispositions v]             [Revert Unsaved Edits (0)]  |
-+--------------------------------------------------+-----------------------------------------------+
-| RECORDED DECISIONS (Table, 55% width)            | DECISION INSPECTOR (45% width)                |
-+--------------------------------------------------+-----------------------------------------------+
-| DATE     SYM   SOURCE          VERDICT  STATUS   | SGOV · Human Proposal (Saved Oct 28)          |
-| Oct 28 * SGOV  Human proposal  BUY 1    Deferred |                                               |
-| Oct 28   AMZN  AI Research     Hold     Reviewed | Action:       BUY 1 share (Paper)             |
-| Oct 28   INTC  AI Research     Underwt  Unreview | Disposition:  [Deferred       v]              |
-| Oct 28   TER   AI Research     Sell     Unreview | Linked Order: Not submitted                   |
-|                                                  |                                               |
-|                                                  | OPERATOR NOTES:                               |
-|                                                  | [Holding cash in T-bill ETF pending tech     ]|
-|                                                  | [earnings next week.                         ]|
-|                                                  |                                               |
-|                                                  | [Save Note & Disposition]  [Stage on Orders->]|
-|                                                  | [> Technical record (IDs & timestamps)]       |
-+--------------------------------------------------+-----------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| STRATEGY LAB   Engine: [*Saved-Plan Simulations*] [Walk-Forward Experiments]   [Load Saved Plans & Data] |
++----------------------------------------+-----------------------------------------------------------------+
+| SETUP RAIL (360px, 3-Step Accordion)   | EVALUATION CANVAS   Tabs: [*Preview & Results*] [Runs & Compare]|
++----------------------------------------+-----------------------------------------------------------------+
+| [! Scope: Isolated model over cached   | SELECTED RUN: Simulation #sim-01 · Status: [Completed]          |
+|    bars; never proves broker fills.]   |                                                                 |
+|                                        | MODELED EQUITY CURVE (with dashed benchmark & table toggle):    |
+| ▾ 1. PLAN / STRATEGY & HISTORY RECEIPT | +-------------------------------------------------------------+ |
+|   Saved Plan:  [BUY 1 SGOV MKT       v]| | $1,010 |        _______________                             | |
+|   History Key: [AMZN 1Day (1,255b)   v]| | $1,000 |_______/               \_______________             | |
+|   Window:      [2026-10-12]–[10-19]    | |   $990 |____________________________________________________| |
+|   Basis:       [Hindsight scenario   v]| | Legend: — Modeled Equity ($1,000.00)  - - Benchmark         | |
+|                                        | | [▸ View dated equity & bar observations table]              | |
+| ▸ 2. CAPITAL, FEES & FILL ASSUMPTIONS  | +-------------------------------------------------------------+ |
+|   Cash: $1,000 · Fee: $0 · Fill: 100%  |                                                                 |
+|                                        | SUMMARY METRICS (Real computed fields only):                    |
+| ▾ 3. IMMUTABLE PREVIEW & RUN           | Net Return %   Modeled P&L   Max Drawdown %   Closed Trades     |
+|   [x] Acknowledge simulation limits    |  0.00%          $0.00         0.00%            0                |
+|   [Save Immutable Preview]  [▶ Run]    | [▸ Retained execution events & Technical record (SHA-256)]      |
++----------------------------------------+-----------------------------------------------------------------+
 ```
 
 ---
 
-### 6.9 Alerts (`#alerts`) — Compact Triage Inbox + 1-Click Rule Templates
+### 6.8 Journal (`#journal`) — Master-Detail Decision Ledger, Position Outcomes, & Account History
 
-- **Fixes:** Restores the unread count badge, groups the 25 repetitive "Service restart" JSON blocks into a single collapsible summary line, softens "no price-age limit configured" into a setup prompt, and adds 3 simple rule templates before any advanced dropdowns.
+- **Contract notes:** Consolidates tabs into `Decisions & Notes`, `Position Outcomes`, and `Account History`. Replaces `human_proposal` with `Human proposal` (L8), keeps focus stable inside `#decision-search` while typing, guards `[Revert Unsaved Edits]` with a count confirmation, and turns the 12-paragraph `Position Outcomes` groups into a 1-row summary table + right-hand inspector with a direct `[Go to Native Table Capture in Settings →]` link.
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| ALERTS & MONITORING   Tabs: [*Inbox (1 unread)*] [Alert Rules (0)]   Delivery: Browser notifications|
-| Freshness Setup: Price-age limit not set (market currently closed) · [Set Default 15m Limit]     |
-+--------------------------------------------------+-----------------------------------------------+
-| ATTENTION INBOX (55% width)                      | QUICK CREATE RULE (45% width)                 |
-+--------------------------------------------------+-----------------------------------------------+
-| [Mark All Read]  [Filter: All Events v]          | Pick a template:                              |
-|                                                  | [Price Above $] [Price Below $] [Data Stale]  |
-| • [INFO] Service restarted (25 occurrences)      |                                               |
-|   Latest: Oct 28, 20:14 ET · [> Expand 25 logs]  | Symbol:    [AMZN          v]                  |
-|                                                  | Condition: [Price Above   v]                  |
-| • [SETUP] Price-age threshold unset              | Threshold: [$260.00        ]                  |
-|   Set a threshold on the right to monitor feed   |                                               |
-|   delays during market hours.                    | [Create Alert Rule]                           |
-|                                                  | [> Advanced conditions (indicators & scopes)] |
-+--------------------------------------------------+-----------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| DECISION JOURNAL   Tabs: [*Decisions & Notes (4)*] [Position Outcomes (0)] [Account History]             |
++----------------------------------------------------+-----------------------------------------------------+
+| [Find symbol or text...] [Filter: All v] [Export]  | DECISION INSPECTOR: SGOV · Human Proposal           |
++----------------------------------------------------+-----------------------------------------------------+
+| DATE     SYM   KIND            VERDICT    NOTE     | Tabs: [*Rationale & Note*] [Linked Orders & Outcome]|
+| Oct 28 * SGOV  Human proposal  [Deferred] Saved ✓  | --------------------------------------------------- |
+| Oct 28   AMZN  AI research     [Hold]     —        | Saved: Oct 28, 2026 · Status: [Deferred]            |
+| Oct 28   INTC  AI research     [Underwt]  —        | Proposed Action: BUY 1 share SGOV (Market · DAY)    |
+| Oct 28   TER   AI research     [Sell]     —        |                                                     |
+|                                                    | FOLLOW-UP NOTE & DISPOSITION:                       |
+| [Revert Unsaved Edits (0)] (Disabled at 0;         | Disposition: [Deferred         v]                   |
+|  prompts "Discard N unsaved notes?" when dirty)    | Note: [Waiting for next week's FOMC meeting...    ] |
+|                                                    | [Save Note]  [Open Linked Research]  [Open Ticket->]|
+|                                                    | [▸ Technical record (Decision ID, run ID, SHA-256)] |
++----------------------------------------------------+-----------------------------------------------------+
 ```
 
 ---
 
-### 6.10 Workflows (`#workflows`) — Full-Height Diagram + Node-Linked Prompt Studio
+### 6.9 Alerts (`#alerts`) — Triage Inbox, Deduped Occurrences, & 1-Click Rule Templates
 
-- **Fixes:** Fixes the broken/clipped diagram render, lowers the zoom floor so **Fit all** shows the entire 18-node graph in one view, lets the user click any node in the diagram to load its prompt in the editor, and replaces native `confirm()` with an in-app dialog.
+- **Contract notes:** Keeps `Inbox (unread count)`, `Alert Rules`, and `Browser Delivery`. Collapses the 25 repeated `"Service restart"` JSON blocks into one expandable summary line. Softens `"no price-age limit configured"` into a calm setup prompt with `[Set Limit in Trading Rules →]`. Adds 3 Quick Rule Templates (`Price Above $`, `Price Below $`, `Quote Stale > s`) above the collapsible 16-condition advanced builder.
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| WORKFLOWS STUDIO   Workflow: [Default v] [Active for new research]   Status: Saved (No changes)  |
-| Actions: [Preview & Validate]  [Save Changes]  [Use for New Research]  [Save Copy As...]         |
-+----------------------------------------------+---------------------------------------------------+
-| AGENT FLOW DIAGRAM (48% width, full height)  | PROMPT & YAML INSPECTOR (52% width, full height)  |
-| [Fit All] [Fit Width] [-] 55% [+]  [Details] | Selected Node: Market Analyst (Fast Tier)         |
-+----------------------------------------------+---------------------------------------------------+
-|        +--------------------+                | Tabs: [*Agent Prompt*] [Shared Tools (22)] [YAML] |
-|        |   Start Research   |                | File: [market_analyst / system_prompt.md       v] |
-|        +---------+----------+                | +-----------------------------------------------+ |
-|                  |                           | | 1 | You are the Market Analyst on a structured| |
-|   +--------------+--------------+            | | 2 | equity research desk. Analyze OHLCV price | |
-|   v              v              v            | | 3 | action, key moving averages, RSI/MACD,    | |
-| [Market]     [Social]       [News]  [Fund.]  | | 4 | and volume regimes...                     | |
-|   \              |              /     /      | |   |                                           | |
-|    +-------------+-------------+-----+       | |   | (Full-height CodeMirror editor;           | |
-|                  v                           | |   |  Ctrl+S saves; clicking any node on the   | |
-|        [Bull vs. Bear Debate (1 rd)]         | |   |  left switches the active prompt file)    | |
-|                  v                           | |   |                                           | |
-|           [Trader Proposal]                  | +-----------------------------------------------+ |
-|                  v                           | [Revert File]                      [Save (Ctrl+S)]|
-|         [Risk Debate (1 rd)]                 |                                                   |
-|                  v                           |                                                   |
-|          [Portfolio Manager]                 |                                                   |
-+----------------------------------------------+---------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| ALERTS   Tabs: [*Inbox (1 unread)*] [Alert Rules (0)] [Browser Delivery]   Quote Age Limit: Not set [Set]|
++----------------------------------------------------+-----------------------------------------------------+
+| ATTENTION INBOX (52% width)                        | EVENT EVIDENCE / QUICK RULE BUILDER (48% width)     |
+| [Filter: All Events v]      [Acknowledge Selected] | Tabs: [*Event Summary*] [Captured Evidence] [Rule]  |
++----------------------------------------------------+-----------------------------------------------------+
+| • [UNREAD] Price-age threshold not configured      | SELECTED EVENT: Price-age threshold not configured  |
+|   Account · Setup prompt (Market currently closed) | Evaluated Oct 28, 20:35 ET · Regular market closed  |
+|   [Inspect]  [Set Limit in Trading Rules ->]       | [Acknowledge]  [Set Quote-Age Limit in Settings ->] |
+|                                                    | [▸ Technical record (Captured evaluation JSON)]     |
+| • [GROUPED] Service restart recorded (25 events)   | --------------------------------------------------- |
+|   Latest: Oct 28, 20:14 ET · [▸ Expand 25 logs]    | QUICK CREATE RULE (or click [Alert Rules] tab):     |
+|                                                    | Templates: [Price Above $] [Price Below $] [Stale]  |
+|                                                    | [▸ Advanced 16-condition / indicator / drawing rule]|
++----------------------------------------------------+-----------------------------------------------------+
 ```
 
 ---
 
-### 6.11 Settings (`#settings`) — Clean Vertical Sections with Advanced Drawers
+### 6.10 Workflows (`#workflows`) — True `Fit All` Diagram & Node-Linked Prompt Studio
 
-- **Fixes:** Cuts the 20-field wall on Research Settings down to 5 core fields (Provider, Deep Model, Fast Model, Reasoning Effort, API Status) with `[> Advanced token budgets, concurrency & Laya social router]` expandable below. Separates read-only Diagnostics from the destructive Restore section.
+- **Contract notes:** Keeps the 2 real inspector tabs (`Prompts` and `Workflow YAML`). Adds **`Fit All`** (`0.25` zoom floor) as the default opening zoom so the entire 1,755px-tall 18-node flow fits in the left pane, plus an inline Retry banner if rendering fails (fixes L5). Clicking any diagram node selects its primary prompt and shows its related files (`Primary prompt`, `Shared context & tools`, `Output schema`) as a compact chip bar above the editor. Replaces native `confirm()` with an in-app `<dialog>`.
 
 ```text
-+------------------------+-------------------------------------------------------------------------+
-| SETTINGS SECTIONS      | AI MODELS & RESEARCH ENGINE                           [Save Settings]   |
-+------------------------+-------------------------------------------------------------------------+
-| [*] AI Models & Engine | PRIMARY RESEARCH PROVIDER                                               |
-| [ ] Broker & Data Keys | Provider:     [Codex (Existing Sign-In)        v]  Status: [Connected]  |
-| [ ] Safety & Order Gate| Deep Model:   [gpt-5.3-codex                   v]  Reasoning: [High  v] |
-| [ ] Backup & Recovery  | Fast Model:   [gpt-5.3-codex                   v]  Reasoning: [Mediumv] |
-|                        |                                                                         |
-|                        | [> Advanced Budgets, Concurrency & Laya Screening (14 fields)]          |
-|                        |                                                                         |
-|                        | ----------------------------------------------------------------------- |
-|                        | (On "Backup & Recovery" tab:                                            |
-|                        |  Top card = System Health Chips [Desk: OK] [Nautilus: OK] [SQLite: OK]  |
-|                        |  Middle card = [Export Workspace Backup]                                |
-|                        |  Bottom red-bordered card = DANGER ZONE: Restore from Backup            |
-|                        |  with typed confirmation phrase.)                                       |
-+------------------------+-------------------------------------------------------------------------+
++----------------------------------------------------------------------------------------------------------+
+| WORKFLOWS   Saved: [Default v] [Load] · Active: Default · Status: Saved   [Preview] [Save] [Save As] [Use]|
++------------------------------------------------+---------------------------------------------------------+
+| AGENT FLOW DIAGRAM (48% width, full height)    | WORKFLOW INSPECTOR (52% width, full height)             |
+| [*Fit All (42%)*] [Fit Width] [-] [+]  [About▾]| Tabs: [*Prompts (94)*] [Workflow YAML]      [Details ▾] |
++------------------------------------------------+---------------------------------------------------------+
+|          +------------------------+            | [Search prompts...]  File: [market_analyst — Guides...v]|
+|          |     Start Research     |            | Node Files: [*market_analyst*] [shared_tools▾] [schema▾]|
+|          +-----------+------------+            | +-----------------------------------------------------+ |
+|                      |                         | | 1 | You are the Market Analyst on a structured      | |
+|    +---------+-------+-------+---------+       | | 2 | equity research desk. Analyze OHLCV price       | |
+|    v         v               v         v       | | 3 | action, moving averages, RSI/MACD, and          | |
+| [Market*] [Social]        [News]    [Fund.]    | | 4 | volume regimes using only verified tool         | |
+|    \         |               |        /        | | 5 | outputs...                                      | |
+|     +--------+-------+-------+-------+         | |   |                                                 | |
+|                      v                         | |   | (Clicking any node on the left diagram selects  | |
+|          [Bull / Bear Debate (1r)]             | |   |  it and loads its primary prompt here;          | |
+|                      v                         | |   |  Ctrl/Cmd+S saves; leaving while dirty opens    | |
+|          [Research Manager (Deep)]             | |   |  an in-app Discard / Keep Editing <dialog>)     | |
+|                      v                         | +-----------------------------------------------------+ |
+|              [Trader Proposal]                 | Path: prompts/market_analyst.md · [Discard Changes]     |
+|                      v                         |                                                         |
+|             [Risk Debate (1r)]                 |                                                         |
+|                      v                         |                                                         |
+|          [Portfolio Manager (Deep)]            |                                                         |
++------------------------------------------------+---------------------------------------------------------+
 ```
+
+---
+
+### 6.11 Settings (`#settings`) — All 5 Complete Categories with Progressive Disclosure
+
+- **Contract notes:** Preserves all 5 real categories (`Account & Engine`, `Research & Models`, `Universe & Keys`, `Trading Rules & Native Cache`, `Diagnostics & Backup`). Keeps `Start/Stop Nautilus` on `Account & Engine` and `Universe & Keys`. Splits `Research & Models` into 5 core fields + collapsible `Advanced (11 fields)`. Separates read-only Health Chips from the red-bordered `Danger Zone: Restore Workspace Backup` card.
+
+```text
++----------------------------------------------------------------------------------------------------------+
+| SETTINGS   Tabs: [Account & Engine] [*Research & Models*] [Universe & Keys] [Trading Rules] [Diagnostics]|
++----------------------------------------------------------------------------------------------------------+
+| CORE RESEARCH MODELS (Applies to future research runs)                   [Discard] [Save Settings (Clean)]|
+| +------------------------------------------------------------------------------------------------------+ |
+| | Provider:         [Codex (existing sign-in)         v]   Endpoint: [Disabled for Codex            ]  | |
+| | Deep Model:       [gpt-6-sol                        v]   Deep Reasoning: [High                    v] | |
+| | Fast Model:       [gpt-6-luna                       v]   Fast Reasoning: [Medium                  v] | |
+| | Server Limits:    Deep context 128,000 (max out 32,000) · Fast context 128,000   [Refresh Limits]    | |
+| +------------------------------------------------------------------------------------------------------+ |
+| [▸ Advanced Token Budgets, Concurrency, Retries & Local Laya Router (11 fields — collapsed by default)]  |
+|                                                                                                          |
+| OTHER SETTINGS TABS SUMMARY:                                                                             |
+| • [Account & Engine]: Paper/Live ID (once), Start/Stop Nautilus, Execution Profile, Alpaca Vault Keys.   |
+| • [Universe & Keys]:  Universe Name, 1,000-stock Textarea, FANGMAN Preset, CSV Import/Export, Data Keys. |
+| • [Trading Rules]:    10 Investor Policy Rules + Capture Native Cache Table (for Journal Outcomes).      |
+| • [Diagnostics]:      Top: [● Engine: Connected] [● Sync: Reconciled] [● Store: OK] + Dynamic Origin URL.|
+|                       Bottom: [Export Backup] + Red-Bordered DANGER ZONE: [Restore Workspace Backup].    |
++----------------------------------------------------------------------------------------------------------+
+```
+
+---
+
+## 7. Implementation Workstreams (Ready for Execution)
+
+When we move from this blueprint to code implementation, the work splits cleanly into 4 parallel workstreams:
+
+1. **Workstream 1 — Shell, Shared Tablist, Chrome Diet & Icons (`index.html`, `app.css`, `app.js` shell):**
+   - `36px` single-line top bar, remove `.workspace-footer`, remove multi-paragraph `pageHeader` prose, add 10 distinct sidebar SVG icons, unify `Orders: Active / Paused`, and add shared WAI-ARIA `renderTablist()` with keyboard arrow navigation.
+2. **Workstream 2 — Research & Workflows Redesign (`app.js` research, `report-format.js`, `workflows.js`, `ui-research-journal.css`, `ui-workflows.css`):**
+   - Inline stock picker + batch selector on Research, auto-focus first running stock on launch, 7-state honest progress bar, no fake `Sell` badge or stuck `Loading...` line, structured Summary with real Analyst Excerpt cards + Laya counts + Bull/Bear split, `[Manage]` toggle for deletion, Workflows `Fit All` (`0.25` zoom floor) + node-click prompt chip bar + in-app unsaved `<dialog>`.
+3. **Workstream 3 — Dashboard, Markets & Portfolio (`app.js`, `market-chart.js`, `ui-markets.css`, `ui-instrument.css`):**
+   - Unclipped Dashboard bottom panes, `0 checked` initial watchlist state, hollow down-candles + overlay legends + `<details>` bar tables, Markets 1-line history backfill bar + Current IEX vs. Saved Research chart context, Portfolio formatted numbers + capped 140px Performance empty state.
+4. **Workstream 4 — Orders, Strategy Lab, Journal, Alerts & Settings (`app.js`, `command-controls.js`, `nautilus.js`, `ui-orders.css`):**
+   - Direct 2-column DOM rendering (deleting `layoutOrders`/`layoutMarkets` post-render scraping), 1-line order readiness + inline confirm/receipt + `resolve_never_dispatched` recovery, Strategy Lab 3-step accordion rail, Journal focus-safe search + 1-row outcome table + guarded revert, Alerts grouped restarts + 3 quick rule templates, Settings Basic vs. Advanced split + isolated Restore Danger Zone.
+
