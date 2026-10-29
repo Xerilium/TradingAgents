@@ -2,6 +2,29 @@
 const commandForm={note:'',orders:{},replacements:{},basketApprovals:{},basketDependents:{}};
 let commandBusy=false,commandConfirmation=null,commandReceipt=null;
 const commandSnapshot=()=>JSON.stringify({server:state.server_instance_id,generation:state.store_generation,commands_revision:state.commands?.revision,investor_revision:state.investor?.revision,native_epoch:state.nautilus?.native_epoch,native_status:state.nautilus?.status,reconciliation:state.nautilus?.reconciliation?.status,account_verified:state.connection?.account_verified,connected:state.connection?.connected,state_error:stateErrorMessage,execution_enabled:state.commands?.execution_enabled,ticket:UniverseReview.ticketFingerprint(),form:commandForm});
+function commandConfirmationTerms(request){
+ const data=state.commands?.data||{},commands=data.commands||{},approvals=data.approvals||{},broker=(state.nautilus?.orders||[]).find(order=>order.id===request.broker_order_id);
+ if(request.action==='replace'){
+  const replacement=request.replacement_command_id?commands[request.replacement_command_id]:null,approval=approvals[request.replacement_approval_id||replacement?.approval_id];
+  if(request.replacement_command_id&&!replacement?.terms||!approval?.terms)throw new Error('Exact retained replacement terms are unavailable. Refresh and review the replacement again.');
+  return {'Predecessor command':commands[request.id]??null,'Observed predecessor broker order':broker??null,'Replacement command':replacement,'Replacement approval':approval};
+ }
+ if(request.action==='basket_dispatch_next'){
+  if(request.id){
+   const group=data.basket_executions?.[request.id];
+   if(!group?.command_ids?.length)throw new Error('Retained basket execution is unavailable. Refresh and review the basket again.');
+   const legs=group.command_ids.map(id=>{
+    const command=commands[id],approval=approvals[command?.approval_id];
+    if(!command?.terms||!approval?.terms)throw new Error('Exact retained basket leg terms are unavailable. Refresh and review the basket again.');
+    return {command,approval,frozen_binding:group.frozen_legs?.find(leg=>leg.approval_id===command.approval_id)??null};
+   });
+   return {'Retained basket execution':group,'Retained approved legs':legs,'Dispatch scope':'Only the next admitted, not dispatched command is requested. The server selects it and rechecks dependencies and authority; this does not submit every leg.'};
+  }
+  return {'Selected basket leg approvals':request.legs?.map(leg=>{const approval=approvals[leg.approval_id];if(!approval?.terms)throw new Error('Exact basket approval terms are unavailable. Refresh and review the basket again.');return {leg,approval};})??null};
+ }
+ const command=commands[request.id],approval=approvals[request.approval_id||command?.approval_id];
+ return {approval:approval??null,command:command??null,broker_order:broker??null};
+}
 function commandConfirmationMarkup(){
  const receipt=commandReceipt?'<section class="command-receipt" role="status"><h4>Last action receipt</h4><p>'+fullTime(commandReceipt.at)+' · '+esc(commandReceipt.action)+' · '+esc(commandReceipt.message)+'</p>'+(commandReceipt.response?'<details><summary>Exact returned receipt</summary>'+orderFacts(commandReceipt.response)+'</details>':'')+'</section>':'';
  if(!commandConfirmation)return receipt;
@@ -104,8 +127,7 @@ document.addEventListener('click',async event=>{
  if(button.dataset.basketNext)Object.assign(request,{action:'basket_dispatch_next',id:button.dataset.basketNext});
  if(button.dataset.basketPause||button.dataset.basketReview)Object.assign(request,{action:'basket_control',id:button.dataset.basketPause||button.dataset.basketReview,paused:!!button.dataset.basketPause});
  if(['submit','cancel','replace','basket_dispatch_next'].includes(request.action)){
-  const data=state.commands?.data||{},approval=data.approvals?.[request.approval_id||request.replacement_approval_id],command=data.commands?.[request.id||request.replacement_command_id],broker=(state.nautilus?.orders||[]).find(order=>order.id===request.broker_order_id);
-  commandConfirmation={request:structuredClone(request),snapshot:commandSnapshot(),terms:{approval:approval??null,command:command??null,broker_order:broker??null,basket_legs:request.legs?.map(leg=>({leg,approval:data.approvals?.[leg.approval_id]}))??null}};
+  commandConfirmation={request:structuredClone(request),snapshot:commandSnapshot(),terms:structuredClone(commandConfirmationTerms(request))};
   return;
  }
  const response=await api('/api/commands',request);commandReceipt={at:new Date().toISOString(),action:request.action,message:'Server response received; inspect the recorded lifecycle.',response};await readState({force:true});
