@@ -683,6 +683,8 @@ Because `tradingagents/web/static/app.js` holds the shared state and multiple pa
    - **Unconditional Launch Focus (`US-02`):** Confirming `Start Research` always focuses the first stock in the launched batch, resolving `U2`, and warns beside `Analysis Date` that historical runs replace the stock's single retained result.
    - **Pinned Ticket Symbol & Price-Source Isolation (`Section 5.1`, `Section 5.3`, `investor.py:92`):** Separates `ticketSymbol` / `ticketDirty` from `selectedSymbol` and binds all ticket quotes, positions, research links, click-to-seed actions, and `chart_copy` validations strictly to `ticketSymbol` so inspecting another stock never contaminates a pinned ticket's prices.
    - **Track-Scoped Deletion of Legacy Layout Helpers (`Section 1.4`, `Section 8`):** Keeps `layoutOrders()`, `layoutBasketGroups()`, `layoutMarkets()`, and `compactScannerMarkup()` during Phase 0 and deletes each helper in the specific Phase 1 track that replaces its renderer.
+3. **Final Document Sign-Off (v4.2 at `dfbcd47`, 2026-10-29):**
+   - Signed off as the implementation blueprint after verifying that `Activity` combines events and receipts with explicit failure states (excluding `running`/`queued` calls), `ticketSymbol` isolates all ticket quotes/positions/research links/price-copy actions, legacy layout helpers remain until replaced by their owning tracks, selection wording respects ticket pinning, and `Fit All` retains a pan/scroll fallback at minimum zoom.
 
 ### 9.2 Observed Acceptance Limits (Not Claimed Until Built & Exercised Live)
 - This document is a **specification and contract record**, not a claim that the redesigned UI has been implemented or exercised against the running service on `127.0.0.1:8098`.
