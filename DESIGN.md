@@ -406,3 +406,8 @@ The chart and its drawing annotations read type from the shared CSS font; chart 
 Use tight spacing for related controls and larger spacing between sections.
 Prose fills its available panel or cell width, as requested; do not reintroduce narrow paragraph caps.
 Desktop workspaces retain bounded scrolling within data, reading and form panes.
+
+
+### Strategy Lab, Journal, Alerts and Settings
+
+Operate mode: Strategy Lab keeps a 360px scrolling three-step setup rail beside Preview & Results / Runs & Compare; below 790px the rail and canvas stack. Journal uses three tabs, a compact lifecycle table and a separate evidence inspector. Counts describe saved source records or genuinely dirty local notes. Alerts groups service restart coverage gaps without merging rule occurrences or acknowledgment authority. Settings keeps five category tabs, core model choices above advanced defaults, and backup export separate from the bottom red-bordered Restore Danger Zone. All use existing 36–40px tab controls, source-qualified unavailable states, exact table alternatives and persistent input/focus behavior. Source delivery does not establish rendered acceptance.

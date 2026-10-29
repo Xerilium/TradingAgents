@@ -38,6 +38,35 @@
 .strategy-workspace [data-strategy-panel][hidden]{display:none}
 .strategy-workspace .strategy-status{flex:none;min-height:24px;color:var(--muted)}
 .strategy-workspace .proposal-fields{display:grid;gap:var(--space-3);grid-template-columns:repeat(2,minmax(0,1fr))}
+.strategy-workspace .strategy-grid{display:grid;grid-template-columns:360px minmax(0,1fr);gap:var(--space-3);flex:1;min-height:0;min-width:0;border:0;padding:0;margin:0;overflow:hidden}
+.strategy-setup-rail{min-height:0;min-width:0;overflow:auto;border:1px solid var(--line);background:var(--paper);padding:var(--space-3);scrollbar-gutter:stable}
+.strategy-isolation{margin-bottom:var(--space-3);color:var(--muted);font-size:var(--text-meta)}
+.strategy-setup-rail h2{margin-bottom:var(--space-2)}
+.strategy-workspace .strategy-setup-rail .proposal-fields{grid-template-columns:minmax(0,1fr)}
+.strategy-step{border-top:1px solid var(--line);margin-top:var(--space-3);padding-top:var(--space-2)}
+.strategy-step>summary{font-weight:600;min-height:36px;cursor:pointer;padding-block:var(--space-2)}
+.strategy-step fieldset{padding:var(--space-2);margin:var(--space-3) 0;border:1px solid var(--line)}
+.strategy-step button{margin:var(--space-1) 0;white-space:normal}
+.strategy-canvas{min-height:0;min-width:0;display:flex;flex-direction:column;border:1px solid var(--line);padding:var(--space-3);background:var(--paper)}
+.strategy-result-reading{flex:1;min-height:0;min-width:0;overflow:auto;scrollbar-gutter:stable}
+.strategy-result-reading p,.strategy-result-reading h3,.strategy-result-reading h4,.strategy-result-reading details{margin-bottom:var(--space-3)}
+.strategy-headlines{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-block:var(--space-4);font-variant-numeric:tabular-nums}
+.strategy-headlines dd{margin:var(--space-1) 0 0;font-weight:600}.strategy-headlines dt{color:var(--muted)}
+.native-analyzer .order-facts{max-width:none}
+.journal-list-tools{display:flex;flex-wrap:wrap;align-items:end;gap:var(--space-2);padding-block:var(--space-3)}
+.journal-list-tools label{display:grid;gap:var(--space-1);flex:1 1 200px}
+.journal-list-tools input{width:100%;min-height:36px;background:var(--field,var(--ground));color:var(--ink);border:1px solid var(--line);padding:var(--space-2)}
+.journal-decision-list{display:flex;flex-direction:column;padding:var(--space-3)}
+.journal-decision-list>.table-scroll{flex:1;min-height:0;overflow:auto}
+.journal-workspace-page .journal-outcome-layout{display:grid;grid-template-columns:minmax(320px,1fr) minmax(320px,1fr);gap:var(--space-3);min-height:100%}
+.journal-outcome-layout>.panel{padding:var(--space-3);overflow:auto;margin:0}
+.journal-outcome-layout p{margin-block:var(--space-2)}
+.journal-history-figure{margin:var(--space-3) 0}.journal-history-figure figcaption{color:var(--muted);margin-block:var(--space-2)}
+.journal-workspace-page .decision-inspector>h2,.journal-workspace-page .decision-inspector>p,.journal-workspace-page .decision-inspector>button{margin:var(--space-2) var(--space-3);flex:none}
+.journal-workspace-page .decision-inspector>.workspace-tabs{padding-inline:var(--space-3)}
+@media(max-width:1100px){.strategy-workspace .strategy-grid{grid-template-columns:320px minmax(0,1fr)}.strategy-headlines{grid-template-columns:repeat(2,minmax(0,1fr))}.journal-workspace-page .journal-outcome-layout{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:790px){.strategy-workspace .strategy-grid{display:block;overflow:auto}.strategy-setup-rail,.strategy-canvas{overflow:visible;min-height:0}.strategy-canvas{margin-top:var(--space-3)}.strategy-result-reading{overflow:visible}.journal-layout{height:auto;display:flex;flex-direction:column}.journal-layout>.panel{max-height:none;overflow:visible}.decision-reading{overflow:visible}.journal-workspace-page .workspace-reading{overflow:auto}}
+@media(max-height:800px){.strategy-setup-rail,.strategy-result-reading{overscroll-behavior:contain}.strategy-workspace .strategy-isolation{font-size:var(--text-meta);margin-bottom:var(--space-2)}}
 @media(max-width:600px){.strategy-workspace .proposal-fields{grid-template-columns:minmax(0,1fr)}}
 .strategy-workspace pre,.journal-workspace-page pre{white-space:pre-wrap;overflow-wrap:anywhere}
 .strategy-workspace table,.journal-workspace-page table{font-variant-numeric:tabular-nums}
