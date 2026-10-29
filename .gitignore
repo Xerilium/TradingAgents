@@ -241,3 +241,8 @@ tradingdesk.launch.json
 /desktop/src-tauri/gen/
 /desktop/src-tauri/icons/android/
 /desktop/src-tauri/icons/ios/
+
+# Machine-local agent integration settings
+/.codex/config.toml
+/.codex/hooks.json
+/.mcp.json

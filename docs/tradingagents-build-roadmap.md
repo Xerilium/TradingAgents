@@ -1,5 +1,7 @@
 # TradingAgents: what remains before portfolio management
 
+Historical requirements reference. This is not an inventory of implemented capability or current acceptance. Current instructions, README.md and docs/user-workflows.md take precedence.
+
 ## Current scope and specification correction — 18 October 2026
 
 The user's direct instructions govern this document. The original audit suggestions were considered design inputs, not independent authority to add prerequisites. Later instructions reject mandatory investor questionnaires, invented submission barriers and the crash-recovery project. The 18 October request requires plain order status, the actual reasons a particular order cannot be submitted, functional Alpaca integration and exact per-order approval. No agent may approve or place trades, cancel/replace orders, or start research during this work.
