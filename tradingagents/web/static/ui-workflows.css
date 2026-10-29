@@ -66,6 +66,10 @@
 .workflow-load-controls .field label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 #main .workflow-workspace :is(button, input, select) { min-height:44px; }
 .workflow-header > #workflow-feedback { margin:0; }
+.workflow-empty-state { max-width:68ch; margin:var(--space-4) 0; padding:var(--space-4); background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); text-align:left; }
+.workflow-empty-state h2 { margin:0 0 var(--space-2); color:var(--ink); }
+.workflow-empty-state p { margin:0 0 var(--space-4); color:var(--muted); }
+.workflow-empty-state .button-group { display:flex; flex-wrap:wrap; gap:var(--space-2); }
 .workflow-section-head p { margin:0; }
 .workflow-flow-controls { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
 .workflow-flow-details { order:2; }
