@@ -48,8 +48,8 @@ Use the project's Python environment. Install the optional dependencies when
 setting up a new checkout:
 
 ```powershell
-rtk proxy uv pip install --python .venv\Scripts\python.exe -e ".[paper]"
-rtk proxy .venv\Scripts\python.exe -m tradingagents.web.server
+uv pip install --python .venv\Scripts\python.exe -e ".[paper]"
+.venv\Scripts\python.exe -m tradingagents.web.server
 ```
 
 Open <http://127.0.0.1:8088>. Keep Maenifold running at
@@ -439,8 +439,8 @@ are read as positional array scalars so float32/float64 NaN payloads (including
 signaling bits), signed zero and large integer labels avoid Python float coercion.
 
 ```powershell
-rtk proxy .venv\Scripts\python.exe -m pytest
-rtk proxy .venv\Scripts\python.exe -m ruff check tradingagents/web tradingagents/paper tradingagents/integrations
+.venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe -m ruff check tradingagents/web tradingagents/paper tradingagents/integrations
 ```
 
 The new tests use an injected broker and scripted graph; they never place real
@@ -453,7 +453,7 @@ If the default Windows temporary directory is under your home, run the suite
 with a process-local temporary directory instead (no system setting changes):
 
 ```powershell
-rtk proxy .venv\Scripts\python.exe -c "import tempfile, pathlib, pytest; p=pathlib.Path('.paper-desk/test-temp').resolve(); p.mkdir(parents=True, exist_ok=True); tempfile.tempdir=str(p); raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', '--basetemp', '.paper-desk/pytest-run']))"
+.venv\Scripts\python.exe -c "import tempfile, pathlib, pytest; p=pathlib.Path('.paper-desk/test-temp').resolve(); p.mkdir(parents=True, exist_ok=True); tempfile.tempdir=str(p); raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', '--basetemp', '.paper-desk/pytest-run']))"
 ```
 
 ## Design references

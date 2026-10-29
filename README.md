@@ -70,7 +70,7 @@ for verified behavior and recovery; do not assume every tray operation or broker
 order type has been accepted in every environment.
 
 For isolated development, run `.\Start-TradingDesk-Dev.cmd` from the
-checkout (it requires npm and the `rtk` command-line tool). It uses port 8099 and `%USERPROFILE%\.cache\trader\development`,
+checkout. It uses port 8099 and `%USERPROFILE%\.cache\trader\development`,
 separate from production data and credentials. The repository's
 `Start-TradingDesk.cmd` opens the installed production app. Desktop credentials
 use the operating system's credential store (Windows Credential Manager or macOS Keychain), managed through Settings, with separate production and

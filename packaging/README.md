@@ -20,13 +20,13 @@ The default Tauri configuration bundles `payload/app`, its provenance, the deskt
 launcher and the configured icons. It excludes both Python runtime seeds. The existing Tauri updater installs this app-only package; it does not reinstall dependencies.
 
 For an ordinary code or prompt change, from the repository root run
-`rtk proxy .venv/Scripts/python.exe packaging/refresh_project.py` (use an
+`.venv/Scripts/python.exe packaging/refresh_project.py` (use an
 existing Python 3.11+ on macOS). This builds the app wheel and refreshes only
 `payload/app` and its provenance. It neither opens nor installs into
 `payload/desk` or `payload/native`. It uses the previously prepared app's
 platform-specific Nautilus integrity manifest.
 
-Then, from `desktop`, run `rtk proxy npm run build:release`. Supply the existing
+Then, from `desktop`, run `npm run build:release`. Supply the existing
 publisher key through `TAURI_SIGNING_PRIVATE_KEY`; never copy the key into
 the repository. Keep the update artifact and its `.sig` together.
 
@@ -51,7 +51,7 @@ is versioned separately from the Python package (`tradingagents.__version__`).
 ## First installation and dependency changes
 
 Prepare dependencies once per platform/runtime release. From the repository root,
-run `rtk proxy .venv/Scripts/python.exe packaging/prepare.py` (or an existing
+run `.venv/Scripts/python.exe packaging/prepare.py` (or an existing
 Python 3.11+ on macOS). It requires the current host's two reviewed platform locks,
 an absent `desktop/src-tauri/payload` directory and exactly one project wheel in
 `packaging/build/wheels`. It requires `uv` 0.12.22 and installs standalone Python 3.12.10
@@ -97,7 +97,7 @@ runtime. The production profile is `%USERPROFILE%\.cache\trader\production`. For
 the existing `uv` available:
 
 ```powershell
-rtk proxy uv pip install --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages --no-deps --require-hashes --only-binary :all: --reinstall -r packaging/laya-cuda-windows.lock
+uv pip install --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages --no-deps --require-hashes --only-binary :all: --reinstall -r packaging/laya-cuda-windows.lock
 ```
 
 Leave system Python, the native Nautilus runtime and GPU drivers unchanged.
@@ -108,7 +108,7 @@ app updates leave those runtimes alone. For deliberate maintenance of a stopped
 private runtime, the removal command is:
 
 ```powershell
-rtk proxy uv pip uninstall --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages torch
+uv pip uninstall --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages torch
 ```
 
 After launch, select GPU while research is idle and inspect the actual device and

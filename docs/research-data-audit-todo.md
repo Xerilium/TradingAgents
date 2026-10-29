@@ -330,7 +330,7 @@ This objective is not achieved by the completed-social-only pass above.
   trader/portfolio-manager prompts, preventing advice to trim a zero holding.
 - Batch passed focused Ruff checks (excluding pre-existing import-only findings),
   Python syntax parsing and `git diff --check`; no tests created or run. Loaded
-  using `rtk proxy .\Start-TradingDesk.cmd`. Code score: -628.
+  using `.\Start-TradingDesk.cmd`. Code score: -628.
 - FRED recheck after implementation still returned its maintenance page; the
   corrected collector raised `VendorUnavailableError` with the maintenance cause.
   Full INTC verification remains pending until usable FRED responses return.

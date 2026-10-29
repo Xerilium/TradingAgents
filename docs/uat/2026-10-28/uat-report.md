@@ -8,9 +8,9 @@ This is not a rerun of the 19 October 49-case ledger, and it does not certify br
 
 ## Observation window and method
 
-Observations ran from about 2026-10-29T02:30:00Z to 2026-10-29T02:39:01Z, which is 7:30 PM to 7:39 PM Pacific on 28 October 2026. The market was closed.
+Observations ran from about 2026-10-29T02:02:00Z to 2026-10-29T02:39:01Z, which is 7:02 PM to 7:39 PM Pacific on 28 October 2026. The market was closed.
 
-API reads used the installed production interpreter and `scripts/desk_api.py` with GET only. The helper opens the normal local session and removes the CSRF token from printed output. No POST was sent. Browser checks used the built-in browser on the production origin. Hash navigation and in-page view tabs were used. Refresh, New research, Load, Save, Delete, Approve, Submit, Pause, Start, and Stop were not clicked.
+API reads used the installed production interpreter and `scripts/desk_api.py` with GET only. The helper opens the normal local session and removes the CSRF token from printed output. No POST was sent. Browser checks used the built-in browser canvas on the production origin (`http://127.0.0.1:8098/`) across all ten workspaces (`Dashboard`, `Portfolio`, `Markets`, `Research`, `Orders`, `Strategy lab`, `Journal`, `Alerts`, `Workflows`, and `Settings`). Hash navigation, in-page view tabs, and the read-only `Load` control on `Workflows` (`GET /api/workflows?name=Default`) were used. Refresh, New research, Strategy Load/Simulate, Save, Delete, Approve, Submit, Pause, Start, and Stop were not clicked.
 
 Proposed on Portfolio was not opened. That view can start a model synthesis. Performance was opened and showed no equity history.
 
@@ -20,15 +20,15 @@ The assigned comparison commit is `1690752f32f3b6711d4c8f177975467def2a150e` (20
 
 Installed `payload/provenance.json` records `source_revision` `237cc048021be6798b9e975df14c1b0d0c388bca` and `working_changes_present: true`. That commit is the parent of `1690752`. The installed package directory is `tradingagents-0.7.1.dist-info`. Desk Python is 3.12.10. The recorded Nautilus wheel is 1.231.0.
 
-Git blob comparison of the installed payload against `1690752` and this worktree:
+Git blob comparison of the installed payload against `1690752` and this worktree (`features/docs-audit-and-uat`, rebased on `1690752`):
 
 | File | Matches `1690752` | Matches this worktree |
 |---|---|---|
 | `tradingagents/web/server.py` | yes | yes |
 | `tradingagents/web/static/index.html` | yes | yes |
-| `tradingagents/web/service.py` | yes | no |
-| `tradingagents/web/static/app.js` | yes | no |
-| `tradingagents/default_config.py` | yes | no |
+| `tradingagents/web/service.py` | yes | yes |
+| `tradingagents/web/static/app.js` | yes | yes |
+| `tradingagents/default_config.py` | yes | yes |
 
 The live Settings form showed Research data retries as 10, provider Codex, deep model `gpt-6.1-terra`, and fast model `gpt-6-luna`. That retry field is present in the `1690752` web contract. GET routes in `tradingagents/web/server.py` are unchanged between this worktree and `1690752` for the files compared above, because `server.py` blobs match.
 
@@ -127,11 +127,11 @@ Compact `proposals` and `historical_proposals` were empty. The deferred draft is
 
 Alerts Inbox had no occurrences. The monitor was evaluating and repeated the unset price-age limit. Rules had no saved rules and no research priorities. Delivery showed browser permission denied, saved preference disabled, and no display attempts. Notifications were not enabled.
 
-Workflows showed Editing none and Active Default. The saved catalog is `["Default"]`. Effective config from `GET /api/workflows`: selected analysts market, social, news, and fundamentals; max debate rounds 1; max risk discuss rounds 1; max tool rounds 20; max recur limit 100. The page does not show that config until Load. Load was not clicked.
+Workflows showed Editing none and Active Default on initial open, with saved catalog `["Default"]`. Effective config from `GET /api/workflows`: selected analysts market, social, news, and fundamentals; max debate rounds 1; max risk discuss rounds 1; max tool rounds 20; max recur limit 100. In the built-in browser canvas walkthrough, clicking **Load** (`GET /api/workflows?name=Default`, read-only) switched the status pill to `Editing: Default` and rendered the interactive Mermaid SVG workflow graph (`Market Analyst` → `Social Analyst` → `News Analyst` → `Fundamentals Analyst` → `Bull Researcher` / `Bear Researcher` → `Research Manager` → `Trader` → `Aggressive Debator` / `Conservative Debator` / `Neutral Debator` → `Portfolio Manager`), the twelve role prompt tabs (`Market`, `Social`, `News`, `Fundamentals`, `Bull`, `Bear`, `Research Manager`, `Trader`, `Aggressive`, `Neutral`, `Conservative`, `Risk Manager`), and the `Workflow YAML` tab (`prompts.yaml` and `workflow.yaml` under `tradingagents/workflows/default/`). Save, Save as, Discard, and Use for new research were not clicked.
 
-Settings Account showed paper mode, the same account id, IEX, saved Alpaca key and secret flags, paper endpoint, and Nautilus 1.231.0 connected. Credential fields were left blank. Nothing was saved or removed. Research showed the live model and retry values above. Trading rules showed risk-check revision 0 and investor records revision 3. Optional checks were present and were not saved. Integrations showed Nautilus connected and Windows Credential Manager, production profile. OPENAI_COMPATIBLE, FRED, and TYPESAFE were saved. OPENAI, ANTHROPIC, GOOGLE, ALPHA_VANTAGE, and the other listed provider keys were not saved. Diagnostics said engine connected, account import reconciled, local store available, and new orders unblocked. Diagnostics were not downloaded.
+Settings Account showed paper mode, the same account id, IEX, saved Alpaca key and secret flags, paper endpoint, and Nautilus 1.231.0 connected. Credential fields were left blank. Nothing was saved or removed. Research showed the live model and retry values above. Trading rules showed risk-check revision 0 and investor records revision 3. Optional checks were present and were not saved. Integrations showed Nautilus connected and Windows Credential Manager, production profile. OPENAI_COMPATIBLE, FRED, and TYPESAFE were saved. OPENAI, ANTHROPIC, GOOGLE, ALPHA_VANTAGE, and the other listed provider keys were not saved. Diagnostics said engine connected, account import reconciled, local store available, and new orders unblocked; `Local records → Launch and restart` still displays legacy `tradingdesk.launch.json` copy in the UI (`app.js`), which is documented as stale in `docs/desk-reference.md`, `docs/local-desk-guide.md`, and `.agents/skills/use-tradingagents/references/strategy-alerts-settings.md`. Diagnostics were not downloaded.
 
-Strategy lab Simulations said no simulation was selected. Experiments said no experiment was selected. The evaluations API, revision 1, has one saved strategy, "Amazon 50-day moving average demonstration", zero items, and one proposal with the same id as the deferred SGOV draft. Optuna 5.0.0 was reported available. The strategy name is not shown until Load. Load and Simulate were not used. Portfolio model status was idle.
+Strategy lab Simulations (`#strategy`) rendered **Simulate a saved plan**, the **Saved strategies** selector (`Amazon 50-day moving average demonstration`), and **No simulation selected**. Experiments said no experiment was selected. The evaluations API, revision 1, has one saved strategy, "Amazon 50-day moving average demonstration", zero items, and one proposal with the same id as the deferred SGOV draft. Optuna 5.0.0 was reported available. Strategy Load and Simulate were not used. Portfolio model status was idle.
 
 Discovery is a Yahoo Finance schema for current US equities, page size 25, with 11 sectors. It was not a live scan result, and no scan was started.
 
@@ -181,7 +181,7 @@ These remain unproven. They are boundaries of this UAT, not evidence that the co
 | New research, retry, or delete research | Starts or removes research |
 | Portfolio Proposed synthesis | Can start a model run |
 | Strategy Load or Simulate | Loads or runs a simulation |
-| Workflow Load or edit | Opens an editor that can save |
+| Workflow Save, Save as, or Use for new research | Mutates saved or active workflow bundles (`Load` of `Default` was exercised read-only) |
 | Settings save, credential change, Nautilus stop or start | Mutates configuration or the engine |
 | Alert rule save and browser notification opt-in | Writes rules or browser permission |
 | History interval request | Writes retained history |

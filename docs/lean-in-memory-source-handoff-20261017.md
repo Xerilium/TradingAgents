@@ -46,7 +46,7 @@ Project-local entry: C:/src/TradingAgents/Start-TradingDesk.cmd, using C:/src/Tr
 Equivalent direct server arguments, from C:/src/TradingAgents, are:
 
 ~~~
-rtk proxy C:/src/TradingAgents/.venv/Scripts/python.exe -m tradingagents.web.server --port 8098 --data-dir C:/src/printerv2/evidence/runtime-staging/20261017T024233Z-e3f9548d/application --history-dir C:/src/printerv2/evidence/runtime-staging/20261017T024233Z-e3f9548d/history --nautilus-python C:/src/printerv2/.venv-nautilus-v1/Scripts/python.exe --alpaca-credentials-file C:/src/printer/apps/tradingagents/.env --browse-only
+C:/src/TradingAgents/.venv/Scripts/python.exe -m tradingagents.web.server --port 8098 --data-dir C:/src/printerv2/evidence/runtime-staging/20261017T024233Z-e3f9548d/application --history-dir C:/src/printerv2/evidence/runtime-staging/20261017T024233Z-e3f9548d/history --nautilus-python C:/src/printerv2/.venv-nautilus-v1/Scripts/python.exe --alpaca-credentials-file C:/src/printer/apps/tradingagents/.env --browse-only
 ~~~
 
 There is no --native-cache-config or --migrate-journal argument. Native start in the browser starts only the configured Python worker. The launcher refuses to reuse an older Redis-backed service that lacks the new in-memory mode identity. Root must handle its owned old process before deployment; no process was stopped or started here.

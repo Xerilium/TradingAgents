@@ -105,9 +105,9 @@ actual installation, saved data and permitted smoke test.
 
 - Work in `C:\src\TradingAgents`; its application branch is `nautilus` unless the task says otherwise.
 - Use the installed desktop/Start menu shortcut for production. The repository
-  `rtk proxy .\Start-TradingDesk.cmd` opens that installed executable too.
+  `.\Start-TradingDesk.cmd` opens that installed executable too.
   Production uses port 8098 and its private production profile. Development uses
-  `rtk proxy .\Start-TradingDesk-Dev.cmd`, port 8099 and the
+  `.\Start-TradingDesk-Dev.cmd`, port 8099 and the
   `~/.cache/trader/development` profile. Never share production stores or
   credentials with development. Do not start the old Python launcher directly.
 - Preserve `.local-workspace`, both Python environments, saved research,
@@ -179,11 +179,11 @@ Production is fixed to `127.0.0.1:8098`; `--dev` selects isolated port 8099.
 Redirects and proxies are disabled. No request is retried automatically.
 
 ```powershell
-rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py --help
-rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/health
-rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/model-limits --timeout 120
-rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get '/api/state?compact=1'
-rtk proxy "$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/workspace --field revision
+"$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py --help
+"$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/health
+"$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/model-limits --timeout 120
+"$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get '/api/state?compact=1'
+"$env:USERPROFILE/.cache/trader/production/runtimes/desk/python.exe" -I scripts/desk_api.py get /api/workspace --field revision
 ```
 
 For an authorized change, use `post /api/<route> --json-file <body.json>`.
@@ -203,9 +203,8 @@ Saving credentials does not reconnect Nautilus or authorize broker actions.
   cycle for that batch. If that cycle finds more problems, collect and fix them
   as the next batch, then run one cycle for that batch. Do not run a full cycle
   after each individual fix or spend more time running tests than producing
-  useful code. Keep progress comments concise and avoid redundant updates.
-- Prefix shell commands with `rtk`; verify availability with `rtk --version`.
-  Use `rtk proxy` when no dedicated wrapper fits. Do not change PowerShell policy.
+  useful code. Keep progress comments concise and avoid redundant updates. Do
+  not change PowerShell policy.
 
 ## Handoff evidence
 

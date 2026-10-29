@@ -20,7 +20,10 @@
     ],
     "web_files_also_matching_worktree": [
       "tradingagents/web/server.py",
-      "tradingagents/web/static/index.html"
+      "tradingagents/web/service.py",
+      "tradingagents/web/static/app.js",
+      "tradingagents/web/static/index.html",
+      "tradingagents/default_config.py"
     ]
   },
   "account": {
@@ -111,8 +114,8 @@
     {
       "id": "S4-09",
       "name": "Workflows",
-      "result": "partial",
-      "evidence": "Active Default visible. Effective analyst list confirmed by GET. Load was not clicked."
+      "result": "pass",
+      "evidence": "Active Default visible. Clicking Load (GET /api/workflows?name=Default) rendered the interactive Mermaid SVG workflow graph, 12 role prompt tabs, and Workflow YAML tab without mutation."
     },
     {
       "id": "S4-10",

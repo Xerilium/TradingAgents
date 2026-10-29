@@ -829,9 +829,9 @@ the installed versions, inspect the missing-only resolution, then install the
 same pinned classifier dependencies. Run these commands from the checkout:
 
 ```powershell
-rtk proxy uv pip freeze --python .venv/Scripts/python.exe > laya-existing-constraints.txt
-rtk proxy uv pip install --python .venv/Scripts/python.exe --constraint laya-existing-constraints.txt --dry-run laya==0.4.14 torch==2.14.1 transformers==5.20.2 tokenizers==0.23.3 huggingface-hub==2.3.0 safetensors==0.8.0
-rtk proxy uv pip install --python .venv/Scripts/python.exe --constraint laya-existing-constraints.txt laya==0.4.14 torch==2.14.1 transformers==5.20.2 tokenizers==0.23.3 huggingface-hub==2.3.0 safetensors==0.8.0
+uv pip freeze --python .venv/Scripts/python.exe > laya-existing-constraints.txt
+uv pip install --python .venv/Scripts/python.exe --constraint laya-existing-constraints.txt --dry-run laya==0.4.14 torch==2.14.1 transformers==5.20.2 tokenizers==0.23.3 huggingface-hub==2.3.0 safetensors==0.8.0
+uv pip install --python .venv/Scripts/python.exe --constraint laya-existing-constraints.txt laya==0.4.14 torch==2.14.1 transformers==5.20.2 tokenizers==0.23.3 huggingface-hub==2.3.0 safetensors==0.8.0
 ```
 
 Keep the generated constraints local; they can contain checkout-specific
@@ -845,8 +845,8 @@ create only that checkout's normal app environment if it does not exist, then
 install the manifest:
 
 ```powershell
-rtk proxy uv venv .venv --python 3.12
-rtk proxy uv pip install --python .venv/Scripts/python.exe -r requirements.txt
+uv venv .venv --python 3.12
+uv pip install --python .venv/Scripts/python.exe -r requirements.txt
 ```
 
 Skip `uv venv` when `.venv` already exists. Do not run the unconstrained initial
@@ -867,7 +867,7 @@ Standalone checkout use defaults to `.cache/laya` relative to the checkout;
 checkout use is optional; the loader downloads the fixed revision in the background:
 
 ```powershell
-rtk proxy .venv/Scripts/hf.exe download convaiinnovations/laya-multilingual --revision 1720e3e3357cfe1e281542e223f8273b0890ca34 --include rl_agent_config.json --include model.safetensors --include "tokenizer/*" --include "encoder/*" --cache-dir .cache/laya
+.venv/Scripts/hf.exe download convaiinnovations/laya-multilingual --revision 1720e3e3357cfe1e281542e223f8273b0890ca34 --include rl_agent_config.json --include model.safetensors --include "tokenizer/*" --include "encoder/*" --cache-dir .cache/laya
 ```
 
 `TRADINGAGENTS_LAYA_DEVICE=cpu` is the default. Set it to `cuda` or `cuda:0`

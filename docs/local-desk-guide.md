@@ -188,7 +188,7 @@ without explicit configuration: its defaults differ from this installation.
 available. Use the tray controls for the installed app when maintenance
 requires taking it offline.
 
-For isolated source development, run `rtk proxy .\Start-TradingDesk-Dev.cmd`
+For isolated source development, run `.\Start-TradingDesk-Dev.cmd`
 from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
 checkout's `.venv` and `.venv-nautilus-v1` and
 `%USERPROFILE%\.cache\trader\development`. It does not copy production credentials or
