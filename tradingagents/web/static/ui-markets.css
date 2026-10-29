@@ -9,7 +9,7 @@
 #universe-review.markets-workspace #markets-lists[hidden],#universe-review.markets-workspace [data-scan-panel][hidden],#universe-review.markets-workspace #market-discovery[hidden],#universe-review.markets-workspace #saved-data-scans[hidden]{display:none}
 #universe-review.markets-workspace #markets-lists>.section-heading{display:none}
 #universe-review.markets-workspace #universe-views{flex:none;display:flex;flex-wrap:wrap;gap:var(--space-1)}
-#universe-review.markets-workspace .filters,#universe-review.markets-workspace .bulk-toolbar{flex:none;gap:var(--space-2);padding:var(--space-2) 0}
+#universe-review.markets-workspace .filters,#universe-review.markets-workspace .bulk-toolbar{flex:none;gap:var(--space-2);padding:var(--space-2) 0;flex-wrap:wrap}
 #universe-review.markets-workspace .filters label{min-width:130px}
 #universe-review.markets-workspace #table-scroll{min-height:140px;flex:1;overflow:auto;max-height:none}
 #universe-review.markets-workspace th{position:sticky;top:0;background:var(--table-header,var(--paper));z-index:1}

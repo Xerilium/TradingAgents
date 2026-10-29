@@ -201,7 +201,7 @@ components:
     padding: "3px 6px"
 ---
 
-# Design System: TradingAgents Paper Desk
+# Design System: TradingAgents
 
 ## Overview
 
@@ -276,7 +276,9 @@ The typography resembles a native trading workstation. Compact labels remain sub
 
 The desktop shell places a vertical navigation sidebar beside the workspace and its context bar. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
 
-The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist and its table remain scrollable when their controls need more space.
+The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist keeps a nonshrinking table area and outer scrolling when its controls need more space. Research launch stays beside batch selection; inspecting a stock does not change the selected batch.
+
+Workspaces follow the existing user jobs documented in docs/user-workflows.md. Model proposal is separate from actual positions and performance. Stock details name their originating list on return; research evidence leads its reading view, with notes and destructive bulk actions secondary.
 
 | Condition | Implemented behavior |
 | --- | --- |

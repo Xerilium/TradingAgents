@@ -215,7 +215,7 @@ body > .app-shell { display:grid; grid-template-columns:172px minmax(0,1fr); hei
 .app-shell > .workspace > .topbar { flex:0 0 auto; height:auto; min-height:40px; flex-wrap:wrap; padding:var(--space-2) var(--space-4); }
 .breadcrumb { min-width:0; overflow-wrap:anywhere; }
 .app-shell > .workspace > #main { flex:1 1 auto; min-height:0; min-width:0; padding:var(--space-3); overflow:auto; overscroll-behavior:contain; }
-.app-shell > .workspace > #main[data-page="overview"] { display:flex; flex-direction:column; overflow:hidden; gap:var(--space-3); }
+.app-shell > .workspace > #main[data-page="overview"] { display:flex; flex-direction:column; overflow:hidden; gap:var(--space-2); }
 .app-shell > .workspace > .workspace-footer { flex:0 0 auto; padding:var(--space-1) var(--space-3); font-size:var(--text-meta); }
 .workspace > .notice { flex:0 0 auto; max-height:20vh; overflow:auto; margin:0; }
 .runtime-panel { flex:0 0 auto; max-height:30vh; overflow:auto; }
@@ -311,7 +311,7 @@ body{font:var(--text-body)/var(--leading-ui) var(--font)}
 #main .view-tabs button,#main .workspace-tabs button,#main .instrument-tabs button{font-weight:600}
 #main summary{font-size:var(--text-ui);line-height:var(--leading-ui);padding-block:var(--space-2)}
 #main pre{font-size:var(--text-meta);line-height:var(--leading-body);white-space:pre-wrap;overflow-wrap:anywhere}
-#main .account-ledger{gap:var(--space-2);padding-block:var(--space-3);grid-template-columns:repeat(5,minmax(max-content,1fr));overflow-x:auto}
+#main .account-ledger{gap:0;padding-block:0;grid-template-columns:repeat(5,minmax(max-content,1fr));overflow-x:auto}
 #main .account-ledger span{font-size:var(--text-meta)}
 #main .account-ledger strong,#main #universe-review .balance strong{font-size:var(--text-metric);font-weight:600;line-height:1.2}
 #main .account-ledger strong{font-size:var(--text-heading);white-space:nowrap;overflow-wrap:normal}
@@ -350,11 +350,11 @@ body{font:var(--text-body)/var(--leading-ui) var(--font)}
 #main :is(.shared-ticket,.order-inspector,.decision-reading) dd{min-width:0;margin:0;overflow-wrap:anywhere}
 #main :is(.shared-ticket,.order-inspector,.decision-reading) dl>p{grid-column:1/-1}
 #main .dashboard-grid .watchlist-panel{overflow:auto}
-#main .dashboard-grid .watchlist-panel .table-scroll{flex:1 0 160px}
-#main .watchlist-panel>.panel-header{padding:var(--space-3)}
+#main .dashboard-grid .watchlist-panel .table-scroll{flex:1 0 160px;min-height:0;max-height:none}
+#main .watchlist-panel>.panel-header{padding:var(--space-2)}
 #main .watchlist-panel .panel-header p{font-size:var(--text-meta);line-height:var(--leading-ui);max-height:none;overflow:visible}
 #main .watchlist-panel .collection-toolbar{padding:var(--space-2);gap:var(--space-2)}
-#main .watchlist-table th,#main .watchlist-table td{padding-block:var(--space-2)}
+#main .watchlist-table th,#main .watchlist-table td{padding-block:var(--space-1)}
 #main .watchlist-table .ticker-button{min-height:28px;padding:var(--space-1) var(--space-2);font-weight:600}
 #main .watchlist-table td:nth-child(3){text-align:right}
 #main .quote-source summary{font-size:var(--text-meta);padding:var(--space-1) 0}
@@ -367,9 +367,24 @@ body{font:var(--text-body)/var(--leading-ui) var(--font)}
  #main .dashboard-grid>[data-dashboard-pane=positions]{grid-column:3/5;grid-row:2}
  #main .dashboard-grid>[data-dashboard-pane=orders]{grid-column:5/7;grid-row:2}
 }
-#main .watchlist-tools{display:flex;align-items:end;flex-wrap:wrap;gap:var(--space-3);padding:var(--space-2);flex:none}
+#main .watchlist-tools{display:flex;align-items:end;flex-wrap:wrap;gap:var(--space-2);padding:var(--space-2);flex:none}
 #main .watchlist-tools .collection-toolbar{flex:1;min-width:280px;padding:0}
-#main .watchlist-tools .selection-actions{padding:0;gap:var(--space-2);align-items:center}
+#main .watchlist-tools .selection-actions{flex:0 1 auto;min-width:0;max-width:100%;padding:0;gap:var(--space-2);align-items:center}
+#main[data-page=overview]>.page-heading{margin-bottom:0}
+#main[data-page=overview] .account-ledger>div{padding:var(--space-1) var(--space-3)}
+#main[data-page=overview] .dashboard-tabs{margin:0;gap:var(--space-1)}
+#main .watchlist-panel>.panel-header{flex-wrap:wrap;gap:var(--space-1) var(--space-3)}
+#main .watchlist-panel>.panel-header>div:first-child{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 var(--space-2);min-width:0}
+#main .watchlist-panel>.panel-header p{margin:0}
+#main #watch-quote-controls{min-width:0}
+#main #watch-quote-controls[open]{flex-basis:100%}
+#main #watch-quote-controls summary{padding-block:var(--space-1);cursor:pointer}
+#main #watch-quote-controls p{max-width:none;overflow-wrap:anywhere}
+#research-dialog[open]{display:flex;flex-direction:column;width:min(680px,calc(100vw - 2 * var(--space-4)));max-height:calc(100vh - 2 * var(--space-4));overflow:hidden}
+#research-preview{display:flex;flex:1;flex-direction:column;min-height:0}
+.research-confirm-body{min-height:0;overflow:auto;overflow-wrap:anywhere}
+.research-confirm-body .selection-preview{white-space:normal;overflow-wrap:anywhere}
+.research-confirm-actions{flex:none;max-height:35vh;overflow:auto;padding-top:var(--space-3);border-top:1px solid var(--line)}
 @media(max-width:1500px){
  #main .orders-workspace:has(#workspace.detail-open) .orders-panels{display:none}
  #main .orders-workspace #workspace.detail-open{width:100%;min-width:0}

@@ -24,7 +24,7 @@ The user then explicitly requested resolution of all 63 findings and the stale s
 
 Primary completed one read-only Edge cycle through Maenifold Playwright across all nine workspaces, with the Dashboard also checked at wide and narrow sizes. All 23 stocks remained reachable, balances stayed on one line, and real keyboard focus had a visible 2px green outline. The visited views showed no horizontal document overflow. Initial navigation sampling raced four asynchronous view renders; only those uncompleted views were finished with a heading-change wait, without repeating passing pages or changing CSS. The first observed navigation sequence emitted no page errors; no full-product execution or every exceptional UI state is claimed. Actual Market controls, research status badges, saved rejected order rows and account settings were inspected without changing records. Captures are design-cleanup-edge-{dashboard,narrow,markets,research,orders,journal,settings}-20261026.png in the same evidence directory.
 
-The design-contract follow-up adds 6 and removes 6 application CSS lines beyond the earlier Dashboard repair. DESIGN.md changed +87/-36 and the sidecar +53/-40. No tests, builds, research reruns or broker actions. Primary accepts this scoped design-contract repair on the working tree over 580f1c8. PRODUCT.md still contains historical product claims outside this authorized design task.
+The design-contract follow-up adds 6 and removes 6 application CSS lines beyond the earlier Dashboard repair. DESIGN.md changed +87/-36 and the sidecar +53/-40. No tests, builds, research reruns or broker actions. Primary accepts this scoped design-contract repair on the working tree over 580f1c8. PRODUCT.md contained historical product claims at that review; the 28 October workflow repair below replaces them.
 
 ## Evidence
 
@@ -32,3 +32,19 @@ The design-contract follow-up adds 6 and removes 6 application CSS lines beyond 
 - Terra 6.1 extra-high source implementation and primary rendered review.
 - Local evidence capture: dashboard-edge-wide-fixed-20261026.png
 - Same directory: dashboard-edge-narrow-fixed-20261026.png and dashboard-edge-intermediate-fixed-20261026.png.
+
+## 28 October: source-backed workflow repair
+
+Status: Source UI and documentation changes accepted within the verification limits below. Production installation is unchanged. Release packaging and signing are outside this assignment.
+
+The primary personally led the Terra specialists, authored the component/workflow documentation, selected cleanup targets, reviewed source and inspected the actual development screenshots. Checkpoint before this work: 1690752f32f3b6711d4c8f177975467def2a150e. Six UI files changed (+79/-45 lines); no tests were added or run. Final app.js SHA-256: 60b31031d9924379c9625f0af7745050adc24efa1bb20e0a767d7426ae9cb5be. Final app.css SHA-256: d29cb73b0b3b4f577ab858a780024bd465bd32e569c3a43a37ad79f902ccf37d.
+
+Research launch now sits beside selection, with exact symbols and provider/models visible in confirmation. Dashboard chrome is compact, secondary quote information is disclosed, and confirmation keeps its action reachable while content scrolls. Research distinguishes batch activity from selected evidence. Detail return labels retain context; basket edits invalidate obsolete previews. Model proposal, historical evaluation and actual performance remain distinct.
+
+Independent source review found Mermaid escaping and a missing provider label; both were corrected. The primary caught a watchlist-collapse regression before acceptance and corrected it. JavaScript syntax, Git whitespace and canonical documentation-link checks passed. Initial Impeccable checks reported an existing unrelated color advisory; no claim of a clean full-product detector scan is made.
+
+A visible development pass checked research selection/confirmation, Markets navigation, all Research tabs and delete disclosure without deletion, Portfolio views and the Journal link, Orders/Basket views, and Strategy lab's read-only source loading. META/NVDA stayed the selected batch while GOOGL was inspected. Zero selection disabled launch. The primary inspected captures at 1280x720, 900x700 and 1440x900; the final wide correction kept the action inside its panel, and expanded confirmation content scrolled with Start visible. Passing views were not repeated; observed defects received scoped corrections.
+
+Development reported unavailable native credential storage and had no retained research, supported instrument receipts, drafts or populated account evidence. Populated report/basket-field behavior, simulation execution and broker lifecycles were not exercised. No research, model synthesis, simulations or broker actions were started. Production remained connected and its data/credentials were untouched.
+
+README.md now maps the integrated platform; docs/user-workflows.md and docs/platform-reference.md provide canonical journeys and capability boundaries. The operating guide and PRODUCT.md were replaced with current facts. Sixteen obsolete generated/reference files were removed; docs/nautilus-v1-runtime-manifest.json remains because runtime code uses it. No replacement audit dump was created.
