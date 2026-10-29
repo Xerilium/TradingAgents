@@ -278,8 +278,14 @@ use existing source state; unverified exposure displays UNKNOWN.
 Shared tabs use roving focus and Left/Right/Home/End keys. Single-key trader
 shortcuts yield to form controls, editable regions, CodeMirror, composition and
 open dialogs. Selection for inspection, research and deletion remains separate.
-Edited or loaded legacy tickets keep their instrument identity until explicit
-new/discard/reset; the docked drawer is a later implementation stage.
+Edited or loaded tickets keep their instrument identity until explicit
+new/discard/reset. Preparation uses a 380px drawer beside the data canvas from
+1500px width, or a right-edge sheet below that width. Its close action preserves
+session draft terms. Orders presents preparation and exact approval/submission
+in separate columns, stacking below 1500px; working/draft, fills/fees, human
+baskets and option instructions retain distinct tabs. Broker action confirmation
+names the captured request and exact source terms; changing revisions, ticket
+terms or relevant connection state requires a new review.
 
 At 1100px width or 800px height the Dashboard keeps its single-panel tabs;
 at 790px width the navigation becomes a scrolling horizontal row. The app bar

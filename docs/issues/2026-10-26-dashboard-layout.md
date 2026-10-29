@@ -52,7 +52,7 @@ README.md now maps the integrated platform; docs/user-workflows.md and docs/plat
 
 ## 29 October: blueprint Step 1 Foundation
 
-Status: Step 1 is not accepted. Commit `aaf2e3a` contains partial Foundation work and bounded compatibility evidence; the report-only confession and repair record below qualify its claims. Steps 2–5 are not implemented by this batch. Implementation authority: `docs/ui-redesign-implementation-plan.md` (v2 at `12e7700`), jointly read with `docs/ui-redesign-blueprint.md` frozen at `3770bbe`. Base revision: `477abaa`; the local commit containing this section is the candidate revision.
+Status: The delegated evaluator accepted Foundation for progression at `add5261`, based on inspected repair source and reported syntax/empty-state compatibility. Commit `aaf2e3a` alone was partial; the confession and bounded repair record qualify its claims. Populated behavior and actual Windows DPI remain unverified. Steps 2–5 are not implemented by this batch. Implementation authority: `docs/ui-redesign-implementation-plan.md` (v2 at `12e7700`), jointly read with `docs/ui-redesign-blueprint.md` frozen at `3770bbe`. Base revision: `477abaa`; the local commit containing this section is the candidate revision.
 
 Primary owns app.js, index.html, app.css, DESIGN.md and Git. No support-file editing was delegated. A fresh read-only source reviewer was already running when the human corrected the added per-step review; its one result was collected without another review. It found permanent pinning, compact-state rating/draft bindings, stale tab attributes, row-focus loss and shared evidence repaint scope. Primary corrected these in one source batch; the browser subsequently found the legacy renderer omitted the new pin notice, which was included in its existing pane extraction. No independent review pass or blanket acceptance of the corrected candidate is claimed.
 
@@ -97,7 +97,7 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | US-03 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-04 | app.js instrumentHeaderStrip; complete Research mounting in Step 3 | source-reviewed | Foundation helper implemented; populated verdict unverified |
 | US-05 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-06 | app.js inspectSymbol/pinTicket/proposalEditor/chart-copy guards; drawer in Step 2 | observed | Legacy unsaved pin retention observed; drawer deferred |
+| US-06 | app.js openTicket/closeTicket/renderTicket/proposalInput/ticketResearch; ui-orders.css drawer | source-reviewed | Step 2 source implements pinned 380px drawer, retention and exact-draft handoff; runtime unverified |
 | US-07 | index.html; app.css shell; app.js pageHeader | observed | Foundation shell implemented; actual Windows DPI unverified |
 | US-08 | app.js readState/renderOverview; Dashboard refinements in Step 4 | observed | Empty initial batch and compatibility observed; full story deferred |
 | US-09 | app.js instrumentHeaderStrip; Markets mounting in Step 4 | source-reviewed | Shared helper implemented; scan/header composition deferred |
@@ -107,10 +107,10 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | US-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-14 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-16 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-17 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-18 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| US-19 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| US-16 | app.js proposalEditor/ticketContext/seedTicket/ticketSizing; option/package editors | source-reviewed | Step 2 preparation source complete; quotes, sizing, exits and populated instrument guards unverified |
+| US-17 | app.js orderEligibility/approvalPanel/approvalAction | source-reviewed | Overall blockers, every non-rule/per-leg check and ten policy rules preserved; approval not exercised |
+| US-18 | command-controls.js commandControls/confirmCommand; app.js renderOrdersView | source-reviewed | Two-step exact broker action, duplicate warning, revision guard and operation recovery implemented; broker behavior unverified |
+| US-19 | app.js brokerOrderTable/fillsTable/basketPanel/basketEvidence/basketSnapshot | source-reviewed | Direct structured working/draft/fill/basket views implemented; populated records unverified |
 | US-20 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-21 | app.js captureRenderInput/restoreRenderInput; Journal redesign in Step 5 | source-reviewed | Shared focus primitive implemented; full Journal story deferred |
 | US-22 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
@@ -120,26 +120,26 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | E-01 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-02 | app.js instrumentHeaderStrip | source-reviewed | Nullable quote/size/derived-spread helper; populated feed unverified |
 | E-03 | app.js instrumentHeaderStrip | observed | Unknown capability state observed; true/false retained states unverified |
-| E-04 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-04 | app.js ticketContext/ticketSizing/proposalEditor; Portfolio remaining Step 4 | source-reviewed | Ticket quantity and available-exit/broker qty fields bound to ticket; Portfolio work deferred |
 | E-05 | app.js renderShellStatus; Settings in Step 5 | source-reviewed | Shell whitelist warning implemented; populated flag states unverified |
-| E-06 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-06 | app.js orderEligibility/approvalPanel | source-reviewed | All checks and blockers remain separate from ten-rule grouping; conditional-group details preserved |
 | E-07 | app.js evidenceRecords/stockEvidencePanel/bindSupplementary | source-reviewed | SEC statement/SIC, corporate-action and news rendering implemented from existing record schema; populated runtime evidence unverified. |
 | E-08 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| E-09 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| E-10 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| E-11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-09 | command-controls.js commandControls/confirmCommand | source-reviewed | Separate submit/cancel/replace recovery requests unchanged; no unknown-outcome runtime observation |
+| E-10 | app.js fillsTable; nativeReport fee provenance | source-reviewed | Broker fills table plus retained native fee/source details; actual commissions/native_application unverified |
+| E-11 | app.js basketPanel/basketEvidence/basketSnapshot/basketScenario | source-reviewed | Direct basket targets, residuals, pending exposure and complete/partial scenarios; execution unverified |
 | E-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-14 | app.js renderShellStatus; index.html #stream-status | source-reviewed | Implemented in aaf2e3a; unknown stream state observed. Listening/connecting/not_started/disconnected transitions and optional gaps unverified. |
 | E-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | C-8 | app.js exposureKnown/instrumentHeaderStrip | observed | UNKNOWN observed on unverified account; verified positions unverified |
-| C-9 | app.js inspectSymbol/pinTicket/legacy ticket guards; Step 2 drawer | observed | Pin/retain/reopen observed; full drawer handoff deferred |
+| C-9 | app.js ticket state/openTicket/renderTicket/bindInvestor/chart-copy guards; command-controls.js | source-reviewed | Step 2 source covers pinned identity, retention, source binding and exact saved handoff; integrated runtime pending |
 | L1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L3 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L4 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L5 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| L6 | app.js renderChrome; Orders/Settings remaining Steps 2/5 | observed | Shell Orders: Active/Paused wording; full cross-page story partial |
+| L6 | app.js renderChrome; command-controls.js commandControls | source-reviewed | Shell and order-management status use Orders: Active/Paused; later Settings redesign deferred |
 | L7 | app.js iconPaths | source-reviewed | Ten distinct paths; journal alias removed |
 | L8 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L9 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
@@ -147,7 +147,7 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | L11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | L13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| L14 | app.js renderChrome; remaining Steps 2/5 | observed | Shell pause-management wording; cross-page work deferred |
+| L14 | app.js renderChrome; command-controls.js commandControls | source-reviewed | Unified order pause status wording; runtime transitions unverified |
 | U1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | U2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 
@@ -169,3 +169,44 @@ Affected visible-browser evidence: actual isolated development 8099, Markets →
 All eight top-level static JavaScript files passed `node --check` after batching the main changes. The final daily-history selection correction received an additional app.js parser check; whitespace passed on the final changed files. No test suite, mock, extra reviewer, live job, provider collection, production action, drawer implementation or later-page redesign was performed. Existing legacy layout helpers and call sites remain.
 
 This repair corrects the named Foundation source gaps and E-14 tracking; it does not retroactively accept aaf2e3a or certify populated behavior. The broader Step 1 acceptance decision remains with the human.
+
+
+## 29 October: Step 2 Orders and ticket source delivery
+
+Scope and authority: delegated evaluator instruction within the human's existing implementation authorization, following acceptance of Foundation for progression at `add5261`. Both `docs/ui-redesign-implementation-plan.md` and frozen blueprint `3770bbe` (§5.3 and §6.6) were consulted. This entry and its containing local commit identify the Step 2 candidate; no Steps 3–5, release or broker authority is implied.
+
+Primary authored all changes and owns Git. No worker/support-file handoff, additional reviewer, build, test suite or browser validation cycle was dispatched. Impeccable Operate/craft guidance and existing PRODUCT/DESIGN context from this session govern the same surface; no context setup or detector cycle was repeated. The prescribed integrated validation batch remains reserved for its planned stage.
+
+### Ticket identity, source binding and lifecycle
+
+`dockedTicketDrawer` is a persistent shell aside. `openTicket` opens Stage 1 without navigating the inspected stock or transferring broker authority; a dirty or loaded ticket retains `ticketSymbol`, its proposal map key and research context. `proposalInput`, equity/option/package editors, session/trailing validation, review and approval read an explicit ticket-local symbol. `ticketResearch` resolves only a matching saved reference/revision, rather than another inspected stock or report. Clean inspection follows the selected instrument. Explicit new/switch/discard paths clear the selected draft only after the appropriate human action; investor reload clears pin/drafts only after its GET succeeds.
+
+Close/Escape hides the drawer and preserves in-memory terms; reopening uses the same map. Background refresh updates the pinned quote, sizes, eligibility, position, available exit quantity, broker qty_available and account context while focused controls/caret/body scroll are restored. `refreshTicketData` prevents legacy preference restoration from changing the inspection while preparing an order. The drawer is 380px beside the main canvas at ≥1500px, a right-edge sheet below that width, with natural body/footer scrolling at short/narrow viewports.
+
+Bid/Ask/Last seeding reads the pinned symbol only, invalidates preview and historical-price references, and labels the price as not previewed. Quantity/side start blank, ordinary order type defaults LIMIT, and existing supported session/trailing/replacement/option restrictions remain. Stop/target fields remain visible, with disabled states for incompatible profiles. Sizing shows declared UI notional/equity/cash/post-position and fixed-stop distance estimates, preserving unavailable inputs and explicitly excluding fees/slippage/pending commitments; server preview remains authoritative. Package economics remain in their existing source-bound preview.
+
+Chart price-copy requires both inspected and legacy chart symbols to equal `ticketSymbol`, including clean-ticket, request-return and apply checks; existing raw artifact/hash, instrument, normalization and changed-input guards remain. Mismatched charts display a switch-ticket explanation. New option packages are explicit pinned preparations; single-leg option premium units and existing exercise/DNE workflow remain separate from underlying equity quotes and ordinary orders.
+
+Saving-and-opening Orders uses the existing investor draft POST, captured draft key/form snapshot/store generation, and exact existing ID or the new proposal inserted first by `investor.py`. Only a still-current successful response loads that exact saved proposal ID and navigates to Stage 2/3. Approval and submission are not invoked by handoff.
+
+### Direct Orders, eligibility and commands
+
+Orders now directly renders Stage 1 and a separate review pane, with Ticket & Blotter, Fills & Fees, Human Baskets and Option Instructions tabs. All overall evaluation blockers and non-rule/per-leg checks render before the fixed ten-rule table; disabled/unset rules say Not configured, failing rules sort first, and source details retain held-bracket stop-loss, package and evidence calculations. Exact-term/revision/binding checks and the existing approve endpoint remain; trailing terms are included in local saved-term comparison. Approval remains separate from submission.
+
+Existing submit/cancel/replace and approved-basket request builders retain their revisions, predecessor/version, approval IDs, execution/readiness checks and operation-specific recovery payloads. A first dispatch action captures an inline confirmation; a separate confirmation sends that exact request. Command/investor revisions, store/server/native identity and connection state, pinned terms and action-form changes invalidate it. In-flight controls and timestamped returned/error receipts are retained without automatic retry or assuming transport failure means not sent. Recovery explains the durable `transport_attempt` version 1 / `not_started` requirement; the existing server decides whether each submit/cancel/replace resolution is permissible.
+
+Working orders retain source/native limitations, linked group labels and trailing HWM/moving stop observations. Human drafts are searchable/filterable with the ticket symbol first. Broker fills use columns for time, symbol, side, quantity, price, commission and native_application; retained native fee provenance/captured fields remain explicitly qualified. Baskets directly render Targets/Impact/Drafts, current/pending/if-filled quantities, residuals, complete and partial scenarios, policy/source conditions, saved revisions and separate approved-leg actions. Missing fee/economics values remain unavailable. Existing option instruction preview/review/approval/submission handlers were preserved, with access through their separate Orders tab.
+
+`layoutOrders` and `layoutBasketGroups` and their call sites were removed in this same replacement batch. Markets' `layoutMarkets` and `compactScannerMarkup` remain. No backend, API, static allowlist, new served static file, export/import, credentials or production setting was changed.
+
+### DOM/global contract and evidence
+
+- Shell: `#dockedTicketDrawer`, `#docked-ticket-title`, `.docked-ticket-body`, `.ticket-handoff`, body class `ticket-is-open`.
+- Preparation: existing `#proposal-*`, `#preview-proposal`, `#save-proposal`, `[data-exit-price]`, option/package IDs and existing preview/save contracts; new `[data-close-ticket]`, `[data-ticket-new]`, `[data-ticket-seed]`, `[data-ticket-handoff]`, `[data-switch-ticket]`, `[data-prepare-order]`, `#ticket-sizing`.
+- Orders: `#universe-review.orders-workspace`, `#orders-tabs`, `.orders-direct-grid`, `.orders-preparation`, `.orders-review-pane`, `[data-orders-tab]`, `#orders-ticket-symbol`, `#orders-draft-query`, `#orders-draft-filter`, `[data-open-proposal]`, `#command-activity`.
+- Baskets: `#allocation-workspace`, `#basket-tabs`, `[data-basket-tab]`, `[data-basket-pane]`, `#basket-preview`, and existing target/preview/save/leg selectors.
+- Commands: existing approval/command/imported/basket operation selectors plus `[data-confirm-command]` / `[data-dismiss-command]`. `commandConfirmation`, `commandReceipt` and `commandSnapshot` hold session-only review state; `UniverseReview.ticketFingerprint` supplies bound terms. Existing request APIs and server authority remain unchanged.
+
+Source checks: all eight top-level static JavaScript files passed node --check after the initial batch; the final binding/source refinements received the final all-static-JavaScript syntax gate and git diff --check before commit. No tests were authored/run. No browser observations are claimed for Step 2: dock/sheet layout, focus retention, exact-draft handoff, populated eligibility/fees/baskets/options and all broker/recovery lifecycles remain unverified until the planned integrated validation. Earlier Foundation screenshots do not prove this changed candidate.
+
+Primary source sign-off is limited to the Step 2 implementation and syntax/whitespace evidence. Runtime acceptance is not claimed, and the candidate stops before Step 3.
