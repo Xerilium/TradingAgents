@@ -409,6 +409,15 @@ body{font:var(--text-body)/var(--leading-ui) var(--font)}
 .instrument-header-strip{padding:var(--space-2);border-bottom:1px solid var(--line);background:var(--paper);font-size:var(--text-meta);font-variant-numeric:tabular-nums}
 .instrument-header-strip>div{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
 .instrument-header-strip strong{font-size:var(--text-ui)}
+.evidence-collection-bar{display:flex;align-items:end;flex-wrap:wrap;gap:var(--space-2);padding-block:var(--space-2)}
+.evidence-collection-bar>label{display:flex;flex-direction:column;gap:var(--space-1);font-size:var(--text-meta);min-width:0}
+#main .evidence-collection-bar fieldset{display:flex;flex-wrap:wrap;gap:var(--space-2);padding:var(--space-1) var(--space-2);margin:0}
+.evidence-collection-bar fieldset label{display:flex;align-items:center;gap:var(--space-1)}
+.evidence-collection-bar :is(input,select,button){max-width:100%;min-height:36px}
+.evidence-observation{padding-block:var(--space-3);border-top:1px solid var(--line)}
+.evidence-observation :is(h4,h5){margin-block:var(--space-2);font-size:var(--text-ui)}
+.evidence-observation td{vertical-align:top}
+.evidence-observation td dl{margin:0}
 .instrument-capabilities{color:var(--muted)}
 .exposure-unknown,.ticket-pin-notice{color:var(--warning)}
 .ticket-pin-notice{padding:var(--space-3);border:1px solid var(--line)}

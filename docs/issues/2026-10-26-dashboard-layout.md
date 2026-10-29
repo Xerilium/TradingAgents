@@ -52,7 +52,7 @@ README.md now maps the integrated platform; docs/user-workflows.md and docs/plat
 
 ## 29 October: blueprint Step 1 Foundation
 
-Status: Foundation source committed with bounded compatibility evidence. Steps 2–5 are not implemented by this batch. Implementation authority: `docs/ui-redesign-implementation-plan.md` (v2 at `12e7700`), jointly read with `docs/ui-redesign-blueprint.md` frozen at `3770bbe`. Base revision: `477abaa`; the local commit containing this section is the candidate revision.
+Status: Step 1 is not accepted. Commit `aaf2e3a` contains partial Foundation work and bounded compatibility evidence; the report-only confession and repair record below qualify its claims. Steps 2–5 are not implemented by this batch. Implementation authority: `docs/ui-redesign-implementation-plan.md` (v2 at `12e7700`), jointly read with `docs/ui-redesign-blueprint.md` frozen at `3770bbe`. Base revision: `477abaa`; the local commit containing this section is the candidate revision.
 
 Primary owns app.js, index.html, app.css, DESIGN.md and Git. No support-file editing was delegated. A fresh read-only source reviewer was already running when the human corrected the added per-step review; its one result was collected without another review. It found permanent pinning, compact-state rating/draft bindings, stale tab attributes, row-focus loss and shared evidence repaint scope. Primary corrected these in one source batch; the browser subsequently found the legacy renderer omitted the new pin notice, which was included in its existing pane extraction. No independent review pass or blanket acceptance of the corrected candidate is claimed.
 
@@ -84,7 +84,7 @@ CSS viewport observations: 1920×1080 and 1440×900 used a 36px bar and all Dash
 
 Evidence: `.local-workspace/evidence/foundation-20261029/markets-pin-and-focus.png` and `dashboard-{1920x1080,1440x900,1100x800,790x800}.png`. These local captures contain the actual empty development state; no fabricated market or account inputs were used.
 
-Syntax: `node --check` passed all eight top-level `tradingagents/web/static/*.js` files. Corrections were followed by parser checks of the final changed app.js. `git diff --check` passed after removing the extra CSS EOF blank line. No tests were authored/run. Primary signs off on the Foundation source and the observed empty/unavailable-state compatibility only; real retained populated data, editor-local save, shared-evidence populated mounts, all exceptional broker lifecycles and the future docked drawer remain unverified or deferred as shown below.
+Syntax: `node --check` passed all eight top-level `tradingagents/web/static/*.js` files. Corrections were followed by parser checks of the final changed app.js. `git diff --check` passed after removing the extra CSS EOF blank line. No tests were authored/run. The earlier primary source sign-off was withdrawn after the report-only confession; only the listed empty/unavailable-state observations stand; real retained populated data, editor-local save, shared-evidence populated mounts, all exceptional broker lifecycles and the future docked drawer remain unverified or deferred as shown below.
 
 ### Continuing requirement traceability
 
@@ -101,7 +101,7 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | US-07 | index.html; app.css shell; app.js pageHeader | observed | Foundation shell implemented; actual Windows DPI unverified |
 | US-08 | app.js readState/renderOverview; Dashboard refinements in Step 4 | observed | Empty initial batch and compatibility observed; full story deferred |
 | US-09 | app.js instrumentHeaderStrip; Markets mounting in Step 4 | source-reviewed | Shared helper implemented; scan/header composition deferred |
-| US-10 | app.js stockEvidencePanel/loadStockEvidence; mounts in Steps 3–4 | source-reviewed | Shared existing renderer exposed; populated evidence unverified |
+| US-10 | app.js stockEvidencePanel/evidenceRecords/loadStockEvidence/bindSupplementary; later mounts in Steps 3–4 | source-reviewed | Shared compact collection/read primitive repaired; empty state and form validation observed. Populated records and collection execution unverified. |
 | US-11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | US-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
@@ -123,14 +123,14 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | E-04 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-05 | app.js renderShellStatus; Settings in Step 5 | source-reviewed | Shell whitelist warning implemented; populated flag states unverified |
 | E-06 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| E-07 | app.js stockEvidencePanel/bindStockEvidence; Steps 3–4 | source-reviewed | Reusable existing evidence renderer; populated mounts unverified |
+| E-07 | app.js evidenceRecords/stockEvidencePanel/bindSupplementary | source-reviewed | SEC statement/SIC, corporate-action and news rendering implemented from existing record schema; populated runtime evidence unverified. |
 | E-08 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-09 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-10 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-11 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-12 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | E-13 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
-| E-14 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+| E-14 | app.js renderShellStatus; index.html #stream-status | source-reviewed | Implemented in aaf2e3a; unknown stream state observed. Listening/connecting/not_started/disconnected transitions and optional gaps unverified. |
 | E-15 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | C-8 | app.js exposureKnown/instrumentHeaderStrip | observed | UNKNOWN observed on unverified account; verified positions unverified |
 | C-9 | app.js inspectSymbol/pinTicket/legacy ticket guards; Step 2 drawer | observed | Pin/retain/reopen observed; full drawer handoff deferred |
@@ -150,3 +150,22 @@ Each row tracks the full blueprint requirement. Partial Foundation coverage neve
 | L14 | app.js renderChrome; remaining Steps 2/5 | observed | Shell pause-management wording; cross-page work deferred |
 | U1 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
 | U2 | Blueprint §§5–8; assigned workspace stage 2–5 | unverified | Deferred; not claimed complete by Step 1 |
+
+
+## 29 October: bounded Foundation repair after confession
+
+Scope: the explicit correction to Step 1, jointly governed by `docs/ui-redesign-implementation-plan.md` and `docs/ui-redesign-blueprint.md` at `3770bbe`. Base revision `aaf2e3a`; the local commit containing this repair record identifies the repaired source. No Step 2 implementation or new acceptance declaration is implied.
+
+The single shared `stockEvidencePanel` now contains a compact provider/scopes/start/end/earnings-horizon bar, validation and in-flight handling. Its saved read has explicit loading, empty and error states plus an explicit read-only retry. Error guards prevent repeated render-driven retry loops. Provider collection remains an explicit existing POST `/api/market-history` with `{action: evidence, symbols, provider, scopes, start, end, earnings_horizon}`; saved observations use the existing GET `/api/stock-evidence?symbol=...`. No endpoint/backend/static file was added. The collection request itself was not executed.
+
+`evidenceRecords` renders backend-selected latest eligible SEC XBRL facts in Balance sheet, Income statement and Cash flow tables with exact values/units, period, filing date/form and original filing links. It labels these as supported line items, not complete financial statements. SIC classification has its code/system/industry and expressly does not imply a sector. Corporate actions retain action/effective/process dates and reported terms with comparison warnings. News retains titles, publisher, publication/update/retrieval times, summaries and original links. Other provider records remain inspectable. Observation completeness, latest-attempt gaps, retained-older-data warnings, request qualifications, receipts, hashes and exact source fields remain available. These populated render paths are source-reviewed against `stock_evidence.py`; no records were fabricated to exercise them.
+
+`instrumentHeaderStrip` now requests existing retained research details through `ensureResultDetail` for the header's own run/symbol, using the existing epoch/request/error/cache guards. The final-decision/revision check still gates its rating. `loadedDailyHistory` supplies the applicable already-loaded daily source, including the Dashboard's displayed retained history or the selected instrument's current/saved history; drift can also fall back to its matching research chart evidence. It uses an exact trade-date bar and positive `raw.c`, rejects non-daily/explicitly adjusted or mismatched sources, and does not collect new history. Completed ratings and numerical drift remain unverified in the empty development profile.
+
+The investor reload now awaits its GET into a local `loaded` value before assigning the record or clearing ticket identity/dirty state/draft maps. A rejected GET enters the existing error path with pin and terms intact. This failed-request property was source-reviewed; no failure injection, fake service, or destructive input was used to claim runtime acceptance.
+
+Affected visible-browser evidence: actual isolated development 8099, Markets → AAPL → Research displayed the shared panel and honest no-evidence state. SEC selection exposed fundamentals/classification; missing dates disabled collection; valid draft dates enabled it without a request. Non-earnings horizon remained disabled; Alpha Vantage earnings selection enabled the horizon and kept collection disabled without a horizon. No queue button was clicked. The API-read and form-binding path produced no captured console error. Screenshot: `.local-workspace/evidence/foundation-20261029/repair-evidence-sec-controls.png`. Loading/error presentation, populated SEC/SIC/action/news records, completed rating, numerical drift and failed-reload behavior remain source-reviewed/unverified, not observed passes.
+
+All eight top-level static JavaScript files passed `node --check` after batching the main changes. The final daily-history selection correction received an additional app.js parser check; whitespace passed on the final changed files. No test suite, mock, extra reviewer, live job, provider collection, production action, drawer implementation or later-page redesign was performed. Existing legacy layout helpers and call sites remain.
+
+This repair corrects the named Foundation source gaps and E-14 tracking; it does not retroactively accept aaf2e3a or certify populated behavior. The broader Step 1 acceptance decision remains with the human.
