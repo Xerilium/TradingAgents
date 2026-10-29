@@ -152,14 +152,9 @@ Live facts: 3 completed (AMZN Hold, INTC Underweight, TER Sell), 21 cancelled, 1
 
 ## Redesign blueprint and review records
 
-The critique above has been translated into a complete, contract-verified UI redesign blueprint and reviewed across multiple models and a professional stock trader rubber-duck pass:
+All critique items, model council reviews (Sonnet 5.5, Grok 4.7, Gemini 4 Argon), professional stock trader rubber-duck audits, and existing-backend missed opportunities are consolidated into one single canonical specification:
 
-- [UI Redesign Blueprint (v3 Master Spec)](ui-redesign-blueprint.md) — 5 user personas, 28 user stories with acceptance criteria, 84%–91% data-height budget, and ASCII wireframes for all 10 tabs.
-- [Professional Stock Trader Rubber-Duck Audit](ui-redesign-trader-audit.md) — fresh Sonnet 5.5 and Grok 4.7 trader-lens critique (price drift vs. research date, live position/working-order/draft strip on every decision screen, PM decision above the fold, docked order proposal drawer, click-to-seed limit prices, sizing %, and populated holdings table).
-- [Sonnet 5.5 Wireframe & UX Review](ui-redesign-review-sonnet.md)
-- [Grok 4.7 Wireframe & UX Review](ui-redesign-review-grok.md)
-- [Gemini 4 Argon Wireframe & UX Review](ui-redesign-review-argon.md)
-- [UI Missed Opportunities (All Components)](ui-missed-opportunities.md) and [Nautilus & Execution Missed Opportunities](ui-missed-opportunities-nautilus.md) — 20+ existing backend and Nautilus 1.231.0 capabilities (historical `analysis_date` runs, SEC EDGAR XBRL statements, corporate actions, quote sizes, intraday P/L, `qty_available`, 10-rule policy table, Nautilus `stats_pnls`/`stats_returns` win rate & profit factor, market open/close countdown, HTML tear sheets, and 5-day alpha reflection) mapped into the blueprint.
+- [TradingAgents UI Redesign Blueprint (Canonical v4 Master Spec)](ui-redesign-blueprint.md) — 5 user personas, 25 user stories with exact backend bindings, 84%–91% data-height budget, 15 existing backend capabilities newly wired into the UI (with zero new backend code), and trader-audited ASCII wireframes for all 10 workspaces.
 
 ## Still to do
 
