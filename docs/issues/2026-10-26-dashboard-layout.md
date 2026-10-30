@@ -813,4 +813,13 @@ Three scoped child sessions (`c80b9212-67cd-4d83-9157-edef934d1d82` using `claud
 - **Static checks**: `node --check` passed on all 8 `tradingagents/web/static/*.js` files; `git diff --check` passed with zero whitespace errors.
 - **Visual verification**: Live Browser Canvas (`http://127.0.0.1:8099/`) inspected across `#overview`, `#portfolio`, `#markets`, `#research`, `#orders`, `#strategy`, `#journal`, `#alerts`, and `#settings` at 1080p.
 - **Independent review (`57e81def-e1bd-49dc-9e02-0d3f079dba79`, `claude-sonnet-5`)**: Verified all 4 initial audit findings and all 7 live-browser polish items; identified one undefined `.table-actions` class on the Dashboard chart action row, which was replaced with `.button-group` before final commit.
+- **Rubber-duck scrutiny & fleet pass (`2f9dc9d4-2c20-4c63-8279-ca6ca124be6b` `claude-sonnet-5`, `4da10f2e-8984-41e1-a31d-874bd12d764c` `grok-4.7`)**:
+  - `renderPolicy()` strips trailing `#investor-proposals` so Settings → Trading Rules renders only `#investor-policy`.
+  - `renderOrdersView()` appends `ticketSizing()` when `proposalEditor()` omits `#ticket-sizing` so Option and Multi-Leg Package tickets on `#orders` retain sizing readouts (`US-16`).
+  - `traderShortcut` (`T`) and `openTicket()` focus `#orders-ticket-symbol` / `#proposal-side` on `#orders` without setting `ticketOpen = true` or targeting the hidden drawer title.
+  - `renderJournal()` formats `Call / Terms` across both `quantity` (human proposals) and `qty` / `type` (saved native drafts) without rendering `undefined`.
+  - `ticketContext()` includes `Inspecting {selectedSymbol}` and `(discard {ticketSymbol} edits)` on `[data-switch-ticket]` per Blueprint §5.3.
+  - `bindAlerts()` records quick-template load feedback in `attentionNotice` instead of `attentionError` (avoiding the error-recovery button) and clears open Inbox evidence when switching to `Rules` or `Delivery`.
+  - `Strategy Lab`, `Decision Journal`, `Alerts`, and `Settings` pass their top workspace tablists into `pageHeader`'s `tabs` slot so all workspaces use a single-line header bar.
+  - `app.css` consolidates all `.topbar` heights to `36px` and removes dead `.workspace-footer`, `.stage-track`, and orphaned `.settings-workspace > .view-tabs` / `#attention-workspace > .view-tabs` selectors (Impeccable CSS detector: 0 issues).
 - **Boundaries**: Maenifold MCP (`http://localhost:8080/mcp`) was unreachable during this session (`transport failure during send initialize request`), so no Maenifold memory was written. No automated tests, mocks, research runs, simulations, or broker actions were executed.
