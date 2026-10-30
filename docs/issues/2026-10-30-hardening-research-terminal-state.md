@@ -1,6 +1,6 @@
 # Research failure terminal-state hardening
 
-Status: Source fix reviewed — ready for app-only update
+Status: Reproduction required — candidate fix shelved and not installed
 Owner: Codex subagent `hardening_terminal_state`
 Coordinator: Codex parent
 Reported: 30 October 2026
@@ -35,10 +35,11 @@ installs or production changes in the investigation. Propose real-component
 verification before running it. Do not stage or commit concurrently with the
 other worker; the coordinator owns delivery.
 
-## Established failure and consumer trace
+## Candidate failure path and consumer trace
 
-This is a source-confirmed [[research lifecycle]] defect, not a reproduced
-production incident. The inspected base is `nautilus` at `000e3e6`.
+This is a [[research lifecycle]] concern identified by source analysis, not a
+reproduced defect or production incident. The inspected base is `nautilus` at
+`000e3e6`. The user requires a real reproduction before any fix proceeds.
 
 1. `_start_run` creates queued results and saves the new run before submitting
    its worker (`service.py:2277`, `2302–2304`, `2313`). A failed submission
@@ -69,7 +70,7 @@ production incident. The inspected base is `nautilus` at `000e3e6`.
    run itself is queued, running, or cancelling (`store.py:98–103`). A saved
    failed run with queued rows is not repaired by that branch on restart.
 
-## Change
+## Shelved candidate change
 
 Move `_run`'s existing pending-result cleanup into `_finish_research`
 (`service.py:2341–2352`, `2375–2390`). Every caller already reaches this
@@ -131,3 +132,18 @@ The reviewer independently checked the locked callers, executor exit ordering,
 terminal result preservation, persistence/API path and cancellation boundary.
 Source blob: `073a9563ca9398452630a5cdeb939910c6d55a8f`.
 No runtime reproduction or installation was part of that review.
+
+## Reproduction gate — 30 October 2026
+
+The coordinator applied and packaged the candidate before establishing a
+runtime reproduction. The user corrected this: a repro is required before
+starting a fix. The candidate is retained in local commit `a86351f` and its
+reviewed patch for inspection, but the active source has been returned to the
+pre-fix implementation. Nothing from this hardening batch was installed.
+
+The package under `packaging/build/hardening-terminal-20261030T213426Z`
+is not approved for installation. Source review approval is not reproduction
+or runtime acceptance. Next work must use unchanged code and real components
+in isolation, without a fake service/executor or changes to production data.
+If the scenario cannot be reproduced, keep it unconfirmed and do not ship the
+candidate as a proven fix.
