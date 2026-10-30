@@ -50,6 +50,14 @@
 .strategy-run-action{display:flex;flex:none;gap:var(--space-2);margin-bottom:var(--space-3)}
 .strategy-result-reading{flex:1;min-height:0;min-width:0;overflow:auto;scrollbar-gutter:stable}
 .strategy-result-reading p,.strategy-result-reading h3,.strategy-result-reading h4,.strategy-result-reading details{margin-bottom:var(--space-3)}
+#main .strategy-result-reading .experiment-table{width:100%;border-collapse:collapse;font-size:var(--text-ui);white-space:normal}
+#main .strategy-result-reading .experiment-table th,#main .strategy-result-reading .experiment-table td{padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line);text-align:left;vertical-align:top;line-height:var(--leading-ui)}
+#main .strategy-result-reading .experiment-table thead th{background:var(--ground);font-weight:600}
+#main .strategy-result-reading .experiment-table .numeric{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+#main .strategy-result-reading .experiment-period-label strong,#main .strategy-result-reading .experiment-period-label small,#main .strategy-result-reading .experiment-period-status small{display:block}
+#main .strategy-result-reading .experiment-period-label small,#main .strategy-result-reading .experiment-period-status small{margin-top:var(--space-1);font-size:var(--text-meta);color:var(--muted)}
+#main .strategy-result-reading .experiment-display-note{margin-top:var(--space-2);margin-bottom:var(--space-4);color:var(--muted)}
+#main .strategy-result-reading .experiment-results>details>summary{padding-block:var(--space-2);font-weight:600}
 .strategy-headlines{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-block:var(--space-4);font-variant-numeric:tabular-nums}
 .strategy-headlines dd{margin:var(--space-1) 0 0;font-weight:600}.strategy-headlines dt{color:var(--muted)}
 .strategy-headlines small{display:block;overflow-wrap:anywhere;color:var(--muted);line-height:1.4;margin-top:var(--space-1)}
