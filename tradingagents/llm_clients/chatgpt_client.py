@@ -38,6 +38,7 @@ from .base_client import BaseLLMClient
 from .codex_resource_probes import ResourceProbeGuard, require_disabled_mcp
 
 _NAMESPACE = "tradingagents"
+_STARTUP_TIMEOUT_SECONDS = 30
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -53,7 +54,7 @@ class _AppServer:
 
     def __init__(self, timeout: float | None, cancelled=None):
         self.cancelled = cancelled
-        self.deadline = time.monotonic() + (timeout if timeout is not None else 30)
+        self.deadline = time.monotonic() + (timeout if timeout is not None else _STARTUP_TIMEOUT_SECONDS)
         self.messages: queue.Queue = queue.Queue()
         self.events: deque = deque()
         self.request_id = 0
@@ -403,6 +404,10 @@ class ChatGPTChatModel(BaseChatModel):
         if remaining is not None and remaining <= 0:
             raise TimeoutError("ChatGPT request timed out.")
         server = _AppServer(remaining, cancelled=cancelled)
+        pending_call = None
+        interrupt_requested = False
+        drain_deadline = None
+        original_deadline = None
         try:
             _initialize_chatgpt(server)
             # Startup is bounded; an active model request has no default deadline.
@@ -444,7 +449,6 @@ class ChatGPTChatModel(BaseChatModel):
                     else:
                         probes.completed(params["item"])
                 if method == "item/tool/call":
-                    probes.require_finished()
                     name = params["tool"]
                     if name not in permitted or params.get("namespace") != _NAMESPACE:
                         raise RuntimeError("Codex requested a tool outside the bound TradingAgents functions.")
@@ -458,11 +462,16 @@ class ChatGPTChatModel(BaseChatModel):
                         raise RuntimeError("Codex returned invalid function arguments.")
                     if not isinstance(params.get("callId"), str) or not params["callId"]:
                         raise RuntimeError("Codex returned an invalid function call ID.")
-                    server.rpc("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
-                    message = AIMessage(content="", tool_calls=[{
-                        "name": name, "args": arguments, "id": params["callId"], "type": "tool_call",
-                    }])
-                    return ChatResult(generations=[ChatGeneration(message=message)])
+                    call = {"name": name, "args": arguments, "id": params["callId"], "type": "tool_call"}
+                    if pending_call is not None and pending_call != call:
+                        raise RuntimeError("Codex requested conflicting bound function calls before handoff.")
+                    pending_call = call
+                    if drain_deadline is None:
+                        original_deadline = server.deadline
+                        drain_deadline = time.monotonic() + _STARTUP_TIMEOUT_SECONDS
+                        if original_deadline is not None:
+                            drain_deadline = min(drain_deadline, original_deadline)
+                        server.deadline = drain_deadline
                 if method == "item/agentMessage/delta":
                     text_parts.append(params["delta"])
                 if method == "item/completed":
@@ -478,21 +487,41 @@ class ChatGPTChatModel(BaseChatModel):
                         f"Codex exposed an unexpected built-in tool ({identity}) "
                         f"for requested model {self.model_name}; account adapter stopped."
                     )
-                if "id" in event and method:
+                if "id" in event and method and method != "item/tool/call":
                     raise RuntimeError("Codex requested an unsupported client action; account adapter stopped.")
                 if method == "turn/completed":
-                    if params["turn"]["status"] != "completed":
-                        error = params["turn"].get("error") or {}
+                    completed = params["turn"]
+                    if params.get("threadId") != thread_id or completed.get("id") != turn_id:
+                        raise RuntimeError("Codex completed an unexpected turn.")
+                    error = completed.get("error") or {}
+                    own_interruption = interrupt_requested and completed["status"] == "interrupted" and not error
+                    if not own_interruption and (completed["status"] != "completed" or error):
                         if limited := reported_rate_limit(error):
                             raise limited
-                        detail = error.get("message") or params["turn"]["status"]
+                        detail = error.get("message") or completed["status"]
                         raise RuntimeError(f"ChatGPT response failed: {detail}")
-                    probes.require_finished()
+                    if pending_call is not None:
+                        probes.require_finished("before returning a bound function call")
+                        if not interrupt_requested:
+                            raise RuntimeError("Codex completed before the bound function handoff was ready.")
+                        message = AIMessage(content="", tool_calls=[pending_call])
+                        return ChatResult(generations=[ChatGeneration(message=message)])
+                    probes.require_finished("before returning final text")
                     content = final_text if final_text is not None else "".join(text_parts)
                     if not content:
                         raise RuntimeError("ChatGPT completed without a text response.")
                     return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+                if pending_call is not None and not interrupt_requested and not probes.pending:
+                    interrupt_requested = True
+                    server.rpc("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+        except TimeoutError as exc:
+            if pending_call is not None:
+                phase = "interrupted turn completion" if interrupt_requested else "MCP resource probe completion"
+                raise TimeoutError(f"Codex timed out waiting for {phase} before the bound function handoff.") from exc
+            raise
         finally:
+            if drain_deadline is not None:
+                server.deadline = original_deadline
             server.close()
 
 

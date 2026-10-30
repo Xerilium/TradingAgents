@@ -113,6 +113,6 @@ class ResourceProbeGuard:
         except ValueError:
             return False
 
-    def require_finished(self):
+    def require_finished(self, boundary="before returning a response"):
         if self.pending:
-            raise RuntimeError("Codex left an MCP resource probe unfinished; account adapter stopped.")
+            raise RuntimeError(f"Codex left an MCP resource probe unfinished {boundary}; account adapter stopped.")
