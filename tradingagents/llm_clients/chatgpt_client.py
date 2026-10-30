@@ -404,7 +404,7 @@ class ChatGPTChatModel(BaseChatModel):
         if remaining is not None and remaining <= 0:
             raise TimeoutError("ChatGPT request timed out.")
         server = _AppServer(remaining, cancelled=cancelled)
-        pending_call = None
+        pending_calls = {}
         interrupt_requested = False
         drain_deadline = None
         original_deadline = None
@@ -463,9 +463,10 @@ class ChatGPTChatModel(BaseChatModel):
                     if not isinstance(params.get("callId"), str) or not params["callId"]:
                         raise RuntimeError("Codex returned an invalid function call ID.")
                     call = {"name": name, "args": arguments, "id": params["callId"], "type": "tool_call"}
-                    if pending_call is not None and pending_call != call:
-                        raise RuntimeError("Codex requested conflicting bound function calls before handoff.")
-                    pending_call = call
+                    prior = pending_calls.get(call["id"])
+                    if prior is not None and json.dumps(prior, sort_keys=True) != json.dumps(call, sort_keys=True):
+                        raise RuntimeError("Codex reused a bound function call ID with conflicting contents.")
+                    pending_calls.setdefault(call["id"], call)
                     if drain_deadline is None:
                         original_deadline = server.deadline
                         drain_deadline = time.monotonic() + _STARTUP_TIMEOUT_SECONDS
@@ -500,22 +501,22 @@ class ChatGPTChatModel(BaseChatModel):
                             raise limited
                         detail = error.get("message") or completed["status"]
                         raise RuntimeError(f"ChatGPT response failed: {detail}")
-                    if pending_call is not None:
+                    if pending_calls:
                         probes.require_finished("before returning a bound function call")
                         if not interrupt_requested:
                             raise RuntimeError("Codex completed before the bound function handoff was ready.")
-                        message = AIMessage(content="", tool_calls=[pending_call])
+                        message = AIMessage(content="", tool_calls=list(pending_calls.values()))
                         return ChatResult(generations=[ChatGeneration(message=message)])
                     probes.require_finished("before returning final text")
                     content = final_text if final_text is not None else "".join(text_parts)
                     if not content:
                         raise RuntimeError("ChatGPT completed without a text response.")
                     return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
-                if pending_call is not None and not interrupt_requested and not probes.pending:
+                if pending_calls and not interrupt_requested and not probes.pending:
                     interrupt_requested = True
                     server.rpc("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
         except TimeoutError as exc:
-            if pending_call is not None:
+            if pending_calls:
                 phase = "interrupted turn completion" if interrupt_requested else "MCP resource probe completion"
                 raise TimeoutError(f"Codex timed out waiting for {phase} before the bound function handoff.") from exc
             raise

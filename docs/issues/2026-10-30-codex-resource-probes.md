@@ -29,8 +29,9 @@ and `core/src/tools/handlers/mcp_resource/` establish the exact unavailable
 errors, listing payloads and item lifecycle. The generated app-server schema
 includes `runtimeStatus` in full MCP inventory. Initial source preparation used
 static checks. The coordinator subsequently installed revision `8423d6c` and
-observed the validation failure below. The event-order follow-up still requires
-fresh independent review and installed validation.
+observed the first validation failure below. The coordinator then installed
+revision `b0676f4` and observed the second failure. The multiple-call follow-up
+still requires fresh independent review and installed validation.
 
 Sources: https://github.com/openai/codex/tree/rust-v0.164.0/codex-rs/core/src/tools/handlers/mcp_resource
 and https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/codex-mcp/src/connection_manager/resources.rs
@@ -45,11 +46,12 @@ not establish that event interleaving caused this particular failure.
 Codex 0.164.0 marks both dynamic functions and native resource handlers as
 parallel-capable. Its dispatcher gives them shared execution locks, so a bound
 function request may arrive before an earlier resource probe completes. Retain
-the validated function request while processing probe completions. Conflicting
-requests fail explicitly. Interrupt only when every observed probe is validated,
-then continue through the matching turn completion to validate queued native
-events before returning that same single function call. Only our requested
-interruption without a turn error is accepted as an expected interrupted status.
+validated function requests while processing probe completions. Conflicting
+contents under one call ID fail explicitly. Interrupt only when every observed
+probe is validated, then continue through the matching turn completion to
+validate queued native events before returning the collected function calls.
+Only our requested interruption without a turn error is accepted as an expected
+interrupted status.
 
 This handoff uses the existing 30-second startup allowance as a bounded drain
 grace, capped by the caller's deadline. Ordinary model-generation timing stays
@@ -67,3 +69,40 @@ Ordering sources (tag `rust-v0.164.0`, read 30 October 2026):
 - https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/parallel.rs
 - https://learn.chatgpt.com/docs/app-server (dynamic call and item lifecycle)
 - https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/src/bespoke_event_handling.rs (interrupt acknowledgement precedes terminal notification)
+
+## Parallel bound calls
+
+The coordinator reported that installed revision `b0676f4` stopped UCTT in run
+`c57db24c` after 73.375 seconds with "Codex requested conflicting bound function
+calls before handoff." All 14 previously completed calls remained unchanged.
+That error establishes that the single-call slot received a different call
+payload; the stored error does not identify duplicate IDs or changed fields.
+
+The installed runtime supports multiple calls: langchain-core 1.6.10 declares
+`AIMessage.tool_calls` as `list[ToolCall]`. In langgraph-prebuilt 1.1.0,
+`ToolNode._parse_input` copies that complete list, `_func` maps every call, and
+`_afunc` gathers every call. The installed TradingAgents analyst graph already
+uses this ToolNode. The adapter's existing history conversion also serializes
+each returned call and matches tool outputs by call ID.
+
+Collect distinct validated calls by ID in arrival order. Deduplicate a replay
+only when its normalized JSON payload is unchanged; reject changed contents
+under the same ID, including JSON type changes such as boolean versus number.
+Return the collected calls as the normal `AIMessage.tool_calls` list only after
+the existing matching turn-completion barrier and native-probe validation.
+The first call still starts the same bounded grace; later calls do not extend
+it. Cancellation, native-access rejection and deadline restoration stay intact.
+
+Local consumer evidence, read 30 October 2026:
+- Production runtime `Lib/site-packages/langchain_core/messages/ai.py:170`
+  and `messages/tool.py:206-239` (list contract and call identity).
+- Production runtime `Lib/site-packages/langgraph/prebuilt/tool_node.py:793-860`
+  and `:1224-1265` (all-call execution and input parsing).
+- Production runtime `Lib/site-packages/tradingagents/graph/setup.py:90`
+  (existing analyst ToolNode wiring).
+- Source `tradingagents/llm_clients/chatgpt_client.py:_history`
+  (all-call history and call-ID association).
+
+This follow-up changes no installed files and performs no research or model
+request. Its AST and whitespace checks are source evidence only; installed
+multiple-call behavior and completion of UCTT remain unverified.
