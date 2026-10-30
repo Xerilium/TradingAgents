@@ -1,14 +1,17 @@
 #universe-review.alerts-workspace .alert-rule-editor{display:flex;flex-direction:column;max-width:1040px}#universe-review.alerts-workspace .alert-rule-editor fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);min-width:0;margin:0 0 var(--space-4);padding:var(--space-3);border:1px solid var(--line)}#universe-review.alerts-workspace .alert-rule-editor fieldset>fieldset{grid-column:1/-1;margin:0}#universe-review.alerts-workspace .alert-rule-editor legend{padding:0 var(--space-1);font-weight:600}#universe-review.alerts-workspace .alert-rule-editor label{min-width:0;gap:var(--space-1)}#universe-review.alerts-workspace .alert-rule-editor input,#universe-review.alerts-workspace .alert-rule-editor select,#universe-review.alerts-workspace .alert-rule-editor textarea{min-width:0;width:100%}#universe-review.alerts-workspace .alert-rule-editor p,#universe-review.alerts-workspace .alert-rule-editor details{grid-column:1/-1;max-width:75ch}#universe-review.alerts-workspace .alert-rule-editor [hidden]{display:none!important}#universe-review.alerts-workspace .alert-rule-actions{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3);padding:var(--space-3) 0;border-top:1px solid var(--line)}#universe-review.alerts-workspace .alert-rule-actions input[type=checkbox]{width:auto}#universe-review.alerts-workspace .alert-rule-actions label{flex-direction:row;align-items:center}
+/* Alerts Inbox 2-column master-detail: list left, evidence/templates right. */
+.alerts-inbox-grid{display:grid;grid-template-columns:minmax(340px,52%) minmax(320px,48%);gap:var(--space-3);align-items:start}
+@media(max-width:1100px){.alerts-inbox-grid{grid-template-columns:1fr}}
 /* Direct Orders/Baskets composition. */
 #main[data-page=orders]{display:flex;flex-direction:column;min-height:0;overflow:auto}
 #universe-review.orders-workspace{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:visible;color:var(--ink);background:var(--ground)}
 .orders-workspace #orders-tabs{flex:none;margin:0;min-height:40px}
 .orders-readiness{flex:none;padding:var(--space-2);border-bottom:1px solid var(--line);font-size:var(--text-meta)}
 .orders-direct-grid{display:grid;grid-template-columns:minmax(340px,.82fr) minmax(520px,1fr);gap:var(--space-3);min-width:0;min-height:0;flex:1}
-.orders-preparation,.orders-review-pane{min-width:0;min-height:0;overflow:auto;padding:var(--space-3);border:1px solid var(--line);background:var(--paper)}
+.orders-preparation,.orders-review-pane{min-width:0;min-height:0;overflow:auto;padding:10px 12px;border:1px solid var(--line);background:var(--paper)}
 .orders-review-pane>section{padding-block:var(--space-3);border-bottom:1px solid var(--line)}
 .orders-workspace :is(input,select,textarea){max-width:100%;min-width:0}
-.orders-workspace label,.docked-ticket-drawer label{display:flex;flex-direction:column;gap:var(--space-1);margin-block:var(--space-2)}
+.orders-workspace label,.docked-ticket-drawer label{display:flex;flex-direction:column;gap:var(--space-1);margin-block:2px}
 .orders-workspace .proposal-fields,.docked-ticket-drawer .proposal-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2)}
 .orders-workspace .proposal-fields>fieldset,.docked-ticket-drawer .proposal-fields>fieldset{grid-column:1/-1}
 .orders-workspace .table-scroll,.orders-workspace .basket-scroll{overflow:auto;max-width:100%}
