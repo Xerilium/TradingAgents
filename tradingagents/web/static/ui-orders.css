@@ -11,20 +11,32 @@
 .orders-preparation,.orders-review-pane{min-width:0;min-height:0;overflow:auto;padding:10px 12px;border:1px solid var(--line);background:var(--paper)}
 .orders-review-pane>section{padding-block:var(--space-3);border-bottom:1px solid var(--line)}
 .orders-workspace :is(input,select,textarea){max-width:100%;min-width:0}
-.orders-workspace label,.docked-ticket-drawer label{display:flex;flex-direction:column;gap:var(--space-1);margin-block:2px}
-.orders-workspace .proposal-fields,.docked-ticket-drawer .proposal-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2)}
-.orders-workspace .proposal-fields>fieldset,.docked-ticket-drawer .proposal-fields>fieldset{grid-column:1/-1}
+.orders-workspace label,.docked-ticket-drawer label{display:flex;flex-direction:column;gap:2px;margin-block:2px}
+.orders-workspace .proposal-fields,.docked-ticket-drawer .proposal-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px var(--space-2)}
+.orders-workspace .proposal-fields>:is(fieldset,details,section,.row,.field-full),.docked-ticket-drawer .proposal-fields>:is(fieldset,details,section,.row,.field-full){grid-column:1/-1}
+.orders-stage-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-2);margin-bottom:4px}
+.orders-stage-head h2{margin:0!important}
+.orders-stage-head label{flex-direction:row;align-items:center;gap:6px;margin:0}
+.orders-preparation #docked-ticket-title{display:none}
+#universe-review.orders-workspace .proposal-editor,.docked-ticket-drawer .proposal-editor{margin:4px 0;padding:4px 0;border-bottom:0}
+#universe-review.orders-workspace .proposal-fields fieldset,.docked-ticket-drawer .proposal-fields fieldset{padding:6px 8px;margin:0}
+.exit-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2)}
+#universe-review.orders-workspace textarea,.docked-ticket-drawer textarea{padding:4px 8px;min-height:34px}
+.ticket-context .instrument-header-strip{display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px;padding:4px 6px}
+.ticket-context .instrument-header-strip>details{flex-basis:100%;margin:0}
 .orders-workspace .table-scroll,.orders-workspace .basket-scroll{overflow:auto;max-width:100%}
 .orders-workspace td,.orders-workspace th{vertical-align:top}
 .orders-workspace dl,.ticket-context dl{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(0,1fr);gap:var(--space-1) var(--space-2)}
 .orders-workspace dd,.ticket-context dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .orders-workspace dt{color:var(--muted)}
 /* Blueprint §5.3: compact 4-column readout strip for the real #ticket-sizing estimate block. */
-#ticket-sizing dl{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px;padding:6px 8px;background:var(--ground);border:1px solid var(--line)}
-#ticket-sizing dt,#ticket-sizing dd{font-size:var(--text-meta)}
-.orders-workspace details,.docked-ticket-drawer details{margin-block:var(--space-2)}
-.orders-workspace button,.docked-ticket-drawer button{min-height:36px}
-.orders-workspace :is(p,li),.docked-ticket-drawer :is(p,li){font-size:var(--text-meta);overflow-wrap:anywhere}
+#universe-review #ticket-sizing dl,#dockedTicketDrawer #ticket-sizing dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px;padding:4px 8px;background:var(--ground);border:1px solid var(--line)}
+#ticket-sizing dt,#ticket-sizing dd{font-size:var(--text-meta);margin:0}
+.orders-workspace details,.docked-ticket-drawer details{margin-block:2px}
+.orders-workspace summary,.docked-ticket-drawer summary{padding-block:2px!important}
+.orders-workspace button,.docked-ticket-drawer button{min-height:32px;padding:4px 10px!important}
+.orders-workspace :is(input,select):not([type=checkbox]):not([type=radio]),.docked-ticket-drawer :is(input,select):not([type=checkbox]):not([type=radio]){min-height:32px!important;padding:4px 8px!important}
+.orders-workspace :is(p,li),.docked-ticket-drawer :is(p,li){font-size:var(--text-meta);overflow-wrap:anywhere;margin-block:2px!important}
 .order-master-detail{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-2)}
 .order-inspector,.order-inspector-body{min-width:0;overflow:auto}
 .ticket-context{border-bottom:1px solid var(--line);padding-block:var(--space-2)}
