@@ -1,6 +1,6 @@
 # Research failure terminal-state hardening
 
-Status: Reproduction required — candidate fix shelved and not installed
+Status: Closed — not reproduced; candidate withdrawn and not installed
 Owner: Codex subagent `hardening_terminal_state`
 Coordinator: Codex parent
 Reported: 30 October 2026
@@ -147,3 +147,12 @@ or runtime acceptance. Next work must use unchanged code and real components
 in isolation, without a fake service/executor or changes to production data.
 If the scenario cannot be reproduced, keep it unconfirmed and do not ship the
 candidate as a proven fix.
+
+The follow-up reproduction investigation did not establish a safe genuine
+repro. Normal desktop Quit stops HTTP serving before executor shutdown. A
+previously admitted request might overlap shutdown, but that race was not
+observed or demonstrated. Reaching submission also requires a real readiness
+check and connected account; an invented service or fake executor would not
+establish the app failure. No repro was executed. This is not an active
+confirmed bug; reopen only with actual failure evidence and a reproducible
+unchanged-code case.
