@@ -35,6 +35,7 @@ from tradingagents.integrations.maenifold import (
 )
 
 from .base_client import BaseLLMClient
+from .codex_resource_probes import ResourceProbeGuard, require_disabled_mcp
 
 _NAMESPACE = "tradingagents"
 _LOGGER = logging.getLogger(__name__)
@@ -424,16 +425,8 @@ class ChatGPTChatModel(BaseChatModel):
             thread_id = started["thread"]["id"]
             if started.get("model", self.model_name) != self.model_name:
                 raise RuntimeError("Codex did not select the requested ChatGPT model.")
-            cursor = None
-            while True:
-                inventory = server.rpc("mcpServerStatus/list", {
-                    "threadId": thread_id, "detail": "toolsAndAuthOnly", "cursor": cursor,
-                })
-                if any(item.get("tools") for item in inventory.get("data", [])):
-                    raise RuntimeError("Codex exposed built-in MCP tools; account adapter stopped before research.")
-                cursor = inventory.get("nextCursor")
-                if not cursor:
-                    break
+            require_disabled_mcp(server, thread_id)
+            probes = ResourceProbeGuard()
             if history:
                 server.rpc("thread/inject_items", {"threadId": thread_id, "items": history})
             turn = {"threadId": thread_id, "input": [{"type": "text", "text": user_text}], "environments": []}
@@ -445,7 +438,13 @@ class ChatGPTChatModel(BaseChatModel):
             while True:
                 event = server.event()
                 method, params = event.get("method"), event.get("params", {})
+                if method in {"item/started", "item/completed"} and params.get("item", {}).get("type") == "mcpToolCall":
+                    if method == "item/started":
+                        probes.started(params["item"])
+                    else:
+                        probes.completed(params["item"])
                 if method == "item/tool/call":
+                    probes.require_finished()
                     name = params["tool"]
                     if name not in permitted or params.get("namespace") != _NAMESPACE:
                         raise RuntimeError("Codex requested a tool outside the bound TradingAgents functions.")
@@ -471,12 +470,10 @@ class ChatGPTChatModel(BaseChatModel):
                     if item.get("type") == "agentMessage" and item.get("phase") != "commentary":
                         final_text = item.get("text", "")
                 if method == "item/started" and params.get("item", {}).get("type") in {
-                    "commandExecution", "fileChange", "mcpToolCall", "webSearch", "computerUse",
+                    "commandExecution", "fileChange", "webSearch", "computerUse",
                 }:
                     item = params["item"]
                     identity = item["type"]
-                    if identity == "mcpToolCall":
-                        identity += f"; server={str(item.get('server', 'unknown'))[:120]}; tool={str(item.get('tool', 'unknown'))[:120]}"
                     raise RuntimeError(
                         f"Codex exposed an unexpected built-in tool ({identity}) "
                         f"for requested model {self.model_name}; account adapter stopped."
@@ -490,6 +487,7 @@ class ChatGPTChatModel(BaseChatModel):
                             raise limited
                         detail = error.get("message") or params["turn"]["status"]
                         raise RuntimeError(f"ChatGPT response failed: {detail}")
+                    probes.require_finished()
                     content = final_text if final_text is not None else "".join(text_parts)
                     if not content:
                         raise RuntimeError("ChatGPT completed without a text response.")
