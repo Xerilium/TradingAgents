@@ -1,6 +1,6 @@
 # Strategy Lab setup is cramped beside an empty results pane
 
-Status: Reproduced; scoped implementation ready for independent review
+Status: Closed — installed layout and retained-run navigation verified
 Owner: Codex subagent `strategy_layout`
 Coordinator: Codex parent
 Reported: 30 October 2026
@@ -45,6 +45,32 @@ required fields or use generated results to fill the empty pane.
 
 Source baseline: `b9ba6ba`; engine-path fix is a separate, already reproduced
 issue. No layout code was changed before this record and source diagnosis.
+
+## Installed verification
+
+Installed source `68a10e19cd553249c912846254973184185ddd9c` displays separate
+full-width **Setup**, **Preview & Results**, and **Runs & Compare** views.
+At the original desktop viewport, Setup measured 1534 pixels wide instead of
+the old 360-pixel rail. Populated results measured 1522 pixels wide without
+horizontal overflow.
+
+The real saved Amazon strategy, retained history and explicit form values
+produced a preview and completed experiment. Switching Setup/Results preserved
+the values. ArrowRight from Setup activated Results. The completed record
+appeared in Runs & Compare and reopened without another run. Saved-Plan
+Simulations still loaded its real plan/history choices; its Run control remained
+disabled without a valid preview.
+
+A temporary 1000 by 800 desktop viewport showed equal Setup client/scroll
+widths (544 pixels), without horizontal overflow; the override was reset.
+This is bounded browser evidence, not full OS-DPI or all-device acceptance.
+The independent reviewer inspected the actual Setup, preview and populated
+result screenshots and approved closing this layout issue.
+
+Evidence under `C:/src/printer/.local/`: `strategy-lab-setup-wide-20261030.jpg`,
+`strategy-lab-setup-narrow-20261030.jpg`, `strategy-lab-preview-20261030.jpg`,
+and `strategy-lab-results-20261030.jpg`. A separate misleading empty-reasons
+message on the completed page is tracked independently.
 
 ## Source review
 

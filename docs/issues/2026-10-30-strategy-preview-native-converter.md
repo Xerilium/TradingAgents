@@ -1,6 +1,6 @@
 # Strategy Lab cannot create an experiment preview
 
-Status: Reproduced in the installed app; runtime-layout cause confirmed
+Status: Closed — verified in the installed app with the same real inputs
 Owner: Codex subagent `strategy_preview_repro` (diagnosis)
 Coordinator: Codex parent
 Reported: 30 October 2026
@@ -82,3 +82,31 @@ at module SHA-256
 The reviewer independently confirmed the real installed files and unchanged
 version/artifact/hash checks. Packaging and the same real UI reproduction are
 still pending; this issue is not closed on source review alone.
+
+## Installed verification
+
+Installed source `68a10e19cd553249c912846254973184185ddd9c` after a clean,
+single app-only build. Package and installed modules matched reviewed hashes.
+Fresh checks found no active research, portfolio, data or evaluation work and
+no orders before stopping the owned desktop host/backend. The copy receipt
+confirms the launcher, both private runtime executables and application database
+were unchanged during the update. No data backup or dependency install occurred.
+
+The exact reproduction inputs then saved and displayed a valid preview with
+three folds and at most nine native runs. The same saved preview was run once
+under the user's updated goal. Experiment
+`d2a35c96-21a3-47e5-919a-f09081fd3742` completed all nine native phases, all three
+later-test periods and full session coverage, without errors, unavailable
+signals or unresolved orders. Independent review recomputed specification
+and artifact hashes, checked all three input artifacts and actual converter
+source/binary identities, and approved this bounded result.
+
+Evidence:
+- `C:/src/printer/.local/strategy-preview-install-receipt.json`
+- `C:/src/printer/.local/strategy-lab-preview-20261030.jpg`
+- `C:/src/printer/.local/strategy-lab-results-20261030.jpg`
+- Result SHA-256: `de0df4169bf0bef53bae28512fe06108cf7dc8802e622f2472529156da0d98f0`
+
+Nautilus remained connected afterward and the broker-order list was empty.
+This accepts the actual retained-data preview/experiment path, not broker
+execution, every order profile or profitable performance.
