@@ -655,3 +655,84 @@ Under BOTH `docs/ui-redesign-implementation-plan.md` and `docs/ui-redesign-bluep
 Runtime limits are unchanged: development retained zero broker orders/fills for populated selected-order/group inspection. The earlier qualified empty view is historical evidence, not observation of this repair. No new browser or mouse action, data collection, native capture, test, research, broker action, dependency, build or installation was performed. The reviewer supported the other six corrections, traceability and scoped Markets visibility fix in source; overall runtime acceptance remains pending. This batch changes app.js by one line added/one removed plus this delivery record.
 
 The execution worker reports all eight top-level JavaScript files passed node --check, git diff --check passed, and the scoped source-reference inspection preserved all seven required columns, commission and the captured-report disclosure. app.js SHA256: `b918c0fada753c6353469b90141aad3ee799225b4a90aa88aae0bef4592bbc68`. Results are retained in the ignored `fill-contract-static.json` under the existing evidence root. Primary decision: commit this bounded source-contract repair with populated fills still runtime-unverified; no blanket acceptance or new independent review is claimed.
+
+### Remaining UI acceptance at 995ff6f: not accepted
+
+The fresh independent reviewer accepted 995ff6f's fills correction in source, including seven required columns and captured-report provenance. The preceding reviewer supported the other six corrections, traceability and scoped Markets visibility correction in source. These are attributed source decisions, not runtime acceptance. This follow-up follows BOTH `docs/ui-redesign-implementation-plan.md` and `docs/ui-redesign-blueprint.md`, reuses retained workloads and earlier unaffected evidence, and performs no implementation or new workload.
+
+Primary created background browser tab10, leaving the user's tabs and native input alone. A complete 1920×1080 screenshot shows Dashboard's five KPIs, watch/chart row, three lower panes and their actions without clipping; zero checked stocks, empty holdings, two human drafts and cancelled/no-verdict research are visible. Primary then clicked the moved Markets Prepare Order button: the AMZN drawer opened with matching context, quotes, blank side/quantity and Limit default. No preview, save, approval or submission was performed.
+
+**Observed defect, acceptance blocked:** the drawer's Last trade source/time prints literal `<time datetime=... title=...>...</time>` markup. Screenshot `acceptance-markets-prepare.jpg` and the rendered text establish the failure. Source inspection identifies `ticketContext` at app.js:3224 escaping the HTML returned by fullTime. This violates the readable source/time presentation in blueprint §5.3 (C-9) and the dated quote context in US-06/US-16, E-02. The date/source information exists, but the formatting is visibly broken. No fix was made during this acceptance-only assignment.
+
+**Journal completion blocker:** in tab10, Journal rendered both retained Human proposal rows; opening META showed no saved follow-up note and an empty Later outcome notes field. Primary entered only a temporary unsaved verification note; Revert Unsaved Edits (1) became enabled. Its click timed out. The documented dialog API returned undefined, and subsequent dialog/event/accept controls timed out while setting tab-focus emulation. A supported attempt to close only tab10 failed the same way. No discard completion or closed-tab state was established. No saved note was written. Unlike the earlier historical prompt observation, this attempt did not independently capture the confirmation message. Completion requires working browser-scoped dialog control, or human dismissal of the pending Journal discard confirmation/closure of agent-owned tab10; native mouse control is not an available fallback.
+
+An isolated background tab11 opened Strategy Lab and rendered its setup, disabled Run and No simulation selected state. Load Saved Plans & Data and Runs & Compare interactions produced no changed result while the Journal dialog was blocked; no new preview/run was requested. Primary stopped further browser actions. Tab11's temporary viewport override was cleared. Tab10's last observed state remained blocked, with an unsaved verification note; its viewport override could not be cleared through those controls. Both are temporary agent-created tabs, and their eventual automatic cleanup is not claimed as observed.
+
+Primary inspected retained screenshots for Research, Workflows and Strategy Lab. They support only their captured regions: failed research with qualified no-verdict state and PM/Trader placement, the selected workflow node/prompt chips, and the completed experiment's two separately styled fold curves. The retained Strategy Lab image does not prove all nested phase/native reports were inspected; that outstanding interaction remains unverified. Earlier successful simulation/experiment workloads were not repeated.
+
+The following is the current 58-requirement evidence checkpoint. File/function bindings remain in the main matrix and scoped correction tables above. Observed means only the bounded behavior listed, including explicitly historical evidence; it is not an entire-story pass. Prior failures superseded by observed corrections are identified rather than silently erased.
+
+| Requirement | Current evidence | Exact coverage and remaining gap |
+|---|---|---|
+| US-01 | observed, historical | Research picker/independent selection and smoke launch; zero-checkbox launch not executed. Current Dashboard zero-checked state observed. |
+| US-02 | observed, historical | Confirmation/date replacement notice and first-symbol/Summary focus; no repeated launch. |
+| US-03 | observed, partial | Historical running/queued/failed and six counters; current cancelled/no-verdict visible. Completed/incomplete populated states unverified. |
+| US-04 | observed, partial | Actual quotes, dated drift, empty exposure and historical UNKNOWN transition; completed rating unverified. |
+| US-05 | observed, historical | PM/Trader placement in failed retained reports; completed-result presentation unavailable. |
+| US-06 | failed | Moved Markets action opens correct drawer; earlier pin/refresh/handoff evidence retained. Literal timestamp markup remains visible. |
+| US-07 | observed, partial | Complete current 1920×1080 Dashboard capture; prior desktop/responsive evidence reused only for unchanged portions. Full corrected ten-workspace visual coverage and actual Windows DPI unverified. |
+| US-08 | observed, partial | Current unclipped Dashboard, zero checked, held-first/absolute-change controls and three lower panes. Populated positions/orders unavailable. |
+| US-09 | observed, partial | Markets header/chart/history bar and actual Prepare action; scan restoration/UPL header from preceding correction. Nonzero UPL remains source-reviewed. |
+| US-10 | observed, partial | Historical shared empty Evidence & Filings and collection guard. Populated provider records/collection unverified. |
+| US-11 | observed, partial | Historical distinct original/local social headings. Completed-stock local batch unexecuted. |
+| US-12 | observed, partial | Historical Activity scope/filter and retained receipts. Every failure/429 variant not observed. |
+| US-13 | observed, partial | Historical empty Positions without headers; populated Today P/L/available quantity source-reviewed. |
+| US-14 | source-reviewed | Separate model view observed historically; synthesis and numerical weights/drift not exercised. |
+| US-15 | observed, partial | Prior missing-state failure superseded by corrected Performance unavailable metrics/empty icon observation. Populated metric/flow/export outcomes unverified. |
+| US-16 | failed | Correct dated prices, empty side/quantity, Limit default; earlier seed/sizing evidence retained. Source/time label prints escaped markup. |
+| US-17 | observed, partial | Historical ten policy rows and unavailable non-rule checks; evaluated passing/failing blockers unavailable. |
+| US-18 | source-reviewed | Broker confirmations, operation-specific recovery and submission unexecuted; no broker authority granted. |
+| US-19 | source-reviewed, partial observation | Qualified empty fills/baskets observed previously. Seven-column correction accepted in source; populated fills/group inspector/basket weights unverified. |
+| US-20 | observed, partial | Existing simulation/experiment outcomes and two-fold curve capture retained. Current setup renders; nested result/fold/native report inspection incomplete. |
+| US-21 | unverified, partial observation | Missing-state failure repaired; search/focus observed previously, current two decisions/details render. Revert completion blocked by browser controls; populated outcomes unavailable. |
+| US-22 | observed, historical | Zero unread, grouped restarts, calm freshness setup and three templates. No new rule saved; other occurrence states unverified. |
+| US-23 | observed, historical | Fit All, node/prompts/chips, editor guard, in-app Keep/Discard and Ctrl+S on nonactive copy. Floor fallback/error retry unverified. |
+| US-24 | observed, partial | Prior Diagnostics failure superseded by restored diagnostics/danger-zone observation; other category evidence retained. Full corrected five-category visual pass and populated restore outcomes unverified. |
+| US-25 | observed, partial | Portfolio shared tabs/arrow behavior repaired; real instrument tabs/toggles observed in preceding batch. All ten corrected tab bars and all four populated chart alternatives not fully verified. |
+| E-01 | observed, historical | Date replacement warning; no historical run. |
+| E-02 | failed, partial observation | Actual bid/ask/size/spread and missing-side disable states observed; current Last source/time formatting defect. |
+| E-03 | observed, historical | Actual eligibility flags and disconnected UNKNOWN; remaining capability combinations unverified. |
+| E-04 | observed, partial | Empty account/positions and real account values; populated exit availability source-reviewed. |
+| E-05 | observed, historical | Seven whitelisted account flags. Other actual account states unavailable. |
+| E-06 | observed, partial | Ten rules/non-rule availability; evaluated blocker cases unverified. |
+| E-07 | observed, partial | Honest empty SEC/actions/news and controls; populated collection unverified. |
+| E-08 | observed, partial | Original/local sections distinct; local saved-post batch unexecuted. |
+| E-09 | source-reviewed | Real unknown-transport recovery unavailable; no broker action attempted. |
+| E-10 | source-reviewed, partial observation | Corrected seven columns/shared renderer/captured provenance accepted in source; prior empty view observed. Populated fill economics/provenance rendering unverified. |
+| E-11 | source-reviewed | Bound-observation before weight and complete/partial presentation; no retained human basket, numerical runtime unverified. |
+| E-12 | observed, partial | Existing real native results/two folds; complete nested phase/candidate/report inspection outstanding. |
+| E-13 | observed, partial | Corrected Performance empty/unavailable state observed previously. Populated returns/flows/CSV outcomes unverified. |
+| E-14 | observed, partial | Listening stream visible; other stream states unverified. |
+| E-15 | observed, historical | Actual Activity receipts inspected; every error/rate-limit variant unverified. |
+| C-8 | observed, partial | Historical UNKNOWN DOM after supported engine stop, connected state restored. Screenshot missed transient; populated holdings not exercised. |
+| C-9 | failed | Earlier pinning/source binding/refresh/close-reopen/handoff/cross-symbol guard evidence retained; current timestamp markup defect blocks sign-off. Chart-copy apply unexecuted. |
+| L1 | observed | Current Dashboard lower panes/actions fully visible at 1920×1080; prior 1440×900 evidence retained. |
+| L2 | observed, partial | Corrected capped Performance empty card/icon previously observed; populated curve unverified. |
+| L3 | observed | Historical failed/running and current cancelled research do not display an invented final verdict. |
+| L4 | observed, historical | Detail loading settled into failed retained reports; no new fetch failure injected. |
+| L5 | observed, historical | Fit All/node selection; minimum floor/Retry Diagram unverified. |
+| L6 | observed, partial | Shell/Orders/Settings active wording and Settings navigation observed; paused variant source-reviewed. |
+| L7 | observed | Ten distinct navigation icons visible in current full desktop capture. |
+| L8 | observed, partial | Current Journal Human proposal and earlier plain order labels. Saved stop-type drafts unavailable. |
+| L9 | observed, historical | Research technical record rather than headline UUID; single picker rail. |
+| L10 | observed | Strategy heading/setup above load control in current rendered state; selected-result inspection incomplete. |
+| L11 | observed, historical | Empty Positions omits table headings; populated holdings unavailable. |
+| L12 | observed, historical | Grouped restart gaps, calm setup, three templates; no new alert rule saved. |
+| L13 | observed | Current AMZN / Stock review heading has no duplicate AMZN subtitle. |
+| L14 | observed, partial | Active wording consistent; pause not toggled. |
+| U1 | observed, historical | Research picker and authorized two-stock launch; no rerun. |
+| U2 | observed, historical | Launch moved inspection from AMZN to first batch META/Summary; no rerun. |
+
+Evidence under the existing ignored root: `acceptance-followup.json`, `acceptance-dashboard-1920.jpg`, `acceptance-markets-prepare.jpg`; historical `primary-traceability.json`, `primary-ui-events.json`, `workspace-pass.json`, `workspace-1920-Research.jpg`, `workspace-1920-Workflows.jpg`, `workspace-1920-Strategy-lab.jpg`, `ui-correction-observations.json`, `seven-findings-ui.json` and `fill-contract-static.json`. No new static check was necessary because this assignment changed no runtime source; prior worker-reported checks remain attributed to that worker.
+
+Primary assessment: **UI acceptance is not complete and the candidate is not accepted.** Current rendered coverage is Dashboard, Markets/Prepare, Journal/details before the blocked revert, and Strategy setup; remaining corrected workspaces/interactions are historical evidence or unverified as listed. The specific open UI defect is ticket source/time markup. The concrete automation blocker is the pending Journal confirmation, preventing supported interaction/cleanup of agent tab10. Required outstanding acceptance includes Journal discard completion, retained experiment nested results/reports, and completion of the corrected ten-workspace/affected-interaction visual pass. Absent real broker inputs and actual Windows DPI retain the plan's explicit source-reviewed/unverified allowances. No new research/synthesis/Laya/simulation/experiment/history, tests, fabricated data, backend change, dependency, production installation, cutover or review dispatch occurred. The cancelled24 run remains cancelled; no replacement is authorized during unfinished UI.
