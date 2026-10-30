@@ -16,6 +16,9 @@
 .orders-workspace dl,.ticket-context dl{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(0,1fr);gap:var(--space-1) var(--space-2)}
 .orders-workspace dd,.ticket-context dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .orders-workspace dt{color:var(--muted)}
+/* Blueprint §5.3: compact 4-column readout strip for the real #ticket-sizing estimate block. */
+#ticket-sizing dl{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px;padding:6px 8px;background:var(--ground);border:1px solid var(--line)}
+#ticket-sizing dt,#ticket-sizing dd{font-size:var(--text-meta)}
 .orders-workspace details,.docked-ticket-drawer details{margin-block:var(--space-2)}
 .orders-workspace button,.docked-ticket-drawer button{min-height:36px}
 .orders-workspace :is(p,li),.docked-ticket-drawer :is(p,li){font-size:var(--text-meta);overflow-wrap:anywhere}
