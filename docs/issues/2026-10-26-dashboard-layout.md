@@ -505,3 +505,97 @@ Stage1: primary cleared the retained browser batch, checked only META/NVDA, insp
 META failed after producing all required reports including a final decision. Primary observed “failed · no final verdict”; worker's same-run diagnosis and the visible Social report identify limited Reddit acquisition coverage (22 retained/classified,0 unscreened), while StockTwits completed78/78. Completion policy rejected Reddit status limited. This is an actual acquisition/completion condition, not an assumed backend defect or permission to repair/rerun. NVDA is still in the same batch at this entry; no synthesis or local saved-post batch has been dispatched. Plan lines42–43 require completed eligible research; retained posts alone do not satisfy that condition, and nonzero posts cannot be reported as the real-empty guard. Terminal outcomes and every later stage will be recorded below; no requirement is waived by this progress entry.
 
 Current partial primary UI evidence: US-01/02, E-01 and U1/U2 selection/confirmation/first-symbol launch focus; US-03/L3/L4 truthful running/failed states; US-11/E-08 separate Original Research Social Sentiment and Local Laya Saved-Post Batch headings; US-12/E-15 Activity scope/failure toggles on real receipts (no matching whole-run failure entries at that observation); US-24/E-05 real CSV and whitelisted account surface; US-25 Research tab ArrowRight/roving focus and search J guard/caret retention during live polling. US-07 measured36px topbar/no footer/no horizontal document overflow on Research at actual1920x1080. These are partial observations, not passing verdicts for entire requirements. Early background-tab captures and an initial viewport override on another tab are NOT responsive evidence; current visible tab7 and CDP main-pane capture establish the stated actual viewport. Full ten-workspace/dimension coverage remains pending.
+
+### Integrated cycle: smoke terminal, modeled runs and visible pass before final PNIS load
+
+Code remains `7e91062`; current observations are development8099 only. Both governing documents were reread. The human's removal of every development snapshot prerequisite remains effective. No source correction, automated test, build, production replacement or broker action occurred. Production Quit is human-reported, corroborated by the worker's unavailable8098 listener observation; process exit was not independently verified.
+
+Smoke terminated failed: META and NVDA both failed, zero completed. Safe messages: META “Research incomplete: reddit screening is limited: 22/22 posts classified”; NVDA the same with4/4. Both have final decision reports but no eligible completed rating, with empty completion_gaps arrays. Acquisition coverage is limited to recent Reddit items, despite all retained items being classified; StockTwits completed78/78 and96/96 respectively. Plan lines42–43 require completed smoke research: synthesis and local Laya received zero requests. Nonzero retained posts cannot establish the zero-post guard. No substitute research or rerun was used.
+
+The worker provisioned one complete raw AMZN1Day receipt through the supported history collection:255bars,254completed daily buckets,1page, baseline252 sufficient. One separate manual AMZN BUY1 MARKET DAY development draft supplied the same-symbol saved-plan input. Primary saved one immutable simulation preview and ran it once after worker identity/terms verification. Preview `7195600a-6a0e-4a38-8fa8-8a080fb2382f`, SHA256 `1ce3f028fd732a63674e62fed1c96ee816cf36e6c38c32d1da52f2668f4e3fa8`, window26–28October, three completed sessions, hindsight, USD10000, empty starting holdings and explicitly declared modeled costs/timing. Editing capital invalidated Run; reopening the same saved preview restored it. Terminal completed_with_limitations:1modeled order,1fill,1open position,0closed positions. Primary inspected qualification text and structured native Orders/Fills/Positions/Account tables. Native USD statistics excluding open inventory were not presented as a trading loss or account return; unavailable return/drawdown/curve metrics stayed qualified.
+
+Primary authored one structured AMZN close-above-open / close-below-open strategy with quantity domain1/2, then saved one experiment preview. Preview `a8b50685-19b9-4ac9-a1cd-be5b32eb35ee`, SHA256 `7947dcffbcd97e7bcb1c9fe24d5b847cceacfddd6cf2ff42407883cae7d60e23`. The actual visible preview and worker read agreed:2finite candidates,1scenario,2folds, maximum10native runs; rolling126/21/21, gap0,step21, grid seed0,2trials/fold, USD10000,hindsight, minimum1closed trade,600s experiment/60s trial caps. Primary ran once. Terminal completed/evaluated:4asked/4eligible trials,2selected and completed OOS folds,0unscored/gaps/unprocessed/errors,9actual native executions plus1disclosed source-trial reuse. Selected OOS return percentages were-0.072800 and0.007100; phases/folds retain independent reset capital and are not compounded or broker performance. Worker report coverage remains attributed. Primary observed the fold/candidate tables, curves and qualifications; nested phase report inspection was not completed. Editing experiment capital invalidated Run; reopening the SAME selected preview did not clear dirty state. A normal page reload and opening that saved preview enabled Run without a second preview or API bypass. An initially optimistic event claiming immediate enablement was corrected in `primary-ui-events.json`.
+
+The visible pass attempted all10workspaces at1920x1080,1440x900,1500x900,1100x900,790x900 and1440x800. `workspace-pass.json` records actual viewport/root geometry and the rendered heading for each attempt;60top600px screenshots retain the observed layout, not unseen lower content. No horizontal document overflow was measured. Actual Windows125–150%DPI remains unverified. Page navigation and measurements are not interaction acceptance. Failed Journal/Performance render attempts retain the previous workspace and must not be counted as successful page coverage. Some error statuses persist briefly after navigation; the matching heading is the page-coverage check.
+
+Current runtime failures, collected for the consolidated correction cycle:
+
+- US-15/E-13/L2, blueprint§6.5: clicking Portfolio Performance surfaces `journalCollection is not defined`; Performance does not render. Later Portfolio navigation also retained the preceding workspace with `journalRecord is not defined`.
+- US-21/L8, blueprint§6.8: Journal surfaces `journalRecord is not defined` and leaves the previous workspace visible. Search focus, note editing, guarded revert and Position Outcomes remain unverified because the page is inaccessible.
+- US-24, blueprint§6.11: Diagnostics & Backup surfaces `renderDiagnostics is not defined`; Trading Rules remains selected. Health/origin/Restore Danger Zone are unverified. A provisional UI event claiming those controls was corrected against the settled DOM.
+- US-25, blueprint line126: Portfolio views are plain buttons in a navigation element, with no tablist/tab roles and all three tabindex0; required shared roving-tab semantics fail.
+
+Prescribed interactions were exercised separately from navigation: Research search retained focus/caret through polling and ignored J as a shortcut; ArrowRight selected Reports with roving focus. A380px META ticket began with blank Side/Qty and LIMIT default; unavailable bid/ask seeds were disabled. Setting BUY1 and clicking META Last619.04 pinned it while NVDA was inspected. Normal polling advanced account/quote observations while preserving the note, input focus and caret24, Side/Qty/Limit. Escape closed and focused-main T reopened the same terms. One Save Draft & Open Stage2/3 saved a local META LIMIT draft and navigated to its saved identity in Orders; it remains unapproved/unsubmitted. Orders showed exact limit619.04, modeled principal619.04, cash99380.96 and unknown fees separately, ten policy rows and non-rule eligibility availability, with no order ready to submit. The existing AMZN simulation draft was preserved.
+
+Markets AMZN Source Data reused the existing255bar raw receipt. Its exact historical close243.76/29October was separate from current IEX227.22. The chart-copy review button was disabled with the explicit “Ticket is pinned to META; switch ticket to AMZN before copying this chart price” notice. No chart-copy request or extra collection occurred. Options remained reachable with no retained contracts and an explicit no-provider-request guard. Supplementary Evidence & Filings had an honest empty state; no collection was requested.
+
+Workflows loaded Default, Fit All displayed the graph, and Market Analyst node selection opened primary/related prompt chips. Typing jkt in CodeMirror stayed in the editor without global ticket/navigation effects. Keep editing preserved the temporary input in the in-app dirty-navigation dialog; Discard removed it. For actual Ctrl+S, one clearly named nonactive development copy, `UI validation 2026-10-29`, was saved, a newline appended, Save became enabled, then Ctrl+S completed “Workflow saved” and disabled Save. Default remained active and was reloaded afterward. No research used the copy. Actual IME and macOS Cmd+S remain unverified.
+
+C-8: one supported development Stop Nautilus was used after native workloads ended. A settled primary DOM observation after normal Refresh showed NVDA YOU:UNKNOWN / WORKING:UNKNOWN with missing quotes/unknown eligibility rather than FLAT. The two attempted image captures and the misleadingly named `c8-actual-unknown-context.txt` captured stale/later FLAT and are NOT UNKNOWN proof. Normal Refresh reconnects the owned node through existing service.refresh/runtime.start; the worker's02:50:16 read found connected, Paper/account verified, reconciled, complete positions/orders and no error. No second Stop or explicit Start was used. The actual Refresh POST was not independently captured.
+
+Alerts showed0unread/0occurrences, five restarts grouped and a calm unset-age prompt. All three template buttons were present; Quote Stale produced an unsaved NVDA/source_stale/quote draft with blank age and unchecked evaluation, then was discarded through Reload. No rule or delivery permission changed. Orders Fills showed the qualified no-observed-fills state; no populated broker fills/baskets, option chain, multi-position holdings, held-bracket amendment or unknown-transport recovery was fabricated or dispatched.
+
+Evidence remains under the ignored cycle root: primary UI events, traceability, workspace pass and screenshots; worker ledger, smoke terminal diagnostics, preview verifications and native monitors. The current observed failures and unavailable states prevent blanket acceptance. Required smoke-dependent observations are retained before the final latest-only PNIS batch; the batch has not started at this entry.
+
+Current [[traceability]] checkpoint below supersedes earlier acceptance. File/function bindings remain in the existing matrix and `primary-traceability.json`; they are navigation aids, not fresh proof. “Observed” means only the described current behavior, not acceptance of every clause. All rows bind to code7e91062, development8099, the cycle evidence root and limits above.
+
+| Requirement | Current evidence category | Current result and limit |
+| --- | --- | --- |
+| US-01 | Observed | Research picker and two-stock launch; zero-checkbox fallback unverified |
+| US-02 | Observed | Confirmation, replacement warning, date/FRED controls and first-stock focus |
+| US-03 | Observed | Running/queued/failed and six counters; other real terminal states unavailable |
+| US-04 | Observed | Dated quotes, failed age/drift and transient UNKNOWN; completed rating unavailable |
+| US-05 | Observed | Failed META PM/Trader headings at y504 before debate/risk/analysts; no eligible verdict |
+| US-06 | Observed |380px ticket, pinning, polling/caret, Escape/T, saved handoff and cross-symbol copy block |
+| US-07 | Observed | Six actual viewports and root geometry; wrapping occurs at1100px; Windows DPI unverified |
+| US-08 | Observed | Complete desktop captures show lower panes/links within1080/900px; initial zero-selection state unverified |
+| US-09 | Observed | AMZN retained chart/header/history bar and Options; scan interactions partial |
+| US-10 | Observed | Shared empty evidence panel and explicit collection guard; populated records unverified |
+| US-11 | Observed | Distinct social/local sections; local batch unexecuted under plan43 prerequisite |
+| US-12 | Observed | Activity scope/filter on real receipts; not every exceptional outcome |
+| US-13 | Observed | Empty Positions hid headers; populated positions unavailable; later navigation failed |
+| US-14 | Observed | Separate model view/capital; synthesis unexecuted under plan42 prerequisite |
+| US-15 | Failed | Performance throws journalCollection is not defined; required metrics/empty card inaccessible |
+| US-16 | Observed | Blank Side/Qty, LIMIT default, dated last seed and exact sizing/terms |
+| US-17 | Observed | Not-evaluated eligibility, non-rule availability and ten rows; evaluated cases unverified |
+| US-18 | Unverified | No broker confirmation, dispatch or real unknown-transport recovery exercised |
+| US-19 | Observed | Qualified empty fills; populated broker fills/baskets unavailable |
+| US-20 | Observed | One simulation and one bounded experiment; fold tables/qualified results; nested reports partial |
+| US-21 | Failed | Journal throws journalRecord is not defined; search/revert/outcomes inaccessible |
+| US-22 | Observed | Zero unread, grouped five restarts, calm setup and unsaved Quote Stale template/discard |
+| US-23 | Observed | Fit All, node/chips, CodeMirror guard, dialog, actual Ctrl+S on inactive copy |
+| US-24 | Failed | Four categories partly observed; Diagnostics throws renderDiagnostics is not defined |
+| US-25 | Failed | Portfolio lacks required tablist/roving pattern; Research arrow/editor guards observed separately |
+| E-01 | Observed | Historical replacement warning; no historical run |
+| E-02 | Observed | Actual NVDA/AMZN bid/ask/size/spread; META missing-side controls disabled |
+| E-03 | Observed | Real eligibility flags and unavailable-state qualification |
+| E-04 | Observed | Empty account/positions; populated available exit quantity unverified |
+| E-05 | Observed | Seven whitelisted account flags |
+| E-06 | Observed | Ten policy rows and non-rule availability; evaluated blockers unverified |
+| E-07 | Observed | Honest empty supplementary evidence; no extra collection |
+| E-08 | Observed | Separate original/local social views; no completed-stock local batch |
+| E-09 | Unverified | No real unknown-transport recovery or broker dispatch |
+| E-10 | Observed | Empty broker fills; modeled native fills inspected separately |
+| E-11 | Unverified | Populated human-basket complete/partial scenarios unavailable |
+| E-12 | Observed | Real native modeled results and two folds; nested phase visuals partial |
+| E-13 | Failed | Performance renderer unavailable |
+| E-14 | Observed | Listening stream dot; other stream states unverified |
+| E-15 | Observed | Real Activity receipts; not every failure/rate-limit variant |
+| C-8 | Observed | Actual UNKNOWN DOM after supported stop; images missed transient; connected state restored |
+| C-9 | Observed | Pinned ticket terms/quotes, poll preservation, handoff and cross-symbol copy guard; apply unexecuted |
+| L1 | Observed | Empty Dashboard Positions action within both complete desktop captures |
+| L2 | Failed | Performance cannot render |
+| L3 | Observed | No fake Sell on running/failed smoke results |
+| L4 | Observed | Loading settled into failed retained reports |
+| L5 | Observed | Fit All25–28% and node selection; minimum-floor/error retry unverified |
+| L6 | Observed | Active wording in shell/Orders and Settings link; paused state unverified |
+| L7 | Observed | Ten distinct desktop navigation icons |
+| L8 | Failed | Journal inaccessible; Human proposal label observed separately in Orders |
+| L9 | Observed | Technical record instead of headline run UUID; single left rail |
+| L10 | Observed | Strategy heading before load control |
+| L11 | Observed | Empty Positions omitted headers before later render failure |
+| L12 | Observed | Grouped restarts, calm setup and templates |
+| L13 | Observed | AMZN / Stock review; no repeated AMZN / AMZN subtitle |
+| L14 | Observed | Active wording; no pause mutation |
+| U1 | Observed | Research picker and launch |
+| U2 | Observed | Launch moved inspected AMZN to first batch META/Summary |
