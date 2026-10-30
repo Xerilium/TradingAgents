@@ -2340,6 +2340,11 @@ class DeskService:
 
     def _finish_research(self, run):
         run["completed_at"] = now()
+        if run["status"] in {"failed", "cancelled"}:
+            for result in run["results"]:
+                if result["status"] in {"queued", "running", "cancelling"}:
+                    result.update(status=run["status"],
+                                  error=result.get("error") or run.get("error") or "Analysis stopped before completion.")
         for origin in ("source", "gateway", "jev"):
             evidence = run.setdefault(f"{origin}_evidence", {})
             evidence.setdefault("terminal_observed_at", run["completed_at"])
@@ -2376,9 +2381,6 @@ class DeskService:
                 run = self._find_run(run_id)
                 status = "cancelled" if run_id in self.cancelled else "failed"
                 run.update(status=status, error=str(exc)[:600])
-                for result in run["results"]:
-                    if result["status"] in {"queued", "running", "cancelling"}:
-                        result.update(status=status, error=run["error"])
                 self._event(run_id, "error", run["error"])
                 self._finish_research(run)
         finally:
