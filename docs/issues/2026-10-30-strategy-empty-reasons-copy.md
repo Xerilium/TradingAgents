@@ -1,6 +1,6 @@
 # Completed experiment shows a false empty-comparison message
 
-Status: Reproduced; source review approved; installed verification pending
+Status: Closed — installed and verified
 Owner: Codex subagent `strategy_layout`
 Coordinator: Codex parent
 Reported: 30 October 2026
@@ -45,3 +45,16 @@ It suppresses only the inappropriate message for an empty reasons array and
 preserves nonempty reason arrays and real comparison rows. The reviewer also
 approved the separate UI-only deployment mode, which permits changes only to
 `app.js` and its wheel record and retains artifact/preservation checks.
+
+## Installed acceptance
+
+The correction was installed together with the separately reviewed results
+layout in revision `4e726d6c83eb6269b091a1615b53107aa68df53f`.
+The coordinator reopened the same completed experiment, expanded its detailed
+reports, and observed all nine comparison rows with no false empty message.
+The three main period rows, existing result identity and saved artifact hash
+are unchanged. No experiment was rerun.
+
+Fresh independent reviewer `strategy_results_review` approved the installed
+evidence and closure without a material finding. Verification and screenshots
+are listed in `2026-10-30-strategy-results-readability.md`.

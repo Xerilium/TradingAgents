@@ -1,6 +1,6 @@
 # Completed Strategy Lab results are hard to read
 
-Status: Source review and mechanical layout scan passed; installed verification pending
+Status: Closed — installed and verified
 Owner: Codex subagent `strategy_layout`
 Coordinator: Codex parent
 Reported: 30 October 2026
@@ -72,7 +72,7 @@ Run gates and backend calculations are preserved.
 
 The relevant platform/local-guide documentation and Impeccable layout,
 Operate and craft-floor guidance were reviewed before editing. Source syntax
-and whitespace checks are separate from the pending rendered verification.
+and whitespace checks were complete before installed verification below.
 No experiment or research rerun is part of this change.
 
 ## Source review and release checks
@@ -89,7 +89,37 @@ empty findings list (`[]`). The prior worker's JavaScript syntax and whitespace
 checks had passed; those checks were not repeated for unchanged application
 source. This mechanical scan is not evidence of rendered acceptance.
 
-The app-only package is staged under
-`packaging/build/strategy-results-readability-20261030`. Installation and
-inspection of the same completed experiment remain pending. No new experiment,
-research run or broker action is authorized by these release checks.
+## Installed verification and independent acceptance
+
+Installed code revision: `4e726d6c83eb6269b091a1615b53107aa68df53f`.
+The app-only package is retained under
+`packaging/build/strategy-results-readability-20261030`; wheel SHA-256
+`08c9da6daa03f1216c09846cc726ec73870fe336c9c949a2d3119c0ffe4de8db`.
+Only app.js, the scoped stylesheet and their wheel record changed in the
+installed application. The launcher, runtimes and database were preserved.
+
+The coordinator reopened the same completed experiment in the built-in browser.
+All three rows retain their exact date windows, saved metric values in tooltips
+and explicit completed-with-limitations status. Visible USD outcomes are -8.25,
++7.52 and -27.07; the second is rounded from 7.5150. The original nine comparison
+rows remain under the detailed-report disclosure, and the false empty message
+is absent. Cell padding is 8px by 12px. Setup still occupies the available width.
+
+At the actual 1049×590 browser viewport, the results pane is 774px wide with no
+horizontal overflow. Ordinary vertical scrolling is needed at that height.
+No new preview, experiment or broker action ran. The retained result still
+hashes to `de0df4169bf0bef53bae28512fe06108cf7dc8802e622f2472529156da0d98f0`.
+
+Fresh independent reviewer `strategy_results_review` compared source, frozen
+application, wheel and installed module hashes and inspected the captured UI.
+It approved closure with no material blocker. The coordinator independently
+observed the installed page and signs off this scope. Acceptance covers the
+retained experiment and captured desktop state; other scenario variants and
+display settings were not visually exercised.
+
+Evidence in `C:/src/printer/.local/`:
+- `strategy-results-ui-install-receipt.json`
+- `strategy-results-ui-verification-20261030.json`
+- `strategy-results-readability-after-20261030.jpg`
+- `strategy-results-periods-after-20261030.jpg`
+- `strategy-results-details-after-20261030.jpg`
