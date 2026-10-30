@@ -604,7 +604,10 @@ def validate_experiment(spec):
 
 def conversion_manifest(native_python):
     """Read installed converter identity without importing or launching the native environment."""
-    library = Path(native_python).resolve().parent.parent / "Lib" / "site-packages"
+    root = Path(native_python).resolve().parent
+    if root.name.casefold() == "scripts":
+        root = root.parent
+    library = root / "Lib" / "site-packages"
     directory = library / "nautilus_trader" / "persistence"
     binaries = list(directory.glob("wranglers*.pyd"))
     metadata = library / "nautilus_trader-1.231.0.dist-info" / "METADATA"

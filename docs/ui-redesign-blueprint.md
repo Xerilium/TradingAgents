@@ -118,7 +118,7 @@ We benchmarked against **Fidelity Active Trader Pro**, **IBKR Desktop (Mosaic)**
 | **US-17** | Riley | See overall approval eligibility, all non-rule blockers, and the 10-Rule Policy Table in **Orders Stage 2** (`E-06`). | Stage 2 surfaces: (1) overall `evaluation.passed` & `evaluation.blockers[]`, (2) all non-rule structural/authority checks (`conditional_group`, `evidence_requirements`, `exact_terms`, `buy_stop_mapping`, `fractional_eligibility`, `account_commitments`, `option_buying_power`, `price_and_fee_bounds`, package checks — so a failed `conditional_group` is never hidden!), and (3) the grouped **10 Configurable Policy Rules Table** (`state.investor.rule_labels`, failing first, grey `Not configured` when `unset`/`disabled`, plus held-bracket `conditional_group.stop_loss_estimate_before_fees`). |
 | **US-18** | Riley | Confirm Submit/Cancel/Replace and use operation-specific transport-boundary recovery (`E-09`). | Stage 3 warns if a working order already exists in that symbol, requires a 2-step inline confirmation showing exact terms, disables in-flight buttons, and displays a timestamped receipt. For commands in `dispatch_intent`, `submitting`, `outcome_unknown`, `cancel_pending`, or `replace_pending`, preserves operation-specific `[Check whether submit / cancel / replace was never sent]` (`resolve_never_dispatched`, which succeeds **only** if durable `transport_attempt` is `not_started` and otherwise rejects) alongside `[Refresh account and order status]` (`POST /api/commands/reconcile`). |
 | **US-19** | Riley | Inspect structured Fills (`commission` & `native_application`) and Human Baskets (`complete` vs. `partial` scenarios) without raw JSON dumps (`E-10`, `E-11`). | `Orders → Fills` renders a tabular fills blotter (`transaction_time | Sym | Side | Qty | Fill $ | Commission | native_application`, plus `fee_provenance` when a native fills/positions report is captured). `Orders → Baskets` renders `baskets[].preview` before/after weight, `turnover_pct`, and `Complete vs. Partial Fill` policy checks in a table instead of `<pre>` JSON. |
-| **US-20** | Morgan | Run both **Saved-Plan Simulations** and **Walk-Forward Experiments** with Nautilus quality stats and fold tables (`L10`, `E-12`). | `Strategy Lab` (`#strategy`) places `[Load Saved Plans & Data]` below the heading, uses a 3-step left accordion (`360px`) with the required immutable preview gate, and renders `native_result` (`stats_pnls`, `stats_returns` when present, with a short-window caveat), walk-forward `Folds` (`Train | Validation | OOS`) table, and `reports.positions` / `reports.fills` tables on the right. |
+| **US-20** | Morgan | Run both **Saved-Plan Simulations** and **Walk-Forward Experiments** with Nautilus quality stats and fold tables (`L10`, `E-12`). | `Strategy Lab` (`#strategy`) provides full-width **Setup**, **Preview & Results**, and **Runs & Compare** views. Setup places `[Load Saved Plans & Data]` below the heading and retains the three-step form and required immutable preview gate. Results render `native_result` (`stats_pnls`, `stats_returns` when present, with a short-window caveat), walk-forward `Folds` (`Train | Validation | OOS`), and `reports.positions` / `reports.fills`; each active view has one content scroller. |
 | **US-21** | Jordan | Use **Decision Journal** with focus-safe search, guarded revert, and 1-row Position Outcomes (`L8`). | `Journal` (`#journal`) merges Notes into `Decisions & Notes`, formats `Human proposal` plainly, keeps focus inside `#decision-search` while typing, guards `[Revert Unsaved Edits]` with a dirty count, and collapses 12-paragraph `Position Outcomes` groups into a 1-row summary table + right inspector. |
 | **US-22** | Riley | Triage **Alerts** with unread badge, grouped restarts, calm freshness setup, and 3 quick rule templates (`L12`). | `Alerts` (`#alerts`) shows unread count (`state.attention.observations.data.occurrences`) on `Inbox`, collapses `25 service restarts` into 1 expandable row, frames unset quote-age limit as a calm setup prompt with `[Set in Trading Rules →]`, and provides 3 one-click rule templates (`price_above`, `price_below`, `source_stale`) above the collapsible 16-condition builder. |
 | **US-23** | Morgan | See the entire 18-node **Workflows** diagram with `Fit All` and click any node to edit its prompt (`L5`). | `Workflows` (`#workflows`) adds `Fit All` (overview zoom floor `0.15`, with clean pan/scroll retained inside `#workflow-diagram` if a large custom graph exceeds the floor) as the default opening zoom, shows an inline `[Retry]` banner if rendering fails, loads a node's prompt + related files chip bar on node click, supports `Ctrl/Cmd+S`, closes popovers on `Escape`/outside-click, and replaces native `window.confirm()` with an in-app `<dialog>`. |
@@ -458,34 +458,27 @@ To prevent inspecting another stock (`J/K` or clicking a watchlist row) from wip
 
 - **Data bindings (`L10`, `E-12`):**
   - Top Engine Switcher: `[*Saved-Plan Simulations*]` and `[Walk-Forward Experiments]`.
-  - Places `[Load Saved Plans & Data]` below the Setup heading (`L10`).
-  - Left Rail (`360px`): 3-step accordion with a 2-line visible scope notice and the required `[Save Immutable Preview]` gate before `[▶ Run]`.
-  - Right Canvas: Equity curve + benchmark overlay + `<details>` observations table, **Headline Metrics** (`Net Return %`, `Modeled P&L`, `Max Drawdown %`, `Closed Trades`), **Nautilus Portfolio Analyzer Stats** (`native_result.stats_pnls` / `stats_returns` display dicts when present in `/api/evaluations`, with a 1-line note that ratios are meaningless on short windows), **Walk-Forward Folds Table** (`Fold | Train | Validation | OOS Return & Drawdown` from `fold.oos.scenarios[].result`), and **Simulated Positions / Fills Table** (`reports.positions` / `reports.fills`).
+  - Each engine uses `[Setup]`, `[Preview & Results]`, and `[Runs & Compare]` views. Setup is the initial view; selecting an existing record or saving a preview opens Preview & Results.
+  - The active view fills the available working width and height with one content scroller. An empty results pane does not reserve space beside the form.
+  - **Setup:** retain the 3-step form, visible scope notice, saved-source controls, explicit assumptions, and required `[Save Immutable Preview]` gate before `[Run]`. Paired fields use the existing two-column desktop grid and become one column below 600px. Selecting a view preserves draft values; editing a branch returns to Setup.
+  - **Preview & Results:** preserve the existing Run gate for the exact unchanged saved preview, equity curve and benchmark overlay with dated observations, **Headline Metrics** (`Net Return %`, `Modeled P&L`, `Max Drawdown %`, `Closed Trades`), **Nautilus Portfolio Analyzer Stats** (`native_result.stats_pnls` / `stats_returns` when supplied), short-window limits, **Walk-Forward Folds Table** (`Fold | Train | Validation | OOS Return & Drawdown`), and **Simulated Positions / Fills Tables**. Missing results remain explicit; no illustration substitutes for them.
+  - **Runs & Compare:** keep saved records, exact record opening and comparison controls. `Go to Setup` switches to the full-width form. All three views retain shared keyboard-tab behavior, busy states and per-view scroll position.
 
 ```text
 +----------------------------------------------------------------------------------------------------------+
-| STRATEGY LAB   Engine: [*Saved-Plan Simulations*] [Walk-Forward Experiments]   [Load Saved Plans & Data] |
-+----------------------------------------+-----------------------------------------------------------------+
-| SETUP RAIL (360px, 3-Step Accordion)   | EVALUATION CANVAS   Tabs: [*Preview & Results*] [Runs & Compare]|
-+----------------------------------------+-----------------------------------------------------------------+
-| [! Scope: Isolated model over cached   | SELECTED RUN: Simulation #sim-01 · Status: [Completed]          |
-|    bars; never proves broker fills.]   |                                                                 |
-|                                        | MODELED EQUITY CURVE (with dashed benchmark & table toggle):    |
-| ▾ 1. PLAN / STRATEGY & HISTORY RECEIPT | +-------------------------------------------------------------+ |
-|   Saved Plan:  [BUY 1 SGOV MKT       v]| | $1,010 |        _______________                             | |
-|   History Key: [AMZN 1Day (1,255b)   v]| | $1,000 |_______/               \_______________             | |
-|   Window:      [2026-10-12]–[10-19]    | |   $990 |____________________________________________________| |
-|   Basis:       [Hindsight scenario   v]| | Legend: — Modeled Equity ($1,000.00)  - - Benchmark         | |
-|                                        | | [▸ View dated equity & bar observations table]              | |
-| ▸ 2. CAPITAL, FEES & FILL ASSUMPTIONS  | +-------------------------------------------------------------+ |
-|   Cash: $1,000 · Fee: $0 · Fill: 100%  |                                                                 |
-|                                        | HEADLINE & NAUTILUS ANALYZER METRICS (`native_result`):         |
-| ▾ 3. IMMUTABLE PREVIEW & RUN           | Net Return %  Modeled P&L  Max Drawdown %  Closed Trades        |
-|   [x] Acknowledge simulation limits    |  0.00%         $0.00        0.00%           0 (DAY expired)     |
-|   [Save Immutable Preview]  [▶ Run]    | [▸ Walk-Forward Folds Table & Native Simulated Orders/Fills]    |
-|                                        | [▸ Technical record (Immutable spec SHA-256 & source pins)]     |
-+----------------------------------------+-----------------------------------------------------------------+
+| STRATEGY LAB   [Saved-Plan Simulations] [Walk-Forward Experiments]                                         |
++----------------------------------------------------------------------------------------------------------+
+| [*Setup*] [Preview & Results] [Runs & Compare]                                                             |
++----------------------------------------------------------------------------------------------------------+
+| SETUP — full available width, one content scroller                                                        |
+| Scope notice and saved-source loader                                                                     |
+| 1. Plan / strategy and history receipt — related fields paired where width allows                         |
+| 2. Capital, fees and fill assumptions                                                                     |
+| 3. Save immutable preview, then run the exact reviewed setup                                              |
++----------------------------------------------------------------------------------------------------------+
 ```
+
+The user's observed cramped-form complaint supersedes the former fixed 360px rail. This is a layout refinement of existing controls, not a new calculation or trading workflow.
 
 ---
 
