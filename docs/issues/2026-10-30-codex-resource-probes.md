@@ -1,6 +1,6 @@
 # Codex rejects unavailable native resource probes
 
-Status: Follow-up source fix awaiting independent review and installed verification
+Status: Fixed and verified in the installed app for the shared-stock research path
 Reported: 30 October 2026
 
 ## Observed failure
@@ -31,7 +31,7 @@ includes `runtimeStatus` in full MCP inventory. Initial source preparation used
 static checks. The coordinator subsequently installed revision `8423d6c` and
 observed the first validation failure below. The coordinator then installed
 revision `b0676f4` and observed the second failure. The multiple-call follow-up
-still requires fresh independent review and installed validation.
+at `5b8fc417` passed fresh independent review and the installed validation below.
 
 Sources: https://github.com/openai/codex/tree/rust-v0.164.0/codex-rs/core/src/tools/handlers/mcp_resource
 and https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/codex-mcp/src/connection_manager/resources.rs
@@ -59,9 +59,9 @@ unchanged. Restore the prior deadline on success, error or cancellation; a drain
 timeout fails explicitly without retry. Final-text and function-call unfinished
 errors now identify their boundary without logging arguments or report content.
 
-No further model request, research run, package build or installed-app change
-was performed by this follow-up worker. Source review and static syntax checks
-do not establish that the UCTT failure is repaired in the installed app.
+Source preparation used static syntax checks only. The subsequent installed
+validation is recorded below; the stored failures still do not identify the
+exact earlier event order.
 
 Ordering sources (tag `rust-v0.164.0`, read 30 October 2026):
 - https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/handlers/dynamic.rs
@@ -103,6 +103,22 @@ Local consumer evidence, read 30 October 2026:
 - Source `tradingagents/llm_clients/chatgpt_client.py:_history`
   (all-call history and call-ID association).
 
-This follow-up changes no installed files and performs no research or model
-request. Its AST and whitespace checks are source evidence only; installed
-multiple-call behavior and completion of UCTT remain unverified.
+## Installed validation
+
+The app-only artifact for `5b8fc417d29fc37511149f4f99a064ae6b51073e` was installed
+after a fresh independent review. Wheel SHA-256:
+`91a3e69c6c1b56255ea016499c1db6be03c09f4b1f1293c15715b9329c5e9cb8`.
+The launcher, both runtime executables and application database were unchanged
+by the code copy, verified by hash. No dependency or model setting was changed.
+
+UCTT-only run `1e6194c7-e1e0-4bf5-a310-c55e40762bc1` completed without an error:
+Sell at `2026-10-30T20:38:17.427232+00:00`. Its rating, original completion time,
+model settings, source-decision hash, revision and coverage count matched the
+export in shared data commit `15bce6019b99d90258c11eef8ac4f674dd9d299a`.
+All fourteen prior calls remained byte-identical; no successful stock was rerun.
+No broker action was taken. No automated or mocked tests were added.
+
+Coordinator acceptance: the requested research and export path is restored.
+This observed run does not prove every possible future event interleaving or
+establish the exact cause of the earlier unfinished-probe failure.
+Final code diff: two modules, 169 added lines and 23 removed; zero new automated tests.
