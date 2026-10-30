@@ -599,3 +599,9 @@ Current [[traceability]] checkpoint below supersedes earlier acceptance. File/fu
 | L14 | Observed | Active wording; no pause mutation |
 | U1 | Observed | Research picker and launch |
 | U2 | Observed | Launch moved inspected AMZN to first batch META/Summary |
+
+### Final PNIS batch dispatched once; terminal outcome pending
+
+After the preserved visible-pass evidence and documentation commit767826b, the worker's one fresh read-only preflight at02:54:29UTC confirmed the expected development profile, matching served/source asset hash, exact PNIS24 order, verified Paper account/reconciliation,24positive dated quotes, Laya readyCPU, Codex provider ready and unchanged Default/Luna/Sol configuration with concurrency1. Quote freshness remains unknown. Active research/data/evaluation/Laya jobs were zero and the final24 budget was unused. No parser/build checks were repeated.
+
+Primary reviewed the actual24-symbol confirmation, blank current New York date, FRED excluded, keep-selection unchecked and the replacement/no-orders notices, then clicked Start Research ONCE. The visible result showed META running,23queued and0batch checks. Worker identified run `98320644-079a-4f9d-95d4-d93e185fe0fe`, claimed the final24 budget once and reported matching02:55:33UTC initial counts. Only that run is being monitored; no second run, source correction, later synthesis/Laya, broker action or cutover is authorized by this dispatch. `stage8-preflight.json`, `stage8-final24-monitor.json`, `final24-confirmation.txt/.jpg`, `final24-start.jpg` and the ledger retain the evidence. The integrated validation cycle remains incomplete until this run's terminal result is recorded.
