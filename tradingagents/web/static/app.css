@@ -175,7 +175,7 @@ body{font-size:var(--text-ui)}h1{font-size:var(--text-heading);font-weight:600;l
 .settings-content #universe-review .settings-policy-actions button { margin:0; }
 .app-shell > .workspace > #main[data-page="settings"],.app-shell > .workspace > #main[data-page="alerts"],.app-shell > .workspace > #main[data-page="portfolio"],.app-shell > .workspace > #main[data-page="markets"] { display:flex; flex-direction:column; overflow:hidden; }
 #universe-review.settings-policy { background:transparent; font:inherit; }
-#universe-review.alerts-workspace { display:flex; flex:1; min-height:0; overflow:hidden; font:inherit; }
+#universe-review.alerts-workspace { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; font:inherit; }
 #universe-review.alerts-workspace #attention-workspace { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; margin:0; }
 #universe-review.alerts-workspace [data-alert-pane] { flex:1; min-height:0; overflow:auto; padding:var(--space-3); }
 #universe-review.alerts-workspace .alert-row { border-bottom:1px solid var(--line); padding:10px 0; }
