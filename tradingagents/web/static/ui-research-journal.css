@@ -125,5 +125,12 @@
 #main .facts-section[open]>summary{list-style:disclosure-open}
 .facts-section dd{min-width:0;margin:0;overflow-wrap:anywhere}
 .facts-section dd>ul{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
-.facts-section dd>ul>li{min-width:0;border-top:1px solid var(--line);padding-top:var(--space-1)}
+/* The activity rows are themselves grid rows, and that row rule reaches the nested
+   list items inside a disclosure, squeezing each receipt's own field table into a
+   70px column. Those nested items are plain blocks. */
+#main .facts-section dd>ul>li{display:block;min-width:0;border-top:1px solid var(--line);padding-block:var(--space-1)}
+/* One row's receipts table can run several thousand pixels; keep the dump inside its own
+   bounded scroller so expanding it does not shove the rest of the activity list away. */
+.facts-section::details-content{max-height:min(55vh,460px);overflow:auto;padding-inline-end:var(--space-2)}
+@supports not selector(::details-content){.facts-section[open]{max-height:min(55vh,460px);overflow:auto}}
 @media(max-width:900px){.facts-section dl{grid-template-columns:minmax(0,1fr);gap:var(--space-1)}}
