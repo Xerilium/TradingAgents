@@ -1,15 +1,20 @@
-"""Refresh application code without opening or changing either Python runtime."""
+"""Refresh application code only: packaged wheels and profile environments stay untouched."""
 import json
 import subprocess
 from pathlib import Path
-from prepare import BUILD, CACHE, PAYLOAD, ROOT, digest, run, stage_app
+from prepare import BUILD, CACHE, PAYLOAD, ROOT, digest, find_uv, run, stage_app
 
-uv = "uv"
+uv = find_uv()
 wheel_dir = BUILD / "wheels"
 manifest_name = Path("tradingagents/assets/runtime-manifests/nautilus-v1-runtime-manifest.json")
 manifest_bytes = (PAYLOAD / "app" / manifest_name).read_bytes()
 provenance_path = PAYLOAD / "provenance.json"
 provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+current_locks = {kind: digest(ROOT / "packaging" / "{}-{}.lock".format(kind, provenance["platform"]))
+                 for kind in ("desk", "native")}
+if current_locks != provenance.get("dependency_locks_sha256"):
+    print("Note: the reviewed dependency locks differ from this payload. An app-only refresh does not "
+          "install them; run packaging/prepare.py and build a setup installer to apply dependency changes.")
 run(uv, "build", "--wheel", "--out-dir", wheel_dir, "--cache-dir", CACHE,
     "--build-constraints", ROOT / "packaging" / "build-constraints.txt")
 wheels = list(wheel_dir.glob("tradingagents-*.whl"))

@@ -2,8 +2,8 @@
   "bundle": {
     "createUpdaterArtifacts": false,
     "resources": {
-      "payload/desk/": "payload/desk/",
-      "payload/native/": "payload/native/"
+      "payload/wheels/": "payload/wheels/",
+      "payload/setup/": "payload/setup/"
     }
   }
 }
