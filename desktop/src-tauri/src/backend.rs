@@ -149,7 +149,8 @@ fn create_environment(payload: &Path, profile: &Path, kind: &str, log: &mut fs::
         format!("Cannot place the new {kind} environment: {e}")
     })?;
     let _ = writeln!(log, "Created the {kind} environment at {}.", destination.display());
-    Ok(staged_python)
+    // The staging directory is gone after the rename, so report the placed path.
+    Ok(venv_python(&destination))
 }
 
 /// The interpreter for one runtime, creating its environment when the profile
