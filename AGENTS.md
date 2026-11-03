@@ -64,7 +64,7 @@ related source memories, reading relevant sources before relying on them.
 Keep delivery status in local issues (`docs/issues`), not duplicate documents or this file.
 
 Every UI implementer and reviewer must load the
-[Impeccable](C:/Users/brett/.agents/skills_/impeccable/SKILL.md) skill, run context setup
+[Impeccable](D:/maenifold/assets/skills/impeccable/SKILL.md) skill, run context setup
 once, use the appropriate playbook in Operate mode, and read the craft floor
 before UI edits. Use Microsoft writing style for UI copy and reports.
 The design suggests how to refactor; exact layouts, labels, and screen counts
