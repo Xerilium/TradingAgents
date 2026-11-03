@@ -1776,10 +1776,13 @@ class DeskService:
             outcome = receipt.get("outcome", "unknown")
             cause = "; ".join(d["message"] for d in receipt.get("error_details", [])
                               if d.get("message") and d["message"] != "Exception details withheld")
+            rules = "; ".join(dict.fromkeys(d["schema_rule"] for d in receipt.get("error_details", [])
+                                            if d.get("schema_rule")))
             message = (f"Retained evidence: {receipt.get('vendor')} / {receipt.get('operation')}: {outcome}. "
                        + f"Started: {receipt.get('started_at')}; ended: {receipt.get('ended_at')}. "
                        + (f"{receipt['failure_kind']}. " if receipt.get("failure_kind") else "")
                        + (f"{cause}. " if cause else f"Original error details unavailable ({receipt.get('error_class', 'unknown class')}). " if outcome not in {"running", "success"} else "")
+                       + (f"Schema rule: {rules}. " if rules else "")
                        + (f"Screening budget: {receipt['screening_budget']}. " if receipt.get("screening_budget") else "")
                        + f"Receipt attempt: {identity} (Sources).")
             events.append({"time": stamp, "kind": "source", "symbol": receipt.get("symbol"),
@@ -2451,6 +2454,9 @@ class DeskService:
                                                    if detail.get("message") and detail["message"] != "Exception details withheld"))
                          or gap.get("stop_reason")
                          or "Cause not captured" + (" (" + gap["error_class"] + ")" if gap.get("error_class") else ""))
+                if rules := "; ".join(dict.fromkeys(detail["schema_rule"] for detail in gap.get("error_details", [])
+                                                    if detail.get("schema_rule"))):
+                    cause = f"{cause} Schema rule: {rules}."
                 coverage = (str(gap.get("classified_count", 0)) + "/" + str(gap.get("total_count", "unknown")) + " posts classified"
                             if "total_count" in gap else gap.get("data_status") or gap.get("status") or gap.get("outcome", "unknown"))
                 acquisition = gap.get("acquisition")

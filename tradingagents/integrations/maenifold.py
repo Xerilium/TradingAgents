@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import math
 import re
 import threading
@@ -23,6 +24,8 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Protocol, TypeVar
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ENDPOINT = "http://localhost:8080/mcp"
 RESEARCH_COMMANDS = {
@@ -272,6 +275,14 @@ def _meaningful_wikilink(content):
     return False
 
 
+_SESSION_ERRORS = {
+    "SESSION_MISSING": ("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; "
+                        "continue using the returned sessionId."),
+    "SESSION_CLOSED": "SESSION_CLOSED: Start a new session with thoughtNumber=0 and no sessionId.",
+    "SESSION_EXISTS": "SESSION_EXISTS: Reuse the returned sessionId, or use a different sessionId.",
+}
+
+
 def _raise_reported_error(value: dict[str, Any]) -> None:
     if (
         value.get("isError") is True
@@ -298,8 +309,9 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
                     parsed = json.loads(block.get("text", ""))
                     if isinstance(parsed, dict):
                         errors.append(parsed.get("error"))
-        if any(isinstance(item, dict) and item.get("code") == "SESSION_MISSING" for item in errors):
-            raise GatewayRejected("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; continue using the returned sessionId.")
+        for item in errors:
+            if isinstance(item, dict) and item.get("code") in _SESSION_ERRORS:
+                raise GatewayRejected(_SESSION_ERRORS[item["code"]])
         if limited := reported_rate_limit(value):
             raise limited
         for block in value.get("content") or []:
@@ -426,6 +438,83 @@ class SdkMcpTransport:
                 "Check that the configured Maenifold endpoint is running. "
                 "If this was an order submission, reconcile its client order ID before retrying."
             ) from exc
+
+
+_STRING_BOOLEANS = {"true": True, "false": False, "True": True, "False": False}
+
+
+def _schema_properties(schema: Any) -> dict[str, Any]:
+    """Merge declared top-level properties, including those in allOf/anyOf members."""
+    if not isinstance(schema, dict):
+        return {}
+    members = [schema]
+    for keyword in ("allOf", "anyOf"):
+        nested = schema.get(keyword)
+        if isinstance(nested, list):
+            members.extend(member for member in nested if isinstance(member, dict))
+    properties: dict[str, Any] = {}
+    for member in members:
+        declared = member.get("properties")
+        if isinstance(declared, dict):
+            for name, spec in declared.items():
+                properties.setdefault(name, spec)
+    return properties
+
+
+def _declared_types(spec: Any) -> list[str]:
+    """The JSON types a property declares, tolerating type arrays and anyOf branches."""
+    if not isinstance(spec, dict):
+        return []
+    declared = spec.get("type")
+    if isinstance(declared, list):
+        return [str(item) for item in declared]
+    if declared is not None:
+        return [str(declared)]
+    branches = spec.get("anyOf") if isinstance(spec.get("anyOf"), list) else []
+    return [str(branch["type"]) for branch in branches
+            if isinstance(branch, dict) and branch.get("type") is not None]
+
+
+def _coerce_schema_booleans(parameters: dict[str, Any], schema: Any) -> list[str]:
+    """Rewrite the exact strings "true"/"false"/"True"/"False" as JSON booleans.
+
+    Models emit string booleans for fields such as SequentialThinking.nextThoughtNeeded,
+    whose schema allOf rules key off the real boolean. Only fields the live schema
+    declares as boolean are touched, and nothing else in the payload changes.
+    """
+    coerced = []
+    for name, spec in _schema_properties(schema).items():
+        value = parameters.get(name)
+        if isinstance(value, str) and value in _STRING_BOOLEANS and "boolean" in _declared_types(spec):
+            parameters[name] = _STRING_BOOLEANS[value]
+            coerced.append(name)
+    return coerced
+
+
+def _schema_guidance(cause: Any, schema: Any) -> str:
+    """Corrective text assembled from our own live schema, never from upstream text."""
+    try:
+        from jsonschema.exceptions import ValidationError
+    except ImportError:
+        return ""
+    if not isinstance(cause, ValidationError):
+        return ""
+    properties = _schema_properties(schema)
+    path = [str(part) for part in getattr(cause, "absolute_path", ())]
+    text = f" Correct the schema rule {cause.validator}"
+    if path:
+        text += f" at {'.'.join(path)}"
+    spec = properties.get(path[0]) if len(path) == 1 else None
+    if isinstance(spec, dict):
+        field = path[0]
+        types = _declared_types(spec)
+        if types:
+            text += f"; {field} must be {' or '.join(types)}"
+        if isinstance(spec.get("enum"), list):
+            text += f"; {field} accepts: {', '.join(str(value) for value in spec['enum'])}"
+    if properties:
+        text += f"; accepted fields: {', '.join(sorted(properties))}"
+    return text[:400]
 
 
 def validate_parameters(parameters: dict[str, Any], schema: dict[str, Any]) -> None:
@@ -841,6 +930,7 @@ def build_langchain_tools(
 
             def bind(selected: GatewayCommand) -> Callable[..., str]:
                 def invoke(**parameters: Any) -> str:
+                    live: dict[str, GatewayCommand] = {}
                     with gateway_observation(selected.domain, selected.name, "gateway_invocation",
                                              purpose="analyst_tool") as observed:
                         try:
@@ -849,6 +939,10 @@ def build_langchain_tools(
                             live = gateway.discover(selected.domain)
                             if selected.name not in live:
                                 raise GatewayError(f"Gateway command is unavailable: {selected.domain}.{selected.name}.")
+                            coerced = _coerce_schema_booleans(bounded, live[selected.name].schema)
+                            if coerced:
+                                logger.info("Coerced string booleans for %s.%s: %s", selected.domain,
+                                            selected.name, ", ".join(sorted(coerced)))
                             validate_parameters(bounded, live[selected.name].schema)
                             if (selected.domain == "maenifold.thinking" and selected.name == "SequentialThinking"
                                     and not bounded.get("sessionId") and bounded.get("thoughtNumber", 0) != 0):
@@ -886,11 +980,13 @@ def build_langchain_tools(
                         except GatewayError as exc:
                             from tradingagents.dataflows.router import tool_failure_details
                             rule = getattr(exc.__cause__, "validator", None)
-                            guidance = f" Correct the advertised schema rule {rule}; use only supported fields and include required completion fields." if rule else ""
+                            guidance = _schema_guidance(exc.__cause__, getattr(live.get(selected.name), "schema", None)) or (
+                                f" Correct the advertised schema rule {rule}; use only supported fields and include required completion fields." if rule else "")
                             safe_memory = (str(exc) if isinstance(exc, GatewayRejected) and
                                            str(exc).startswith(("MEMORY_READ_REQUIRED:", "MEMORY_CHECKSUM_MISMATCH:",
                                                                 "MEMORY_CHECKSUM_CONFLICT:", "MEMORY_WIKILINK_REQUIRED:",
-                                                                "MEMORY_WIKILINK_REJECTED:")) else "")
+                                                                "MEMORY_WIKILINK_REJECTED:", "SESSION_MISSING:",
+                                                                "SESSION_CLOSED:", "SESSION_EXISTS:")) else "")
                             raise ToolException(json.dumps(tool_failure_details(exc)) + guidance + (" " + safe_memory if safe_memory else "")) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
@@ -921,6 +1017,11 @@ def build_langchain_tools(
                     "Update reusable externally sourced findings without generalizing beyond the evidence; skip writes if nothing reusable is learned. "
                     "Separate historical notes from current observations. Read before editing, preserve lineage and supply "
                     "the returned checksum. Do not overwrite to bypass a stale edit. "
+                    "Pass memory:// identifiers byte-for-byte as SearchMemories, ListMemories or BuildContext "
+                    "returned them: one path segment per folder, and never reformat or collapse date folders, so "
+                    "a path containing .../2026/10/14/... keeps all three segments. "
+                    "Limit results with pageSize, never maxResults, which only maenifold.graph "
+                    "FindSimilarConcepts accepts. "
                     "DeleteMemory requires explicit user confirmation."
                 )
             if domain == "maenifold.thinking":

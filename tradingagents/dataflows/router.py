@@ -154,9 +154,10 @@ def _gateway_failure_details(error):
                 r"timed out|timeout|name resolution failed|No such host is known|"
                 r"certificate verify failed|SSL handshake failed|unsupported protocol|"
                 r"MCP operation failed|unhandled errors in a TaskGroup|invalid JSON|"
-                r"JSON Schema|schema validation failed|Missing required argument|"
+                r"JSON Schema|failed schema validation at|Missing required argument|"
                 r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
-                r"no news articles tagged|maintenance|rate limited|temporarily unavailable|No results found")
+                r"no news articles tagged|maintenance|rate limited|temporarily unavailable|No results found|"
+                r"NOT_FOUND|Memory file not found|Directory not found|SESSION_CLOSED|SESSION_EXISTS")
     safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
                      r"MEMORY_(?:READ_REQUIRED|CHECKSUM_MISMATCH|CHECKSUM_CONFLICT|WIKILINK_REQUIRED|WIKILINK_REJECTED)|"
                      r"The upstream Gateway tool reported (?:a text error|an error)\.|"
@@ -164,6 +165,8 @@ def _gateway_failure_details(error):
                      r"GatewayIndex returned a malformed command\.|"
                      r"Gateway command advertised an invalid JSON Schema\.|"
                      r"SESSION_MISSING: Start with thoughtNumber=0 and no sessionId\.?|"
+                     r"SESSION_CLOSED: Start a new session with thoughtNumber=0 and no sessionId\.?|"
+                     r"SESSION_EXISTS: Reuse the returned sessionId, or use a different sessionId\.?|"
                      r"Upstream rate limit \(429\)\. Wait \d+ seconds before trying again\.|"
                      r"(?:Original )?[Ss]ocial screening (?:time budget expired while queued|"
                      r"processing budget expired before dispatch|stopped by operator)")
