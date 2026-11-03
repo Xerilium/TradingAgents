@@ -43,6 +43,18 @@ launcher and the configured icons. It excludes the dependency wheelhouses, which
 only the first-install package carries. The existing Tauri updater installs this
 app-only package; it does not reinstall dependencies.
 
+In-place upgrade is the supported release path: install the app-only bundle over
+the existing installation (silent `/S`) or let the updater apply it. It replaces
+`payload/app`, its provenance and the launcher only. The production profile
+(`~/.cache/trader/production`), its private runtimes and CUDA, saved research, saved
+settings and vault credentials are untouched, so no pre-upgrade copy of them is
+needed or wanted. Never snapshot, copy or robocopy the production profile or the
+installed payload before an upgrade: those multi-gigabyte copies lock against the
+running desk, waste disk, and protect nothing an app-only reinstall cannot restore.
+If a bundle proves bad, install the previous app-only bundle. The app's own
+**Settings → Export Workspace Backup** archive is the only supported data-restore
+source.
+
 For an ordinary code or prompt change, from the repository root run
 `py -3.14 packaging/refresh_project.py` (use an interpreter in the support window
 on macOS). This builds the app wheel and refreshes only `payload/app` and its

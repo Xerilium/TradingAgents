@@ -54,9 +54,14 @@ Batch implementation before one packaging/build and affected UI verification
 cycle; delegate builds to a worker. No automated tests, mock services or
 research reruns unless the current task authorizes them. A package build and real
 installed-app startup/shutdown verification are authorized for packaging tasks.
-Preserve production data and credentials during controlled cutover. Broker
-actions still require explicit authorization. Git stays local unless the user
-asks to publish or push.
+In-place upgrade is the supported release path: the app-only installer replaces
+the payload, provenance and launcher only, leaving the production profile, private
+runtimes, CUDA, saved research and credentials untouched. Never copy, snapshot or
+robocopy the production profile or the installed payload before an upgrade; recover
+from a bad bundle by installing the previous app-only bundle, and use the app's own
+workspace backup for data restore. Historical UAT records that require a pre-cutover
+profile copy are superseded by this rule. Broker actions still require explicit
+authorization. Git stays local unless the user asks to publish or push.
 
 Load Microsoft writing style and Maenifold skills at session start. Use
 SequentialThinking during multi-step problem solving and BuildContext to find
