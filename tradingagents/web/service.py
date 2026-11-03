@@ -153,6 +153,13 @@ class DeskService:
                  browse_only=False, history_dir=None, migrate_legacy=False):
         defaults = build_default_config()
         defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "codex")
+        # The library leaves inference retries unset so other callers keep their SDK
+        # budget; the desk retries a rate-limited endpoint by default (3 attempts,
+        # 30 seconds apart). Both are editable in Settings.
+        if defaults.get("llm_retries") is None:
+            defaults["llm_retries"] = 3
+        if defaults.get("llm_retry_seconds") is None:
+            defaults["llm_retry_seconds"] = 30
         settings = DeskConfig(**{k: defaults[k] for k in DeskConfig.model_fields if k in defaults})
         from .recovery import active_paths, writer_lease
         self.application_root = Path(directory).resolve()
