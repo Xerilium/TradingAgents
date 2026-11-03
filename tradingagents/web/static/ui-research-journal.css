@@ -117,3 +117,11 @@
 .research-disposition-bar{display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:var(--space-2);min-width:0}.research-disposition-bar label{display:flex;align-items:center;gap:var(--space-1);margin:0}.research-disposition-bar label:has(textarea){flex:1;min-width:180px}.research-summary h4{font-size:var(--text-ui);margin:var(--space-1) 0}.research-personal-note{flex:none}.research-personal-note[open]{flex-basis:100%}
 
 .research-picker-row [role=button]{cursor:pointer;border:1px solid transparent;padding:var(--space-1);border-radius:var(--radius-compact)}.research-picker-row [role=button]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.research-picker-row [role=button][aria-pressed=true]{border-color:var(--accent)}
+/* Saved-fact dumps: the browser indents nested lists 40px per level, which left each
+   receipt value a few characters wide. Two readable columns per level instead. */
+.facts-section dl{display:grid;grid-template-columns:minmax(96px,150px) minmax(0,1fr);gap:var(--space-1) var(--space-3);margin:var(--space-2) 0}
+.facts-section dt{color:var(--muted);font-size:var(--text-meta)}
+.facts-section dd{min-width:0;margin:0;overflow-wrap:anywhere}
+.facts-section dd>ul{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.facts-section dd>ul>li{min-width:0;border-top:1px solid var(--line);padding-top:var(--space-1)}
+@media(max-width:900px){.facts-section dl{grid-template-columns:minmax(0,1fr);gap:2px}}
