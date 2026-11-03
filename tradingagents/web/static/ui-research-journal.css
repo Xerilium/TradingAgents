@@ -121,7 +121,9 @@
    receipt value a few characters wide. Two readable columns per level instead. */
 .facts-section dl{display:grid;grid-template-columns:minmax(96px,150px) minmax(0,1fr);gap:var(--space-1) var(--space-3);margin:var(--space-2) 0}
 .facts-section dt{color:var(--muted);font-size:var(--text-meta)}
+.facts-section>summary{font-size:var(--text-meta);color:var(--muted);padding-block:var(--space-2);cursor:pointer;list-style:disclosure-closed}
+.facts-section[open]>summary{list-style:disclosure-open}
 .facts-section dd{min-width:0;margin:0;overflow-wrap:anywhere}
 .facts-section dd>ul{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
 .facts-section dd>ul>li{min-width:0;border-top:1px solid var(--line);padding-top:var(--space-1)}
-@media(max-width:900px){.facts-section dl{grid-template-columns:minmax(0,1fr);gap:2px}}
+@media(max-width:900px){.facts-section dl{grid-template-columns:minmax(0,1fr);gap:var(--space-1)}}
