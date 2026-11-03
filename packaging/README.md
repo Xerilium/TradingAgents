@@ -21,7 +21,13 @@ repository build environment with `python -m venv .venv-build`, then
 `py -3.14 packaging/doctor.py [--profile production]` reports the interpreters
 present, the minor each reviewed lock was compiled for, the state of every
 development and profile environment, and the exact remedy for anything missing.
-Run it before a build and whenever a launch fails. The Windows locks are
+Run it before a build and whenever a launch fails. To repair a development
+environment by hand, move the old directory aside first: `python -m venv` does not
+clear an existing directory, so wrong-ABI packages left by the previous interpreter
+survive inside it and imports fail afterwards. Then create it and install offline
+from the payload, for example `py -3.14 -m venv .venv` followed by
+`.venv\Scripts\python -m pip install --no-index --find-links desktop\src-tauri\payload\wheels\desk --require-hashes -r desktop\src-tauri\payload\setup\desk-requirements.txt`
+(use `wheels\native` and `setup\native-requirements.txt` for `.venv-nautilus-v1`). The Windows locks are
 generated with the checked-in installed-version constraints and contain wheel
 hashes. Review changes to the locks before a release. The
 macOS Apple Silicon locks were cross-resolved with `--python-platform aarch64-apple-darwin`

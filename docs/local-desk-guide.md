@@ -211,7 +211,8 @@ application code and never touch those environments. An environment built from a
 interpreter that was later removed, or one left by an older release, is moved
 aside (`desk-broken`, `desk-previous`) and rebuilt. Run
 `py -3.14 packaging\doctor.py --profile production` to see their state and what to
-fix; the development environments need the same interpreter line
+fix; the development environments need the same interpreter line, and an old one is
+moved aside first because `python -m venv` does not clear a directory
 (`py -3.14 -m venv .venv`).
 
 Manage Alpaca credentials in **Settings → Account** and other API keys in

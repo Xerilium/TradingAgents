@@ -62,7 +62,8 @@ def report(failures: list[str], profile: str | None) -> None:
         if status.startswith("broken") or status == "incomplete":
             lock = ROOT / "packaging" / f"{kind}-{name}.lock"
             line = runtimes.version_text(runtimes.lock_minor(lock)) if lock.is_file() else "the reviewed lock's"
-            failures.append(f"Development {kind} environment is {status}. Recreate it from python {line}: "
+            failures.append(f"Development {kind} environment is {status}. Move {environment} aside first "
+                            f"(python -m venv does not clear an existing directory), then recreate it from python {line}: "
                             f"python -m venv {environment}")
 
     if profile:
