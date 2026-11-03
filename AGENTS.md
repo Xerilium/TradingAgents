@@ -5,6 +5,24 @@
 The user stopped use of Serena. Use normal repository tools and Maenifold.
 If `.serena/memories/critical_info.md` exists, read it as a file; do not start Serena.
 
+## Credential and secret handling — hard rule
+
+- Never read, attempt to read, enumerate, or verify the presence of credentials or
+  secrets. Prohibited: Windows Credential Manager and keyring APIs
+  (`CredRead`/`CredWrite`, advapi32 P/Invoke), `cmdkey`, keychain CLIs, registry
+  Environment secret values, environment-variable secret lookups, `.env` files, and
+  any config that may contain a secret (on Windows, including
+  `C:\Users\brett\.cache\trader\production` desk configuration).
+- An attempted read is a compromise. It invalidates the credential whether or not a
+  value is printed, because anything that can enter a tool output or transcript is
+  already in model context.
+- If work requires a credential, stop and ask the human to wire it. Never wire,
+  bridge, copy, relay, log, commit, push, or paste a secret or any fragment of one,
+  and never stage a secret into a committed or shared file.
+- If you touch a credential by accident, say so in your very first sentence, attempt
+  no cleanup, rotation, or deletion, and stop that line of work until the human
+  directs it.
+
 ## Current research retention
 
 Keep only the latest research result per ticker; the next cycle replaces it.
