@@ -202,6 +202,18 @@ first and then the older
 `%USERPROFILE%\.cache\trader\production`. `Launch-TradingDesk.py` in the
 repository root remains a legacy script.
 
+The installed app carries no Python of its own. On first launch it creates
+`runtimes/desk` and `runtimes/native` in the production profile as virtual
+environments from a Python in the support window that is already on this PC
+(Python 3.14, `py install 3.14`), installing the wheels the setup installer
+shipped; nothing is downloaded at startup. App updates replace only the
+application code and never touch those environments. An environment built from an
+interpreter that was later removed, or one left by an older release, is moved
+aside (`desk-broken`, `desk-previous`) and rebuilt. Run
+`py -3.14 packaging\doctor.py --profile production` to see their state and what to
+fix; the development environments need the same interpreter line
+(`py -3.14 -m venv .venv`).
+
 Manage Alpaca credentials in **Settings → Account** and other API keys in
 **Settings → Integrations**. The desktop app uses Windows Credential Manager
 or macOS Keychain, with separate production and development entries. It does
