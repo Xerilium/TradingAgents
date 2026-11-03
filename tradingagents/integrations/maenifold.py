@@ -987,7 +987,16 @@ def build_langchain_tools(
                                                                 "MEMORY_CHECKSUM_CONFLICT:", "MEMORY_WIKILINK_REQUIRED:",
                                                                 "MEMORY_WIKILINK_REJECTED:", "SESSION_MISSING:",
                                                                 "SESSION_CLOSED:", "SESSION_EXISTS:")) else "")
-                            raise ToolException(json.dumps(tool_failure_details(exc)) + guidance + (" " + safe_memory if safe_memory else "")) from exc
+                            details = tool_failure_details(exc)
+                            if not guidance and not safe_memory:
+                                # The upstream Gateway reports wrong or missing parameters in its own words; pair
+                                # that notice with the real parameter names so the analyst can correct the call.
+                                retained = "; ".join(str(detail.get("message", "")) for detail in details.get("error_details", []))
+                                if "Missing required parameter" in retained or "GATEWAY_VALIDATION_FAILED" in retained:
+                                    fields = sorted(_schema_properties(getattr(live.get(selected.name), "schema", None)))
+                                    if fields:
+                                        guidance = f" Accepted parameters: {', '.join(fields)}."
+                            raise ToolException(json.dumps(details) + guidance + (" " + safe_memory if safe_memory else "")) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 

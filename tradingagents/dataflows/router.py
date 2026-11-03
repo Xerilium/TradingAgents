@@ -157,7 +157,8 @@ def _gateway_failure_details(error):
                 r"JSON Schema|failed schema validation at|Missing required argument|"
                 r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
                 r"no news articles tagged|maintenance|rate limited|temporarily unavailable|No results found|"
-                r"NOT_FOUND|Memory file not found|Directory not found|SESSION_CLOSED|SESSION_EXISTS")
+                r"NOT_FOUND|Memory file not found|Directory not found|SESSION_CLOSED|SESSION_EXISTS|"
+                r"GATEWAY_VALIDATION_FAILED|Missing required parameter\(s\)(?: for [\w./-]+)?")
     safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
                      r"MEMORY_(?:READ_REQUIRED|CHECKSUM_MISMATCH|CHECKSUM_CONFLICT|WIKILINK_REQUIRED|WIKILINK_REJECTED)|"
                      r"The upstream Gateway tool reported (?:a text error|an error)\.|"
