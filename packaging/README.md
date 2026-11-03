@@ -100,6 +100,16 @@ the existing `uv` available:
 uv pip install --python "<production-profile>/runtimes/desk/python.exe" --break-system-packages --no-deps --require-hashes --only-binary :all: --reinstall -r packaging/laya-cuda-windows.lock
 ```
 
+Where `uv` is not installed, use the private runtime's own pip instead; `--reinstall`
+is a uv flag, pip needs `--force-reinstall`:
+
+```powershell
+"<production-profile>/runtimes/desk/python.exe" -I -m pip install --break-system-packages --no-deps --require-hashes --only-binary :all: --upgrade --force-reinstall -r packaging/laya-cuda-windows.lock
+```
+
+Verified on this PC (2026-11-02) with pip 24.3.1: the wheel installs and
+`torch.cuda.is_available()` becomes true on an RTX 4090 with driver 617.42.
+
 Leave system Python, the native Nautilus runtime and GPU drivers unchanged.
 For a legacy installation that keeps its runtimes inside the installer folder,
 stop the app and migrate both runtimes into the production profile's `runtimes`

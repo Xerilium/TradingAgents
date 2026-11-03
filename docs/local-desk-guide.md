@@ -166,7 +166,8 @@ verification does not establish a live connection or live execution acceptance.
 ## Launch the existing installation
 
 1. Open the TradingAgents desktop or Start menu shortcut. Both target
-   `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe`.
+   `%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe` (installs from
+   older packaging used `%LOCALAPPDATA%\Programs\TradingAgents`).
 2. Open <http://127.0.0.1:8098> if the browser did not open automatically.
    The installed app uses port **8098** and the production profile under
    `%USERPROFILE%\.cache\trader\production`.
@@ -193,10 +194,11 @@ from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
 checkout's `.venv` and `.venv-nautilus-v1` and
 `%USERPROFILE%\.cache\trader\development`. It does not copy production credentials or
 share production settings or data. `Start-TradingDesk.cmd` starts the installed
-production app. It does not read `tradingdesk.launch.json`. **Settings →
-Diagnostics → Local records → Launch and restart** describes
-`Start-TradingDesk.cmd` /
-`%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` and
+production app, trying `%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe`
+first and then the older
+`%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` (observed
+2026-11-02: this PC's install is in the first location). It does not read
+`tradingdesk.launch.json`. The production profile is
 `%USERPROFILE%\.cache\trader\production`. `Launch-TradingDesk.py` in the
 repository root remains a legacy script.
 
@@ -215,7 +217,7 @@ native store. Verify the observed paper/live account before preparing orders.
 
 | Item | Current location / purpose |
 | --- | --- |
-| Installed app | `%LOCALAPPDATA%\Programs\TradingAgents\tradingagents-desktop.exe` |
+| Installed app | `%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe` (older installs: `%LOCALAPPDATA%\Programs\TradingAgents`) |
 | Production profile | `%USERPROFILE%\.cache\trader\production` |
 | Application data and research | `application` and `research` within the production profile |
 | API credentials | Native OS vault, under `TradingAgents.desktop.production.*` or `TradingAgents.desktop.development.*`; never publish values |
