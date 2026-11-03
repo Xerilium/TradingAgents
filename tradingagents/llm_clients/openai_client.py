@@ -1,6 +1,8 @@
 import logging
+import asyncio
 import json
 import httpx
+import time
 from contextvars import ContextVar
 import os
 import re
@@ -26,6 +28,24 @@ _async_local_payload = ContextVar("async_local_payload", default=None)
 _budget_summary = ContextVar("budget_summary", default=False)
 
 
+def _is_rate_limit(exc: BaseException) -> bool:
+    """Whether a model endpoint refused the request on quota or queue pressure.
+
+    Matches the HTTP status the SDK raises on, and the machine-readable codes
+    local servers use (a busy queue answers 429 ``queue_wait_timeout`` once its
+    own wait deadline expires).
+    """
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict) and error.get("code") in {
+                "rate_limit_error", "rate_limit_exceeded", "queue_wait_timeout", "overloaded"}:
+            return True
+    return False
+
+
 class NormalizedChatOpenAI(ChatOpenAI):
     """ChatOpenAI with normalized content output and capability-aware binding.
 
@@ -44,6 +64,43 @@ class NormalizedChatOpenAI(ChatOpenAI):
     reasoning_content roundtrip) live in subclasses so this base class
     stays small.
     """
+
+    rate_limit_retries: int = 0
+    rate_limit_wait_seconds: float = 30.0
+
+    def _rate_limit_delay(self, attempt: int) -> float | None:
+        """Seconds to wait before the next attempt, or None once spent."""
+        if attempt >= self.rate_limit_retries:
+            if self.rate_limit_retries:
+                logger.error("Model endpoint rate limited after %d attempts; giving up.", attempt + 1)
+            return None
+        logger.warning("Model endpoint rate limited; retry %d/%d in %ss.",
+                       attempt + 1, self.rate_limit_retries + 1, self.rate_limit_wait_seconds)
+        return self.rate_limit_wait_seconds
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        attempt = 0
+        while True:
+            try:
+                return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as exc:
+                delay = self._rate_limit_delay(attempt) if _is_rate_limit(exc) else None
+                if delay is None:
+                    raise
+                time.sleep(delay)
+                attempt += 1
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        attempt = 0
+        while True:
+            try:
+                return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as exc:
+                delay = self._rate_limit_delay(attempt) if _is_rate_limit(exc) else None
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+                attempt += 1
 
     def invoke(self, input, config=None, **kwargs):
         return normalize_content(super().invoke(input, config, **kwargs))
@@ -403,6 +460,7 @@ def _chatgpt_credential() -> Callable[[], str]:
 _PASSTHROUGH_KWARGS = (
     "timeout", "max_retries", "reasoning_effort", "temperature", "max_tokens",
     "api_key", "callbacks", "http_client", "http_async_client",
+    "rate_limit_retries", "rate_limit_wait_seconds",
 )
 
 # OpenAI's ``reasoning_effort`` is only accepted by reasoning models — GPT-5 and

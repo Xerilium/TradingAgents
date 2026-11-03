@@ -78,6 +78,19 @@ def _coerce_max_retries(value):
     return n
 
 
+def _coerce_retry_int(value, name: str, minimum: int) -> int:
+    """Validate an inference-retry knob to an int (env vars arrive as strings)."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer, not a boolean: {value!r}")
+    try:
+        n = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+    if n < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {n}")
+    return n
+
+
 def _coerce_max_tokens(value):
     """Validate a ``max_tokens`` value to a positive int (env vars are strings)."""
     if isinstance(value, bool):
@@ -127,6 +140,23 @@ def build_llm_kwargs(config: dict) -> dict[str, Any]:
     max_retries = config.get("llm_max_retries")
     if max_retries is not None and max_retries != "":
         kwargs["max_retries"] = _coerce_max_retries(max_retries)
+
+    # Product-side inference retries. A rate-limited deployment (e.g. a busy
+    # local queue that answers 429 once its own wait deadline expires) needs
+    # retries spaced over minutes; the SDK budget only ever waits a couple of
+    # seconds, so exhausting it used to abort the stock and the whole run.
+    # The SDK budget is dropped when our retries are on so the attempt count
+    # stays honest, unless the caller set it explicitly.
+    retries = config.get("llm_retries")
+    if retries is not None and retries != "":
+        retries = _coerce_retry_int(retries, "llm_retries", 0)
+        kwargs["rate_limit_retries"] = retries
+        if retries and "max_retries" not in kwargs:
+            kwargs["max_retries"] = 0
+        wait = config.get("llm_retry_seconds")
+        kwargs["rate_limit_wait_seconds"] = (
+            _coerce_retry_int(wait, "llm_retry_seconds", 0)
+            if wait is not None and wait != "" else 30)
 
     # Output-token cap is cross-provider, but Gemini names it
     # ``max_output_tokens``; forward under the right key when set (#1204).

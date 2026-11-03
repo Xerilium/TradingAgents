@@ -23,6 +23,8 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_BENCHMARK_TICKER":     "benchmark_ticker",
     "TRADINGAGENTS_TEMPERATURE":          "temperature",
     "TRADINGAGENTS_LLM_MAX_RETRIES":      "llm_max_retries",
+    "TRADINGAGENTS_LLM_RETRIES":           "llm_retries",
+    "TRADINGAGENTS_LLM_RETRY_SECONDS":     "llm_retry_seconds",
     "TRADINGAGENTS_MAX_TOKENS":           "max_tokens",
     # Provider-specific reasoning/thinking knobs (None = each provider's own
     # default). Settable here for non-interactive runs; the CLI also offers an
@@ -117,6 +119,14 @@ def build_default_config() -> dict:
         # provider/SDK at its own default (usually 2). Raise it to ride out bursty
         # 429 throttling on rate-limited deployments instead of aborting a run (#1091).
         "llm_max_retries": None,
+        # Our own inference retries: extra attempts on a rate-limited endpoint,
+        # each spaced by ``llm_retry_seconds``. None keeps only the SDK's
+        # sub-second budget, which a busy queue outruns; the desk sets 3 x 30s.
+        # When set, the SDK budget is dropped so the attempt count stays honest.
+        # Honoured by the OpenAI-compatible clients; the ChatGPT sign-in client
+        # already retries its own rate limits.
+        "llm_retries": None,
+        "llm_retry_seconds": 30,
         # Retries after the first Reddit/FRED data request; waits remain cancellable.
         "research_retries": 10,
         # Cap on output tokens forwarded to every provider chat client. None leaves

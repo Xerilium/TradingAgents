@@ -174,6 +174,9 @@ The dashboard link does not sign in or move money. Source: `renderSettings`, `re
 - **Laya device**: **CPU** or **GPU**.
 - **Stop cycle if a stock fails** (checkbox, default off). Helper: “When off, other queued stocks continue. Applies to new runs only.” When on, a failed stock stops dispatch of the remaining queued stocks.
 - **Concurrent stocks** is a whole-number field. The backend and the field accept integers from 1 through 100; the default is 1. This limit affects new research batches.
+- **Research data retries** is a whole-number field (default 10). It applies to data vendors (for example FRED, Reddit) with the existing bounded exponential backoff, never to model calls.
+- **Inference retries** is a whole-number field, 0-10, default 3. Extra attempts per model call when the model endpoint answers rate limited (HTTP 429 or a `queue_wait_timeout`/`rate_limit_error` code). 0 leaves only the short built-in SDK budget. Applies to new runs. Source: `tradingagents/llm_clients/openai_client.py` (`NormalizedChatOpenAI._generate`/`_agenerate`), `llm_clients/factory.py` (`llm_retries` / `llm_retry_seconds`; the SDK budget is dropped when retries are on). Source-only: the field was added in source on 2 November 2026 and is not in the installed production app until the next app-only release refresh; no live 429 retry has been observed yet.
+- **Inference retry wait / seconds** is a whole-number field, 0-600, default 30: the fixed wait between those attempts, so a busy model queue can clear instead of failing the stock. With the defaults, a rate-limited model call gets 4 attempts spaced 30 seconds apart before the stock fails.
 - **Social screening limit** in seconds.
 - **Social screening post limit** in posts.
 - **Model limits** section with the status area and **Refresh model limits** (see below).
