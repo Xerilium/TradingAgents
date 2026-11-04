@@ -7,6 +7,7 @@ import copy
 import csv
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -49,6 +50,8 @@ OWNED_ACTIVE = {"new", "accepted", "pending_new", "partially_filled", "pending_c
 CANCEL_UNCERTAIN = {"intent", "requested", "unknown"}
 DESK_ANALYSTS = ("market", "social", "news", "fundamentals")
 
+logger = logging.getLogger(__name__)
+
 
 class ResearchBudgetEvents(BaseCallbackHandler):
     def __init__(self, record):
@@ -75,6 +78,60 @@ def _number(value):
         return result if math.isfinite(result) else None
     except (ValueError, TypeError):
         return None
+
+
+def build_research_note(run, result):
+    """Render a completed per-symbol research result as an OKF-style Markdown note."""
+    symbol, trade_date = result["symbol"], result["trade_date"]
+    rating = result.get("rating") or "unrated"
+    reports = result.get("reports") or {}
+    tags = ", ".join(("research", "equity", symbol, trade_date, f"rating-{rating}"))
+    lines = [
+        "---",
+        "type: Equity Research Note",
+        f'title: "{symbol} research {trade_date}"',
+        f'description: "Complete desk research narrative for [[{symbol}]] dated {trade_date}."',
+        f"tags: [{tags}]",
+        f"generated: {{by: tradingagents/desk, at: {result.get('completed_at') or now()}}}",
+        "status: stable",
+        "---",
+        "",
+        f"# {symbol} research {trade_date}",
+        "",
+        f"Recommendation: {rating} for [[{symbol}]].",
+        "",
+        f"Symbol: {symbol}",
+        f"Trade date: {trade_date}",
+        f"Run ID: {run.get('id', '')}",
+        "",
+    ]
+    for key in REPORT_KEYS:
+        content = str(reports.get(key) or "").strip()
+        if content:
+            lines += [f"## {key.replace('_', ' ').capitalize()}", "", content, ""]
+    for key, label in (("investment_debate_state", "Investment debate"), ("risk_debate_state", "Risk debate")):
+        raw = reports.get(key)
+        if not raw:
+            continue
+        lines += [f"## {label}", ""]
+        try:
+            state = json.loads(raw)
+        except (TypeError, ValueError):
+            state = None
+        if isinstance(state, dict):
+            for field, value in state.items():
+                if isinstance(value, str) and value.strip():
+                    lines += [f"### {field.replace('_', ' ')}", "", value.strip(), ""]
+        else:
+            lines += ["```text", str(raw), "```", ""]
+    gaps = result.get("coverage_gaps") or []
+    if gaps:
+        lines += ["## Evidence gaps", ""]
+        for gap in gaps:
+            detail = "; ".join(f"{key}: {value}" for key, value in gap.items() if value not in (None, "")) if isinstance(gap, dict) else str(gap)
+            lines.append(f"- {detail}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _payload(value):
@@ -2518,6 +2575,19 @@ class DeskService:
                     self._event(run_id, "coverage", line, symbol)
         return evidence_by_origin
 
+    def _publish_research_note(self, run, result):
+        """Mirror a completed narrative into Maenifold memory; this must never fail the research run."""
+        try:
+            self.gateway.execute("maenifold.memory", "WriteMemory", {
+                "title": "report",
+                "folder": f"research/{result['symbol']}/{result['trade_date']}",
+                "content": build_research_note(run, result),
+                "overwrite": True,
+            })
+        except Exception as exc:
+            logger.warning("Research memory write failed for %s %s: %s",
+                           result["symbol"], result["trade_date"], exc)
+
     def _run_with_evidence(self, run_id, market, workflow):
         from tradingagents.agents.rating import run_rating
         from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -2680,6 +2750,8 @@ class DeskService:
                 with self.store.lock:
                     result["elapsed_seconds"] = round(time.monotonic() - started, 3)
                     self.store.save_research()
+                if result["status"] == "completed":
+                    self._publish_research_note(run, result)
 
         def research_symbol(symbol):
             with capture_vendor_evidence(self._evidence_recorder(run_id, symbol),
