@@ -37,10 +37,22 @@ def _completion_body(text: str) -> dict:
     }
 
 
+def _rate_limited(retry_after: str | None) -> openai.RateLimitError:
+    """A real SDK 429 carrying an optional Retry-After header."""
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    response = httpx.Response(
+        429, headers=headers,
+        request=httpx.Request("POST", "http://127.0.0.1:9/v1/chat/completions"),
+    )
+    return openai.RateLimitError("Rate limit reached", response=response, body=None)
+
+
 class AsyncRateLimitRetryTests(unittest.IsolatedAsyncioTestCase):
     """One retry allowed (rate_limit_retries=1), spaced by a tiny wait."""
 
-    def _client(self, handler) -> tuple[LocalCompatibleChatOpenAI, httpx.AsyncClient]:
+    def _client(self, handler,
+                rate_limit_wait_seconds: float = 0.01,
+                ) -> tuple[LocalCompatibleChatOpenAI, httpx.AsyncClient]:
         aclient = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         model = LocalCompatibleChatOpenAI(
             model="test-model",
@@ -48,7 +60,7 @@ class AsyncRateLimitRetryTests(unittest.IsolatedAsyncioTestCase):
             base_url="http://127.0.0.1:9/v1",
             max_retries=0,                 # keep the SDK out of the retry loop
             rate_limit_retries=1,
-            rate_limit_wait_seconds=0.01,
+            rate_limit_wait_seconds=rate_limit_wait_seconds,
             http_async_client=aclient,
         )
         return model, aclient
@@ -91,6 +103,51 @@ class AsyncRateLimitRetryTests(unittest.IsolatedAsyncioTestCase):
             await aclient.aclose()
 
         self.assertEqual(len(calls), 1, "a permanent 4xx must fail fast, no retry")
+
+    async def test_retry_after_shorter_than_configured_wait_is_floored(self):
+        """Azure Foundry answers a token-per-minute 429 with ``Retry-After: 1``.
+
+        Honouring that hint alone spaces the attempts a second apart, all inside
+        the same one-minute window, so every retry hits the same wall. The
+        configured wait has to act as a floor over the shorter server hint.
+        """
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            if len(calls) == 1:
+                return httpx.Response(429, headers={"Retry-After": "0"}, json={
+                    "error": {"message": "Too Many Requests",
+                              "type": "rate_limit_error", "code": "rate_limit_exceeded"},
+                })
+            return httpx.Response(200, json=_completion_body("floored"))
+
+        # 0.02s keeps the real sleep trivial while still proving the floor beat
+        # the server's zero-second hint (the old code slept 0).
+        model, aclient = self._client(handler, rate_limit_wait_seconds=0.02)
+        try:
+            with self.assertLogs("tradingagents.llm_clients.openai_client", "WARNING") as logs:
+                result = await model.ainvoke([HumanMessage(content="hi")])
+        finally:
+            await aclient.aclose()
+
+        self.assertEqual(result.content, "floored")
+        self.assertEqual(len(calls), 2, "the 429 must still be retried once")
+        self.assertIn("retry 1/2 in 0.02s", "\n".join(logs.output),
+                      "the configured wait must floor a shorter Retry-After hint")
+
+    def test_longer_server_hint_still_wins_over_the_floor(self):
+        """The floor must not throw away a Retry-After that is already bigger."""
+        model = LocalCompatibleChatOpenAI(
+            model="test-model", api_key="test-key",
+            base_url="http://127.0.0.1:9/v1",
+            rate_limit_retries=1, rate_limit_wait_seconds=5.0,
+        )
+        self.assertEqual(model._rate_limit_delay(0, _rate_limited("0")), 5.0)
+        self.assertEqual(model._rate_limit_delay(0, _rate_limited(None)), 5.0)
+        self.assertEqual(model._rate_limit_delay(0, _rate_limited("90")), 90.0)
+        self.assertIsNone(model._rate_limit_delay(1, _rate_limited("90")),
+                          "a spent retry budget must still give up, hint or no hint")
 
 
 if __name__ == "__main__":

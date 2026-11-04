@@ -86,9 +86,9 @@ class NormalizedChatOpenAI(ChatOpenAI):
             if self.rate_limit_retries:
                 logger.error("Model endpoint rate limited after %d attempts; giving up.", attempt + 1)
             return None
-        delay = _retry_after(exc) if exc is not None else None
-        if delay is None:
-            delay = self.rate_limit_wait_seconds
+        # The configured wait is a floor: providers report Retry-After: 1 for a
+        # per-minute token-per-minute window, where that hint badly underestimates.
+        delay = max(self.rate_limit_wait_seconds, _retry_after(exc) or 0.0)
         logger.warning("Model endpoint rate limited; retry %d/%d in %ss.",
                        attempt + 1, self.rate_limit_retries + 1, delay)
         return delay
