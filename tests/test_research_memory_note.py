@@ -91,7 +91,7 @@ class ResearchMemoryNoteTests(unittest.TestCase):
         self.assertEqual((domain, command), ("maenifold.memory", "WriteMemory"))
         self.assertEqual(set(parameters), {"title", "folder", "content", "overwrite"})
         self.assertEqual(parameters["title"], "report")
-        self.assertEqual(parameters["folder"], "research/AAPL/2026-11-04")
+        self.assertEqual(parameters["folder"], "research/AAPL/2026/11/04")
         self.assertIs(parameters["overwrite"], True)
 
     def test_note_carries_okf_frontmatter_and_every_report(self):

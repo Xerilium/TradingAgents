@@ -2578,9 +2578,10 @@ class DeskService:
     def _publish_research_note(self, run, result):
         """Mirror a completed narrative into Maenifold memory; this must never fail the research run."""
         try:
+            yyyy, mm, dd = result["trade_date"].split("-")
             self.gateway.execute("maenifold.memory", "WriteMemory", {
                 "title": "report",
-                "folder": f"research/{result['symbol']}/{result['trade_date']}",
+                "folder": f"research/{result['symbol']}/{yyyy}/{mm}/{dd}",
                 "content": build_research_note(run, result),
                 "overwrite": True,
             })
