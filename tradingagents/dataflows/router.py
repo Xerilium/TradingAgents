@@ -690,7 +690,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     # enrichment categories degrade to a sentinel instead, so flavour data can't
     # abort the run.
     if first_error is not None:
-        if optional:
+        if optional or not {"fred", "alpaca"}.intersection(vendor_chain):
             logger.warning("Optional %s unavailable for %s: %s", category, method, _logged_error(first_error))
             return (
                 f"DATA_UNAVAILABLE: optional {category} could not be retrieved "

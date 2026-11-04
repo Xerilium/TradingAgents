@@ -2738,7 +2738,7 @@ class DeskService:
                     if attempt.get("capture_error")
                     or (attempt.get("vendor") in {"fred", "alpaca"} and source_attempt_failed(attempt, attempts))
                 ]
-                if failed or not evidence["source"].get("capture_complete"):
+                if failed or not evidence["source"].get("persistence_complete"):
                     raise ValueError("Research incomplete: source collection or evidence capture failed: " + ", ".join(sorted(set(failed))))
                 for origin in ("gateway", "jev"):
                     if call_evidence_failed(evidence[origin]):
