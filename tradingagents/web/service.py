@@ -83,13 +83,12 @@ def _number(value):
 def build_research_note(run, result):
     """Render a completed per-symbol research result as a Markdown body for Maenifold."""
     symbol, trade_date = result["symbol"], result["trade_date"]
-    rating = result.get("rating") or "unrated"
+    rating = result.get("rating")
     reports = result.get("reports") or {}
     lines = [
         f"# {symbol} research {trade_date}",
         "",
-        f"Recommendation: {rating} for [[{symbol}]].",
-        "",
+        *([f"Recommendation: {rating} for [[{symbol}]].", ""] if rating else []),
         f"Symbol: {symbol}",
         f"Trade date: {trade_date}",
         f"Run ID: {run.get('id', '')}",

@@ -105,6 +105,15 @@ class ResearchMemoryNoteTests(unittest.TestCase):
         self.assertIn("## Evidence gaps", content)
         self.assertIn("get_reddit_posts", content)
 
+    def test_decision_assets_without_run_rating_omit_recommendation_header(self):
+        self.result.pop("rating")
+        for asset in ("trader_investment_plan", "final_trade_decision"):
+            with self.subTest(asset=asset):
+                result = {**self.result, "reports": {asset: "**Rating**: Underweight"}}
+                content = build_research_note(self.run, result)
+                self.assertNotIn("Recommendation:", content)
+                self.assertIn("**Rating**: Underweight", content)
+
     def test_debates_render_as_readable_turns(self):
         content = build_research_note(self.run, self.result)
         self.assertIn("## Investment debate", content)
