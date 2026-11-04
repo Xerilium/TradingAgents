@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from cli.stats_handler import StatsCallbackHandler
 from langchain_core.callbacks import BaseCallbackHandler
 from tradingagents.agents.post_screen import SOCIAL_ADMISSION_VERSION, laya_news_screen, laya_screen
+from tradingagents.dataflows.date_window import get_current_date
 from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
@@ -2235,7 +2236,8 @@ class DeskService:
         return self._start_run(symbols, expected_revision, analysis_date, exclude_fred)
 
     def _start_run(self, symbols, expected_revision, analysis_date, exclude_fred=False):
-        trade_date = today() if analysis_date is None else analysis_date
+        # Match the graph guard's clock basis (trading_graph.py uses date_window.get_current_date).
+        trade_date = get_current_date() if analysis_date is None else analysis_date
         # Reuse the MCP binding's canonical/New York date validation without discovery.
         try:
             build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
