@@ -264,6 +264,10 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
                 if estimate > available:
                     # shortcut: temp GUARD_PROBE diagnosis, remove after call site identified
                     logger.error("GUARD_PROBE: estimate=%s available=%s output=%s buffer=%s", estimate, available, output, buffer, stack_info=True)
+                    task = asyncio.current_task()
+                    if task is not None:
+                        for _f in task.get_stack():
+                            logger.error("GUARD_TASK_STACK %s:%d in %s", _f.f_code.co_filename, _f.f_lineno, _f.f_code.co_name)
                     raise ValueError(f"Request still exceeds the context budget after trimming: estimate={estimate}, available={available}, output={output}, buffer={buffer}.")
             set_output_limit(payload, output)
             return payload
