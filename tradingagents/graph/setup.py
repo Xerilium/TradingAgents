@@ -106,6 +106,7 @@ class GraphSetup:
         max_tool_rounds: int,
         supplemental_tools: Iterable[BaseTool] | None = None,
         social_screen_factory=None,
+        relevance_screen=None,
         exclude_fred=False,
         workflow=None,
     ):
@@ -116,6 +117,7 @@ class GraphSetup:
         self.max_tool_rounds = max_tool_rounds
         self.supplemental_tools = tuple(supplemental_tools or ())
         self.social_screen_factory = social_screen_factory
+        self.relevance_screen = relevance_screen
         self.exclude_fred = exclude_fred
         self.bundle = workflow
 
@@ -143,8 +145,8 @@ class GraphSetup:
         specs = {spec.key: spec for spec in plan.specs}
         factories = {
             "market": lambda llm, spec: create_market_analyst(llm, tools=spec.tools, workflow=self.bundle),
-            "social": lambda llm, spec: create_sentiment_analyst(llm, screen_factory=self.social_screen_factory, workflow=self.bundle),
-            "news": lambda llm, spec: create_news_analyst(llm, tools=spec.tools, workflow=self.bundle),
+            "social": lambda llm, spec: create_sentiment_analyst(llm, screen_factory=self.social_screen_factory, relevance_screen=self.relevance_screen, workflow=self.bundle),
+            "news": lambda llm, spec: create_news_analyst(llm, tools=spec.tools, relevance_screen=self.relevance_screen, workflow=self.bundle),
             "fundamentals": lambda llm, spec: create_fundamentals_analyst(llm, tools=spec.tools, workflow=self.bundle),
             "bull": lambda llm, _: create_bull_researcher(llm, workflow=self.bundle),
             "bear": lambda llm, _: create_bear_researcher(llm, workflow=self.bundle),

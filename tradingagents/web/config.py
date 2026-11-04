@@ -46,6 +46,9 @@ class DeskConfig(BaseModel):
     maenifold_root: str = Field(default="", max_length=500)
     social_screen_timeout_seconds: int = Field(default=600, ge=1)
     social_screen_max_posts: int = Field(default=100, ge=1)
+    news_article_limit: int = Field(default=10, ge=1, le=100, strict=True)
+    prediction_market_limit: int = Field(default=6, ge=1, le=50, strict=True)
+    prediction_search_limit: int = Field(default=50, ge=1, le=200, strict=True)
     selected_analysts: list[Literal["market", "social", "news", "fundamentals"]] = Field(
         default_factory=lambda: ["market", "social", "news", "fundamentals"], min_length=1, max_length=4)
 

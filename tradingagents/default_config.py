@@ -146,11 +146,11 @@ def build_default_config() -> dict:
         # News / data fetching parameters
         # Increase for longer lookback strategies or to broaden macro coverage;
         # decrease to reduce token usage in agent prompts.
-        "news_article_limit": 20,             # max articles per ticker (ticker-news)
+        "news_article_limit": 10,             # max articles per ticker (ticker-news)
         "global_news_article_limit": 10,      # max articles for global/macro news
         "global_news_lookback_days": 7,       # macro news lookback window
-        "prediction_market_limit": None,     # all matching markets returned by search
-        "prediction_search_limit": 100,      # upstream event search page size
+        "prediction_market_limit": 6,        # highest-volume matching markets served
+        "prediction_search_limit": 50,       # upstream event search page size
         # Search queries used by get_global_news for macro headlines. Extend or
         # replace to broaden geographic / sector coverage.
         "global_news_queries": [

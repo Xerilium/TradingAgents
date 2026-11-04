@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 
 from cli.stats_handler import StatsCallbackHandler
 from langchain_core.callbacks import BaseCallbackHandler
-from tradingagents.agents.post_screen import SOCIAL_ADMISSION_VERSION, laya_screen
+from tradingagents.agents.post_screen import SOCIAL_ADMISSION_VERSION, laya_news_screen, laya_screen
 from tradingagents.dataflows.router import capture_vendor_evidence
 from tradingagents.default_config import build_default_config
 from tradingagents.integrations.maenifold import (
@@ -2588,9 +2588,16 @@ class DeskService:
                         source=source, on_evidence=record, on_progress=progress,
                         cancelled=lambda: run_id in self.cancelled)
 
+                def news_screen_factory(ticker, *, instrument_context=""):
+                    company = re.search(r"(?:Company|Name): ([^\n;]+)", instrument_context)
+                    return laya_news_screen(self.local_laya, ticker,
+                        instrument=f"{company.group(1)} ({ticker})" if company else ticker,
+                        cancelled=lambda: run_id in self.cancelled)
+
                 graph = (self.graph_factory or TradingAgentsGraph)(selected_analysts=config["selected_analysts"],
                     config=graph_config, supplemental_tools=tools, callbacks=callbacks,
-                    social_screen_factory=screen_factory, local_memory=False, cancellation=cancellation, workflow=workflow)
+                    social_screen_factory=screen_factory, relevance_screen=news_screen_factory,
+                    local_memory=False, cancellation=cancellation, workflow=workflow)
                 initial = graph.create_run_state(symbol, run["trade_date"], portfolio=portfolio)
                 initial["desk_execution_policy"] = desk_execution_policy(config, workflow)
                 quote = research_quote_context(symbol, run["trade_date"], market, workflow)

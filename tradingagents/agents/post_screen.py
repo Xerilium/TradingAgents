@@ -24,6 +24,7 @@ import logging
 import math
 import os
 import random
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 # Social classification is evidence, never permission to place an order.
 _LAYA_LANE = threading.Condition()
 _LAYA_QUEUE = deque()
-SOCIAL_ADMISSION_VERSION = "probability-contract-v3"
+SOCIAL_ADMISSION_VERSION = "probability-contract-v4"
 LAYA_QUESTIONS = {
     "about": {"kind": "yes_no", "instructions": "Is this post about {instrument}: the company, its stock, products or outlook?",
               "criteria": {
@@ -327,6 +328,11 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                 evidence["error"] = str(exc).strip()[:300] or type(exc).__name__
         finally:
             progress()
+        # A classified off-topic prediction drops the post from the injected
+        # block; unscreened and uncertain-relevance posts stay.
+        for index, row in enumerate(rows):
+            if row["status"] == "classified" and row.get("relevance_prediction") == "off_topic":
+                keep[index] = False
         counts = evidence["counts"]
         evidence["status"] = ("empty" if not posts else "unavailable" if counts["unscreened"] == len(posts)
                               else "partial" if counts["unscreened"] else "completed")
@@ -346,7 +352,7 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
                 + ". An off-topic post's stance is not directional evidence for this instrument. "
                 + f"Coverage: {classified} of {len(posts)} fetched posts classified; {sum(keep)} retained. "
                 + f"{uncertain_relevance} retained posts have uncertain relevance. "
-                + "All fetched posts are retained for analyst review, including classifier off-topic predictions. Classifier relevance and stance are fallible annotations; correct them from the original text. Stance predictions below the probability threshold or tied for the lead count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a separate signal. "
+                + "Posts the classifier marks off-topic are excluded from the posts below; every other fetched post is retained. Classifier relevance and stance are fallible annotations; correct them from the original text. Stance predictions below the probability threshold or tied for the lead count as unclear; their raw predictions remain in the evidence. User-provided Bullish/Bearish/no-label tags describe a separate signal. "
                 + (f"Screening deferred: {evidence['stop_reason']}; fetched posts remain available, not a source failure. " if evidence.get("stop_reason") else "")
                  + (f"Screening error: {evidence['error']} " if evidence.get("error") else "")
                 + "Unscreened is not neutral. Classification is evidence, not trade approval.")
@@ -398,6 +404,47 @@ def laya_screen(ticker, gateway, *, max_posts=None, budget=None, on_evidence=Non
     screen.separate_decisions = False
     screen.evidence = None
     return screen
+
+
+def laya_news_screen(gateway, ticker, *, instrument=None, cancelled=lambda: False, max_seconds=120):
+    """Drop articles Laya marks off-topic from a get_news block before the analyst reads it.
+
+    Each article is asked the same yes_no "about" question as social posts, on its
+    title plus first 800 characters. Any screening failure leaves the block
+    untouched; a filtered block carries a note counting the drops.
+    shortcut: no per-call receipt here, unlike laya_screen; add observe_gateway_call
+    wrapping if news drops ever need audit evidence.
+    """
+    instrument = instrument or ticker
+
+    def screen(block: str) -> str:
+        parts = re.split(r"(?=^### )", block, flags=re.MULTILINE)
+        articles = [(index, part) for index, part in enumerate(parts) if part.startswith("### ")]
+        if not articles:
+            return block
+        questions = copy.deepcopy(LAYA_QUESTIONS)
+        for question in questions.values():
+            question["instructions"] = question["instructions"].format(instrument=instrument)
+        try:
+            deadline = time.monotonic() + max_seconds
+            dropped = set()
+            for start in range(0, len(articles), 5):
+                chunk = articles[start:start + 5]
+                responses = gateway.predict_batch([part[:800] for _, part in chunk], questions,
+                    cancelled=cancelled, deadline=deadline, on_dispatch=lambda: None)
+                dropped.update(index for (index, _), response in zip(chunk, responses, strict=True)
+                               if interpret_laya_answers(response)["relevance_prediction"] == "off_topic")
+        except Exception:
+            logger.warning("News relevance screening failed for %s; the block is served unscreened", instrument)
+            return block
+        if not dropped:
+            return block
+        return ("".join(part for index, part in enumerate(parts) if index not in dropped)
+                + f"\nRelevance screening dropped {len(dropped)} of {len(articles)} news articles the "
+                f"classifier judged off-topic for {instrument}; the vendor feed may hold more.\n")
+
+    return screen
+
 
 _DEFAULT_BASE_URL = "https://api.typesafe.ai"
 _DEFAULT_MODEL = "jev-latest"

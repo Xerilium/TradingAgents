@@ -46,7 +46,7 @@ def _seven_days_back(trade_date: str) -> str:
     return (datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
 
 
-def create_sentiment_analyst(llm, *, screen_factory=None, workflow):
+def create_sentiment_analyst(llm, *, screen_factory=None, relevance_screen=None, workflow):
     """Create a sentiment analyst node for the trading graph.
 
     Pre-fetches news + StockTwits + Reddit data, injects them into the
@@ -66,6 +66,8 @@ def create_sentiment_analyst(llm, *, screen_factory=None, workflow):
         # returns a string (no exceptions surface from here), so the LLM
         # always sees something — either real data or a clear placeholder.
         news_block = get_news.func(ticker, start_date, end_date)
+        if relevance_screen:
+            news_block = relevance_screen(ticker, instrument_context=instrument_context)(news_block)
         # Acquire the smaller Reddit sample first, then use the remaining shared
         # post allowance for StockTwits. Both feeds remain represented.
         post_limit = get_config().get("social_screen_max_posts", 100)

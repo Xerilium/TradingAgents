@@ -268,6 +268,8 @@ class WorkflowBundle:
         by_handler = {node["handler"]: name for name, node in nodes.items()}
         branches = {by_handler[h] for h in ANALYSTS | {"memory"}}
         starts = set()
+        chains = set()
+        chain_edges = []
         joins = []
         manager_edges = []
         risk_entries = []
@@ -281,6 +283,11 @@ class WorkflowBundle:
             target = edge["to"]
             if origins == ["START"] and target in branches:
                 starts.add(target)
+            elif len(origins) == 1 and origins[0] in branches and target in branches:
+                # Analysts may run in series: each stage hands its report to
+                # the next before the join, one smaller model call each.
+                chains.add(target)
+                chain_edges.append((origins[0], target))
             elif set(origins) == branches and target in {by_handler["bull"], by_handler["bear"]}:
                 joins.append(target)
             elif origins == [by_handler["research_manager"]] and target == by_handler["trader"]:
@@ -291,7 +298,8 @@ class WorkflowBundle:
                 finish_edges.append(target)
             else:
                 raise ValueError("workflow.yaml: connection bypasses a required research stage or debate join")
-        if starts != branches or len(joins) != 1 or len(manager_edges) != 1 or len(risk_entries) != 1 or len(finish_edges) != 1:
+        if (starts | chains != branches or starts & chains or len(chain_edges) != len(chains)
+                or len(joins) != 1 or len(manager_edges) != 1 or len(risk_entries) != 1 or len(finish_edges) != 1):
             raise ValueError("workflow.yaml: each analyst branch and required stage needs one connection")
         if routers_seen != {"bull", "bear", "aggressive", "conservative", "neutral"}:
             raise ValueError("workflow.yaml: each debate participant needs its bounded router")

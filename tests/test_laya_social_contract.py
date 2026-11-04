@@ -19,7 +19,11 @@ from tradingagents.paper import engine
 def answer(about=.95, stance="bullish", probability=.8, confidence=.9):
     probabilities = {name: (probability if name == stance else (1-probability)/2)
                      for name in ("bullish", "bearish", "neutral")}
-    return {"contract": {"grade": "reconsider"}, "answers": {
+    return {"contract": {"grade": "reconsider"}, "usage": {"context_budget": {
+                "model": "multilingual", "effective_max_tokens": 8192,
+                "sequence_tokens": {name: 100 for name in post_screen.LAYA_QUESTIONS},
+                "questions_complete": True, "state_complete": True,
+            }}, "answers": {
         "about": {"kind": "yes_no", "value": about >= .5,
                   "grade": "auto_execute" if max(about, 1-about) >= .8 else "reconsider",
                   "probabilities": {"true": about, "false": 1-about},
@@ -118,7 +122,9 @@ def test_saved_neutral_failure_is_not_relabelled_as_a_success():
 
 
 def test_uncertain_stance_contract_overrides_high_winning_probability():
-    callback = screen(SocialGateway(answer(probability=.8, confidence=.01)))
+    # Unclear is decided by the probability threshold (0.5), not an authority
+    # grade; the raw prediction and grade stay visible in the evidence.
+    callback = screen(SocialGateway(answer(probability=.4, confidence=.4)))
     keep, note = callback(["META up"])
     assert keep == [True]
     assert "1 unclear" in note and "0 bullish" in note
@@ -131,29 +137,35 @@ def test_only_clearly_irrelevant_posts_are_removed_and_uncertain_stance_is_retai
                             answer(stance="neutral"))
     keep, note = screen(gateway)(["Spam", "Not sure about META", "META reports tomorrow"])
     assert keep == [False, True, True]
-    assert "1 unclear" in note and "1 neutral" in note and "0 bullish" in note
+    # Stance counts include every classified post, even one dropped as off-topic;
+    # the note states an off-topic stance is not directional evidence.
+    assert "1 unclear" in note and "1 neutral" in note and "1 bullish" in note
 
 
-def test_actual_bullish_receipt_retains_uncertain_relevance():
+def test_actual_bullish_receipt_off_topic_probability_drops_the_post():
     import json
     from pathlib import Path
     receipt = json.loads(Path(__file__).with_name("laya_social_bullish_receipt.json").read_text())
     callback = screen(SocialGateway(receipt["result"]))
     keep, note = callback([receipt["post"]])
-    assert keep == [True] and "1 bullish" in note
-    assert "1 retained posts have uncertain relevance" in note
+    # v4 drops on the probability itself: P(about)=.2156 is below the 0.3
+    # off-topic line whatever the receipt's authority grade field claims.
+    assert keep == [False] and "1 bullish" in note
+    assert "0 retained posts have uncertain relevance" in note
     row = callback.evidence["posts"][0]
     assert row["about_probability"] == .2156
     assert row["stance_probability"] == .9781
-    assert row["relevance_uncertain"] is True and row["relevance_grade"] == "reconsider"
+    assert row["relevance_uncertain"] is False and row["relevance_grade"] == "reconsider"
     assert row["result"] == receipt["result"]
 
 
-def test_missing_relevance_contract_never_discards_post():
+def test_relevance_grade_does_not_gate_the_off_topic_drop():
+    # The pinned local SDK returns probabilities without authority grades, so a
+    # clear off-topic probability drops the post whatever the grade field says.
     result = answer(about=.05)
     result["answers"]["about"].pop("grade")
     keep, _ = screen(SocialGateway(result))(["post"])
-    assert keep == [True]
+    assert keep == [False]
 
 
 @pytest.mark.parametrize("bad", [None, {}, {"answers": {}},
@@ -191,14 +203,15 @@ def test_oversize_post_is_not_truncated_or_sent_to_inference():
     original = gateway.execute
     def execute(domain, command, parameters, **kwargs):
         result = original(domain, command, parameters, **kwargs)
-        if command == "count_context":
-            result["sequence_tokens"]["about"] = 8193
+        if command == "decide":
+            result["usage"]["context_budget"]["sequence_tokens"] = {
+                name: 8193 for name in post_screen.LAYA_QUESTIONS}
         return result
     gateway.execute = execute
     callback = screen(gateway)
     posts = ["original post" * 100]
     keep, note = callback(posts)
-    assert keep == [True] and not gateway.decisions
+    assert keep == [True] and len(gateway.decisions) == 1
     assert callback.evidence["posts"][0]["text"] == posts[0]
     assert "1 unscreened" in note
 

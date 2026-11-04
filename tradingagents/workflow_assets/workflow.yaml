@@ -20,9 +20,9 @@ nodes:
   Portfolio Manager: {handler: portfolio_manager, tier: deep}
 edges:
   - {from: START, to: Market Analyst}
-  - {from: START, to: Sentiment Analyst}
-  - {from: START, to: News Analyst}
-  - {from: START, to: Fundamentals Analyst}
+  - {from: Market Analyst, to: Sentiment Analyst}
+  - {from: Sentiment Analyst, to: News Analyst}
+  - {from: News Analyst, to: Fundamentals Analyst}
   - {from: START, to: Memory Log}
   - from: [Market Analyst, Sentiment Analyst, News Analyst, Fundamentals Analyst, Memory Log]
     to: Bull Researcher

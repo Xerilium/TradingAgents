@@ -54,6 +54,7 @@ class TradingAgentsGraph:
         callbacks: list | None = None,
         supplemental_tools: list[BaseTool] | None = None,
         social_screen_factory=None,
+        relevance_screen=None,
         local_memory=True,
         cancellation=None,
         workflow=None,
@@ -120,6 +121,7 @@ class TradingAgentsGraph:
             max_tool_rounds,
             supplemental_tools=self.supplemental_tools,
             social_screen_factory=social_screen_factory,
+            relevance_screen=relevance_screen,
             exclude_fred=self.config.get("exclude_fred", False),
             workflow=self.workflow,
         )
