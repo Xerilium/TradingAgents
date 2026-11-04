@@ -330,6 +330,9 @@ function restoreReadingAnchor(panel,anchor){
 function syncReportView(){const key=`${chosenRun()?.id||selectedRunId}:${selectedSymbol}${activePage==='research'?':'+researchTab+':'+researchReport:''}`;if(key!==reportViewKey){reportViews.set(reportViewKey,{open:openReportNames,scroll:reportViews.get(reportViewKey)?.scroll||0});reportViewKey=key;openReportNames=reportViews.get(key)?.open||new Set(['final_trade_decision']);}return key;}
 let orderFilter = 'all';
 let universeSort = {field:'default',direction:1};
+let researchSort = 'universe';
+const RESEARCH_SORTS=[['universe','Universe order'],['symbol','Symbol'],['status','Status'],['age-oldest','Research age (oldest)'],['age-newest','Research age (newest)']];
+const RESEARCH_STATUS_ORDER=['completed','incomplete','running','queued','failed','cancelled'];
 let chartMode = 'stock';
 let chartPeriod = 'month';
 const chartEvidence=new Map();
@@ -367,8 +370,8 @@ function reviewLabel(result){if(['failed','cancelled'].includes(result?.status))
 function filteredWatch(){const v=listViews.watch;return sortedUniverse().filter(symbol=>{if(!matchesStock(symbol,v.query))return false;const r=state.research?.[symbol],q=liveQuoteState(state.quotes?.[symbol]);return v.filter==='all'||v.filter==='selected'&&selectedSymbols.has(symbol)||v.filter==='held'&&positions().some(p=>p.symbol===symbol)||v.filter==='unresearched'&&!(r?.status==='completed'&&r.trade_date===DeskLists.dateNY())||v.filter===q;});}
 function emptyMatches(){return '<div class="detail-note">No matches. Change the search or filter to see more stocks. Your research selection is preserved.</div>';}
 
-function persistView(){try{localStorage.setItem('paper-desk-view',JSON.stringify({listViews,selected:[...selectedSymbols],symbol:selectedSymbol,runId:chosenRun()?.id||selectedRunId,researchTab,researchReport,sort:universeSort}));}catch{}}
-function restoreView(){try{const saved=JSON.parse(localStorage.getItem('paper-desk-view')||'null');if(!saved)return false;for(const [name,value]of Object.entries(saved.listViews||{})){if(!listViews[name]||!value||typeof value!=='object')continue;listViews[name]={query:typeof value.query==='string'?value.query.slice(0,100):'',filter:typeof value.filter==='string'?value.filter:'all',page:Number.isInteger(value.page)?value.page:0,size:[25,50,100].includes(value.size)?value.size:25};}selectedSymbols=new Set((Array.isArray(saved.selected)?saved.selected:[]).filter(symbol=>universe().includes(symbol)));if(!linkedResearch.has('run_id')&&!linkedSymbol){const run=runs().find(r=>r.id===saved.runId);if(run){selectedRunId=run.id;if(['summary','reports','debate','sources','activity','setup'].includes(saved.researchTab))researchTab=saved.researchTab;if(typeof saved.researchReport==='string')researchReport=saved.researchReport;}}if(!linkedSymbol&&(universe().includes(saved.symbol)||chosenRun()?.symbols?.includes(saved.symbol)))selectedSymbol=saved.symbol;if(['default','symbol','price'].includes(saved.sort?.field))universeSort={field:saved.sort.field,direction:saved.sort.direction===-1?-1:1};return true;}catch{return false;}}
+function persistView(){try{localStorage.setItem('paper-desk-view',JSON.stringify({listViews,selected:[...selectedSymbols],symbol:selectedSymbol,runId:chosenRun()?.id||selectedRunId,researchTab,researchReport,sort:universeSort,researchSort}));}catch{}}
+function restoreView(){try{const saved=JSON.parse(localStorage.getItem('paper-desk-view')||'null');if(!saved)return false;for(const [name,value]of Object.entries(saved.listViews||{})){if(!listViews[name]||!value||typeof value!=='object')continue;listViews[name]={query:typeof value.query==='string'?value.query.slice(0,100):'',filter:typeof value.filter==='string'?value.filter:'all',page:Number.isInteger(value.page)?value.page:0,size:[25,50,100].includes(value.size)?value.size:25};}selectedSymbols=new Set((Array.isArray(saved.selected)?saved.selected:[]).filter(symbol=>universe().includes(symbol)));if(!linkedResearch.has('run_id')&&!linkedSymbol){const run=runs().find(r=>r.id===saved.runId);if(run){selectedRunId=run.id;if(['summary','reports','debate','sources','activity','setup'].includes(saved.researchTab))researchTab=saved.researchTab;if(typeof saved.researchReport==='string')researchReport=saved.researchReport;}}if(!linkedSymbol&&(universe().includes(saved.symbol)||chosenRun()?.symbols?.includes(saved.symbol)))selectedSymbol=saved.symbol;if(['default','symbol','price'].includes(saved.sort?.field))universeSort={field:saved.sort.field,direction:saved.sort.direction===-1?-1:1};if(RESEARCH_SORTS.some(([key])=>key===saved.researchSort))researchSort=saved.researchSort;return true;}catch{return false;}}
 let pendingResearch=null,researchReviewSequence=0;
 const researchLaunchSymbols=()=>{const batch=researchSelection();return batch.length?batch:universe().includes(selectedSymbol)?[selectedSymbol]:[];};
 const researchLaunchIdentity=()=>JSON.stringify({server:state.server_instance_id,generation:state.store_generation,revision:state.config_revision,symbols:researchLaunchSymbols()});
@@ -1059,9 +1062,16 @@ function researchDrift(symbol){
  const close=number(bar?.raw?.c),last=number(q.price);
  return close!==null&&close>0&&last!==null?percent((last/close-1)*100):'—';
 }
+function researchSorted(items){
+ const rank=symbol=>{const index=RESEARCH_STATUS_ORDER.indexOf(researchRowStatus(state.research?.[symbol],null));return index<0?RESEARCH_STATUS_ORDER.length:index;},age=symbol=>{const tradeDate=state.research?.[symbol]?.trade_date;return tradeDate?Date.parse(tradeDate):null;};
+ if(researchSort==='symbol')return items.sort((a,b)=>a.localeCompare(b));
+ if(researchSort==='status')return items.sort((a,b)=>rank(a)-rank(b)||a.localeCompare(b));
+ if(researchSort==='age-oldest'||researchSort==='age-newest')return items.sort((a,b)=>{const left=age(a),right=age(b);if(left===null||right===null)return(left===null?1:0)-(right===null?1:0)||a.localeCompare(b);return(researchSort==='age-oldest'?left-right:right-left)||a.localeCompare(b);});
+ return items;
+}
 function researchCollection(run){
- const items=researchPickerSymbols(),p=listPage('research',items);
- const toolbar=listToolbar('research',[['all','All stocks'],['selected','Batch selected'],['completed','Completed'],['incomplete','Incomplete'],['running','Running'],['queued','Queued'],['failed','Failed'],['cancelled','Cancelled']]).replace(/<\/div>$/,'<button class="link-button" data-research-manage>Manage</button></div>');
+ const items=researchSorted(researchPickerSymbols()),p=listPage('research',items),selectable=p.items.filter(symbol=>universe().includes(symbol)),allSelected=selectable.length>0&&selectable.every(symbol=>selectedSymbols.has(symbol));
+ const toolbar=listToolbar('research',[['all','All stocks'],['selected','Batch selected'],['completed','Completed'],['incomplete','Incomplete'],['running','Running'],['queued','Queued'],['failed','Failed'],['cancelled','Cancelled']]).replace(/<\/div>$/,'<label for="research-sort">Sort<select id="research-sort" class="form-control">'+RESEARCH_SORTS.map(([key,label])=>'<option value="'+key+'" '+(researchSort===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><button class="link-button" data-research-select-all aria-pressed="'+allSelected+'" title="Select every stock shown on this page for the research batch" '+(selectable.length?'':'disabled')+'>Select all</button><button class="link-button" data-research-manage>Manage</button></div>');
  return toolbar+'<div class="research-rows">'+p.items.map(symbol=>{
   const held=positions().find(position=>position.symbol===symbol);
   return '<div class="research-picker-row"><input type="checkbox" class="symbol-select" id="research-batch-'+esc(symbol)+'" value="'+esc(symbol)+'" aria-label="Include '+esc(symbol)+' in research batch" '+(selectedSymbols.has(symbol)?'checked':'')+' '+(!universe().includes(symbol)?'disabled':'')+'><div id="research-symbol-'+esc(symbol)+'" role="button" tabindex="0" class="research-symbol" data-action="select-symbol" data-symbol="'+esc(symbol)+'" aria-pressed="'+(symbol===selectedSymbol)+'"><strong>'+esc(symbol)+'</strong><span>'+esc(researchAgeLabel(symbol))+' · Drift '+esc(researchDrift(symbol))+'</span><small>'+(!exposureKnown()?'UNKNOWN':held?esc(held.qty)+' sh':'—')+'</small></div></div>';
@@ -1069,12 +1079,13 @@ function researchCollection(run){
 }
 document.addEventListener('click',event=>{
  if(event.target.closest('[data-research-picker-focus]')){$('#research-search')?.focus();$('#research-search')?.scrollIntoView({block:'nearest'});}
+ if(event.target.closest('[data-research-select-all]')){const symbols=listPage('research',researchSorted(researchPickerSymbols())).items.filter(symbol=>universe().includes(symbol));if(symbols.length&&symbols.every(symbol=>selectedSymbols.has(symbol)))symbols.forEach(symbol=>selectedSymbols.delete(symbol));else symbols.forEach(symbol=>selectedSymbols.add(symbol));render();}
  if(event.target.closest('[data-research-manage]')){const panel=$('#research-delete');panel.open=!panel.open;panel.scrollIntoView({block:'nearest'});}
  if(event.target.closest('[data-research-needs-today]')){selectedSymbols=new Set(universe().filter(symbol=>!researchIsCurrent(symbol)));render();}
 });
 function researchIsCurrent(symbol){const result=state.research?.[symbol];return result?.status==='completed'&&!result.completion_gaps?.length&&result.trade_date===DeskLists.dateNY();}
 
-document.addEventListener('change',event=>{const symbol=event.target.dataset.deleteSymbol;if(!symbol||researchDeleteBlocked()||deleteResearchPreview)return;event.target.checked?researchDeleteSelection.add(symbol):researchDeleteSelection.delete(symbol);deleteResearchMessage='';render();});
+document.addEventListener('change',event=>{if(event.target.id==='research-sort'){researchSort=event.target.value;render();return;}const symbol=event.target.dataset.deleteSymbol;if(!symbol||researchDeleteBlocked()||deleteResearchPreview)return;event.target.checked?researchDeleteSelection.add(symbol):researchDeleteSelection.delete(symbol);deleteResearchMessage='';render();});
 document.addEventListener('click',async event=>{
  const action=event.target.closest('[data-action]')?.dataset.action;if(!['delete-select-matches','delete-select-outside','delete-clear','delete-preview','delete-confirm','delete-cancel'].includes(action))return;
  if(action==='delete-cancel'){if(!busy.has('delete-research')){deleteResearchPreview=null;deleteResearchMessage='';render();}return;}

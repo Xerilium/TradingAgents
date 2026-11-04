@@ -331,7 +331,7 @@ body{font:var(--text-body)/var(--leading-ui) var(--font)}
 #main .settings-content .settings-section{padding:var(--space-5)}
 #main .settings-content .settings-section>p,#main .settings-content .settings-note p{font-size:var(--text-body)}
 #main .settings-content .form-actions,#main .strategy-actions,#main .ticket-actions{gap:var(--space-2);padding:var(--space-3) var(--space-4)}
-#main .research-workspace .research-layout{grid-template-columns:minmax(260px,300px) minmax(0,1fr);gap:var(--space-4)}
+#main .research-workspace .research-layout{grid-template-columns:minmax(280px,324px) minmax(0,1fr);gap:var(--space-4)}
 #main .research-workspace .result-top,#main .research-workspace #research-detail-scroll{padding:var(--space-4)}
 #main .research-workspace .report-content,#main .report-content p{max-width:none}
 #main .report-content{font-size:var(--text-body);line-height:var(--leading-body)}
