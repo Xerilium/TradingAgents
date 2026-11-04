@@ -2,7 +2,6 @@ import logging
 import asyncio
 import json
 import httpx
-import math
 import time
 from contextvars import ContextVar
 import os
@@ -153,65 +152,6 @@ class _ContextBudgetExceeded(ValueError):
     pass
 
 
-# shortcut: byte/2 estimate, upgrade to exact tokenizer if trimming bites real
-# content. ceil(utf8_bytes/2) over-counts for byte-level BPE vocabularies, so
-# the enforced budget is never exceeded by the estimate.
-DEFAULT_LOCAL_CONTEXT_TOKENS = 262_144
-
-
-def _estimate_payload_tokens(payload: dict) -> int:
-    """Conservative prompt-token estimate: ceil(utf-8 bytes / 2)."""
-    total = len(json.dumps(payload.get("tools") or [], ensure_ascii=False).encode("utf-8"))
-    for message in payload.get("messages", []):
-        content = message.get("content")
-        if isinstance(content, str):
-            total += len(content.encode("utf-8"))
-        elif content is not None:
-            total += len(json.dumps(content, ensure_ascii=False).encode("utf-8"))
-    return math.ceil(total / 2)
-
-
-def _trim_to_fit(payload: dict, byte_budget: int) -> int:
-    """Cut the largest middle message blocks until the payload fits; returns bytes cut.
-
-    System messages and the final message (the task with the newest data) are
-    kept whole; middle blocks are trimmed largest-first from their tail.
-    """
-    messages = payload.get("messages", [])
-
-    def size(message) -> int:
-        content = message.get("content")
-        if isinstance(content, str):
-            return len(content.encode("utf-8"))
-        if content is None:
-            return 0
-        return len(json.dumps(content, ensure_ascii=False).encode("utf-8"))
-
-    total = sum(size(message) for message in messages)
-    total += len(json.dumps(payload.get("tools") or [], ensure_ascii=False).encode("utf-8"))
-    if total <= byte_budget:
-        return 0
-    candidates = [message for index, message in enumerate(messages)
-                  if message.get("role") != "system" and index != len(messages) - 1
-                  and isinstance(message.get("content"), str) and size(message) > 200]
-    cut = 0
-    for message in sorted(candidates, key=size, reverse=True):
-        if total <= byte_budget:
-            break
-        content = message["content"]
-        want = size(message) - (total - byte_budget)
-        # Keep room for the "[trimmed N bytes for context budget]" marker so the
-        # payload stays under the byte budget after it is appended.
-        keep = max(200, want - 64)
-        removed = len(content) - keep
-        if removed <= 0:
-            continue
-        message["content"] = content[:keep] + f"\n[trimmed {removed} bytes for context budget]"
-        total -= removed
-        cut += removed
-    return cut
-
-
 def _tokenization_error(stage, exc):
     """Report safe diagnostics without exposing server messages or request data."""
     details = [f"stage={stage}", f"error={type(exc).__name__}"]
@@ -248,29 +188,6 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
         if cached is not None:
             return cached
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
-        if self.max_total_tokens is None:
-            # Blank limits still get a pre-send budget: the documented quarter
-            # of the default window is reserved for the answer, and the byte/2
-            # estimate trims oversized prompts here instead of letting the
-            # server 400 the whole research step.
-            total = DEFAULT_LOCAL_CONTEXT_TOKENS
-            output, buffer, available = budget_limits(total, payload)
-            estimate = _estimate_payload_tokens(payload)
-            if estimate > available:
-                cut = _trim_to_fit(payload, available * 2)
-                logger.warning("Prompt estimate %d tokens exceeds the %d-token budget; trimmed %d bytes of middle context.",
-                               estimate, total, cut)
-                estimate = _estimate_payload_tokens(payload)
-                if estimate > available:
-                    # shortcut: temp GUARD_PROBE diagnosis, remove after call site identified
-                    logger.error("GUARD_PROBE: estimate=%s available=%s output=%s buffer=%s", estimate, available, output, buffer, stack_info=True)
-                    task = asyncio.current_task()
-                    if task is not None:
-                        for _f in task.get_stack():
-                            logger.error("GUARD_TASK_STACK %s:%d in %s", _f.f_code.co_filename, _f.f_lineno, _f.f_code.co_name)
-                    raise ValueError(f"Request still exceeds the context budget after trimming: estimate={estimate}, available={available}, output={output}, buffer={buffer}.")
-            set_output_limit(payload, output)
-            return payload
         parts = urlsplit(str(self.root_client.base_url))
         path = parts.path.rstrip("/")
         if path.endswith("/v1"):
