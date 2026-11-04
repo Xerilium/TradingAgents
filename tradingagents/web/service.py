@@ -2577,13 +2577,19 @@ class DeskService:
             raise GatewayError("Start the desk-hosted Maenifold service to publish research notes.")
         return MaenifoldGateway(endpoint=f"http://localhost:{instance['port']}/mcp", timeout=30)
 
-    def _publish_research_note(self, run, result):
-        """Mirror a completed narrative into Maenifold memory; this must never fail the research run."""
+    def _publish_research_note(self, run, result, *, asset=None):
+        """Publish a research asset or the final report without failing the run."""
         try:
             yyyy, mm, dd = result["trade_date"].split("-")
+            folder = f"research/{result['symbol']}/{yyyy}/{mm}/{dd}"
+            title = "report"
+            if asset is not None:
+                folder = f"{folder}/runs/{run['id']}"
+                title = asset.replace("_", "-")
+                result = {**result, "reports": {asset: result["reports"][asset]}}
             self._research_note_gateway().execute("maenifold.memory", "WriteMemory", {
-                "title": "report",
-                "folder": f"research/{result['symbol']}/{yyyy}/{mm}/{dd}",
+                "title": title,
+                "folder": folder,
                 "content": build_research_note(run, result),
                 "tags": ["research", "equity", result["symbol"], result["trade_date"]],
                 "overwrite": True,
@@ -2709,6 +2715,7 @@ class DeskService:
                                 self._event(run_id, "tool", call.get("name", "Tool call"), symbol)
                     if state:
                         final.update(state)
+                        available_assets = []
                         with self.store.lock:
                             if run_id in self.cancelled:
                                 raise InterruptedError("Analysis stopped by operator.")
@@ -2719,6 +2726,9 @@ class DeskService:
                                         result["reports"][key] = content
                                         result["revision"] += 1
                                         self._event(run_id, "report", key.replace("_", " ").capitalize(), symbol)
+                                        available_assets.append(key)
+                        for asset in available_assets:
+                            self._publish_research_note(run, result, asset=asset)
                 evidence = self._publish_research_coverage(run, result)
                 gaps = research_gaps(result)
                 if gaps:
