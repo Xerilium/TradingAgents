@@ -19,7 +19,7 @@ def research_gaps(result):
         source = sources.get(name, {})
         status = source.get("status", "not_requested")
         total, classified = source.get("total_count"), source.get("classified_count")
-        if (status not in {"completed", "empty"} or source.get("counts", {}).get("unscreened", 0)
+        if (status not in {"completed", "empty", "limited"} or source.get("counts", {}).get("unscreened", 0)
                 or type(total) is not int or type(classified) is not int or total < 0
                 or classified != total or status == "empty" and total != 0):
             gaps.append(name + " screening is " + status + ": "
