@@ -7,12 +7,14 @@ Protocol reference: https://learn.chatgpt.com/docs/app-server
 
 from __future__ import annotations
 
-import json
 import asyncio
+import json
+import logging
 import os
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
@@ -33,8 +35,11 @@ from tradingagents.integrations.maenifold import (
 )
 
 from .base_client import BaseLLMClient
+from .codex_resource_probes import ResourceProbeGuard, require_disabled_mcp
 
 _NAMESPACE = "tradingagents"
+_STARTUP_TIMEOUT_SECONDS = 30
+_LOGGER = logging.getLogger(__name__)
 
 
 def _codex_path() -> str:
@@ -47,16 +52,17 @@ def _codex_path() -> str:
 class _AppServer:
     """One bounded stdio RPC connection, with no credential handling."""
 
-    def __init__(self, timeout: float):
-        self.deadline = time.monotonic() + timeout
+    def __init__(self, timeout: float | None, cancelled=None):
+        self.cancelled = cancelled
+        self.deadline = time.monotonic() + (timeout if timeout is not None else _STARTUP_TIMEOUT_SECONDS)
         self.messages: queue.Queue = queue.Queue()
         self.events: deque = deque()
         self.request_id = 0
         self._closed = False
         config = {
             "project_doc_max_bytes": 0,
+            "developer_instructions": "",
             "web_search": "disabled",
-            "mcp_servers": {},
             "features.shell_tool": False,
             "features.unified_exec": False,
             "features.plugins": False,
@@ -79,14 +85,54 @@ class _AppServer:
             "CODEX_API_KEY", "CODEX_THREAD_ID", "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
         }
         child_env = {key: value for key, value in os.environ.items() if key.upper() not in excluded_env}
+        self.workspace = tempfile.TemporaryDirectory(prefix="tradingagents-research-")
         try:
+            self._check_request()
+            catalog = subprocess.Popen(
+                [args[0], "mcp", "list", "--json", *args[4:]], cwd=self.workspace.name,
+                env=child_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            try:
+                while True:
+                    remaining = self._check_request()
+                    try:
+                        stdout, stderr = catalog.communicate(timeout=min(remaining, 0.1) if remaining is not None else 0.1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                self._check_request()
+                if catalog.returncode:
+                    raise subprocess.CalledProcessError(catalog.returncode, catalog.args, stdout, stderr)
+            finally:
+                if catalog.poll() is None:
+                    catalog.kill()
+                    try:
+                        catalog.communicate(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        _LOGGER.warning("Could not reap Codex MCP catalog process promptly")
+            for entry in json.loads(stdout):
+                name = entry["name"]
+                if not isinstance(name, str) or not name:
+                    raise ValueError("Invalid MCP server name")
+                args.extend(["-c", f"mcp_servers.{name}.enabled=false"])
+            self._check_request()
             self.process = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
-                env=child_env, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=child_env, cwd=self.workspace.name,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
+        except (InterruptedError, TimeoutError):
+            self._cleanup_workspace()
+            raise
         except OSError as exc:
+            self._cleanup_workspace()
             raise RuntimeError("Codex app-server could not start. Check the Codex CLI and its permissions.") from exc
+        except (subprocess.SubprocessError, ValueError, KeyError, TypeError) as exc:
+            self._cleanup_workspace()
+            raise RuntimeError("Codex MCP configuration could not be isolated; account adapter stopped.") from exc
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
 
@@ -116,8 +162,8 @@ class _AppServer:
         cancelled = getattr(self, "cancelled", None)
         if cancelled is not None and cancelled.is_set():
             raise InterruptedError("ChatGPT request cancelled.")
-        remaining = self.deadline - time.monotonic()
-        if remaining <= 0:
+        remaining = None if self.deadline is None else self.deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
             raise TimeoutError("ChatGPT request timed out. Check Codex sign-in and account limits.")
         return remaining
 
@@ -125,7 +171,7 @@ class _AppServer:
         while True:
             remaining = self._check_request()
             try:
-                item = self.messages.get(timeout=min(remaining, 0.1))
+                item = self.messages.get(timeout=min(remaining, 0.1) if remaining is not None else 0.1)
                 break
             except queue.Empty:
                 continue
@@ -158,20 +204,39 @@ class _AppServer:
         if self._closed:
             return
         self._closed = True
+        # The stdio app-server normally exits on EOF; keep forceful tree
+        # termination for a helper that does not finish on its own.
         with suppress(OSError, ValueError):
             self.process.stdin.close()
         try:
             self.process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            with suppress(OSError):
-                self.process.terminate()
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            if isinstance(exc, OSError):
+                _LOGGER.warning("Could not wait for Codex app-server shutdown", exc_info=True)
+            if os.name == "nt" and self.process.poll() is None:
+                try:
+                    subprocess.run(
+                        ["taskkill.exe", "/PID", str(self.process.pid), "/T", "/F"],
+                        check=True, timeout=5, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    if self.process.poll() is None:
+                        _LOGGER.warning("Could not stop the Codex app-server process tree", exc_info=True)
+            if self.process.poll() is None:
+                with suppress(OSError):
+                    self.process.terminate()
             try:
                 self.process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                if isinstance(exc, OSError):
+                    _LOGGER.warning("Could not wait for Codex app-server termination", exc_info=True)
                 with suppress(OSError):
                     self.process.kill()
-                with suppress(subprocess.TimeoutExpired, OSError):
+                try:
                     self.process.wait(timeout=3)
+                except (subprocess.TimeoutExpired, OSError):
+                    _LOGGER.warning("Could not wait for Codex app-server kill", exc_info=True)
         finally:
             self.reader.join(timeout=1)
             # The reader owns stdout while it is active: closing the buffered
@@ -179,6 +244,14 @@ class _AppServer:
             if not self.reader.is_alive():
                 with suppress(OSError, ValueError):
                     self.process.stdout.close()
+            self._cleanup_workspace()
+
+    def _cleanup_workspace(self):
+        try:
+            self.workspace.cleanup()
+        except OSError:
+            # Housekeeping must not replace a completed response or its real error.
+            _LOGGER.warning("Could not remove Codex research workspace %s", self.workspace.name, exc_info=True)
 
 
 def _initialize_chatgpt(server: _AppServer) -> None:
@@ -254,7 +327,7 @@ class ChatGPTChatModel(BaseChatModel):
     """Native LangChain chat and function tools, billed to a ChatGPT login."""
 
     model_name: str
-    timeout: float = Field(default=300, gt=0)
+    timeout: float | None = Field(default=None, gt=0)
     max_retries: int = Field(default=3, ge=0, le=3)
     reasoning_effort: str = "high"
 
@@ -274,12 +347,13 @@ class ChatGPTChatModel(BaseChatModel):
         self, messages: list[BaseMessage], stop: list[str] | None = None,
         run_manager: CallbackManagerForLLMRun | None = None, **kwargs,
     ) -> ChatResult:
-        deadline = kwargs.setdefault("_request_deadline", time.monotonic() + self.timeout)
+        deadline = kwargs.setdefault("_request_deadline",
+                                     time.monotonic() + self.timeout if self.timeout is not None else None)
         cancelled = kwargs.get("_request_cancelled")
         for attempt in range(self.max_retries + 1):
             if cancelled is not None and cancelled.is_set():
                 raise InterruptedError("ChatGPT request cancelled.")
-            if time.monotonic() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError("ChatGPT request timed out.")
             try:
                 return self._generate_once(messages, stop, run_manager, **kwargs)
@@ -287,7 +361,7 @@ class ChatGPTChatModel(BaseChatModel):
                 if attempt == self.max_retries or exc.retry_after > 60:
                     raise
                 delay = retry_delay(exc.retry_after, attempt)
-                if time.monotonic() + delay >= deadline:
+                if deadline is not None and time.monotonic() + delay >= deadline:
                     raise TimeoutError("ChatGPT request deadline does not allow another retry.") from exc
                 if cancelled is None:
                     time.sleep(delay)
@@ -299,7 +373,7 @@ class ChatGPTChatModel(BaseChatModel):
         # loop. Give this specific request a cooperative cancellation signal.
         cancelled = threading.Event()
         kwargs["_request_cancelled"] = cancelled
-        kwargs["_request_deadline"] = time.monotonic() + self.timeout
+        kwargs["_request_deadline"] = time.monotonic() + self.timeout if self.timeout is not None else None
         manager = run_manager.get_sync() if run_manager is not None else None
         worker = asyncio.create_task(asyncio.to_thread(self._generate, messages, stop, manager, **kwargs))
         try:
@@ -325,19 +399,20 @@ class ChatGPTChatModel(BaseChatModel):
         cancelled = kwargs.get("_request_cancelled")
         if cancelled is not None and cancelled.is_set():
             raise InterruptedError("ChatGPT request cancelled.")
-        remaining = kwargs.get("_request_deadline", time.monotonic() + self.timeout) - time.monotonic()
-        if remaining <= 0:
+        deadline = kwargs.get("_request_deadline")
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
             raise TimeoutError("ChatGPT request timed out.")
-        server = _AppServer(min(self.timeout, remaining))
-        server.cancelled = cancelled
+        server = _AppServer(remaining, cancelled=cancelled)
+        pending_calls = {}
+        interrupt_requested = False
+        drain_deadline = None
+        original_deadline = None
         try:
             _initialize_chatgpt(server)
-            effective = server.rpc("config/read", {"includeLayers": False}).get("config", {})
-            disabled_mcp = {
-                f"mcp_servers.{name}.enabled": False
-                for name in effective.get("mcp_servers", {})
-            }
-            del effective
+            # Startup is bounded; an active model request has no default deadline.
+            if deadline is None:
+                server.deadline = None
             dynamic = [{"type": "namespace", "name": _NAMESPACE, "description": "TradingAgents functions", "tools": [{
                 "type": "function", "name": tool["name"], "description": tool.get("description", ""),
                 "inputSchema": tool.get("parameters", {"type": "object", "properties": {}}),
@@ -345,14 +420,18 @@ class ChatGPTChatModel(BaseChatModel):
             started = server.rpc("thread/start", {
                 "model": self.model_name, "modelProvider": "openai", "allowProviderModelFallback": False,
                 "ephemeral": True, "environments": [], "runtimeWorkspaceRoots": [],
+                "cwd": server.workspace.name,
                 "sandbox": "read-only", "approvalPolicy": "never", "dynamicTools": dynamic,
-                "baseInstructions": instructions or "Answer the user's request.", "developerInstructions": "",
-                "config": {**disabled_mcp, "model_reasoning_effort": self.reasoning_effort},
+                "baseInstructions": instructions or "Answer the user's request.",
+                "developerInstructions": "This session performs financial research only. Repository and personal coding-workflow instructions, code scores, test policies and task bookkeeping do not apply to research reports. Return only the requested financial analysis or bound research tool call.",
+                "config": {"model_reasoning_effort": self.reasoning_effort},
                 "serviceTier": "default",
             })
             thread_id = started["thread"]["id"]
             if started.get("model", self.model_name) != self.model_name:
                 raise RuntimeError("Codex did not select the requested ChatGPT model.")
+            require_disabled_mcp(server, thread_id)
+            probes = ResourceProbeGuard()
             if history:
                 server.rpc("thread/inject_items", {"threadId": thread_id, "items": history})
             turn = {"threadId": thread_id, "input": [{"type": "text", "text": user_text}], "environments": []}
@@ -364,6 +443,11 @@ class ChatGPTChatModel(BaseChatModel):
             while True:
                 event = server.event()
                 method, params = event.get("method"), event.get("params", {})
+                if method in {"item/started", "item/completed"} and params.get("item", {}).get("type") == "mcpToolCall":
+                    if method == "item/started":
+                        probes.started(params["item"])
+                    else:
+                        probes.completed(params["item"])
                 if method == "item/tool/call":
                     name = params["tool"]
                     if name not in permitted or params.get("namespace") != _NAMESPACE:
@@ -378,11 +462,17 @@ class ChatGPTChatModel(BaseChatModel):
                         raise RuntimeError("Codex returned invalid function arguments.")
                     if not isinstance(params.get("callId"), str) or not params["callId"]:
                         raise RuntimeError("Codex returned an invalid function call ID.")
-                    server.rpc("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
-                    message = AIMessage(content="", tool_calls=[{
-                        "name": name, "args": arguments, "id": params["callId"], "type": "tool_call",
-                    }])
-                    return ChatResult(generations=[ChatGeneration(message=message)])
+                    call = {"name": name, "args": arguments, "id": params["callId"], "type": "tool_call"}
+                    prior = pending_calls.get(call["id"])
+                    if prior is not None and json.dumps(prior, sort_keys=True) != json.dumps(call, sort_keys=True):
+                        raise RuntimeError("Codex reused a bound function call ID with conflicting contents.")
+                    pending_calls.setdefault(call["id"], call)
+                    if drain_deadline is None:
+                        original_deadline = server.deadline
+                        drain_deadline = time.monotonic() + _STARTUP_TIMEOUT_SECONDS
+                        if original_deadline is not None:
+                            drain_deadline = min(drain_deadline, original_deadline)
+                        server.deadline = drain_deadline
                 if method == "item/agentMessage/delta":
                     text_parts.append(params["delta"])
                 if method == "item/completed":
@@ -390,26 +480,49 @@ class ChatGPTChatModel(BaseChatModel):
                     if item.get("type") == "agentMessage" and item.get("phase") != "commentary":
                         final_text = item.get("text", "")
                 if method == "item/started" and params.get("item", {}).get("type") in {
-                    "commandExecution", "fileChange", "mcpToolCall", "webSearch", "computerUse",
+                    "commandExecution", "fileChange", "webSearch", "computerUse",
                 }:
+                    item = params["item"]
+                    identity = item["type"]
                     raise RuntimeError(
-                        f"Codex exposed an unexpected built-in tool ({params['item']['type']}) "
+                        f"Codex exposed an unexpected built-in tool ({identity}) "
                         f"for requested model {self.model_name}; account adapter stopped."
                     )
-                if "id" in event and method:
+                if "id" in event and method and method != "item/tool/call":
                     raise RuntimeError("Codex requested an unsupported client action; account adapter stopped.")
                 if method == "turn/completed":
-                    if params["turn"]["status"] != "completed":
-                        error = params["turn"].get("error") or {}
+                    completed = params["turn"]
+                    if params.get("threadId") != thread_id or completed.get("id") != turn_id:
+                        raise RuntimeError("Codex completed an unexpected turn.")
+                    error = completed.get("error") or {}
+                    own_interruption = interrupt_requested and completed["status"] == "interrupted" and not error
+                    if not own_interruption and (completed["status"] != "completed" or error):
                         if limited := reported_rate_limit(error):
                             raise limited
-                        detail = error.get("message") or params["turn"]["status"]
+                        detail = error.get("message") or completed["status"]
                         raise RuntimeError(f"ChatGPT response failed: {detail}")
+                    if pending_calls:
+                        probes.require_finished("before returning a bound function call")
+                        if not interrupt_requested:
+                            raise RuntimeError("Codex completed before the bound function handoff was ready.")
+                        message = AIMessage(content="", tool_calls=list(pending_calls.values()))
+                        return ChatResult(generations=[ChatGeneration(message=message)])
+                    probes.require_finished("before returning final text")
                     content = final_text if final_text is not None else "".join(text_parts)
                     if not content:
                         raise RuntimeError("ChatGPT completed without a text response.")
                     return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+                if pending_calls and not interrupt_requested and not probes.pending:
+                    interrupt_requested = True
+                    server.rpc("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+        except TimeoutError as exc:
+            if pending_calls:
+                phase = "interrupted turn completion" if interrupt_requested else "MCP resource probe completion"
+                raise TimeoutError(f"Codex timed out waiting for {phase} before the bound function handoff.") from exc
+            raise
         finally:
+            if drain_deadline is not None:
+                server.deadline = original_deadline
             server.close()
 
 
@@ -418,7 +531,7 @@ class ChatGPTClient(BaseLLMClient):
 
     def get_llm(self) -> ChatGPTChatModel:
         return ChatGPTChatModel(
-            model_name=self.model, timeout=self.kwargs.get("timeout", 300),
+            model_name=self.model, timeout=self.kwargs.get("timeout"),
             max_retries=self.kwargs.get("max_retries", 3),
             reasoning_effort=self.kwargs.get("reasoning_effort") or "high", callbacks=self.kwargs.get("callbacks"),
         )

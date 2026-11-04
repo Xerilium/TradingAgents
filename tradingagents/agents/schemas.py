@@ -103,26 +103,17 @@ class ResearchPlan(BaseModel):
 
     recommendation: PortfolioRating = Field(
         description=(
-            "The investment recommendation. Exactly one of Buy / Overweight / "
-            "Hold / Underweight / Sell. Conflicting arguments alone are not a "
-            "reason to Hold: commit to the stronger side, sized by how "
-            "decisively it wins. Choose Hold only when the evidence is still "
-            "balanced after weighing, or too thin to support a call."
+            None
         ),
     )
     rationale: str = Field(
         description=(
-            "Conversational summary of the key points from both sides of the "
-            "debate, ending with which arguments led to the recommendation. "
-            "Speak naturally, as if to a teammate."
+            None
         ),
     )
     strategic_actions: str = Field(
         description=(
-            "Concrete steps for the trader to implement the recommendation, "
-            "including sizing guidance relative to a standard allocation. The "
-            "research team does not see the caller's holdings; the trader and "
-            "portfolio manager apply the actual position."
+            None
         ),
     )
 
@@ -145,8 +136,8 @@ def render_research_plan(plan: ResearchPlan) -> str:
 
 class DeskResearchPlan(ResearchPlan):
     """Desk research opinion; configured policy owns order quantities."""
-    recommendation: PortfolioRating = Field(description="Research rating: Buy / Overweight / Hold / Underweight / Sell. Weigh evidence without inventing order quantities.")
-    strategic_actions: str = Field(description="Advisory thesis and conditions for human review. Configured desk policy computes order quantities; do not invent a standard allocation or numerical starter size.")
+    recommendation: PortfolioRating = Field(description=None)
+    strategic_actions: str = Field(description=None)
 
 
 class TraderProposal(BaseModel):
@@ -159,33 +150,28 @@ class TraderProposal(BaseModel):
     """
 
     action: TraderAction = Field(
-        description="The transaction direction. Exactly one of Buy / Hold / Sell.",
+        description=None,
     )
     reasoning: str = Field(
         description=(
-            "The case for this action, anchored in the analysts' reports and "
-            "the research plan. Two to four sentences."
+            None
         ),
     )
     entry_price: float | None = Field(
         default=None,
         description=(
-            "Optional entry price target as an absolute number in the instrument's "
-            "quote currency (e.g. 189.5), never a percentage or a range. Omit it "
-            "if you cannot state a specific level."
+            None
         ),
     )
     stop_loss: float | None = Field(
         default=None,
         description=(
-            "Optional stop-loss as an absolute price in the instrument's quote "
-            "currency (e.g. 172.0), never a percentage. Convert a percentage "
-            "distance to the price level it implies, or omit it."
+            None
         ),
     )
     position_sizing: str | None = Field(
         default=None,
-        description="Optional sizing guidance, e.g. '5% of portfolio'.",
+        description=None,
     )
 
     @field_validator("entry_price", "stop_loss", mode="before")
@@ -196,7 +182,7 @@ class TraderProposal(BaseModel):
 
 class DeskTraderProposal(TraderProposal):
     """Desk trading opinion with policy-owned sizing."""
-    position_sizing: None = Field(default=None, description="Leave null. The desk's deterministic configured policy calculates proposal quantities; research does not prescribe numerical sizing.")
+    position_sizing: None = Field(default=None, description=None)
 
 
 def render_trader_proposal(proposal: TraderProposal) -> str:
@@ -240,34 +226,26 @@ class PortfolioDecision(BaseModel):
 
     rating: PortfolioRating = Field(
         description=(
-            "The final position rating. Exactly one of Buy / Overweight / Hold / "
-            "Underweight / Sell, picked based on the analysts' debate. "
-            "Conflicting arguments alone are not a reason to Hold: commit to the "
-            "stronger side, sized by how decisively it wins. Choose Hold only "
-            "when the evidence is still balanced after weighing, or too thin to "
-            "support a call."
+            None
         ),
     )
     executive_summary: str = Field(
         description=(
-            "A concise action plan covering entry strategy, position sizing, "
-            "key risk levels, and time horizon. Two to four sentences."
+            None
         ),
     )
     investment_thesis: str = Field(
         description=(
-            "Detailed reasoning anchored in specific evidence from the analysts' "
-            "debate. If prior lessons are referenced in the prompt context, "
-            "incorporate them; otherwise rely solely on the current analysis."
+            None
         ),
     )
     price_target: float | None = Field(
         default=None,
-        description="Optional target price in the instrument's quote currency.",
+        description=None,
     )
     time_horizon: str | None = Field(
         default=None,
-        description="Optional recommended holding period, e.g. '3-6 months'.",
+        description=None,
     )
 
     @field_validator("price_target", mode="before")
@@ -278,8 +256,8 @@ class PortfolioDecision(BaseModel):
 
 class DeskPortfolioDecision(PortfolioDecision):
     """Desk final research rating, separate from the deterministic order plan."""
-    rating: PortfolioRating = Field(description="Final research rating: Buy / Overweight / Hold / Underweight / Sell. Choose from evidence, not an invented size multiplier.")
-    executive_summary: str = Field(description="Summarize the thesis, conditional risk levels and time horizon. Explain that configured desk policy computes proposal quantities and manual submission is required. Do not prescribe a numerical allocation, starter multiplier or share quantity.")
+    rating: PortfolioRating = Field(description=None)
+    executive_summary: str = Field(description=None)
 
 
 def render_pm_decision(decision: PortfolioDecision) -> str:
@@ -338,44 +316,24 @@ class SentimentReport(BaseModel):
 
     overall_band: SentimentBand = Field(
         description=(
-            "Overall sentiment direction. Exactly one of: "
-            "Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish. "
-            "Use Mixed when sources point in clearly different directions. "
-            "Use Neutral only when all sources are genuinely silent or non-committal."
+            None
         ),
     )
     overall_score: float = Field(
         ge=0.0,
         le=10.0,
         description=(
-            "Numeric sentiment intensity on a 0–10 scale. "
-            "0 = maximally bearish, 5 = neutral, 10 = maximally bullish. "
-            "Guideline for consistency with overall_band: "
-            "Bullish ~6.5–10, Mildly Bullish ~5.5–6.4, Neutral/Mixed ~4.5–5.5, "
-            "Mildly Bearish ~3.5–4.4, Bearish ~0–3.4. "
-            "Only the 0–10 bounds are enforced."
+            None
         ),
     )
     confidence: Literal["low", "medium", "high"] = Field(
         description=(
-            "Confidence in the assessment based on data quality and sample size. "
-            "Use 'low' when one or more sources returned a placeholder or fewer "
-            "than 5 data points; 'medium' when data is present but sparse; "
-            "'high' when all three sources returned substantive data."
+            None
         ),
     )
     narrative: str = Field(
         description=(
-            "Full sentiment report covering, in order: "
-            "(1) source-by-source breakdown with specific evidence (cite message "
-            "counts, ratios, notable posts); "
-            "(2) cross-source divergences and alignments; "
-            "(3) dominant narrative themes; "
-            "(4) catalysts and risks surfaced by the data; "
-            "(5) a markdown table summarising key sentiment signals, their "
-            "direction, source, and supporting evidence. "
-            "Keep it informative and substantive: develop each section thoroughly "
-            "with concrete evidence so every point adds new signal for the trader."
+            None
         ),
     )
 

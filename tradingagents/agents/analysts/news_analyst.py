@@ -1,12 +1,17 @@
+from datetime import date, timedelta
+
+from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from tradingagents.agents.analysts.turn import take_turn
+from tradingagents.agents.analysts.turn import request_inputs, research_memory_guidance, take_turn
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
 from tradingagents.agents.tools import (
     get_global_news,
     get_macro_indicators,
     get_news,
     get_prediction_markets,
+    read_research_source,
+    search_research_sources,
 )
 
 # The tools this analyst is offered; its tool node is built from the same tuple.
@@ -15,35 +20,49 @@ TOOLS = (
     get_global_news,
     get_macro_indicators,
     get_prediction_markets,
+    read_research_source,
+    search_research_sources,
 )
 
 
-def create_news_analyst(llm, tools=None):
+def create_news_analyst(llm, tools=None, *, relevance_screen=None, workflow):
     tools = TOOLS if tools is None else tuple(tools)
     def news_analyst_node(state):
         current_date = state["trade_date"]
+        required = request_inputs(state, "news_report", [
+            (get_news.name, {"start_date": (date.fromisoformat(current_date) - timedelta(days=7)).isoformat(), "end_date": current_date}),
+            (get_global_news.name, {"curr_date": current_date}),
+            (get_prediction_markets.name, {"topic": state["company_of_interest"]}),
+            *[(get_macro_indicators.name, {"indicator": indicator, "curr_date": current_date})
+              for indicator in ("cpi", "core_pce", "unemployment", "fed_funds_rate", "10y_treasury", "yield_curve", "real_gdp", "vix")
+              if any(tool.name == get_macro_indicators.name for tool in tools)],
+        ], required=(), workflow=workflow)
+        if required:
+            return required
         asset_type = state.get("asset_type", "stock")
         asset_label = "company" if asset_type == "stock" else "asset"
-        instrument_context = get_instrument_context_from_state(state)
+        instrument_context = get_instrument_context_from_state(state, workflow)
+        if relevance_screen:
+            # Replace only the prompt copy of each get_news reply; the saved
+            # ToolMessage evidence stays complete.
+            news_calls = {call["id"] for message in state["messages"]
+                          for call in getattr(message, "tool_calls", ()) if call["name"] == get_news.name}
+            screen = relevance_screen(state["company_of_interest"], instrument_context=instrument_context)
+            state = {**state, "messages": [
+                message.model_copy(update={"content": screen(str(message.content))})
+                if isinstance(message, ToolMessage) and message.tool_call_id in news_calls
+                and isinstance(message.content, str) else message
+                for message in state["messages"]]}
 
         system_message = (
-            f"You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Use the available tools: get_news(start_date, end_date) for news about the {asset_label} under analysis, get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news, get_macro_indicators(indicator, curr_date, look_back_days) to ground macro commentary in actual data from FRED (e.g. 'cpi', 'core_pce', 'unemployment', 'fed_funds_rate', '10y_treasury', 'yield_curve'), and get_prediction_markets(topic, limit) for live market-implied probabilities of forward-looking events (e.g. 'Fed rate cut', 'recession 2026', geopolitical or sector events). Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
-            + get_language_instruction()
+            workflow.render('news_analyst', asset_label=asset_label, research_memory_guidance=research_memory_guidance(tools, workflow), get_language_instruction=get_language_instruction(workflow))
         )
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " Report what your tools support; another agent decides the trade."
-                    " You have access to the following tools: {tool_names}."
-                    " Today's date is {current_date}; treat it as 'now' for all analysis and tool-call date ranges. {instrument_context}\n"
-                    "{system_message}",
+                    workflow.template('analyst_wrapper'),
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
@@ -54,7 +73,7 @@ def create_news_analyst(llm, tools=None):
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(instrument_context=instrument_context)
 
-        result, report = take_turn(prompt, llm, tools, state["messages"])
+        result, report = take_turn(prompt, llm, tools, state["messages"], workflow=workflow)
 
         return {
             "messages": [result],

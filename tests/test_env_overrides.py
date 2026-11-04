@@ -25,7 +25,6 @@ def test_no_env_uses_built_in_defaults(monkeypatch):
     assert config["quick_think_llm"] == "gpt-6-luna"
     assert config["backend_url"] is None
     assert config["max_debate_rounds"] == 1
-    assert config["checkpoint_enabled"] is False
 
 
 def test_string_overrides(monkeypatch):
@@ -54,18 +53,6 @@ def test_int_coercion(monkeypatch):
     assert isinstance(config["max_debate_rounds"], int)
     assert config["max_risk_discuss_rounds"] == 2
     assert isinstance(config["max_risk_discuss_rounds"], int)
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("true", True), ("True", True), ("1", True), ("yes", True), ("on", True),
-        ("false", False), ("False", False), ("0", False), ("no", False), ("off", False),
-    ],
-)
-def test_bool_coercion(monkeypatch, raw, expected):
-    config = _config_with_env(monkeypatch, TRADINGAGENTS_CHECKPOINT_ENABLED=raw)
-    assert config["checkpoint_enabled"] is expected
 
 
 def test_reasoning_thinking_overrides(monkeypatch):
@@ -119,14 +106,6 @@ def test_invalid_int_raises(monkeypatch):
     """Garbage int values should surface a ValueError at import, not silently misconfigure."""
     monkeypatch.setenv("TRADINGAGENTS_MAX_DEBATE_ROUNDS", "not-a-number")
     with pytest.raises(ValueError, match="TRADINGAGENTS_MAX_DEBATE_ROUNDS"):
-        default_config_module.build_default_config()
-
-
-@pytest.mark.parametrize("bad", ["treu", "flase", "maybe", "2", "enabled"])
-def test_invalid_bool_raises(monkeypatch, bad):
-    """A misspelled boolean must fail loudly (like ints) instead of silently False."""
-    monkeypatch.setenv("TRADINGAGENTS_CHECKPOINT_ENABLED", bad)
-    with pytest.raises(ValueError, match="TRADINGAGENTS_CHECKPOINT_ENABLED"):
         default_config_module.build_default_config()
 
 

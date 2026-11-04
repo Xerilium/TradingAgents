@@ -22,7 +22,6 @@ from tradingagents.agents import (
     create_sentiment_analyst,
     create_trader,
 )
-from tradingagents.agents.analysts.turn import WRAP_UP
 from tradingagents.agents.state import AgentState
 
 from .analyst_execution import build_analyst_execution_plan
@@ -52,16 +51,19 @@ def _tools_or_done(state) -> str:
     return "tools" if state["messages"][-1].tool_calls else END
 
 
-def _analyst_graph(spec, agent, max_tool_rounds: int):
+def _analyst_graph(spec, agent, max_tool_rounds: int, workflow):
     """One analyst as a graph of its own: the model and its tools, on a private message history.
 
-    It returns only its report, so analysts running side by side never write the
-    same key, and its tool calls never reach the other analysts' messages. After
+    It exports its report and, for the market analyst, its verified snapshot.
+    Its tool calls never reach the other analysts' private messages. After
     ``max_tool_rounds`` rounds of tool calls it is told to write its report, and
     that turn ends it whatever it answers, so a model that keeps calling tools
     cannot run the graph into its recursion limit (#1420).
     """
-    output = TypedDict(f"{spec.key.capitalize()}Report", {spec.report_key: str})
+    outputs = {spec.report_key: str}
+    if spec.key == "market":
+        outputs["verified_market_snapshot"] = str
+    output = TypedDict(f"{spec.key.capitalize()}Report", outputs)
     graph = StateGraph(AgentState, output_schema=output)
     graph.add_node("agent", agent)
     graph.add_edge(START, "agent")
@@ -73,7 +75,8 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
         return [call["name"] for m in messages for call in (getattr(m, "tool_calls", None) or [])]
 
     def rounds(messages) -> int:
-        return sum(1 for m in messages if getattr(m, "tool_calls", None))
+        return sum(1 for m in messages if getattr(m, "tool_calls", None)
+                   and not str(getattr(m, "id", "")).startswith("required-"))
 
     def more_or_wrap_up(state) -> str:
         return "wrap_up" if rounds(state["messages"]) >= max_tool_rounds else "agent"
@@ -82,9 +85,9 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
         repeated = ", ".join(f"{name} x{n}" for name, n in Counter(calls(state["messages"])).most_common())
         logger.warning("%s used its %d tool rounds (%s); asking for its report",
                        spec.agent_node, max_tool_rounds, repeated)
-        return agent({**state, "messages": [*state["messages"], HumanMessage(WRAP_UP)]})
+        return agent({**state, "messages": [*state["messages"], HumanMessage(workflow.text("wrap_up"))]})
 
-    graph.add_node("tools", ToolNode(list(spec.tools)))
+    graph.add_node("tools", ToolNode(list(spec.tools), handle_tool_errors=True))
     graph.add_node("wrap_up", wrap_up)
     graph.add_conditional_edges("agent", _tools_or_done, ["tools", END])
     graph.add_conditional_edges("tools", more_or_wrap_up, ["agent", "wrap_up"])
@@ -103,6 +106,9 @@ class GraphSetup:
         max_tool_rounds: int,
         supplemental_tools: Iterable[BaseTool] | None = None,
         social_screen_factory=None,
+        relevance_screen=None,
+        exclude_fred=False,
+        workflow=None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
@@ -111,6 +117,9 @@ class GraphSetup:
         self.max_tool_rounds = max_tool_rounds
         self.supplemental_tools = tuple(supplemental_tools or ())
         self.social_screen_factory = social_screen_factory
+        self.relevance_screen = relevance_screen
+        self.exclude_fred = exclude_fred
+        self.bundle = workflow
 
     def setup_graph(
         self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None
@@ -127,67 +136,64 @@ class GraphSetup:
                 ``past_context``. It runs alongside the analysts.
         """
         plan = build_analyst_execution_plan(selected_analysts, self.supplemental_tools)
+        if self.exclude_fred:
+            from dataclasses import replace
+            plan = replace(plan, specs=[replace(spec, tools=tuple(t for t in spec.tools if t.name != "get_macro_indicators")) for spec in plan.specs])
 
-        analyst_factories = {
-            "market": lambda tools: create_market_analyst(self.quick_thinking_llm, tools=tools),
-            "social": lambda tools: create_sentiment_analyst(self.quick_thinking_llm, screen_factory=self.social_screen_factory),
-            "news": lambda tools: create_news_analyst(self.quick_thinking_llm, tools=tools),
-            "fundamentals": lambda tools: create_fundamentals_analyst(self.quick_thinking_llm, tools=tools),
+        definition = self.bundle.definition
+        tiers = {"fast": self.quick_thinking_llm, "deep": self.deep_thinking_llm}
+        specs = {spec.key: spec for spec in plan.specs}
+        factories = {
+            "market": lambda llm, spec: create_market_analyst(llm, tools=spec.tools, workflow=self.bundle),
+            "social": lambda llm, spec: create_sentiment_analyst(llm, screen_factory=self.social_screen_factory, relevance_screen=self.relevance_screen, workflow=self.bundle),
+            "news": lambda llm, spec: create_news_analyst(llm, tools=spec.tools, relevance_screen=self.relevance_screen, workflow=self.bundle),
+            "fundamentals": lambda llm, spec: create_fundamentals_analyst(llm, tools=spec.tools, workflow=self.bundle),
+            "bull": lambda llm, _: create_bull_researcher(llm, workflow=self.bundle),
+            "bear": lambda llm, _: create_bear_researcher(llm, workflow=self.bundle),
+            "research_manager": lambda llm, _: create_research_manager(llm, workflow=self.bundle),
+            "trader": lambda llm, _: create_trader(llm, workflow=self.bundle),
+            "aggressive": lambda llm, _: create_aggressive_debator(llm, workflow=self.bundle),
+            "conservative": lambda llm, _: create_conservative_debator(llm, workflow=self.bundle),
+            "neutral": lambda llm, _: create_neutral_debator(llm, workflow=self.bundle),
+            "portfolio_manager": lambda llm, _: create_portfolio_manager(llm, workflow=self.bundle),
         }
-
-        bull_researcher_node = create_bull_researcher(self.quick_thinking_llm)
-        bear_researcher_node = create_bear_researcher(self.quick_thinking_llm)
-        research_manager_node = create_research_manager(self.deep_thinking_llm)
-        trader_node = create_trader(self.quick_thinking_llm)
-
-        aggressive_analyst = create_aggressive_debator(self.quick_thinking_llm)
-        neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
-        conservative_analyst = create_conservative_debator(self.quick_thinking_llm)
-        portfolio_manager_node = create_portfolio_manager(self.deep_thinking_llm)
-
         workflow = StateGraph(AgentState)
+        active = set()
+        for name, node in definition["nodes"].items():
+            handler = node["handler"]
+            if handler in {"market", "social", "news", "fundamentals"} and handler not in specs:
+                continue
+            if handler == "memory":
+                if memory_node is None:
+                    continue
+                agent = memory_node
+            else:
+                spec = specs.get(handler)
+                agent = factories[handler](tiers[node["tier"]], spec)
+                if spec is not None:
+                    agent = _analyst_graph(spec, agent, self.max_tool_rounds, self.bundle)
+            workflow.add_node(name, agent)
+            active.add(name)
 
-        for spec in plan.specs:
-            workflow.add_node(spec.agent_node,
-                              _analyst_graph(spec, analyst_factories[spec.key](spec.tools), self.max_tool_rounds))
-
-        workflow.add_node("Bull Researcher", bull_researcher_node)
-        workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Research Manager", research_manager_node)
-        workflow.add_node("Trader", trader_node)
-        workflow.add_node("Aggressive Analyst", aggressive_analyst)
-        workflow.add_node("Neutral Analyst", neutral_analyst)
-        workflow.add_node("Conservative Analyst", conservative_analyst)
-        workflow.add_node("Portfolio Manager", portfolio_manager_node)
-
-        # The analysts work at the same time; the research debate starts once
-        # every one of them has filed its report. The memory log settles past
-        # decisions alongside them: only the Portfolio Manager reads its lessons.
-        first_steps = [spec.agent_node for spec in plan.specs]
-        if memory_node is not None:
-            workflow.add_node("Memory Log", memory_node)
-            first_steps.append("Memory Log")
-        for node in first_steps:
-            workflow.add_edge(START, node)
-        workflow.add_edge(first_steps, "Bull Researcher")
-
-        # Both research-debate edges share the complete DEBATE_PATH_MAP (#1088).
-        for debate_node in ("Bull Researcher", "Bear Researcher"):
-            workflow.add_conditional_edges(
-                debate_node,
-                self.conditional_logic.should_continue_debate,
-                DEBATE_PATH_MAP,
-            )
-        workflow.add_edge("Research Manager", "Trader")
-        workflow.add_edge("Trader", "Aggressive Analyst")
-        # All three risk edges share the complete RISK_ANALYSIS_PATH_MAP (#1088).
-        for risk_node in ("Aggressive Analyst", "Conservative Analyst", "Neutral Analyst"):
-            workflow.add_conditional_edges(
-                risk_node,
-                self.conditional_logic.should_continue_risk_analysis,
-                RISK_ANALYSIS_PATH_MAP,
-            )
-
-        workflow.add_edge("Portfolio Manager", END)
+        routers = {"research_debate": self.conditional_logic.should_continue_debate,
+                   "risk_debate": self.conditional_logic.should_continue_risk_analysis}
+        for edge in definition["edges"]:
+            origin = edge["from"]
+            if isinstance(origin, list):
+                origin = [name for name in origin if name in active]
+                if not origin:
+                    continue
+            elif origin != "START" and origin not in active:
+                continue
+            origin = START if origin == "START" else origin
+            if "router" in edge:
+                workflow.add_conditional_edges(origin, routers[edge["router"]], {
+                    outcome: END if target == "END" else target for outcome, target in edge["paths"].items()
+                })
+            else:
+                target = edge["to"]
+                if target not in active and target != "END":
+                    continue
+                workflow.add_edge(origin, END if target == "END" else target)
 
         return workflow

@@ -20,10 +20,11 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_MAX_DEBATE_ROUNDS":    "max_debate_rounds",
     "TRADINGAGENTS_MAX_RISK_ROUNDS":      "max_risk_discuss_rounds",
     "TRADINGAGENTS_MAX_TOOL_ROUNDS":      "max_tool_rounds",
-    "TRADINGAGENTS_CHECKPOINT_ENABLED":   "checkpoint_enabled",
     "TRADINGAGENTS_BENCHMARK_TICKER":     "benchmark_ticker",
     "TRADINGAGENTS_TEMPERATURE":          "temperature",
     "TRADINGAGENTS_LLM_MAX_RETRIES":      "llm_max_retries",
+    "TRADINGAGENTS_LLM_RETRIES":           "llm_retries",
+    "TRADINGAGENTS_LLM_RETRY_SECONDS":     "llm_retry_seconds",
     "TRADINGAGENTS_MAX_TOKENS":           "max_tokens",
     # Provider-specific reasoning/thinking knobs (None = each provider's own
     # default). Settable here for non-interactive runs; the CLI also offers an
@@ -68,7 +69,7 @@ def _apply_env_overrides(config: dict) -> dict:
         if raw is None or raw == "":
             continue
         try:
-            config[key] = _coerce(raw, config.get(key))
+            config[key] = int(raw) if key == "max_tokens" else _coerce(raw, config.get(key))
         except ValueError as exc:
             raise ValueError(f"Invalid value for {env_var}: {exc}") from exc
     return config
@@ -118,14 +119,21 @@ def build_default_config() -> dict:
         # provider/SDK at its own default (usually 2). Raise it to ride out bursty
         # 429 throttling on rate-limited deployments instead of aborting a run (#1091).
         "llm_max_retries": None,
+        # Our own inference retries: extra attempts on a rate-limited endpoint,
+        # each spaced by ``llm_retry_seconds``. None keeps only the SDK's
+        # sub-second budget, which a busy queue outruns; the desk sets 3 x 30s.
+        # When set, the SDK budget is dropped so the attempt count stays honest.
+        # Honoured by the OpenAI-compatible clients; the ChatGPT sign-in client
+        # already retries its own rate limits.
+        "llm_retries": None,
+        "llm_retry_seconds": 30,
+        # Retries after the first Reddit/FRED data request; waits remain cancellable.
+        "research_retries": 10,
         # Cap on output tokens forwarded to every provider chat client. None leaves
         # each provider at its own default. Set it to bound a model that emits
         # unbounded reasoning/output and hangs or trips a gateway idle timeout
         # (e.g. some deepseek-v4-flash deployments, #1204).
         "max_tokens": None,
-        # Checkpoint/resume: when True, LangGraph saves state after each node
-        # so a crashed run can resume from the last successful step.
-        "checkpoint_enabled": False,
         # Output language for analyst reports and final decision
         # Internal agent debate stays in English for reasoning quality
         "output_language": "English",
@@ -138,17 +146,22 @@ def build_default_config() -> dict:
         # News / data fetching parameters
         # Increase for longer lookback strategies or to broaden macro coverage;
         # decrease to reduce token usage in agent prompts.
-        "news_article_limit": 20,             # max articles per ticker (ticker-news)
+        "news_article_limit": 10,             # max articles per ticker (ticker-news)
         "global_news_article_limit": 10,      # max articles for global/macro news
         "global_news_lookback_days": 7,       # macro news lookback window
+        "prediction_market_limit": 6,        # highest-volume matching markets served
+        "prediction_search_limit": 50,       # upstream event search page size
         # Search queries used by get_global_news for macro headlines. Extend or
         # replace to broaden geographic / sector coverage.
         "global_news_queries": [
-            "Federal Reserve interest rates inflation",
-            "S&P 500 earnings GDP economic outlook",
-            "geopolitical risk trade war sanctions",
-            "ECB Bank of England BOJ central bank policy",
-            "oil commodities supply chain energy",
+            "Federal Reserve",
+            "inflation",
+            "GDP",
+            "ECB",
+            "Bank of England",
+            "Bank of Japan",
+            "oil",
+            "tariffs",
         ],
         # Data vendor configuration
         # Category-level configuration (default for all tools in category).

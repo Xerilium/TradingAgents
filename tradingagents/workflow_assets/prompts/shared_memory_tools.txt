@@ -1,0 +1,1 @@
+ Before using any tool, read its description and schema. Gateway tools include canonical GetHelp text fetched before this turn; read that guidance first. Use GetHelp to reread it when needed. Never guess a command's session lifecycle, required fields or completion rules.

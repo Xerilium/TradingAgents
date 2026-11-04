@@ -1,0 +1,1 @@
+Research is advisory. NautilusTrader owns account and order lifecycle. The investor chooses the quantity, reviews configured rules, approves exact terms and explicitly submits any order. Ratings and price levels do not grant order authority.

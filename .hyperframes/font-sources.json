@@ -1,0 +1,77 @@
+{
+  "metadata_url": "https://fonts.google.com/metadata/fonts",
+  "metadata_sha256": "477dd6775f9bf3641c13f7659303411b844701c01ddaeb6c14b652926192ce53",
+  "css_url": "https://fonts.googleapis.com/css2?family=Geist:wght@400;700&family=Geist+Mono:wght@400;700&family=Source+Serif+4:wght@400;700&family=Newsreader:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap",
+  "files": [
+    {
+      "family": "Geist",
+      "weight": "400",
+      "source": "https://fonts.gstatic.com/s/geist/v5/gyBhhwUxId8gMGYQMKR3pzfaWI_RnOM4nQ.ttf",
+      "file": "fonts/geist-400.ttf",
+      "sha256": "ccce59465ae5c61930ada5453834f60500fbd95084d85db63e0e65fad0125455"
+    },
+    {
+      "family": "Geist",
+      "weight": "700",
+      "source": "https://fonts.gstatic.com/s/geist/v5/gyBhhwUxId8gMGYQMKR3pzfaWI_Re-Q4nQ.ttf",
+      "file": "fonts/geist-700.ttf",
+      "sha256": "1a9874b3be0fc168692a3d2327bccb4d28835653d3b91537a755296a467a83e3"
+    },
+    {
+      "family": "Geist Mono",
+      "weight": "400",
+      "source": "https://fonts.gstatic.com/s/geistmono/v6/or3yQ6H-1_WfwkMZI_qYPLs1a-t7PU0AbeE9KJ5T.ttf",
+      "file": "fonts/geist-mono-400.ttf",
+      "sha256": "7022da390e9b401ea35b722f8ed2376948e70add10954bc798839b4bfe17ef3f"
+    },
+    {
+      "family": "Geist Mono",
+      "weight": "700",
+      "source": "https://fonts.gstatic.com/s/geistmono/v6/or3yQ6H-1_WfwkMZI_qYPLs1a-t7PU0AbeHaL55T.ttf",
+      "file": "fonts/geist-mono-700.ttf",
+      "sha256": "cc5aed02985feb352698b1963ce9234546ace8e46eceb61e1128f4e2a3bb9fec"
+    },
+    {
+      "family": "IBM Plex Mono",
+      "weight": "400",
+      "source": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n5ig.ttf",
+      "file": "fonts/ibm-plex-mono-400.ttf",
+      "sha256": "a7fdc993f9f0387caedba4e42521136fa97e4c0837ae6239bf0413ccf8af00c2"
+    },
+    {
+      "family": "IBM Plex Mono",
+      "weight": "700",
+      "source": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3pQP8lc.ttf",
+      "file": "fonts/ibm-plex-mono-700.ttf",
+      "sha256": "5b2232ff598dd39860f606526399f64be06f0c286a638bad8a83e98c44c41ff6"
+    },
+    {
+      "family": "Newsreader",
+      "weight": "400",
+      "source": "https://fonts.gstatic.com/s/newsreader/v26/cY9qfjOCX1hbuyalUrK49dLac06G1ZGsZBtoBCzBDXXD9JVF438weI_ADA.ttf",
+      "file": "fonts/newsreader-400.ttf",
+      "sha256": "b8f5e0a8bdd6a12c722ca5635d9da87e77ccbb2d0172112e34e00c4e55f2cd5a"
+    },
+    {
+      "family": "Newsreader",
+      "weight": "700",
+      "source": "https://fonts.gstatic.com/s/newsreader/v26/cY9qfjOCX1hbuyalUrK49dLac06G1ZGsZBtoBCzBDXXD9JVF438wn4jADA.ttf",
+      "file": "fonts/newsreader-700.ttf",
+      "sha256": "81d90be46eec4aefac9cf507352f96c4890dbbcb0f7a390091545c1df06f16c6"
+    },
+    {
+      "family": "Source Serif 4",
+      "weight": "400",
+      "source": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFy2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6OAVIJmeUDygwjihdqrhw.ttf",
+      "file": "fonts/source-serif-4-400.ttf",
+      "sha256": "f01900495012279f1e95d721c59363395eeffb79ef806eaa4dfa8bd923ccec0b"
+    },
+    {
+      "family": "Source Serif 4",
+      "weight": "700",
+      "source": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFy2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6OAVIJmeUDygwjivBtrhw.ttf",
+      "file": "fonts/source-serif-4-700.ttf",
+      "sha256": "0efc0b44578e439999fc8654670925d7abc22d17b557588487acd673ff07c068"
+    }
+  ]
+}

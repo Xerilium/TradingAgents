@@ -8,14 +8,18 @@ A free API key (https://fred.stlouisfed.org/docs/api/api_key.html) is read from
 ``FRED_API_KEY``; if it is unset the vendor raises ``FredNotConfiguredError`` so
 the routing layer treats it as "unavailable" rather than a hard crash.
 """
+import json
 import logging
 import os
+import threading
+import time
 from datetime import datetime, timedelta
 
 import pytz
+import requests
 
-from tradingagents.dataflows.errors import VendorNotConfiguredError
-from tradingagents.dataflows.net import get_scrubbed
+from tradingagents.dataflows.config import get_config
+from tradingagents.dataflows.errors import NoMarketDataError, VendorNotConfiguredError, VendorUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +39,6 @@ REQUEST_TIMEOUT = 30
 # the trend and the year-over-year base for most monthly/quarterly series.
 DEFAULT_LOOKBACK_DAYS = 365
 
-# Rows cap for the rendered table: recent values matter most for a decision, and
-# daily series (yields, VIX) over a long window would otherwise flood context.
-MAX_ROWS = 40
 
 # Curated human-friendly aliases -> FRED series IDs. Anything not listed is used
 # verbatim as a raw FRED series ID, so power users are never limited to this set.
@@ -143,25 +144,139 @@ def _fred_today() -> str:
     return datetime.now(FRED_TZ).strftime("%Y-%m-%d")
 
 
+# Protect batch cache and cooldown metadata, never the network request.
+_FRED_LOCK = threading.Lock()
+_FRED_COOLDOWN = ("fred", "cooldown")
+
+
 def _request(path: str, params: dict) -> dict:
-    """GET a FRED endpoint, surfacing FRED's JSON error body on a bad request."""
+    """GET FRED, sharing identical requests within a research batch."""
     api_key = get_api_key()
-    response = get_scrubbed(
-        f"{FRED_API_BASE}/{path}",
-        params={**params, "api_key": api_key, "file_type": "json"},
-        timeout=REQUEST_TIMEOUT,
-        secret=api_key,
-        passthrough=(400,),
+    from tradingagents.dataflows.router import (
+        observe_source_call, source_cancelled, source_retry_plan,
+        source_request_cache, wait_source,
     )
-    # FRED returns 400 with a JSON {"error_message": ...} for unknown series IDs
-    # or malformed params; turn that into a clear, actionable error.
-    if response.status_code == 400:
+
+    cache = source_request_cache()
+    key = ("fred", path, tuple(sorted(params.items())), api_key)
+
+    def fetch():
+        for attempt in range(1, get_config().get("research_retries", 10) + 2):
+            if source_cancelled():
+                raise InterruptedError("Research cancelled")
+            while cache is not None:
+                with _FRED_LOCK:
+                    delay = cache.get(_FRED_COOLDOWN, 0.0) - time.monotonic()
+                if delay <= 0:
+                    break
+                wait_source(delay)
+            retry = {"attempt": attempt, "retry_action": "not_needed"}
+
+            def request_once():
+                try:
+                    with requests.get(
+                        f"{FRED_API_BASE}/{path}",
+                        params={**params, "api_key": api_key, "file_type": "json"},
+                        timeout=REQUEST_TIMEOUT,
+                    ) as received:
+                        if received.status_code != 400:
+                            received.raise_for_status()
+                        return {"status": received.status_code,
+                                "body": received.content.decode("utf-8")}
+                except requests.RequestException as exc:
+                    error = type(exc)(str(exc).replace(api_key, "***"))
+                    error.http_status = getattr(getattr(exc, "response", None), "status_code", None)
+                    error.retry_after = getattr(getattr(exc, "response", None), "headers", {}).get("Retry-After")
+                    retry.update(source_retry_plan(error, attempt=attempt))
+                    if retry["failure_kind"] == "rate_limited" and cache is not None:
+                        with _FRED_LOCK:
+                            cache[_FRED_COOLDOWN] = max(
+                                cache.get(_FRED_COOLDOWN, 0.0),
+                                time.monotonic() + retry["retry_after_seconds"])
+                    raise error from None
+
+            try:
+                return observe_source_call(
+                    "fred_" + path.replace("/", "_"), "fred", "http_response_bytes",
+                    request_once, retry=retry, indicator=params.get("series_id", ""),
+                )
+            except requests.RequestException:
+                if retry["retry_action"] != "retry":
+                    raise
+                wait_source(retry["retry_after_seconds"])
+
+    def validated_fetch():
+        value = fetch()
+        body = value["body"]
+        if value["status"] == 400:
+            try:
+                error_body = json.loads(body)
+                message = error_body.get("error_message", body) if isinstance(error_body, dict) else body
+            except ValueError:
+                message = body
+            raise ValueError(f"FRED request failed: {str(message).replace(api_key, '***')}")
         try:
-            message = response.json().get("error_message", response.text)
+            payload = json.loads(body)
         except ValueError:
-            message = response.text
-        raise ValueError(f"FRED request failed: {message}")
-    return response.json()
+            reason = "provider maintenance" if "maintenance" in body.lower() else "a non-JSON response"
+            raise VendorUnavailableError(f"FRED returned {reason}; no macro observations were received") from None
+        field = {"series": "seriess", "series/observations": "observations"}.get(path)
+        if not isinstance(payload, dict) or (field is not None and
+                (not isinstance(payload.get(field), list) or
+                 not all(isinstance(item, dict) for item in payload[field]))):
+            raise VendorUnavailableError("FRED returned an invalid response; no macro observations were received")
+        if path == "series" and not payload["seriess"]:
+            series_id = params.get("series_id", "")
+            raise NoMarketDataError(series_id, series_id, "FRED returned no series metadata")
+        if path == "series/observations" and any("date" not in item for item in payload["observations"]):
+            raise VendorUnavailableError("FRED returned an invalid response; no macro observations were received")
+        return value
+
+    def acquire():
+        if cache is None:
+            return validated_fetch()
+        with _FRED_LOCK:
+            entry = cache.get(key)
+            if entry is not None and entry.get("expires", float("inf")) <= time.monotonic():
+                cache.pop(key, None)
+                entry = None
+            if entry is None:
+                entry = {"ready": threading.Event()}
+                cache[key] = entry
+                leader = True
+            else:
+                leader = False
+        if not leader:
+            while not entry["ready"].is_set():
+                wait_source(0.2)
+            if source_cancelled():
+                raise InterruptedError("Research cancelled")
+            if "error" in entry:
+                raise entry["error"]
+            return entry["value"]
+
+        try:
+            value = validated_fetch()
+            with _FRED_LOCK:
+                entry["value"] = value
+            return value
+        except BaseException as exc:
+            with _FRED_LOCK:
+                entry["error"] = exc
+                if isinstance(exc, InterruptedError):
+                    cache.pop(key, None)
+                else:
+                    entry["expires"] = max(time.monotonic() + 30, cache.get(_FRED_COOLDOWN, 0.0))
+            raise
+        finally:
+            entry["ready"].set()
+
+    # Each consumer retains the actual shared response as evidence.
+    received = observe_source_call(
+        "fred_shared_" + path.replace("/", "_"), "fred", "http_response_bytes",
+        acquire, indicator=params.get("series_id", ""),
+    )
+    return json.loads(received["body"])
 
 
 def get_macro_data(
@@ -213,10 +328,7 @@ def get_macro_data(
 
     meta = _request("series", {"series_id": series_id, **realtime}).get("seriess") or []
     if not meta:
-        return (
-            f"FRED series '{series_id}' not found. Pass a known alias "
-            f"(e.g. 'cpi', 'unemployment') or a valid FRED series ID."
-        )
+        raise NoMarketDataError(series_id, series_id, "FRED returned no series metadata")
     info = meta[0]
     title = info.get("title", series_id)
     units = info.get("units_short") or info.get("units", "")
@@ -250,12 +362,7 @@ def get_macro_data(
     )
 
     if not points:
-        return header + (
-            f"\nNo observations for {series_id} in this window at the {pit} "
-            f"vintage. The series may report less frequently than the window "
-            f"(try a longer look_back_days), or have no vintage published by "
-            f"then (unpublished as of {pit}, or before ALFRED coverage begins)."
-        )
+        raise NoMarketDataError(series_id, series_id, f"no observations in {start_date} to {as_of_date} at vintage {pit}")
 
     first_date, first_val = points[0]
     last_date, last_val = points[-1]
@@ -271,16 +378,10 @@ def get_macro_data(
     except ValueError:
         summary = f"\n**Latest:** {last_val} ({last_date})\n"
 
-    shown = points
-    note = ""
-    if len(points) > MAX_ROWS:
-        shown = points[-MAX_ROWS:]
-        note = f"\n_(showing the most recent {MAX_ROWS} of {len(points)} observations)_\n"
-
     table = (
         "\n| Date | Value |\n| --- | --- |\n"
-        + "\n".join(f"| {d} | {v} |" for d, v in shown)
+        + "\n".join(f"| {o['date']} | {o.get('value') if o.get('value') not in ('.', None, '') else 'missing'} |" for o in observations)
         + "\n"
     )
 
-    return header + summary + note + table
+    return header + summary + table

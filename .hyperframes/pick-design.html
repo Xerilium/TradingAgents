@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TradingAgents · Universe review</title><link rel="stylesheet" href="fonts.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#111920;color:#e2eaf0;font:15px/1.5 Geist,system-ui,sans-serif;--bg:#111920;--fg:#e2eaf0;--muted:#aebfcc;--accent:#98d9b2;--surface:#1b2833;--line:#435361;--radius:4px}
+button,input,select{font:inherit;color:inherit;background:#233542;border:1px solid #607484;border-radius:4px;padding:8px 11px}button{cursor:pointer}button:hover:not(:disabled){border-color:var(--accent);background:#2c4352}button:disabled{opacity:.5;cursor:not-allowed}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:3px solid #99d4ef;outline-offset:2px}button[aria-pressed=true]{background:#2b5140;border-color:#98d9b2}h1,h2,h3,p{margin:0 0 10px}h1{font-size:23px}h2{font-size:20px}h3{font-size:17px}small,.muted{font-size:14px;color:var(--muted)}a{color:var(--accent)}[hidden]{display:none!important}
+.app-header{position:sticky;top:0;z-index:5;background:#15212a;border-bottom:1px solid var(--line);padding:14px 22px}.header-row,.balances,.snapshot-strip,.section-heading,.row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.balances{gap:28px}.balance span{display:block;font-size:14px;color:var(--muted)}.balance strong{font-size:22px;font-variant-numeric:tabular-nums}.snapshot-strip{justify-content:start;margin-top:12px;padding-top:10px;border-top:1px solid #354653;font-size:14px;color:#bacbd6}.snapshot-strip strong{color:#f1d49b}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;padding:20px 22px;align-items:start}.workspace.detail-open{grid-template-columns:minmax(540px,1.3fr) minmax(380px,1fr)}.universe{min-width:0}.section-heading p{margin:0;color:var(--muted);font-size:14px}.view-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.view-tabs button{display:flex;gap:10px;align-items:center}.count{font-variant-numeric:tabular-nums;border:1px solid #607484;border-radius:3px;padding:0 6px}
+.filters{display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:5px}.filters label{display:flex;flex-direction:column;gap:5px;font-size:14px}.search-control{flex:1;min-width:180px}.filters input[type=search]{width:100%}.bulk-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 8px}.bulk-toolbar button{font-size:14px;padding:7px 10px}.selection-count{font-size:14px;margin-right:auto;min-width:125px}.view-status{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin:10px 0}.feedback{min-height:22px;font-size:14px;color:var(--accent);margin:5px 0}.table-scroll{height:calc(100vh - 410px);min-height:320px;overflow:auto;border:1px solid var(--line);border-radius:5px;background:#17242e}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}th,td{padding:11px 10px;text-align:left;border-bottom:1px solid #354957;vertical-align:top}th{position:sticky;top:0;background:#243541;z-index:1;white-space:nowrap}th button{padding:0;border:0;background:transparent;font-weight:700}td.num,th.num{text-align:right}.select-cell{width:38px;padding-right:0}input[type=checkbox]{width:17px;height:17px;accent-color:#98d9b2;cursor:pointer;vertical-align:middle}.stock-button{font-weight:700;padding:2px 4px;margin-left:-4px;background:transparent;border-color:transparent}.company{display:block;color:var(--muted);max-width:270px;margin-top:3px}.row-active{background:#254537}.shortlist-mark{font-size:14px;color:var(--accent);margin-left:7px}.price-age{white-space:nowrap}.no-results{padding:35px 15px}.universe-foot{font-size:14px;margin-top:14px;color:var(--muted)}.universe-foot p{margin-top:8px;overflow-wrap:anywhere}
+.detail{position:sticky;top:145px;min-width:0;border:1px solid var(--line);border-radius:5px;background:#16232c}.detail-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px;border-bottom:1px solid var(--line);background:#233541}.detail-header h2{margin:0}.detail-content{max-height:calc(100vh - 220px);overflow:auto;padding:14px}.panel{padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:4px;margin-bottom:14px}.tag{padding:3px 7px;border:1px solid var(--line);border-radius:3px;font-size:14px}.amount{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}.evidence dl{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,1.7fr);gap:9px 12px;margin:14px 0}.evidence dt{color:var(--muted)}.evidence dd{margin:0;overflow-wrap:anywhere}.research select{width:100%;margin:10px 0}.report-text{white-space:pre-wrap;line-height:1.75;overflow-wrap:anywhere;margin:12px 0}.report-text h3{margin:16px 0 5px;line-height:1.4}.report-source{font-size:14px;overflow-wrap:anywhere}.error{color:#ffc3a5}
+@media(max-width:1150px){.workspace.detail-open{grid-template-columns:minmax(0,1fr)}.workspace.detail-open .detail{position:fixed;top:150px;bottom:15px;right:15px;width:min(620px,calc(100vw - 30px));z-index:10;box-shadow:0 10px 70px #000b}.detail-content{height:calc(100% - 72px);max-height:none}.balances{gap:18px}.balance strong{font-size:20px}}
+@media(max-width:700px){.app-header{padding:12px}.balances{gap:16px}.balance strong{font-size:18px}.snapshot-strip{gap:6px 12px}.workspace{padding:14px 12px}.filters{padding:10px}.view-tabs button{font-size:14px;padding:8px}.table-scroll{height:50vh;min-height:300px}.workspace.detail-open .detail{top:15px;bottom:15px}.selection-count{width:100%}.bulk-toolbar button{flex:1}.company{max-width:180px}}
+</style></head>
+<body>
+<header class="app-header"><div class="header-row"><div><h1>TradingAgents / Universe review</h1><div class="muted">Existing paper account · <span id="universe-size">503</span> stocks</div></div><div class="balances" id="balances" aria-label="Captured paper account"></div></div><div class="snapshot-strip" id="snapshot-status" role="status">Loading captured account and stock universe…</div></header>
+<main class="workspace" id="workspace">
+<section class="universe" aria-label="Stock universe">
+<div class="section-heading"><h2>Scan the universe. Build a review shortlist.</h2><p>Shortlist and selection are design-preview tools only.</p></div>
+<nav class="view-tabs" id="universe-views" aria-label="Universe views"></nav>
+<div class="filters"><label class="search-control" for="stock-search">Search symbol or company<input type="search" id="stock-search" placeholder="AAPL, Apple…" autocomplete="off"></label><label for="sort-by">Sort by<select id="sort-by"><option value="symbol">Symbol</option><option value="company">Company</option><option value="price">Price</option><option value="change">Captured change %</option><option value="age">Price age</option><option value="date">Research date</option><option value="rating">Saved rating</option></select></label><button id="sort-direction" aria-label="Sort descending">Ascending ↑</button><button id="clear-filters">Clear filters</button></div>
+<div class="bulk-toolbar"><span class="selection-count" id="selection-count">0 selected</span><button id="select-filtered">Select all filtered</button><button id="clear-selection" disabled>Clear selection</button><button id="add-shortlist" disabled>Add to shortlist</button><button id="remove-shortlist" disabled>Remove from shortlist</button></div>
+<div class="view-status"><span id="result-count" role="status"></span><span>View counts reflect search · change % is captured, not live</span></div><div class="feedback" id="feedback" role="status" aria-live="polite"></div>
+<div class="table-scroll" id="table-scroll" tabindex="0" aria-label="Captured stock universe"><table><thead><tr><th class="select-cell"><input type="checkbox" id="select-all" aria-label="Select all filtered stocks"></th><th id="head-symbol"><button data-sort="symbol">Stock / company</button></th><th class="num" id="head-price"><button data-sort="price">Last price</button></th><th class="num" id="head-change"><button data-sort="change">Captured Δ %</button></th><th id="head-age"><button data-sort="age">Price age</button></th><th id="head-date"><button data-sort="date">Saved research</button></th></tr></thead><tbody id="stock-rows"></tbody></table></div>
+<div class="universe-foot"><p id="shortlist-storage">Shortlist is saved in this browser for this design preview only. It never changes the live product, research or orders.</p><details><summary>Snapshot provenance and data boundaries</summary><div id="provenance"></div></details></div>
+</section>
+<aside class="detail" id="stock-detail" aria-label="Selected stock review" hidden><div class="detail-header"><h2 id="detail-title">Stock review</h2><button id="close-detail">Back to universe</button></div><div class="detail-content" id="detail-content"></div></aside>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))?'Unavailable':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(value));
+const time=value=>value?new Date(value).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',timeZoneName:'short'}):'Unavailable';
+const fullTime=value=>value?'<time datetime="'+esc(value)+'" title="'+esc(value)+'">'+esc(time(value))+'</time>':'Unavailable';
+function stock(){return DATA.stocks.find(s=>s.symbol===symbol)||DATA.stocks[0];}
+function asText(value){return typeof value==='string'?value:JSON.stringify(value,null,2);}
+function savedChart(selected){
+ const h=DATA.history?.[selected];if(!h?.bars?.length)return '<p class="muted">No saved historical series for this stock. No chart is available.</p>';
+ const b=h.bars,last=b.at(-1),low=Math.min(...b.map(x=>x.l)),high=Math.max(...b.map(x=>x.h)),span=high-low||1,step=580/b.length,tick=Math.max(1,Math.min(4,step*.35)),y=v=>12+(high-v)/span*156;
+ const strokes=b.map((v,i)=>{const x=10+(i+.5)*step;return '<path d="M'+x+','+y(v.h)+'V'+y(v.l)+'M'+(x-tick)+','+y(v.o)+'H'+x+'M'+x+','+y(v.c)+'H'+(x+tick)+'" fill="none" stroke="'+(v.c>=v.o?'var(--accent)':'var(--fg)')+'" stroke-width="1" vector-effect="non-scaling-stroke"><title>'+esc(v.t+' · O '+v.o+' H '+v.h+' L '+v.l+' C '+v.c+' · volume '+v.v)+'</title></path>'}).join('');
+ return '<figure style="margin:18px 0 0"><h3>Saved research period</h3><p class="muted">'+esc(b[0].t)+' – '+esc(last.t)+' · '+b.length+' daily OHLC bars</p><div class="row"><small>Period high '+money(high)+'</small><small>Period low '+money(low)+'</small></div><svg viewBox="0 0 600 180" width="100%" height="180" preserveAspectRatio="none" role="img" aria-label="'+esc(selected+' saved daily OHLC chart, '+b[0].t+' through '+last.t)+ '" style="display:block;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius)"><title>'+esc(selected+' saved daily OHLC. Sessions spaced evenly. Values from '+h.source.vendor+' input captured '+h.source.captured_at)+'</title><path d="M0,12H600M0,90H600M0,168H600" stroke="var(--line)" fill="none"/>'+strokes+'</svg><div class="row"><small>'+esc(b[0].t)+'</small><small>'+esc(last.t)+'</small></div><figcaption><p>Last saved bar · O '+money(last.o)+' · H '+money(last.h)+' · L '+money(last.l)+' · C '+money(last.c)+' · volume '+Number(last.v).toLocaleString('en-US')+'</p><p class="muted">OHLC ticks; accent = close ≥ open. Sessions spaced evenly. Saved research data, not current prices. Adjustment basis was not recorded.</p></figcaption><details class="report-source"><summary>Saved chart provenance</summary><p>'+esc(h.source.vendor)+' · captured '+fullTime(h.source.captured_at)+'</p><p>Run '+esc(h.run_id)+'</p><p>'+esc(h.source.path)+'</p><p>Verified SHA-256 '+esc(h.source.sha256)+'</p></details></figure>';
+}
+function evidence(){const s=stock(),q=s.quote;return `<section class="panel evidence"><div class="row"><h2>${esc(s.symbol)} evidence</h2><span class="tag">${q.stale?'Stale price':'Captured price'}</span></div><p>${esc(s.company)}</p><div class="amount">${money(q.price)}</div><dl><dt>Price basis</dt><dd>${esc(q.basis?.replaceAll('_',' ')||'Unavailable')}</dd><dt>Provider</dt><dd>${esc(q.feed||'Unavailable')}</dd><dt>Price event</dt><dd>${fullTime(q.timestamp)}</dd><dt>Snapshot checked</dt><dd>${fullTime(q.checked_at)}</dd><dt>Cached bid / ask</dt><dd>${money(s.bid)} / ${money(s.ask)}</dd><dt>Quote event</dt><dd>${s.quote_event_ns?fullTime(new Date(Number(s.quote_event_ns)/1e6).toISOString()):'Unavailable'}</dd></dl>${q.error?`<p>${esc(q.error)}</p>`:''}${savedChart(s.symbol)}<p class="muted">Indicators, support levels and performance are not included in this picker.</p></section>`;}
+function reportMarkup(value){return esc(asText(value)).replace(/^#{1,6}\s+(.+)$/gm,'<h3>$1</h3>').replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*]\s+/gm,'• ');}
+function research(){const r=DATA.research[symbol];if(!r)return `<section class="panel research"><h2>${esc(symbol)} saved research</h2><p>No saved report for this stock.</p><p class="muted">${DATA.stocks.length-Object.keys(DATA.research).length} stocks in this captured index have no saved research. This preview does not run research.</p></section>`;const reports=r.reports||{},keys=Object.keys(reports);if(!keys.includes(reportKey))reportKey=keys.includes('final_trade_decision')?'final_trade_decision':keys[0];return `<section class="panel research"><div class="row"><h2>${esc(symbol)} saved research</h2><span class="tag">${esc(r.rating||'Unrated')}</span></div><p class="muted">Research date ${esc(r.trade_date)} · revision ${esc(r.revision)} · ${esc(r.status)}</p><p class="muted">Saved agent analysis; dated statements below are not a current market assessment or an approved order.</p><label>Saved report<select id="report-select">${keys.map(k=>`<option value="${esc(k)}" ${k===reportKey?'selected':''}>${esc(k.replaceAll('_',' '))}</option>`).join('')}</select></label><div class="report-text" tabindex="0" aria-label="Saved report text">${reports[reportKey]?reportMarkup(reports[reportKey]):'No saved text available.'}</div><details class="report-source"><summary>Saved report provenance</summary><p>Run ${esc(r.run_id)}</p><p>${esc(r.source)}</p><p>Copied from the existing saved result. Exact saved source text:</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit">${esc(reports[reportKey]?asText(reports[reportKey]):'No saved text available.')}</pre></details></section>`;}
+
+let DATA, symbol='AAPL', reportKey='final_trade_decision', view='all', search='', sortKey='symbol', descending=false, returnFocus=null;
+const selected=new Set(), shortlist=new Set(), STORAGE_KEY='tradingagents-universe-design-shortlist-v1';
+function reportMarkup(value){return esc(asText(value)).replace(/^#{1,6}\s+(.+)$/gm,'<h3>$1</h3>').replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*]\s+/gm,'• ');}
+function matchesSearch(s){return !search||(s.symbol+' '+s.company).toLowerCase().includes(search);}
+function change(s){const v=s.quote.change_pct;return typeof v==='number'&&Number.isFinite(v)?v:null;}
+function matchesView(s,key){return key==='all'||key==='research'&&Boolean(DATA.research[s.symbol])||key==='unresearched'&&!DATA.research[s.symbol]||key==='shortlist'&&shortlist.has(s.symbol)||key==='gainers'&&change(s)>0||key==='decliners'&&change(s)<0;}
+function age(s){return s.quote.timestamp?Math.max(0,new Date(DATA.captured_at)-new Date(s.quote.timestamp)):null;}
+function ageLabel(s){const ms=age(s);if(ms===null||!Number.isFinite(ms))return 'Unavailable';const m=Math.floor(ms/60000);return (m>=1440?Math.floor(m/1440)+'d ':m>=60?Math.floor(m/60)+'h ':'')+(m>=1440?Math.floor(m%1440/60)+'h':m%60+'m')+' old';}
+function sortValue(s){const r=DATA.research[s.symbol];return sortKey==='price'?s.quote.price:sortKey==='change'?change(s):sortKey==='age'?age(s):sortKey==='date'?r?.trade_date??null:sortKey==='rating'?r?.rating??null:s[sortKey];}
+function filteredRows(){
+ return DATA.stocks.filter(s=>matchesSearch(s)&&matchesView(s,view)).sort((a,b)=>{
+  const av=sortValue(a),bv=sortValue(b);if(av==null&&bv==null)return a.symbol.localeCompare(b.symbol);if(av==null)return 1;if(bv==null)return -1;
+  const cmp=typeof av==='number'?av-bv:String(av).localeCompare(String(bv));return (descending?-cmp:cmp)||a.symbol.localeCompare(b.symbol);
+ });
+}
+function renderViews(){
+ const labels={all:'All',research:'Has saved research',unresearched:'No saved research',gainers:'Gainers',decliners:'Decliners',shortlist:'Shortlist'};
+ $('universe-views').innerHTML=Object.entries(labels).map(([key,label])=>'<button data-view="'+key+'" aria-pressed="'+(view===key)+'">'+label+' <span class="count">'+DATA.stocks.filter(s=>matchesSearch(s)&&matchesView(s,key)).length+'</span></button>').join('');
+}
+function renderSelection(rows){
+ const visible=rows.filter(s=>selected.has(s.symbol)).length;
+ $('selection-count').textContent=selected.size+' selected'+(selected.size?' · '+visible+' in view':'');
+ $('clear-selection').disabled=!selected.size;$('add-shortlist').disabled=!Array.from(selected).some(s=>!shortlist.has(s));$('remove-shortlist').disabled=!Array.from(selected).some(s=>shortlist.has(s));$('select-filtered').disabled=!rows.length;
+ $('select-all').checked=rows.length>0&&visible===rows.length;$('select-all').indeterminate=visible>0&&visible<rows.length;$('select-all').disabled=!rows.length;
+}
+function renderTable(resetScroll=false){
+ const box=$('table-scroll'),scrollTop=resetScroll?0:box.scrollTop,scrollLeft=box.scrollLeft,rows=filteredRows();
+ renderViews();renderSelection(rows);
+ $('result-count').textContent=rows.length+' matching stocks · '+DATA.stocks.length+' in universe · '+shortlist.size+' shortlisted';
+ $('stock-rows').innerHTML=rows.length?rows.map(s=>{
+  const r=DATA.research[s.symbol],active=!$('stock-detail').hidden&&symbol===s.symbol,v=change(s);
+  return '<tr'+(active?' class="row-active"':'')+' data-row="'+esc(s.symbol)+'"><td class="select-cell"><input type="checkbox" data-select="'+esc(s.symbol)+'" aria-label="Select '+esc(s.symbol)+'" '+(selected.has(s.symbol)?'checked':'')+'></td><td><button class="stock-button" data-stock="'+esc(s.symbol)+'" aria-pressed="'+active+'">'+esc(s.symbol)+'</button>'+(shortlist.has(s.symbol)?'<span class="shortlist-mark">Shortlisted</span>':'')+'<span class="company">'+esc(s.company)+'</span></td><td class="num">'+money(s.quote.price)+'</td><td class="num">'+(v===null?'':(v>0?'+':'')+v.toFixed(2)+'%')+'</td><td class="price-age" title="'+esc(s.quote.timestamp||'No provider timestamp')+'">'+ageLabel(s)+'<br><small>'+(s.quote.stale?'Stale · at capture':'At capture')+'</small></td><td>'+(r?esc(r.rating||'Unrated')+'<br><small>'+esc(r.trade_date)+'</small>':'<span class="muted">No saved research</span>')+'</td></tr>';
+ }).join(''):'<tr><td colspan="6" class="no-results">'+(view==='shortlist'&&!shortlist.size?'Your shortlist is empty. Select stocks in another view, then choose Add to shortlist.':'No stocks match this view and search. Clear filters to return to all stocks.')+'</td></tr>';
+ document.querySelectorAll('th[id]').forEach(th=>th.removeAttribute('aria-sort'));
+ const head=$('head-'+sortKey);if(head)head.setAttribute('aria-sort',descending?'descending':'ascending');
+ $('sort-by').value=sortKey;$('sort-direction').textContent=descending?'Descending ↓':'Ascending ↑';$('sort-direction').setAttribute('aria-label',descending?'Sort ascending':'Sort descending');
+ box.scrollTop=scrollTop;box.scrollLeft=scrollLeft;
+}
+function persistShortlist(){
+ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(Array.from(shortlist).sort()));}
+ catch{$('shortlist-storage').textContent='Browser storage is unavailable. This design-preview shortlist will last only for this page session.';}
+}
+function bulkShortlist(add){
+ let changed=0;for(const s of selected){if(add&&!shortlist.has(s)){shortlist.add(s);changed++;}else if(!add&&shortlist.delete(s)){changed++;}}
+ persistShortlist();selected.clear();renderTable();$('feedback').textContent=(add?'Added ':'Removed ')+changed+' stock'+(changed===1?'':'s')+(add?' to':' from')+' your local design-preview shortlist.';
+}
+function bindReport(){
+ $('report-select')?.addEventListener('change',e=>{
+  reportKey=e.target.value;const box=$('detail-content'),scroll=box.scrollTop;box.querySelector('.research').outerHTML=research();bindReport();box.scrollTop=scroll;$('report-select')?.focus();
+ });
+}
+function openStock(s,trigger){
+ symbol=s;reportKey='final_trade_decision';returnFocus=trigger;$('detail-title').textContent=s+' / Stock review';$('stock-detail').hidden=false;$('workspace').classList.add('detail-open');
+ $('detail-content').innerHTML=evidence()+research();$('detail-content').scrollTop=0;bindReport();
+ document.querySelectorAll('[data-row]').forEach(row=>{const active=row.dataset.row===s;row.classList.toggle('row-active',active);row.querySelector('[data-stock]').setAttribute('aria-pressed',String(active));});
+ $('close-detail').focus();
+}
+function closeStock(){
+ $('stock-detail').hidden=true;$('workspace').classList.remove('detail-open');
+ document.querySelectorAll('[data-row]').forEach(row=>{row.classList.remove('row-active');row.querySelector('[data-stock]').setAttribute('aria-pressed','false');});
+ if(returnFocus?.isConnected)returnFocus.focus();else $('stock-search').focus();
+}
+$('stock-search').addEventListener('input',e=>{search=e.target.value.trim().toLowerCase();$('feedback').textContent='';renderTable(true);});
+$('universe-views').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b){view=b.dataset.view;$('feedback').textContent='';renderTable(true);}});
+$('sort-by').addEventListener('change',e=>{sortKey=e.target.value;renderTable(true);});
+$('sort-direction').addEventListener('click',()=>{descending=!descending;renderTable(true);});
+document.querySelector('thead').addEventListener('click',e=>{const b=e.target.closest('[data-sort]');if(b){descending=sortKey===b.dataset.sort?!descending:false;sortKey=b.dataset.sort;renderTable(true);}});
+$('clear-filters').addEventListener('click',()=>{search='';view='all';sortKey='symbol';descending=false;$('stock-search').value='';$('feedback').textContent='Filters cleared. Your shortlist and selection are retained.';renderTable(true);});
+$('select-filtered').addEventListener('click',()=>{filteredRows().forEach(s=>selected.add(s.symbol));renderTable();});
+$('select-all').addEventListener('change',e=>{filteredRows().forEach(s=>e.target.checked?selected.add(s.symbol):selected.delete(s.symbol));renderTable();});
+$('clear-selection').addEventListener('click',()=>{selected.clear();renderTable();});
+$('stock-rows').addEventListener('change',e=>{const s=e.target.dataset.select;if(s){e.target.checked?selected.add(s):selected.delete(s);renderSelection(filteredRows());}});
+$('stock-rows').addEventListener('click',e=>{const b=e.target.closest('[data-stock]');if(b)openStock(b.dataset.stock,b);});
+$('add-shortlist').addEventListener('click',()=>bulkShortlist(true));$('remove-shortlist').addEventListener('click',()=>bulkShortlist(false));$('close-detail').addEventListener('click',closeStock);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('stock-detail').hidden)closeStock();});
+fetch('portfolio-snapshot.json').then(r=>{if(!r.ok)throw new Error('Snapshot HTTP '+r.status);return r.json();}).then(data=>{
+ DATA=data;const valid=new Set(DATA.stocks.map(s=>s.symbol));
+ try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');if(Array.isArray(saved))saved.forEach(s=>{if(valid.has(s))shortlist.add(s);});}
+ catch{$('shortlist-storage').textContent='Browser storage is unavailable. This design-preview shortlist lasts only for this page session.';}
+ $('universe-size').textContent=DATA.stocks.length;
+ $('balances').innerHTML=[['cash','Cash'],['equity','Equity'],['buying_power','Buying power']].map(([key,label])=>'<div class="balance"><span>'+label+' · USD</span><strong>'+money(DATA.account[key])+'</strong></div>').join('')+'<div class="balance"><span>Positions / open orders</span><strong>'+DATA.positions_count+' / '+DATA.open_orders_count+'</strong></div>';
+ $('snapshot-status').innerHTML='<b>Read-only captured data</b><span>'+fullTime(DATA.captured_at)+'</span><span>Market '+(DATA.market_open?'open':'closed')+' at capture</span><strong>'+DATA.stocks.filter(s=>s.quote.stale).length+' / '+DATA.stocks.length+' prices stale</strong><span>Price age is measured at capture. This file does not refresh or trade.</span>';
+ $('provenance').innerHTML='<p>Account observed '+fullTime(DATA.account_observed_at)+'. Prices checked '+fullTime(DATA.prices_checked_at)+'. Provider event timestamps are on price-age tooltips and in stock detail.</p><p>Source: '+esc(DATA.provenance.account_and_prices)+'. Universe: '+esc(DATA.provenance.universe.source_url||'Saved constituent CSV')+'.</p><p>'+esc(DATA.provenance.history)+'</p><p><a href="portfolio-snapshot.json" target="_blank" rel="noopener">Sanitized captured data and source receipts</a>. Shortlist data is kept separately in this browser.</p>';
+ renderTable();
+}).catch(e=>{$('snapshot-status').textContent='Could not load captured data: '+e.message;$('snapshot-status').classList.add('error');});
+</script></body></html>
+

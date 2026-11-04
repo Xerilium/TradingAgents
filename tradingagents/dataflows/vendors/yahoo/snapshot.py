@@ -13,19 +13,18 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 import pandas as pd
-from stockstats import wrap
 
 from tradingagents.dataflows.errors import NoMarketDataError
 from tradingagents.dataflows.symbols import normalize_symbol
+from tradingagents.dataflows.vendors.yahoo.market import (
+    INDICATOR_DESCRIPTIONS,
+    calculate_stockstats,
+)
 from tradingagents.dataflows.vendors.yahoo.common import price_text
 from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
-DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = (
-    "close_10_ema", "close_50_sma", "close_200_sma",
-    "rsi", "boll", "boll_ub", "boll_lb",
-    "macd", "macds", "macdh", "atr",
-)
+DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = tuple(INDICATOR_DESCRIPTIONS)
 
 
 def _verified_rows(symbol: str, as_of_date: str) -> pd.DataFrame:
@@ -37,7 +36,7 @@ def _verified_rows(symbol: str, as_of_date: str) -> pd.DataFrame:
     """
     # As reported: this snapshot is quoted by the agents as exact prices, so a
     # gap-filled cell would put the previous session's number under this date.
-    data = load_ohlcv(symbol, as_of_date, fill_gaps=False)
+    data = load_ohlcv(symbol, as_of_date)
     if data is None or data.empty:
         raise NoMarketDataError(symbol, normalize_symbol(symbol), "no price rows")
 
@@ -75,20 +74,21 @@ def build_verified_market_snapshot(
     # Volume); stockstats `wrap()` lowercases columns and adds indicator
     # columns, so read raw prices from `df` and indicators from `stock_df`.
     df = _verified_rows(symbol, as_of_date)
-    stock_df = wrap(df.copy())
-
     selected = tuple(indicators or DEFAULT_SNAPSHOT_INDICATORS)
+    stock_df = calculate_stockstats(df, selected)
     indicator_values: dict[str, str] = {}
     for name in selected:
         try:
             stock_df[name]  # triggers stockstats calculation
             indicator_values[name] = _fmt(stock_df.iloc[-1][name])
-        except Exception as exc:  # noqa: BLE001 — one bad indicator shouldn't sink the snapshot
-            indicator_values[name] = f"N/A ({type(exc).__name__})"
+        except Exception as exc:
+            raise NoMarketDataError(symbol, normalize_symbol(symbol), f"required indicator {name} unavailable") from exc
+        if indicator_values[name] == "N/A":
+            raise NoMarketDataError(symbol, normalize_symbol(symbol), f"required indicator {name} has no value")
 
     latest = df.iloc[-1]
     latest_date = _fmt(latest["Date"])
-    window = max(1, min(int(look_back_days), 30))
+    window = max(1, int(look_back_days))
     recent = df.tail(window)
 
     lines = [
@@ -97,6 +97,8 @@ def build_verified_market_snapshot(
         f"- Requested analysis date: {as_of_date}",
         f"- Latest trading row used: {latest_date}",
         "- Rows after the requested analysis date are excluded before verification.",
+        "- Price basis: vendor-reported OHLCV, without dividend adjustment or gap filling.",
+        f"- Incomplete observed bars excluded without filling: {', '.join(df.attrs.get('incomplete_ohlcv_dates', [])) or 'none'}",
         "",
         "### Latest verified OHLCV row",
         "",
@@ -110,11 +112,26 @@ def build_verified_market_snapshot(
               "| Indicator | Value |", "|---|---:|"]
     for name, value in indicator_values.items():
         lines.append(f"| {name} | {value} |")
+    lines.append("MFI is a Stockstats fraction on 0–1 (multiply by 100 for conventional MFI); RSI is on 0–100.")
 
     lines += ["", f"### Recent verified closes (last {len(recent)} rows)", "",
               "| Date | Close |", "|---|---:|"]
     for _, row in recent.iterrows():
         lines.append(f"| {_fmt(row['Date'])} | {_fmt(row.get('Close'))} |")
+
+    lines += ["", "### Dated close-to-close movements", "",
+              "Adjacent available rows only; exchange-session completeness is not independently verified.",
+              "| From | To | Close change | Direction | Coverage |", "|---|---|---:|---|---|"]
+    if len(recent) < 2:
+        lines.append("Insufficient observed closes to establish a session movement.")
+    for index in range(1, len(recent)):
+        previous, current = recent.iloc[index - 1], recent.iloc[index]
+        start, end = _fmt(previous["Date"]), _fmt(current["Date"])
+        gaps = [day for day in df.attrs.get("incomplete_ohlcv_dates", []) if start < day <= end]
+        change = current["Close"] - previous["Close"]
+        direction = "up" if change > 0 else "down" if change < 0 else "unchanged"
+        coverage = "not consecutive: incomplete bars " + ", ".join(gaps) if gaps else "no known excluded bar between rows"
+        lines.append(f"| {start} | {end} | {change:+.2f} | {direction} | {coverage} |")
 
     lines += [
         "",

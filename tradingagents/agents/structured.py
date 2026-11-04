@@ -19,10 +19,11 @@ all three agents log the same warnings when fallback fires.
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 
 logger = logging.getLogger(__name__)
 
@@ -33,20 +34,24 @@ T = TypeVar("T", bound=BaseModel)
 # structured attempt is discarded for a free-text retry. Agents on this path
 # state the constraint explicitly rather than relying on the binding alone
 # (#1130).
-NO_EXTERNAL_TOOLS = (
-    "Use only the evidence provided in this prompt. Do not call external tools "
-    "or search the web; if something is missing, say so explicitly."
-)
 
 
-def bind_structured(llm: Any, schema: type[T], agent_name: str) -> Any | None:
+def bind_structured(llm: Any, schema: type[T], agent_name: str, *, workflow) -> Any | None:
     """Return ``llm.with_structured_output(schema)`` or ``None`` if unsupported.
 
     Logs a warning when the binding fails so the user understands the agent
     will use free-text generation for every call instead of one-shot fallback.
     """
+    fields = {}
+    for name, field in schema.model_fields.items():
+        owner = next(cls for cls in schema.__mro__ if name in getattr(cls, '__annotations__', {}))
+        description = workflow.text(f'schema_{owner.__name__}_{name}')
+        copied = deepcopy(field)
+        copied.description = description
+        fields[name] = (field.annotation, copied)
+    run_schema = create_model(schema.__name__, __base__=schema, **fields)
     try:
-        return llm.with_structured_output(schema)
+        return llm.with_structured_output(run_schema)
     except (NotImplementedError, AttributeError) as exc:
         logger.warning(
             "%s: provider does not support with_structured_output (%s); "
@@ -73,6 +78,8 @@ def invoke_structured(structured_llm: Any | None, prompt: Any, agent_name: str) 
             # as a structured miss and fall back, with a clear reason.
             raise ValueError("structured output returned no parsed result")
         return result
+    except InterruptedError:
+        raise
     except Exception as exc:
         logger.warning(
             "%s: structured-output invocation failed (%s); retrying once as free text",

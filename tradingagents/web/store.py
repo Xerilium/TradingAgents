@@ -3,21 +3,78 @@
 from __future__ import annotations
 
 import copy
+from contextlib import closing
 import hashlib
 import html
 import json
 import os
 import re
+import sqlite3
 import struct
 import threading
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from .app_database import ApplicationDatabase, StoreConflict
+from .evidence_requirements import research_gaps
+
+
+class SourceEvidenceError(ValueError):
+    """A bounded, safe-to-display receipt-capture failure."""
+
+
+def _local_laya_attempt(attempt):
+    return (attempt.get("origin") == "local_laya" and attempt.get("vendor") == "laya"
+            and attempt.get("operation") == "predict_batch" and attempt.get("boundary_kind") == "local_batch")
+
+
+def source_attempt_failed(attempt, attempts=()):
+    if (_local_laya_attempt(attempt) and attempt.get("ended_at") and not attempt.get("late")
+            and not attempt.get("capture_error") and attempt.get("capture") == "recorded"
+            and attempt.get("outcome") in {"success", "error", "unknown"}):
+        return False  # Optional inference coverage is separate from original source acquisition.
+    if (attempt.get("requirement") == "supplemental" and not attempt.get("capture_error")
+            and attempt.get("ended_at") and not attempt.get("late")
+            and attempt.get("capture") in {"recorded", "error_class_only"}
+            and attempt.get("outcome") in {"success", "error"}):
+        return False
+    if (attempt.get("operation") == "reddit_rss" and attempt.get("vendor") == "reddit"
+            and attempt.get("origin") == "http_response_bytes" and attempt.get("outcome") == "error"
+            and not attempt.get("capture_error") and attempt.get("arguments", {}).get("ticker")
+            and attempt.get("ended_at") and any(
+                other.get("outcome") == "success" and other.get("capture") == "recorded"
+                and not other.get("capture_error") and not other.get("late")
+                and (other.get("started_at") or "") >= attempt["ended_at"]
+                and all(other.get(key) == attempt.get(key) for key in
+                        ("symbol", "operation", "vendor", "origin", "arguments", "parent_attempt_id"))
+                for other in attempts)):
+        return False  # Retain the failed receipt; the same input was acquired by its retry.
+    return bool(attempt.get("capture_error") or (
+        (attempt.get("outcome") != "success" or attempt.get("data_status") in {"unavailable", "partial", "no_usable_coverage"})
+        and not (attempt.get("requirement") == "supplemental"
+                 and attempt.get("operation") == "read_research_source"
+                 and attempt.get("vendor") == "public_source" and attempt.get("origin") == "source_document_text"
+                 and attempt.get("outcome") == "error" and attempt.get("error_class") == "HTTPError"
+                 and type(attempt.get("http_status")) is int and 400 <= attempt["http_status"] <= 599
+                 and attempt.get("capture") == "error_class_only")))
+
+
+def call_evidence_failed(evidence):
+    """Unknown optional read outcomes are gaps, not missing durable receipts."""
+    optional = {
+        "gateway": {"GatewayIndex"},
+        "laya": {"decide"},
+        "maenifold.memory": {"SearchMemories", "ReadMemory", "ListMemories", "ExtractConceptsFromFile"},
+        "maenifold.graph": {"BuildContext", "FindSimilarConcepts", "Visualize", "AnalyzeConceptCorruption"},
+    }
+    return (not evidence.get("persistence_complete", evidence.get("capture_complete", False))
+            or any(a.get("outcome") == "unknown" and a.get("operation") not in optional.get(a.get("vendor"), ())
+                   for a in evidence.get("attempts", [])))
+
 
 class DeskStore:
-    def __init__(self, directory: Path, defaults: dict):
+    def __init__(self, directory: Path, defaults: dict, *, migrate_legacy=False):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.path = self.directory / "desk.json"
@@ -25,130 +82,199 @@ class DeskStore:
         self.data = {
             "config": defaults,
             "runs": [],
-            "research_requests": [],
             "proposals": [],
             "paused": False,
             "paper_account_id": None,
             "config_revision": 0,
         }
-        if self.path.exists():
-            saved = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(saved, dict):
-                raise ValueError(
-                    "Paper journal is not an object; preserve it and restore a valid journal."
-                )
-            self.data.update(saved)
-        for request in self.data["research_requests"]:
-            interrupted = request["status"] == "preflight"
-            if interrupted:
-                request.update(status="interrupted", recovery_observed_at=datetime.now(UTC).isoformat(),
-                               capture_complete=False)
-                for stage in request["stages"]:
-                    if stage["outcome"] == "running":
-                        stage["outcome"] = "unknown"
-            recovered_calls = False
-            for origin in ("source", "gateway", "jev"):
-                evidence = request.get(f"{origin}_evidence", {})
-                recovered_origin = False
-                for attempt in evidence.get("attempts", []):
-                    if attempt["outcome"] in {"running", "queued"}:
-                        attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                        recovered_calls = recovered_origin = True
-                if recovered_origin:
-                    self._snapshot_call_evidence(request, "recovery_unknown", origin)
-                self.finalize_call_evidence(request, origin)
-            if interrupted or recovered_calls:
-                self.checkpoint_request(request, "recovery_unknown")
+        self.database = ApplicationDatabase(self.directory, self.data, migrate_legacy=migrate_legacy)
+        saved = self.database.read("journal")
+        self.data, self.revision = saved["data"], saved["revision"]
+        latest = self.database.read("latest_research", {"runs": []})
+        self.research_revision = latest["revision"]
+        self.data["runs"] = latest["data"]["runs"] if latest["revision"] else self.data.get("runs", [])
+        self.data.pop("research_requests", None)
+        self.prune_research()
         for run in self.data["runs"]:
-            run.setdefault("portfolio_evidence", {
-                "status": "unavailable",
-                "reason": "Legacy run did not record its consumed portfolio context; cash and holdings are unknown.",
-            })
             if run["status"] in {"queued", "running", "cancelling"}:
-                run["status"] = "interrupted"
-                run["error"] = "Server stopped during analysis. Start a new run."
-            if run["status"] in {"completed", "failed", "cancelled", "interrupted"}:
-                self._recover_measurements(run)
-                evidence = run.get("source_evidence")
-                if evidence and any(a["outcome"] == "running" for a in evidence["attempts"]):
-                    evidence.update(capture_complete=False, persistence_error="Source attempt interrupted; final outcome unavailable.")
-                if evidence and "snapshots" in evidence:
-                    recovered_source = False
-                    for attempt in evidence["attempts"]:
-                        if attempt["outcome"] == "running":
-                            attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                            recovered_source = True
-                    if recovered_source:
-                        self._snapshot_call_evidence(run, "recovery_unknown", "source")
-                    self.finalize_call_evidence(run, "source")
-                for origin in ("gateway", "jev"):
-                    calls = run.get(f"{origin}_evidence")
-                    if calls and any(a["outcome"] in {"queued", "running"} for a in calls.get("attempts", [])):
-                        for attempt in calls["attempts"]:
-                            if attempt["outcome"] in {"queued", "running"}:
-                                attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
-                        self._snapshot_call_evidence(run, "recovery_unknown", origin)
-                    self.finalize_call_evidence(run, origin)
-        for proposal in self.data["proposals"]:
-            cancellation = proposal.get("cancellation", {})
-            if cancellation.get("status") == "intent":
-                cancellation.update(status="unknown", reason="Cancellation interrupted. Refresh to reconcile; do not resend.")
-            if proposal["status"] == "submitting":
-                proposal["status"] = "unknown"
-                proposal["reason"] = (
-                    "Submission interrupted. Refresh broker orders to reconcile; do not resubmit."
-                )
+                run.update(status="failed", error="Service stopped during research. Start a new cycle; desk research does not resume.")
+                for result in run["results"]:
+                    if result["status"] in {"queued", "running", "cancelling"}:
+                        result.update(status="failed", error=run["error"])
+            for origin in ("source", "gateway", "jev"):
+                evidence = run.get(f"{origin}_evidence")
+                if evidence is None:
+                    continue
+                for attempt in evidence.get("attempts", []):
+                    if attempt.get("outcome") in {"queued", "running"}:
+                        attempt.update(outcome="unknown", recovery_observed_at=datetime.now(UTC).isoformat())
+                self._call_counts(evidence, origin)
+            attempts = run.get("source_evidence", {}).get("attempts", [])
+            for result in run["results"]:
+                if result.get("status") == "completed" and any(
+                        source_attempt_failed(a, attempts) for a in attempts
+                        if a.get("symbol") in {None, result["symbol"]}):
+                    result.update(status="failed", revision=result.get("revision", 0) + 1,
+                                  error="Research incomplete: required source collection or evidence capture failed. Saved reports are retained.")
+                    if run["status"] == "completed":
+                        run["status"] = "failed"
+        self.save_research()
         self.save()
 
-    def _recover_measurements(self, run):
-        measurements = run.get("measurements")
-        if not measurements:
-            return  # Older runs never collected measurements.
-        finalized = bool(measurements.get("ended_at") or measurements.get("recovery_observed_at"))
-        if run.get("measurement_artifact") and finalized and measurements.get("status") == run["status"]:
-            return
-        if str(UUID(run["id"])) != run["id"]:
-            raise ValueError("Invalid run ID for measurement recovery.")
-        try:
-            # A crash can leave a complete immutable artifact before its journal reference.
-            candidates = []
-            directory = self.directory / "reports" / run["id"]
-            for path in directory.glob("measurements-*.json"):
-                try:
-                    payload = path.read_bytes()
-                    candidate = json.loads(payload)
-                except (OSError, ValueError):
-                    continue  # Preserve partial files; they are not completion evidence.
-                if (isinstance(candidate, dict) and candidate.get("run_id") == run["id"]
-                        and candidate.get("status") == run["status"]
-                        and candidate.get("started_at") == measurements.get("started_at")
-                        and (candidate.get("ended_at") or candidate.get("recovery_observed_at"))):
-                    candidates.append((candidate, self._measurement_reference(path, payload)))
-            if len(candidates) == 1:
-                run["measurements"], run["measurement_artifact"] = candidates[0]
-            else:
-                # No unambiguous final artifact: preserve only what the journal recorded.
-                measurements.update(run_id=run["id"], status=run["status"])
-                measurements.setdefault("recovery_observed_at", datetime.now(UTC).isoformat())
-                if not measurements.get("ended_at"):
-                    measurements.update(
-                        ended_at=None, elapsed_seconds=None, callbacks_final=False,
-                        completeness="Partial journal checkpoint; process termination time and "
-                                     "callbacks since the checkpoint are unavailable.",
-                    )
-                run["measurement_artifact"] = self.write_measurements(run["id"], measurements)
-            run.pop("measurement_export_error", None)
-        except OSError:
-            run["measurement_export_error"] = "Measurement artifact could not be written; measurements remain in journal."
+    def prune_research(self):
+        """Keep exactly the newest cycle's result for each ticker, including failures."""
+        seen, runs = set(), []
+        for run in sorted(self.data["runs"], key=lambda r: (r.get("created_at", ""), r["id"]), reverse=True):
+            results = [r for r in run.get("results", []) if r["symbol"] not in seen]
+            if not results:
+                continue
+            symbols = {r["symbol"] for r in results}
+            seen.update(symbols)
+            run.update(results=results, symbols=[s for s in run["symbols"] if s in symbols])
+            for key in ("continuation", "request_id", "measurement_artifact", "measurements", "measurement_export_error"):
+                run.pop(key, None)
+            for result in results:
+                result.pop("continuation", None)
+                if result.get("local_laya_batch"):
+                    result["local_laya_batch"].pop("previous_artifacts", None)
+            run["events"] = [e for e in run.get("events", []) if e.get("symbol") in symbols or not e.get("symbol")][-500:]
+            for origin in ("source", "gateway", "jev"):
+                evidence = run.get(f"{origin}_evidence", {})
+                evidence["attempts"] = [a for a in evidence.get("attempts", []) if a.get("symbol") in symbols or not a.get("symbol")]
+                evidence["snapshots"] = []
+            runs.append(run)
+        self.data["runs"] = runs
 
-    def _measurement_reference(self, path, payload):
+    def save_research(self):
+        with self.lock:
+            self.prune_research()
+            saved = self.database.update("latest_research", self.research_revision,
+                lambda _: {"runs": self.data["runs"]}, {"runs": []})
+            self.research_revision = saved["revision"]
+
+    def _research_cleanup_files(self, old, remaining, connection, run_ids):
+        """Find verified, unreferenced evidence without reading binary artifacts."""
+        from .recovery import references, MAX_EXPANDED
+
+        def paths(value, allowed_runs=None):
+            queue, seen, total = list(references(value)), {}, 0
+            while queue:
+                relative, digest = queue.pop()
+                if allowed_runs is not None and relative.split("/")[1] not in allowed_runs:
+                    continue
+                if relative in seen:
+                    if seen[relative] != digest:
+                        raise ValueError("Artifact identity has conflicting hashes")
+                    continue
+                seen[relative] = digest
+                if relative.endswith(".json"):
+                    target = self.directory / relative
+                    if (any(part.is_symlink() or getattr(part, "is_junction", lambda: False)()
+                            for part in (target, target.parent, target.parent.parent))
+                            or not target.resolve().is_relative_to(self.directory.resolve()) or not target.is_file()):
+                        raise ValueError("Evidence path is unavailable or unsafe")
+                    payload = target.read_bytes()
+                    total += len(payload)
+                    if total > MAX_EXPANDED or hashlib.sha256(payload).hexdigest() != digest:
+                        raise ValueError("Evidence JSON could not be verified")
+                    queue.extend(references(json.loads(payload)))
+            return seen
+
+        try:
+            candidates = paths(old, run_ids)
+            records = [json.loads(row[0]) for row in connection.execute(
+                "SELECT payload FROM app_records WHERE name != 'latest_research'")]
+            records.append(remaining)
+            for backup in self.directory.glob("desk.migration-*.json"):
+                if backup.is_symlink() or getattr(backup, "is_junction", lambda: False)():
+                    raise ValueError("Migration backup is a link")
+                records.append(json.loads(backup.read_text(encoding="utf-8")))
+            protected = paths(records)
+            eligible = {}
+            for relative, digest in candidates.items():
+                if relative in protected or relative.split("/")[1] not in run_ids:
+                    continue
+                target = self.directory / relative
+                if (any(part.is_symlink() or getattr(part, "is_junction", lambda: False)()
+                        for part in (target, target.parent, target.parent.parent))
+                        or not target.resolve().is_relative_to(self.directory.resolve()) or not target.is_file()):
+                    raise ValueError("Evidence path is unavailable or unsafe")
+                eligible[relative] = (digest, target.stat().st_size)
+            return eligible, []
+        except (OSError, ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
+            return {}, ["Some evidence could not be verified; research artifacts will be retained."]
+
+    def delete_research(self, symbols, expected_revision=None, preview=False):
+        """Remove selected latest results while preserving shared and pinned evidence."""
+        if (not isinstance(symbols, list) or not symbols or any(not isinstance(s, str) or not s or s != s.upper() for s in symbols)
+                or len(set(symbols)) != len(symbols)):
+            raise ValueError("Select one or more distinct uppercase ticker symbols.")
+        selected = set(symbols)
+        with self.lock:
+            known = {result["symbol"] for run in self.data["runs"] for result in run.get("results", [])}
+            if not selected <= known:
+                raise ValueError("Selected research is no longer available. Refresh and select again.")
+            old = copy.deepcopy({"runs": self.data["runs"]})
+            run_ids = {run["id"] for run in old["runs"] if any(result["symbol"] in selected for result in run.get("results", []))}
+            if any(str(UUID(run_id)) != run_id for run_id in run_ids):
+                raise ValueError("Invalid saved research run identity.")
+            remaining = copy.deepcopy(old)
+            count = 0
+            runs = []
+            for run in remaining["runs"]:
+                count += sum(result["symbol"] in selected for result in run.get("results", []))
+                run["results"] = [result for result in run.get("results", []) if result["symbol"] not in selected]
+                if not run["results"]:
+                    continue
+                run["symbols"] = [symbol for symbol in run.get("symbols", []) if symbol not in selected]
+                run["events"] = [event for event in run.get("events", []) if event.get("symbol") not in selected]
+                for origin in ("source", "gateway", "jev"):
+                    evidence = run.get(f"{origin}_evidence", {})
+                    evidence["attempts"] = [attempt for attempt in evidence.get("attempts", []) if attempt.get("symbol") not in selected]
+                runs.append(run)
+            remaining["runs"] = runs
+            if preview:
+                with self.database.transaction() as connection:
+                    revision = connection.execute("SELECT revision FROM app_records WHERE name='latest_research'").fetchone()
+                    revision = revision[0] if revision else 0
+                    if revision != self.research_revision:
+                        raise StoreConflict(revision)
+                    files, warnings = self._research_cleanup_files(old, remaining, connection, run_ids)
+                return {"symbols": symbols, "expected_revision": revision, "result_count": count,
+                        "artifact_count": len(files), "artifact_bytes": sum(size for _, size in files.values()), "warnings": warnings}
+            saved = self.database.update("latest_research", expected_revision, lambda _: remaining, {"runs": []})
+            self.data["runs"], self.research_revision = saved["data"]["runs"], saved["revision"]
+        deleted, warnings = 0, []
+        try:
+            with self.database.transaction() as connection:
+                files, warnings = self._research_cleanup_files(old, remaining, connection, run_ids)
+                for relative, (digest, size) in files.items():
+                    target = self.directory / relative
+                    try:
+                        if (any(part.is_symlink() or getattr(part, "is_junction", lambda: False)()
+                                for part in (target, target.parent, target.parent.parent))
+                                or not target.resolve().is_relative_to(self.directory.resolve())
+                                or target.stat().st_size != size or hashlib.sha256(target.read_bytes()).hexdigest() != digest):
+                            raise ValueError("Evidence changed")
+                        target.unlink()
+                        deleted += 1
+                    except (OSError, ValueError):
+                        warnings.append("Some evidence changed or could not be removed; it was retained.")
+        except (OSError, sqlite3.Error):
+            warnings.append("Evidence references could not be rechecked; remaining artifacts were retained.")
+        return {"deleted_symbols": symbols, "deleted_results": count, "deleted_artifacts": deleted, "warnings": list(dict.fromkeys(warnings))}
+
+    def _artifact_reference(self, path, payload):
         return {"path": path.relative_to(self.directory).as_posix(),
                 "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "format": "json"}
 
     @staticmethod
     def result_summary(result):
-        summary = {key: value for key, value in result.items() if key not in {"reports", "laya", "social_sentiment"}}
+        summary = {key: value for key, value in result.items() if key not in {"reports", "laya", "social_sentiment", "continuation"}}
         summary["report_keys"] = list(result.get("reports", {}))
+        summary["completion_gaps"] = research_gaps(result) if result.get("status") == "completed" else []
+        if summary["completion_gaps"]:
+            summary["status"] = "incomplete"
         summary["revision"] = result.get("revision", 0)
         laya = result.get("laya") or {}
         summary["laya"] = {
@@ -167,23 +293,33 @@ class DeskStore:
             }
         return copy.deepcopy(summary)
 
-    def snapshot(self, *, compact=False, run_id=None):
+    def _refresh(self):
+        """Refresh external journal changes while the caller holds self.lock."""
+        with closing(sqlite3.connect(self.database.path, timeout=5)) as connection:
+            revision = connection.execute("SELECT revision FROM app_records WHERE name='journal'").fetchone()[0]
+        if revision != self.revision:
+            saved = self.database.read("journal")
+            self.data, self.revision = {**saved["data"], "runs": self.data["runs"]}, saved["revision"]
+
+    def snapshot(self, *, compact=False, run_id=None, journal=None):
+        # Settings come from the committed journal; research is the live latest cache.
         with self.lock:
+            if journal is None:
+                self._refresh()
+                journal = self.data
+            journal = {**journal, "runs": journal.get("runs", self.data["runs"])}
             if compact:
-                data = copy.deepcopy({key: value for key, value in self.data.items() if key not in {"runs", "research_requests"}})
-                data["research_requests"] = [{key: copy.deepcopy(r.get(key)) for key in
-                    ("id", "run_id", "status", "started_at", "ended_at", "elapsed_seconds", "capture_complete")}
-                    for r in self.data["research_requests"]]
-                selected = run_id if any(r["id"] == run_id for r in self.data["runs"]) else next((r["id"] for r in self.data["runs"]), None)
+                data = copy.deepcopy({key: value for key, value in journal.items() if key != "runs"})
+                selected = run_id if any(r["id"] == run_id for r in journal["runs"]) else next((r["id"] for r in journal["runs"]), None)
                 data["runs"] = []
                 data["research"] = {}
-                for run in self.data["runs"]:
+                for run in journal["runs"]:
                     results = run.get("results", [])
                     counts = {status: sum(r.get("status") == status for r in results)
                               for status in ("completed", "failed", "cancelled", "running")}
-                    counts["queued"] = max(0, len(run["symbols"]) - len(results))
+                    counts["queued"] = sum(r.get("status") == "queued" for r in results)
                     summary = {key: copy.deepcopy(value) for key, value in run.items()
-                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence", "jev_evidence"}}
+                               if key not in {"results", "config", "events", "source_evidence", "portfolio_evidence", "gateway_evidence", "jev_evidence", "continuation"}}
                     for name in ("gateway_evidence", "jev_evidence"):
                         if name in run:
                             summary[name] = {
@@ -203,71 +339,70 @@ class DeskStore:
                         }
                     summary.update(
                         counts=counts,
-                        results=[self.result_summary(r) for r in results] if run["id"] == selected else [],
+                        results=[self.result_summary(r) for r in results],
                         events=copy.deepcopy(run.get("events", [])[-40:]) if run["id"] == selected else [],
                         event_count=len(run.get("events", [])),
                         config={key: run.get("config", {}).get(key) for key in
                                 ("name", "llm_provider", "deep_think_llm", "quick_think_llm",
                                  "max_debate_rounds", "max_risk_discuss_rounds")},
                     )
+                    incomplete = sum(bool(item.get("completion_gaps")) for item in summary["results"])
+                    summary["counts"]["incomplete"] = incomplete
+                    summary["counts"]["completed"] -= incomplete
+                    if summary["status"] == "completed" and incomplete:
+                        summary["status"] = "incomplete"
                     data["runs"].append(summary)
                     for result in results:
                         if result["symbol"] not in data["research"]:
                             status = self.result_summary(result)
                             data["research"][result["symbol"]] = {
                                 **{key: status.get(key) for key in
-                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision")},
+                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision", "completion_gaps")},
                                 "run_id": run["id"],
                                 "social_sentiment": status.get("social_sentiment"),
                                 "laya": {key: status["laya"].get(key) for key in
                                          ("grade", "auto_execute", "question_contract_version")} if status["laya"] else None,
                             }
                 return data
-            return copy.deepcopy(self.data)
+            return copy.deepcopy(journal)
 
     def save(self):
         with self.lock:
-            temporary = self.path.with_suffix(".tmp")
-            with temporary.open("w", encoding="utf-8") as stream:
-                json.dump(self.data, stream, ensure_ascii=False, indent=2, allow_nan=False)
-                stream.flush()
-                os.fsync(stream.fileno())
-            # Windows indexers can briefly hold the destination open. Retry
-            # only this local atomic rename; never repeat broker operations.
-            for attempt in range(3):
-                try:
-                    os.replace(temporary, self.path)
-                    break
-                except PermissionError:
-                    if attempt == 2:
-                        raise
-                    time.sleep(0.05 * (attempt + 1))
+            try:
+                with self.database.transaction() as connection:
+                    row = connection.execute("SELECT revision,payload FROM app_records WHERE name='journal'").fetchone()
+                    revision = row[0] if row else 0
+                    if type(self.revision) is not int or self.revision != revision:
+                        raise StoreConflict(revision)
+                    encoded = self.database.encode({**self.data, "runs": []})
+                    if row is None or encoded != row[1]:
+                        revision += 1
+                        connection.execute("INSERT INTO app_records VALUES('journal',?,?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at",
+                            (revision, encoded, datetime.now(UTC).isoformat()))
+                self.revision = revision
+            except StoreConflict:
+                saved = self.database.read("journal")
+                self.data, self.revision = {**saved["data"], "runs": self.data["runs"]}, saved["revision"]
+                raise
 
-    def write_measurements(self, run_id, measurements):
-        """Write once under the existing run report path; never replace prior evidence."""
-        return self._write_json_artifact(run_id, "measurements", measurements)
+    @staticmethod
+    def read_existing(directory):
+        directory = Path(directory).resolve()
+        database = directory / "desk.sqlite3"
+        if database.exists():
+            import sqlite3
+            with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+                row = connection.execute("SELECT payload FROM app_records WHERE name='journal'").fetchone()
+                if row is None:
+                    raise ValueError("Saved database journal is missing")
+                saved = json.loads(row[0])
+        else:
+            saved = json.loads((directory / "desk.json").read_text(encoding="utf-8"))
+        saved.pop("research_requests", None)
+        return {**saved, "runs": []}
 
     def _evidence_owner(self, owner_id):
-        return next(r for collection in ("runs", "research_requests")
-                    for r in self.data[collection] if r["id"] == owner_id)
-
-    def checkpoint_request(self, request, reason):
-        """Best-effort measurement only: never replace the research outcome."""
-        with self.lock:
-            for origin in ("source", "gateway", "jev"):
-                self._call_counts(request[f"{origin}_evidence"], origin)
-            request["capture_complete"] = not (request.get("persistence_error") or request["status"] == "interrupted"
-                or any(not request[f"{origin}_evidence"]["capture_complete"] for origin in ("source", "gateway", "jev")))
-            try:
-                snapshot = {k: copy.deepcopy(v) for k, v in request.items() if k != "snapshots"}
-                snapshot["snapshot_reason"] = reason
-                request["snapshots"].append(self._write_json_artifact(request["id"], "request-measurements", snapshot))
-            except Exception:
-                request.update(capture_complete=False, persistence_error="Request measurement artifact unavailable.")
-            try:
-                self.save()
-            except Exception:
-                request.update(capture_complete=False, persistence_error="Request journal checkpoint unavailable.")
+        return next(r for r in self.data["runs"] if r["id"] == owner_id)
 
     def record_portfolio_context(self, run_id, context):
         """Keep the consumed context, never reconstruct it from a later account refresh."""
@@ -279,9 +414,8 @@ class DeskStore:
             try:
                 evidence["artifact"] = self._write_json_artifact(run_id, "portfolio-context", context)
             except OSError:
-                evidence.update(status="journal_only", reason="Portfolio artifact could not be written; context remains in journal.")
+                evidence.update(status="cache_only", reason="Portfolio artifact could not be written; context remains in the latest research cache.")
             run["portfolio_evidence"] = evidence
-            self.save()
 
     def _write_json_artifact(self, run_id, kind, content):
         if str(UUID(run_id)) != run_id:
@@ -295,7 +429,7 @@ class DeskStore:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        return self._measurement_reference(destination, payload)
+        return self._artifact_reference(destination, payload)
 
     def record_source_attempt(self, run_id, receipt, output=None):
         """Persist router receipts without exposing output or exception text in the journal."""
@@ -310,9 +444,12 @@ class DeskStore:
                 attempt = {}
                 evidence["attempts"].append(attempt)
             attempt.update(copy.deepcopy(receipt))
+            if _local_laya_attempt(attempt):
+                attempt["requirement"] = "supplemental"
             if evidence.get("terminal_observed_at"):
                 attempt["late"] = True
-            if receipt["outcome"] == "success":
+            if receipt["outcome"] == "success" or (_local_laya_attempt(receipt) and receipt.get("ended_at")
+                                                   and receipt["outcome"] in {"error", "unknown"}):
                 try:
                     attempt["artifact"] = self._write_source_result(run_id, receipt["attempt_id"], output)
                     attempt["capture"] = "recorded"
@@ -321,20 +458,13 @@ class DeskStore:
                     attempt["capture_error"] = (
                         "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
                     )
+                    if isinstance(exc, SourceEvidenceError):
+                        attempt["capture_error_details"] = str(exc)
                     evidence["capture_complete"] = False
             elif receipt["outcome"] == "error":
                 attempt["capture"] = "error_class_only"
             if attempt.get("late"):
                 evidence["capture_complete"] = False
-                self._snapshot_call_evidence(run, "late_update", "source")
-                if run.get("owner_kind") == "research_request":
-                    self.checkpoint_request(run, "late_update")
-            try:
-                self.save()
-            except OSError:
-                evidence["capture_complete"] = False
-                evidence["persistence_error"] = "Journal checkpoint failed; durability is unavailable."
-                # Retain the receipt in memory for the run's next existing journal save.
 
     @staticmethod
     def _call_counts(evidence, origin):
@@ -342,6 +472,9 @@ class DeskStore:
         if origin == "source":
             evidence["counts"] = {kind: sum(a["origin"] == kind for a in attempts)
                                   for kind in {a["origin"] for a in attempts}}
+            evidence["unavailable_data_count"] = sum(a.get("data_status") == "unavailable" for a in attempts)
+            evidence["partial_data_count"] = sum(a.get("data_status") == "partial" for a in attempts)
+            evidence["data_validation"] = "Request capture does not verify source relevance, factual accuracy, or complete requested coverage."
         elif origin == "gateway":
             evidence["counts"] = {
                 kind: {category: sum(a["boundary_kind"] == kind and a["category"] == category for a in attempts)
@@ -357,8 +490,14 @@ class DeskStore:
         evidence["unknown_count"] = sum(a["outcome"] == "unknown" for a in attempts)
         evidence["late_count"] = sum(a.get("late", False) for a in attempts)
         evidence["capture_complete"] = not (
-            evidence["pending_count"] or evidence["unknown_count"] or evidence["late_count"]
+            evidence["pending_count"] or any(a.get("outcome") == "unknown" and source_attempt_failed(a, attempts)
+                                             for a in attempts) or evidence["late_count"]
             or evidence.get("persistence_error") or any(a.get("capture_error") for a in attempts)
+        )
+        evidence["persistence_complete"] = not (
+            evidence["pending_count"] or evidence["late_count"] or evidence.get("persistence_error")
+            or any(a.get("capture_error") or a.get("capture") not in {"recorded", "metadata_only", "error_class_only"}
+                   for a in attempts)
         )
 
     def _record_call_attempt(self, run_id, receipt, output):
@@ -405,42 +544,10 @@ class DeskStore:
                 attempt["capture_error"] = (
                     "persistence_failed" if isinstance(exc, OSError) else "unsafe_oversized_or_unsupported_response"
                 )
-            self._call_counts(evidence, origin)
-            if attempt.get("late"):
-                self._snapshot_call_evidence(run, "late_update", origin)
-                if run.get("owner_kind") == "research_request":
-                    self.checkpoint_request(run, "late_update")
-            elif receipt["boundary_kind"] == "jev_batch" and receipt.get("ended_at"):
-                self._snapshot_call_evidence(run, "batch_terminal", origin)
-            try:
-                self.save()
-            except OSError:
-                evidence.update(capture_complete=False, persistence_error="Call evidence journal checkpoint failed.")
+                if isinstance(exc, SourceEvidenceError):
+                    attempt["capture_error_details"] = str(exc)
 
-    def _snapshot_call_evidence(self, run, reason, origin):
-        evidence = run[f"{origin}_evidence"]
-        self._call_counts(evidence, origin)
-        snapshot = {key: copy.deepcopy(value) for key, value in evidence.items() if key != "snapshots"}
-        snapshot.update(run_id=run["id"], run_status=run["status"], reason=reason,
-                        observed_at=datetime.now(UTC).isoformat())
-        if run.get("owner_kind") == "research_request":
-            snapshot.update(owner_kind="research_request", request_id=run["id"], run_id=run.get("run_id"))
-        try:
-            evidence.setdefault("snapshots", []).append(self._write_json_artifact(run["id"], f"{origin}-evidence", snapshot))
-        except OSError:
-            evidence.update(capture_complete=False, persistence_error="Call evidence snapshot export failed.")
-
-    def finalize_gateway_evidence(self, run):
-        self.finalize_call_evidence(run, "gateway")
-
-    def finalize_call_evidence(self, run, origin):
-        with self.lock:
-            evidence = run.get(f"{origin}_evidence")
-            if evidence and not evidence.get("terminal_observed_at"):
-                evidence["terminal_observed_at"] = datetime.now(UTC).isoformat()
-                self._snapshot_call_evidence(run, "run_terminal", origin)
-
-    def _write_source_result(self, run_id, attempt_id, output, prefix="source"):
+    def _write_source_result(self, run_id, attempt_id, output, prefix="source", *, allow_pagination_cursor=False):
         import pandas as pd
 
         if str(UUID(run_id)) != run_id or str(UUID(attempt_id)) != attempt_id:
@@ -458,22 +565,27 @@ class DeskStore:
         else:
             raise TypeError("Unsupported source response type.")
         if len(payload) > 8 * 1024 * 1024:
-            raise ValueError("Source response exceeds evidence size limit.")
+            raise SourceEvidenceError("Provider receipt exceeds the 8 MiB evidence limit; reduce the requested page size.")
         # Screen bounded textual views only; successful artifacts keep the original bytes.
         # RSS can entity-escape JSON, which can itself contain escaped key delimiters.
         view = payload.decode("utf-8")  # Non-UTF-8 bodies are an explicit unsupported capture.
-        marker = (r'(?i)(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'
-                  r'''["'\s]*[:=]|bearer\s+\S+|sk-(?:proj-)?[a-zA-Z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY''')
-        for _ in range(4):
-            if re.search(marker, view):
-                raise ValueError("Source response may contain credentials.")
+        marker = (r'''(?im)(?:^\s*|[{,]\s*|["'])[\w-]*(?:api[_ -]?key|authorization|token|password|client[_ -]?secret|secret|cookie|headers)'''
+                  r'''["'\s]*[:=]|bearer\s+\S+|(?<![\w-])sk-(?:(?:proj|svcacct)-[a-zA-Z0-9_-]{16,}|[a-zA-Z0-9]{32,})(?![\w-])|-----BEGIN [A-Z ]*PRIVATE KEY''')
+        screening_work = 0
+        screening_work_limit = 4 * 8 * 1024 * 1024
+        while True:
+            screening_work += len(view)
+            if screening_work > screening_work_limit:
+                raise SourceEvidenceError("Provider receipt secret screening exceeded its cumulative work limit; report the source format without pasting its body.")
+            # Only the known pagination field name is exempted, never its value or other token fields.
+            screened = re.sub(r'''(["'])next_page_token\1(?=\s*:)''', r'\1pagination_cursor\1', view) if allow_pagination_cursor else view
+            if re.search(marker, screened):
+                raise SourceEvidenceError("Secret screening withheld the provider receipt; inspect provider configuration without sharing credentials.")
             decoded = re.sub(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})',
                              lambda match: json.loads('"' + match.group() + '"'), html.unescape(view))
             if decoded == view:
                 break
             view = decoded
-        else:
-            raise ValueError("Source response encoding exceeds screening depth.")
         relative = Path("reports") / run_id / f"{prefix}-{attempt_id}-{uuid4()}.bin"
         destination = self.directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -481,7 +593,7 @@ class DeskStore:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        return {**self._measurement_reference(destination, payload), "format": format_name}
+        return {**self._artifact_reference(destination, payload), "format": format_name}
 
     @staticmethod
     def _frame_evidence(frame):

@@ -1,0 +1,1 @@
+Optional stop-loss as an absolute price in the instrument's quote currency (e.g. 172.0), never a percentage. Convert a percentage distance to the price level it implies, or omit it.

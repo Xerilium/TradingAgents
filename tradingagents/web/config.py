@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -25,9 +26,41 @@ class DeskConfig(BaseModel):
     deep_think_llm: str = Field(default="gpt-6-sol", min_length=1, max_length=100)
     quick_think_llm: str = Field(default="gpt-6-luna", min_length=1, max_length=100)
     backend_url: str | None = None
+    max_tokens: int | None = Field(default=None, gt=0, strict=True)
+    deep_max_total_tokens: int | None = Field(default=None, gt=0, strict=True)
+    deep_max_output_tokens: int | None = Field(default=None, gt=0, strict=True)
+    deep_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
+    quick_max_total_tokens: int | None = Field(default=None, gt=0, strict=True)
+    quick_max_output_tokens: int | None = Field(default=None, gt=0, strict=True)
+    quick_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
     max_debate_rounds: int = Field(default=1, ge=1, le=3)
     max_risk_discuss_rounds: int = Field(default=1, ge=1, le=3)
     max_tool_rounds: int = Field(default=8, ge=1, le=20)
+    research_concurrency: int = Field(default=1, ge=1, le=100, strict=True)
+    research_stop_on_failure: bool = Field(default=False, strict=True)
+    research_retries: int = Field(default=10, ge=0, strict=True)
+    llm_retries: int = Field(default=3, ge=0, le=10, strict=True)
+    llm_retry_seconds: int = Field(default=30, ge=0, le=600, strict=True)
+    laya_device: Literal["cpu", "gpu"] = "cpu"
+    maenifold_port: int = Field(default=8085, ge=1024, le=65535, strict=True)
+    maenifold_root: str = Field(default="", max_length=500)
+    social_screen_timeout_seconds: int = Field(default=600, ge=1)
+    social_screen_max_posts: int = Field(default=100, ge=1)
+    news_article_limit: int = Field(default=10, ge=1, le=100, strict=True)
+    prediction_market_limit: int = Field(default=6, ge=1, le=50, strict=True)
+    prediction_search_limit: int = Field(default=50, ge=1, le=200, strict=True)
+    selected_analysts: list[Literal["market", "social", "news", "fundamentals"]] = Field(
+        default_factory=lambda: ["market", "social", "news", "fundamentals"], min_length=1, max_length=4)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_output_limit(cls, values):
+        if (isinstance(values, dict) and values.get("max_tokens") is not None
+                and str(values.get("llm_provider", "codex")).lower() not in {"codex", "chatgpt"}):
+            values = dict(values)
+            for tier in ("deep", "quick"):
+                values.setdefault(f"{tier}_max_output_tokens", values["max_tokens"])
+        return values
 
     @field_validator("universe")
     @classmethod
@@ -70,4 +103,13 @@ class DeskConfig(BaseModel):
             raise ValueError("Allocation and cash reserve must total no more than 100%.")
         if self.max_position_pct > self.allocation_pct:
             raise ValueError("The single-position limit cannot exceed total invested allocation.")
+        provider = self.llm_provider.lower()
+        for tier in ("deep", "quick"):
+            if getattr(self, f"{tier}_max_total_tokens") is not None and provider != "openai_compatible":
+                raise ValueError(f"Total token limits are not supported for provider '{provider}'.")
+            if getattr(self, f"{tier}_max_output_tokens") is not None and provider in {"codex", "chatgpt"}:
+                raise ValueError(f"Output token limits are not supported for provider '{provider}'.")
+            if (getattr(self, f"{tier}_reasoning_effort") is not None
+                    and provider not in {"codex", "chatgpt", "openai", "openai_compatible"}):
+                raise ValueError(f"Reasoning effort is not supported for provider '{provider}'.")
         return self

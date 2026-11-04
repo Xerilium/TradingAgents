@@ -1,0 +1,136 @@
+.research-workspace,.strategy-workspace,.journal-workspace-page{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.workspace-tabs{display:flex;flex-direction:row;flex:none;gap:var(--space-1);overflow-x:auto;margin:0 0 var(--space-2);padding:0 0 var(--space-1)}
+.workspace-tabs button{flex:none;white-space:nowrap}
+.workspace-tabs button,.research-report-index button,.strategy-workspace button,.journal-note-list button,.research-workspace #research-review button{border:1px solid var(--line);border-radius:3px;background:var(--control,var(--paper));color:var(--ink);padding:7px 10px;min-height:32px}
+.workspace-tabs button:hover,.research-report-index button:hover,.strategy-workspace button:hover{border-color:var(--accent)}
+.research-report-index button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.strategy-workspace input,.strategy-workspace select,.strategy-workspace textarea,.research-workspace #research-review textarea,.research-workspace #research-review select{background:var(--field,var(--ground));color:var(--ink);border:1px solid var(--line);padding:var(--space-2);max-width:100%}
+.research-workspace>.run-toolbar{flex:none;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-2)}
+.research-workspace #run-select{flex:1;min-width:180px;max-width:650px}
+.research-workspace .research-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,2fr);grid-template-rows:minmax(0,1fr);overflow:hidden;gap:var(--space-3)}
+.research-workspace .symbol-list{height:100%;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.research-workspace .research-rows{flex:none;min-height:0;max-height:none;overflow:visible}
+.research-workspace .queue-progress{flex:none;max-height:none;overflow:visible}
+.research-workspace .research-detail-panel{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
+.research-workspace .result-top{flex:none;padding:var(--space-3)}
+.research-workspace .research-detail-panel>.workspace-tabs{padding:0 var(--space-3) var(--space-2)}
+.research-workspace #research-detail-scroll{min-height:0;height:auto;max-height:none;flex:1;overflow:auto;padding:var(--space-3)}
+.research-workspace .report-content{max-width:88ch}
+.research-report-index{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:var(--space-3);margin-bottom:var(--space-3)}
+.research-workspace .events-panel{border:0;margin:0}
+.research-workspace .event-list{max-height:none}
+.research-workspace .research-setup>section{margin-top:var(--space-4)}
+.research-workspace #research-review{border-top:1px solid var(--line);margin-top:var(--space-4);padding-top:var(--space-2)}
+.research-workspace #research-review textarea{width:100%}
+.workspace-reading{min-height:0;flex:1;overflow:auto}
+#main .decision-list th:last-child,#main .decision-list td:last-child{min-width:110px;white-space:normal}
+.proposed-portfolio{padding:var(--space-3);border:1px solid var(--line)}.proposed-portfolio>p,.proposed-portfolio>section,.proposed-portfolio>details{margin-top:var(--space-3)}.proposed-portfolio td{vertical-align:top}.proposed-portfolio td small{display:block}.proposed-portfolio td:last-child{min-width:260px;white-space:normal}.proposed-portfolio pre{white-space:pre-wrap;overflow-wrap:anywhere}.proposed-portfolio label{display:flex;flex-direction:column;gap:var(--space-1)}.proposed-portfolio input{max-width:180px}
+.proposed-portfolio .panel>p{margin:var(--space-3) var(--space-4);line-height:1.6}
+.proposed-portfolio p{max-width:none}
+.proposed-portfolio .data-table th:last-child,.proposed-portfolio .data-table td:last-child{text-align:left}
+.proposed-portfolio td details p{margin:var(--space-2) 0;line-height:1.6}
+.experiment-curve-scroll{max-width:100%;min-width:0;overflow:auto}
+.experiment-curve-scroll>.experiment-equity-curve{display:block;width:100%;height:auto;min-width:640px;max-height:360px}
+.experiment-equity-curve text{font-size:var(--text-ui);stroke:none}
+.strategy-workspace .journal-workspace{margin:0}
+.strategy-workspace .workspace-reading{border:1px solid var(--line);padding:var(--space-3)}.strategy-workspace .journal-workspace{border:0;padding:0}.strategy-workspace [data-strategy-panel=setup],.strategy-workspace [data-strategy-panel=strategies]{max-width:1040px;min-width:0}.strategy-workspace .proposal-fields,.strategy-workspace .strategy-field-group,.strategy-workspace [data-strategy-panel=strategies]>fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}.strategy-workspace .strategy-field-group{margin:var(--space-4) 0;padding:var(--space-3);border:1px solid var(--line);min-width:0}.strategy-workspace .strategy-field-group>fieldset,.strategy-workspace .strategy-field-group>article,.strategy-workspace .strategy-field-group>p,.strategy-workspace .strategy-field-group>details,.strategy-workspace .strategy-field-group>h4{grid-column:1/-1}.strategy-workspace label{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;margin:var(--space-2) 0}.strategy-workspace label:has(input[type=checkbox]){display:block;max-width:75ch}.strategy-workspace input:not([type=checkbox]),.strategy-workspace select,.strategy-workspace textarea{width:100%;min-width:0}.strategy-workspace fieldset{min-width:0}.strategy-workspace legend{font-weight:600;padding:0 var(--space-1)}.strategy-workspace p{max-width:75ch}.strategy-workspace .strategy-guidance{margin:var(--space-2) 0}.strategy-workspace .strategy-actions{display:flex;flex:none;flex-wrap:wrap;gap:var(--space-2);padding:var(--space-3);border:1px solid var(--line);border-top:0}.strategy-workspace .strategy-actions:empty{display:none}
+@media(max-width:600px){.strategy-workspace .proposal-fields,.strategy-workspace .strategy-field-group,.strategy-workspace [data-strategy-panel=strategies]>fieldset{grid-template-columns:minmax(0,1fr)}.strategy-workspace .strategy-actions{padding:var(--space-2)}}
+.strategy-workspace [data-strategy-panel][hidden]{display:none}
+.strategy-workspace .strategy-status{flex:none;min-height:24px;color:var(--muted)}
+.strategy-workspace .proposal-fields{display:grid;gap:var(--space-3);grid-template-columns:repeat(2,minmax(0,1fr))}
+.strategy-workspace .strategy-grid{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;border:0;padding:0;margin:0;overflow:hidden}
+.strategy-setup-rail{min-height:0;min-width:0}
+.strategy-isolation{margin-bottom:var(--space-3);color:var(--muted);font-size:var(--text-meta)}
+.strategy-setup-rail h2{margin-bottom:var(--space-2)}
+.strategy-step{border-top:1px solid var(--line);margin-top:var(--space-3);padding-top:var(--space-2)}
+.strategy-step>summary{font-weight:600;min-height:36px;cursor:pointer;padding-block:var(--space-2)}
+.strategy-step fieldset{padding:var(--space-2);margin:var(--space-3) 0;border:1px solid var(--line)}
+.strategy-step button{margin:var(--space-1) 0;white-space:normal}
+.strategy-canvas{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;border:1px solid var(--line);padding:var(--space-3);background:var(--paper)}
+.strategy-run-action{display:flex;flex:none;gap:var(--space-2);margin-bottom:var(--space-3)}
+.strategy-result-reading{flex:1;min-height:0;min-width:0;overflow:auto;scrollbar-gutter:stable}
+.strategy-result-reading p,.strategy-result-reading h3,.strategy-result-reading h4,.strategy-result-reading details{margin-bottom:var(--space-3)}
+#main .strategy-result-reading .experiment-table{width:100%;border-collapse:collapse;font-size:var(--text-ui);white-space:normal}
+#main .strategy-result-reading .experiment-table th,#main .strategy-result-reading .experiment-table td{padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line);text-align:left;vertical-align:top;line-height:var(--leading-ui)}
+#main .strategy-result-reading .experiment-table thead th{background:var(--ground);font-weight:600}
+#main .strategy-result-reading .experiment-table .numeric{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+#main .strategy-result-reading .experiment-period-label strong,#main .strategy-result-reading .experiment-period-label small,#main .strategy-result-reading .experiment-period-status small{display:block}
+#main .strategy-result-reading .experiment-period-label small,#main .strategy-result-reading .experiment-period-status small{margin-top:var(--space-1);font-size:var(--text-meta);color:var(--muted)}
+#main .strategy-result-reading .experiment-display-note{margin-top:var(--space-2);margin-bottom:var(--space-4);color:var(--muted)}
+#main .strategy-result-reading .experiment-results>details>summary{padding-block:var(--space-2);font-weight:600}
+.strategy-headlines{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-block:var(--space-4);font-variant-numeric:tabular-nums}
+.strategy-headlines dd{margin:var(--space-1) 0 0;font-weight:600}.strategy-headlines dt{color:var(--muted)}
+.strategy-headlines small{display:block;overflow-wrap:anywhere;color:var(--muted);line-height:1.4;margin-top:var(--space-1)}
+.native-analyzer .order-facts{max-width:none}
+.journal-list-tools{display:flex;flex-wrap:wrap;align-items:end;gap:var(--space-2);padding-block:var(--space-3)}
+.journal-list-tools label{display:grid;gap:var(--space-1);flex:1 1 200px}
+.journal-list-tools input{width:100%;min-height:36px;background:var(--field,var(--ground));color:var(--ink);border:1px solid var(--line);padding:var(--space-2)}
+.journal-decision-list{display:flex;flex-direction:column;padding:var(--space-3)}
+.journal-decision-list>.table-scroll{flex:1;min-height:0;overflow:auto}
+.journal-workspace-page .journal-outcome-layout{display:grid;grid-template-columns:minmax(320px,1fr) minmax(320px,1fr);gap:var(--space-3);min-height:100%}
+.journal-outcome-layout>.panel{padding:var(--space-3);overflow:auto;margin:0}
+.journal-outcome-layout p{margin-block:var(--space-2)}
+.journal-history-figure{margin:var(--space-3) 0}.journal-history-figure figcaption{color:var(--muted);margin-block:var(--space-2)}
+.journal-workspace-page .decision-inspector>h2,.journal-workspace-page .decision-inspector>p,.journal-workspace-page .decision-inspector>button{margin:var(--space-2) var(--space-3);flex:none}
+.journal-workspace-page .decision-inspector>.workspace-tabs{padding-inline:var(--space-3)}
+@media(max-width:1100px){.strategy-headlines{grid-template-columns:repeat(2,minmax(0,1fr))}.journal-workspace-page .journal-outcome-layout{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:790px){.journal-layout{height:auto;display:flex;flex-direction:column}.journal-layout>.panel{max-height:none;overflow:visible}.decision-reading{overflow:visible}.journal-workspace-page .workspace-reading{overflow:auto}}
+@media(max-height:800px){.strategy-setup-rail,.strategy-result-reading{overscroll-behavior:contain}.strategy-workspace .strategy-isolation{font-size:var(--text-meta);margin-bottom:var(--space-2)}}
+@media(max-width:600px){.strategy-workspace .proposal-fields{grid-template-columns:minmax(0,1fr)}}
+.strategy-workspace pre,.journal-workspace-page pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.strategy-workspace table,.journal-workspace-page table{font-variant-numeric:tabular-nums}
+.journal-layout{height:100%;min-height:0;display:grid;grid-template-columns:minmax(300px,1.2fr) minmax(300px,1fr);gap:var(--space-3)}
+.journal-layout>.panel{min-height:0;overflow:auto;margin:0}
+.decision-inspector{display:flex;flex-direction:column;min-height:0}
+.decision-inspector>.panel-header,.decision-inspector>.workspace-tabs{flex:none}
+.decision-inspector>.panel-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-2);padding:var(--space-2) var(--space-3)}
+.decision-inspector>.panel-header h2{margin:0}
+.decision-inspector>.panel-header .button-group{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.decision-reading{flex:1;min-height:0;overflow:auto;padding:var(--space-3)}
+.decision-reading textarea{width:100%}
+.decision-reading label{display:grid;gap:6px;margin:var(--space-3) 0}
+.decision-reading textarea,.decision-reading input{color:var(--ink);background:var(--field,var(--ground));border:1px solid var(--line);padding:var(--space-2)}
+.journal-note-list{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.journal-note-list h2{width:100%}
+@media(max-width:850px){.journal-layout{grid-template-columns:minmax(250px,1fr) minmax(250px,1fr)}.research-workspace .research-layout{grid-template-columns:190px minmax(0,1fr)}}
+@media(max-width:600px){.research-workspace .research-layout{display:flex;flex-direction:column;overflow:auto}.research-workspace .symbol-list{max-height:240px;flex:none;overflow:auto}.research-workspace .research-detail-panel{flex:none;min-height:320px}.journal-layout{height:auto;min-height:100%;display:flex;flex-direction:column}.journal-layout>.panel{max-height:70vh;min-height:180px;overflow:auto}}
+@media(max-height:650px){.research-workspace{overflow:auto}.research-workspace .research-layout{flex:none;height:360px}}
+
+.research-delete { flex: none; padding: var(--space-2) var(--space-3); }
+.research-delete .selection-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.research-delete-preview { margin-top: var(--space-3); max-height: 12rem; overflow: auto; }
+.research-delete-row { display: flex; align-items: center; gap: var(--space-2); padding-left: var(--space-3); }
+.research-delete-row .research-symbol { flex: 1; min-width: 0; }
+
+/* Step 3: independent stock inspection, research batch and saved-result management. */
+.research-workspace .research-layout{grid-template-columns:280px minmax(0,1fr)}.research-workspace .symbol-list{border-right:1px solid var(--line);padding-right:var(--space-2)}
+.research-picker-row{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line);padding:4px 6px}.research-picker-row .research-symbol{display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:6px;flex:1;text-align:left;min-width:0;padding:2px 4px}.research-picker-row .research-symbol span,.research-picker-row .research-symbol small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.research-symbol[aria-pressed=true]{border-color:var(--accent)}.research-picker-row small{color:var(--muted)}
+.research-workspace .page-heading .button-group,.research-context-actions,.research-progress{display:flex;flex:none;align-items:center;flex-wrap:wrap;gap:var(--space-2)}.research-progress{padding:var(--space-1) 0 var(--space-2);font-variant-numeric:tabular-nums}.research-progress-count{padding:var(--space-1);border-bottom:2px solid var(--line)}.research-progress-count.completed{border-color:var(--positive)}.research-progress-count.failed{border-color:var(--negative)}.research-progress-count.running,.research-progress-count.queued{border-color:var(--accent)}.research-progress-count.cancelled{color:var(--muted)}
+.research-context-actions{padding:var(--space-1) var(--space-3)}.research-workspace .instrument-header-strip{padding:var(--space-2) var(--space-3);font-size:var(--text-ui)}.research-workspace .instrument-header-strip>div{margin:0}.research-workspace .instrument-capabilities{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.research-summary-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}.research-summary-pair>article,.research-analysts>article{min-width:0;padding:8px 10px;border:1px solid var(--line);background:var(--ground);border-radius:var(--radius)}.research-summary h3{margin:0 0 var(--space-1)}.research-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;max-height:9em}.research-excerpt p{margin:0}.research-excerpt pre{white-space:pre-wrap;overflow-wrap:anywhere}.research-excerpt .report-part h3{font-size:inherit}.analyst-excerpt{-webkit-line-clamp:2;max-height:3em}.research-analysts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-2)}
+.research-workspace #research-review{display:flex;flex-wrap:wrap;align-items:start;gap:var(--space-2);margin-top:var(--space-2)}.research-workspace #research-review>.investor-note{flex:1;min-width:220px}.research-workspace #research-review textarea{height:3em;min-height:3em}.research-workspace #research-review h3{font-size:var(--text-ui)}
+.research-confirm-popover{position:fixed;inset:auto 12px auto auto;top:80px;width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 96px);overflow:auto;margin:0;padding:var(--space-4);color:var(--ink);background:var(--paper);border:1px solid var(--line);box-shadow:0 8px 24px var(--ground)}.research-confirm-popover input[type=date]{display:block;margin:var(--space-2) 0;background:var(--ground);color:var(--ink);border:1px solid var(--line);padding:var(--space-2)}.research-confirm-popover::backdrop{background:transparent}.research-confirm-popover #research-date-warning{color:var(--warning,var(--ink))}
+.research-activity label{display:inline-flex;align-items:center;gap:var(--space-1);margin-right:var(--space-3)}.research-activity .event-list{max-height:none}.research-activity .event-list li{align-items:start}.research-activity p{overflow-wrap:anywhere}.research-provenance .provenance-chip{display:inline-block;vertical-align:top;max-width:100%;margin:var(--space-1);padding:var(--space-1);border:1px solid var(--line)}.research-provenance .provenance-chip[open]{display:block}.research-activity pre,.research-provenance pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:1100px){.research-workspace .research-layout{grid-template-columns:230px minmax(0,1fr)}.research-analysts{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:790px){.research-summary-pair{grid-template-columns:1fr}.research-workspace .research-layout{display:flex;flex-direction:column;overflow:auto}.research-workspace .symbol-list{height:auto;max-height:280px;flex:none}.research-workspace .research-detail-panel{height:auto;min-height:500px;flex:none}.research-workspace #research-detail-scroll{overflow:visible;flex:none}}
+@media(max-height:800px){.research-workspace{height:auto;min-height:100%;overflow:visible}.research-workspace .research-layout{min-height:520px;flex:1}.research-workspace .research-detail-panel{height:auto}.research-workspace #research-detail-scroll{max-height:none}}
+
+.research-disposition-bar{display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:var(--space-2);min-width:0}.research-disposition-bar label{display:flex;align-items:center;gap:var(--space-1);margin:0}.research-disposition-bar label:has(textarea){flex:1;min-width:180px}.research-summary h4{font-size:var(--text-ui);margin:var(--space-1) 0}.research-personal-note{flex:none}.research-personal-note[open]{flex-basis:100%}
+
+.research-picker-row [role=button]{cursor:pointer;border:1px solid transparent;padding:var(--space-1);border-radius:var(--radius-compact)}.research-picker-row [role=button]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.research-picker-row [role=button][aria-pressed=true]{border-color:var(--accent)}
+/* Saved-fact dumps: the browser indents nested lists 40px per level, which left each
+   receipt value a few characters wide. Two readable columns per level instead. */
+.facts-section dl{display:grid;grid-template-columns:minmax(96px,150px) minmax(0,1fr);gap:var(--space-1) var(--space-3);margin:var(--space-2) 0}
+.facts-section dt{color:var(--muted);font-size:var(--text-meta)}
+#main .facts-section>summary{font-size:var(--text-meta);color:var(--muted);cursor:pointer;list-style:disclosure-closed}
+#main .facts-section[open]>summary{list-style:disclosure-open}
+.facts-section dd{min-width:0;margin:0;overflow-wrap:anywhere}
+.facts-section dd>ul{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
+/* The activity rows are themselves grid rows, and that row rule reaches the nested
+   list items inside a disclosure, squeezing each receipt's own field table into a
+   70px column. Those nested items are plain blocks. */
+#main .facts-section dd>ul>li{display:block;min-width:0;border-top:1px solid var(--line);padding-block:var(--space-1)}
+/* One row's receipts table can run several thousand pixels; keep the dump inside its own
+   bounded scroller so expanding it does not shove the rest of the activity list away. */
+.facts-section::details-content{max-height:min(55vh,460px);overflow:auto;padding-inline-end:var(--space-2)}
+@supports not selector(::details-content){.facts-section[open]{max-height:min(55vh,460px);overflow:auto}}
+@media(max-width:900px){.facts-section dl{grid-template-columns:minmax(0,1fr);gap:var(--space-1)}}

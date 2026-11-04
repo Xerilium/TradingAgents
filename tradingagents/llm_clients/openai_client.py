@@ -1,20 +1,63 @@
 import logging
+import asyncio
+import json
+import httpx
+import math
+import time
+from contextvars import ContextVar
 import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from langchain_core.messages import AIMessage
+from langchain_core.callbacks.manager import AsyncCallbackManager
 from langchain_openai import ChatOpenAI
+from pydantic import PrivateAttr
 
+from .context_budget import budget_limits, plan, set_output_limit
 from .api_key_env import get_api_key_env
 from .base_client import BaseLLMClient, normalize_content
 from .capabilities import get_capabilities
 from .validators import validate_model
 
 logger = logging.getLogger(__name__)
+
+_async_local_payload = ContextVar("async_local_payload", default=None)
+_budget_summary = ContextVar("budget_summary", default=False)
+
+
+def _is_rate_limit(exc: BaseException) -> bool:
+    """Whether a model endpoint refused the request on transient pressure.
+
+    Matches 429 and 5xx statuses, timeouts and connection errors (permanent 4xx
+    stay fail-fast), and the machine-readable codes local servers use (a busy
+    queue answers 429 ``queue_wait_timeout`` once its own wait deadline expires).
+    """
+    if isinstance(exc, (TimeoutError, httpx.TransportError)):
+        return True
+    status = getattr(exc, "status_code", None)
+    if status == 429 or (type(status) is int and 500 <= status <= 599):
+        return True
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict) and error.get("code") in {
+                "rate_limit_error", "rate_limit_exceeded", "queue_wait_timeout", "overloaded"}:
+            return True
+    return False
+
+
+def _retry_after(exc: BaseException) -> float | None:
+    """Seconds from a Retry-After header, when the error carries one."""
+    response = getattr(exc, "response", None)
+    value = response.headers.get("retry-after") if response is not None else None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 class NormalizedChatOpenAI(ChatOpenAI):
@@ -36,6 +79,46 @@ class NormalizedChatOpenAI(ChatOpenAI):
     stays small.
     """
 
+    rate_limit_retries: int = 0
+    rate_limit_wait_seconds: float = 30.0
+
+    def _rate_limit_delay(self, attempt: int, exc: BaseException | None = None) -> float | None:
+        """Seconds to wait before the next attempt, or None once spent."""
+        if attempt >= self.rate_limit_retries:
+            if self.rate_limit_retries:
+                logger.error("Model endpoint rate limited after %d attempts; giving up.", attempt + 1)
+            return None
+        delay = _retry_after(exc) if exc is not None else None
+        if delay is None:
+            delay = self.rate_limit_wait_seconds
+        logger.warning("Model endpoint rate limited; retry %d/%d in %ss.",
+                       attempt + 1, self.rate_limit_retries + 1, delay)
+        return delay
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        attempt = 0
+        while True:
+            try:
+                return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as exc:
+                delay = self._rate_limit_delay(attempt, exc) if _is_rate_limit(exc) else None
+                if delay is None:
+                    raise
+                time.sleep(delay)
+                attempt += 1
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        attempt = 0
+        while True:
+            try:
+                return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as exc:
+                delay = self._rate_limit_delay(attempt, exc) if _is_rate_limit(exc) else None
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+                attempt += 1
+
     def invoke(self, input, config=None, **kwargs):
         return normalize_content(super().invoke(input, config, **kwargs))
 
@@ -55,6 +138,98 @@ class NormalizedChatOpenAI(ChatOpenAI):
         return super().with_structured_output(schema, method=method, **kwargs)
 
 
+_TOKEN_ERROR_CODES = frozenset({
+    "invalid_prompt", "vision_disabled", "invalid_request", "invalid_request_error",
+    "context_length_exceeded", "model_not_found", "rate_limit_exceeded",
+    "server_error", "timeout", "overloaded", "request_too_large",
+})
+_TOKEN_ERROR_PARAMS = frozenset({
+    "model", "messages", "tools", "tool_choice", "max_tokens",
+    "max_completion_tokens", "temperature", "top_p", "content",
+})
+
+
+class _ContextBudgetExceeded(ValueError):
+    pass
+
+
+# shortcut: byte/2 estimate, upgrade to exact tokenizer if trimming bites real
+# content. ceil(utf8_bytes/2) over-counts for byte-level BPE vocabularies, so
+# the enforced budget is never exceeded by the estimate.
+DEFAULT_LOCAL_CONTEXT_TOKENS = 262_144
+
+
+def _estimate_payload_tokens(payload: dict) -> int:
+    """Conservative prompt-token estimate: ceil(utf-8 bytes / 2)."""
+    total = len(json.dumps(payload.get("tools") or [], ensure_ascii=False).encode("utf-8"))
+    for message in payload.get("messages", []):
+        content = message.get("content")
+        if isinstance(content, str):
+            total += len(content.encode("utf-8"))
+        elif content is not None:
+            total += len(json.dumps(content, ensure_ascii=False).encode("utf-8"))
+    return math.ceil(total / 2)
+
+
+def _trim_to_fit(payload: dict, byte_budget: int) -> int:
+    """Cut the largest middle message blocks until the payload fits; returns bytes cut.
+
+    System messages and the final message (the task with the newest data) are
+    kept whole; middle blocks are trimmed largest-first from their tail.
+    """
+    messages = payload.get("messages", [])
+
+    def size(message) -> int:
+        content = message.get("content")
+        if isinstance(content, str):
+            return len(content.encode("utf-8"))
+        if content is None:
+            return 0
+        return len(json.dumps(content, ensure_ascii=False).encode("utf-8"))
+
+    total = sum(size(message) for message in messages)
+    total += len(json.dumps(payload.get("tools") or [], ensure_ascii=False).encode("utf-8"))
+    if total <= byte_budget:
+        return 0
+    candidates = [message for index, message in enumerate(messages)
+                  if message.get("role") != "system" and index != len(messages) - 1
+                  and isinstance(message.get("content"), str) and size(message) > 200]
+    cut = 0
+    for message in sorted(candidates, key=size, reverse=True):
+        if total <= byte_budget:
+            break
+        content = message["content"]
+        want = size(message) - (total - byte_budget)
+        # Keep room for the "[trimmed N bytes for context budget]" marker so the
+        # payload stays under the byte budget after it is appended.
+        keep = max(200, want - 64)
+        removed = len(content) - keep
+        if removed <= 0:
+            continue
+        message["content"] = content[:keep] + f"\n[trimmed {removed} bytes for context budget]"
+        total -= removed
+        cut += removed
+    return cut
+
+
+def _tokenization_error(stage, exc):
+    """Report safe diagnostics without exposing server messages or request data."""
+    details = [f"stage={stage}", f"error={type(exc).__name__}"]
+    status = getattr(exc, "status_code", None)
+    if type(status) is int and 100 <= status <= 599:
+        details.append(f"http_status={status}")
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict):
+            for key, allowed in (("code", _TOKEN_ERROR_CODES), ("param", _TOKEN_ERROR_PARAMS)):
+                value = error.get(key)
+                if isinstance(value, str) and value in allowed:
+                    details.append(f"{key}={value}")
+    return RuntimeError("Exact server tokenization is unavailable; cannot enforce the total token limit ("
+                        + ", ".join(details) + ").")
+
+
 class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
     """OpenAI-compatible client for arbitrary local servers (LM Studio, vLLM,
     llama.cpp via the generic ``openai_compatible`` provider).
@@ -64,6 +239,170 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
     the schema as a tool but don't force tool_choice, so structured output works
     across local servers regardless of the model ID's capabilities (#1057).
     """
+
+    max_total_tokens: int | None = None
+    _budget_notes: dict = PrivateAttr(default_factory=dict)
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        cached = _async_local_payload.get()
+        if cached is not None:
+            return cached
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        if self.max_total_tokens is None:
+            # Blank limits still get a pre-send budget: the documented quarter
+            # of the default window is reserved for the answer, and the byte/2
+            # estimate trims oversized prompts here instead of letting the
+            # server 400 the whole research step.
+            total = DEFAULT_LOCAL_CONTEXT_TOKENS
+            output, buffer, available = budget_limits(total, payload)
+            estimate = _estimate_payload_tokens(payload)
+            if estimate > available:
+                cut = _trim_to_fit(payload, available * 2)
+                logger.warning("Prompt estimate %d tokens exceeds the %d-token budget; trimmed %d bytes of middle context.",
+                               estimate, total, cut)
+                estimate = _estimate_payload_tokens(payload)
+                if estimate > available:
+                    raise ValueError(f"Request still exceeds the context budget after trimming: estimate={estimate}, available={available}, output={output}, buffer={buffer}.")
+            set_output_limit(payload, output)
+            return payload
+        parts = urlsplit(str(self.root_client.base_url))
+        path = parts.path.rstrip("/")
+        if path.endswith("/v1"):
+            path = path[:-3]
+        root = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
+        # The SDK transports authentication, timeouts and retry settings. Flatten
+        # extra_body exactly as the SDK does for the final completion request.
+        body = dict(payload)
+        body.update(body.pop("extra_body", {}) or {})
+        stage = "apply-template"
+        try:
+            client = self.root_client
+            output, buffer, available = budget_limits(self.max_total_tokens, payload)
+            raw_total = 0
+            for message in body.get("messages", []):
+                content = message.get("content")
+                if content:
+                    stage = "tokenize"
+                    raw = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+                    counted_raw = client.post(root + "/tokenize", cast_to=dict,
+                        body={"content": raw, "model": body["model"], "parse_special": True, "add_special": False})
+                    raw_tokens = counted_raw["tokens"]
+                    if not isinstance(raw_tokens, list) or any(type(token) is not int for token in raw_tokens):
+                        raise ValueError("invalid tokenizer response")
+                    raw_total += len(raw_tokens)
+            if raw_total > self.max_total_tokens - buffer:
+                raise _ContextBudgetExceeded(f"Request may exceed server context and needs compaction: measured content={raw_total}, total={self.max_total_tokens}, output={output}, buffer={buffer}.")
+            stage = "apply-template"
+            rendered = client.post(root + "/apply-template", cast_to=dict, body=body)
+            prompt = rendered["prompt"]
+            if not isinstance(prompt, str):
+                raise ValueError("invalid template response")
+            stage = "tokenize"
+            counted = client.post(root + "/tokenize", cast_to=dict,
+                body={"content": prompt, "model": body["model"], "parse_special": True, "add_special": False})
+            tokens = counted["tokens"]
+            if not isinstance(tokens, list) or any(type(token) is not int for token in tokens):
+                raise ValueError("invalid tokenizer response")
+        except (InterruptedError, _ContextBudgetExceeded):
+            raise
+        except Exception as exc:
+            raise _tokenization_error(stage, exc) from None
+        return self._limit_payload(payload, tokens)
+
+    def _limit_payload(self, payload, tokens):
+        output, buffer, available = budget_limits(self.max_total_tokens, payload)
+        if len(tokens) > available:
+            raise ValueError(f"Request exceeds context budget and needs compaction: input={len(tokens)}, available={available}, output={output}, buffer={buffer}.")
+        set_output_limit(payload, output)
+        return payload
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        if self.max_total_tokens is None:
+            return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        parts = urlsplit(str(self.root_client.base_url))
+        path = parts.path.rstrip("/")
+        if path.endswith("/v1"):
+            path = path[:-3]
+        root = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
+        client = self.root_async_client
+        callback_config = None
+        if run_manager is not None:
+            callbacks = AsyncCallbackManager(
+                handlers=list(run_manager.handlers),
+                inheritable_handlers=list(run_manager.inheritable_handlers),
+                parent_run_id=run_manager.run_id,
+                tags=list(run_manager.tags), inheritable_tags=list(run_manager.inheritable_tags),
+                metadata=dict(run_manager.metadata), inheritable_metadata=dict(run_manager.inheritable_metadata),
+            )
+            callback_config = {"callbacks": callbacks}
+
+        async def count_text(text):
+            try:
+                counted = await client.post(root + "/tokenize", cast_to=dict,
+                    body={"content": text, "model": self.model_name, "parse_special": True, "add_special": False})
+                tokens = counted["tokens"]
+                if not isinstance(tokens, list) or any(type(token) is not int for token in tokens):
+                    raise ValueError("invalid tokenizer response")
+                return len(tokens)
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                raise _tokenization_error("tokenize", exc) from None
+
+        def make_payload(items):
+            return super(LocalCompatibleChatOpenAI, self)._get_request_payload(items, stop=stop, **kwargs)
+
+        async def count_payload(items):
+            payload = make_payload(items)
+            body = dict(payload)
+            body.update(body.pop("extra_body", {}) or {})
+            try:
+                rendered = await client.post(root + "/apply-template", cast_to=dict, body=body)
+                prompt = rendered["prompt"]
+                if not isinstance(prompt, str):
+                    raise ValueError("invalid template response")
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                raise _tokenization_error("apply-template", exc) from None
+            return await count_text(prompt)
+
+        async def summarize(prompt, target):
+            token = _budget_summary.set(True)
+            try:
+                response = await self.ainvoke(prompt, config=callback_config, max_tokens=target)
+            finally:
+                _budget_summary.reset(token)
+            if response.response_metadata.get("finish_reason") == "length":
+                raise ValueError("Context compaction exceeded its output limit; original evidence was retained.")
+            return response.content if isinstance(response.content, str) else ""
+
+        async def emit(data):
+            from langchain_core.callbacks import adispatch_custom_event
+            if run_manager is not None:
+                await adispatch_custom_event("research_context_budget", {"total_tokens": self.max_total_tokens, **data},
+                                             config=callback_config)
+
+        payload = make_payload(messages)
+        if _budget_summary.get():
+            actual = await count_payload(messages)
+            output, buffer, available = budget_limits(self.max_total_tokens, payload)
+            if actual > available:
+                raise ValueError(f"Compaction request exceeds context budget: input={actual}, available={available}, output={output}, buffer={buffer}.")
+            planned = messages
+            await emit({"stage": "request", "input_tokens": actual, "output_reserved": output, "buffer": buffer})
+        else:
+            planned, actual, output = await plan(messages, payload, self.max_total_tokens,
+                                                  count_text, count_payload, summarize, emit, self._budget_notes,
+                                                  (self.model_name, repr(payload.get("reasoning_effort")),
+                                                   repr((payload.get("extra_body") or {}).get("reasoning"))))
+        payload = make_payload(planned)
+        set_output_limit(payload, output)
+        token = _async_local_payload.set(payload)
+        try:
+            return await super()._agenerate(planned, stop=stop, run_manager=run_manager, **kwargs)
+        finally:
+            _async_local_payload.reset(token)
 
     def with_structured_output(self, schema, *, method=None, **kwargs):
         resolved = method or get_capabilities(self.model_name).preferred_structured_method
@@ -212,6 +551,7 @@ def _chatgpt_credential() -> Callable[[], str]:
 _PASSTHROUGH_KWARGS = (
     "timeout", "max_retries", "reasoning_effort", "temperature", "max_tokens",
     "api_key", "callbacks", "http_client", "http_async_client",
+    "rate_limit_retries", "rate_limit_wait_seconds",
 )
 
 # OpenAI's ``reasoning_effort`` is only accepted by reasoning models — GPT-5 and
@@ -399,9 +739,20 @@ class OpenAIClient(BaseLLMClient):
         for key in _PASSTHROUGH_KWARGS:
             if key not in self.kwargs:
                 continue
-            if key == "reasoning_effort" and not _supports_reasoning_effort(self.model):
+            if (key == "reasoning_effort" and self.provider == "openai"
+                    and _is_native_openai_base_url(base_url) and not _supports_reasoning_effort(self.model)):
                 continue
             llm_kwargs[key] = self.kwargs[key]
+
+        if self.provider == "openai_compatible" and self.kwargs.get("max_total_tokens") is not None:
+            llm_kwargs["max_total_tokens"] = self.kwargs["max_total_tokens"]
+
+        # Bound connection setup without cutting off an active model response.
+        llm_kwargs.setdefault("timeout", httpx.Timeout(None, connect=30, write=30, pool=30))
+
+        # Some LangChain versions impose a separate stream inactivity deadline.
+        if "stream_chunk_timeout" in chat_cls.model_fields:
+            llm_kwargs["stream_chunk_timeout"] = self.kwargs.get("stream_chunk_timeout")
 
         # The subclass (provider quirks) comes from the registry spec.
         return chat_cls(**llm_kwargs)

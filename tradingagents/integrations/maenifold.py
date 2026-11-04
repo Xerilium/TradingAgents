@@ -11,8 +11,12 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import math
+import os
 import re
+import shutil
+import subprocess
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -20,18 +24,32 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time as datetime_time, timedelta
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any, Protocol, TypeVar
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_ENDPOINT = "http://localhost:8080/mcp"
+RESEARCH_COMMANDS = {
+    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory", "WriteMemory", "EditMemory",
+                                  "MoveMemory", "ListMemories", "DeleteMemory", "ExtractConceptsFromFile"}),
+    "maenifold.graph": frozenset({"BuildContext", "FindSimilarConcepts", "Visualize", "Sync",
+                                 "AnalyzeConceptCorruption", "RepairConcepts"}),
+    "maenifold.thinking": frozenset({"SequentialThinking"}),
+}
+_STATEFUL_RESEARCH_COMMANDS = frozenset({
+    "WriteMemory", "EditMemory", "MoveMemory", "DeleteMemory", "Sync", "RepairConcepts", "SequentialThinking",
+})
 # Capture policy is narrower than model-call permission. Account/configuration,
 # order and unknown commands are metadata-only, even if their results look safe.
 _EVIDENCE_COMMANDS = {
+    "gateway": frozenset({"GetHelp"}),
     "alpaca": frozenset({"get_asset", "get_clock", "get_calendar", "get_portfolio_history",
                          "get_stock_bars", "get_stock_latest_quote", "get_stock_latest_trade",
                          "get_stock_snapshot", "get_news"}),
-    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory"}),
+    **RESEARCH_COMMANDS,
     "laya": frozenset({"decide"}),
 }
 
@@ -61,6 +79,10 @@ class GatewayError(RuntimeError):
 
 class GatewayTimeout(GatewayError):
     """The operation timed out; an upstream mutation may have completed."""
+
+
+class GatewayRejected(GatewayError):
+    """The upstream explicitly rejected the request before applying it."""
 
 
 def retry_after_seconds(value=None):
@@ -141,6 +163,38 @@ def _rate_limit_exception(exc):
     return None
 
 
+def _transient_exception(exc):
+    """Retry only typed transport failures; every grouped cause must qualify."""
+    try:
+        import anyio
+        import httpx
+    except ImportError:
+        return None
+
+    pending, seen, failures = [exc], set(), []
+    while pending:
+        error = pending.pop()
+        if id(error) in seen:
+            continue
+        seen.add(id(error))
+        if isinstance(error, (GatewayTimeout, GatewayRejected, asyncio.CancelledError, TimeoutError)):
+            return None
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        if (status in {500, 502, 503, 504} or (status is None and isinstance(error, (
+                ConnectionError, httpx.NetworkError, httpx.RemoteProtocolError,
+                anyio.EndOfStream, anyio.BrokenResourceError, anyio.ClosedResourceError)))):
+            failures.append(error)
+        else:
+            nested = getattr(error, "exceptions", ())
+            cause = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+            if status is not None or not (nested or cause):
+                return None
+            pending.extend(nested or (cause,))
+    return max(failures, key=lambda error: retry_after_seconds(
+        getattr(getattr(error, "response", None), "headers", {}).get("Retry-After", 1)
+    )) if failures else None
+
+
 @dataclass(frozen=True)
 class GatewayCommand:
     domain: str
@@ -154,6 +208,8 @@ class Gateway(Protocol):
     """Small injectable interface used by analysis and deterministic execution."""
 
     def discover(self, domain: str) -> dict[str, GatewayCommand]: ...
+
+    def get_help(self, tool_name: str) -> str: ...
 
     def execute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any: ...
 
@@ -173,6 +229,64 @@ def _is_result_envelope(value: Any) -> bool:
     )
 
 
+class MemoryEditRejected(GatewayRejected, ValueError):
+    """A local or upstream memory edit validation rejection."""
+
+
+def _safe_memory_rejection(value):
+    """Recognize only stable validation categories; never return server text."""
+    texts = []
+    if isinstance(value, dict):
+        for key in ("error", "message"):
+            item = value.get(key)
+            if isinstance(item, str):
+                texts.append(item)
+            elif isinstance(item, dict):
+                texts.extend(str(item.get(key, "")) for key in ("code", "message"))
+        texts.extend(block.get("text", "") for block in value.get("content", [])
+                     if isinstance(block, dict) and block.get("type") == "text")
+    elif isinstance(value, str):
+        texts.append(value)
+    text = " ".join(texts).lower()
+    if "checksum mismatch" in text:
+        return "MEMORY_CHECKSUM_CONFLICT: ReadMemory again, reconcile the current note, and supply its exact new checksum."
+    if "filtered_wikilinks" in text or ("wikilink" in text and ("excluded" in text or "must contain" in text)) or "must contain at least one [[concept]]" in text:
+        return "MEMORY_WIKILINK_REJECTED: Use a meaningful canonical [[concept]] and reconcile the note before retrying."
+    return None
+
+
+def _memory_read_identity(value):
+    """Read the canonical URI and checksum only from the successful response."""
+    if isinstance(value, dict):
+        data = value.get("data", value)
+        if isinstance(data, dict):
+            uri, checksum = data.get("uri"), data.get("checksum")
+            if isinstance(uri, str) and uri.startswith("memory://") and isinstance(checksum, str) and checksum:
+                return uri, checksum
+    elif isinstance(value, str):
+        uri = re.search(r"(?m)^URI: (memory://[^\r\n]+)\r?$", value)
+        checksum = re.search(r"(?m)^Checksum: ([^\r\n]+)\r?$", value)
+        if uri and checksum:
+            return uri.group(1), checksum.group(1)
+    return None
+
+
+def _meaningful_wikilink(content):
+    for match in re.finditer(r"(?<!\[)\[\[([^\[\]\r\n]+)\]\](?!\])", content):
+        name = match.group(1)
+        if name == name.strip() and any(char.isalnum() for char in name) and not any(c in name for c in "|#"):
+            return True
+    return False
+
+
+_SESSION_ERRORS = {
+    "SESSION_MISSING": ("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; "
+                        "continue using the returned sessionId."),
+    "SESSION_CLOSED": "SESSION_CLOSED: Start a new session with thoughtNumber=0 and no sessionId.",
+    "SESSION_EXISTS": "SESSION_EXISTS: Reuse the returned sessionId, or use a different sessionId.",
+}
+
+
 def _raise_reported_error(value: dict[str, Any]) -> None:
     if (
         value.get("isError") is True
@@ -187,9 +301,21 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
             for block in value.get("content") or []
         ))
     ):
+        if rejection := _safe_memory_rejection(value):
+            raise MemoryEditRejected(rejection)
         # Do not echo arbitrary upstream payloads: system configuration results
         # can contain secrets. Callers receive a stable, non-secret error.
         error = value.get("error")
+        errors = [error]
+        for block in value.get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text":
+                with suppress(ValueError, TypeError):
+                    parsed = json.loads(block.get("text", ""))
+                    if isinstance(parsed, dict):
+                        errors.append(parsed.get("error"))
+        for item in errors:
+            if isinstance(item, dict) and item.get("code") in _SESSION_ERRORS:
+                raise GatewayRejected(_SESSION_ERRORS[item["code"]])
         if limited := reported_rate_limit(value):
             raise limited
         for block in value.get("content") or []:
@@ -200,7 +326,15 @@ def _raise_reported_error(value: dict[str, Any]) -> None:
         status = metadata.get("status_code", metadata.get("code", metadata.get("status")))
         if str(status) == "429" or re.search(r"\b429\b|too many requests|rate.?limit", str(error or value.get("message", "")), re.I):
             raise GatewayRateLimited(metadata.get("retry_after", metadata.get("retryAfter")))
-        raise GatewayError("The upstream Gateway tool reported an error.")
+        from tradingagents.dataflows.router import _gateway_failure_details
+        failure = GatewayError("The upstream Gateway tool reported an error.")
+        messages = [error or value.get("message", ""), *(block.get("text", "")
+            for block in value.get("content") or [] if isinstance(block, dict) and block.get("type") == "text")]
+        failure.error_details = [detail for message in messages[:6] if message
+            for detail in _gateway_failure_details(GatewayError(str(message)))]
+        if str(status).isdigit() and 100 <= int(status) <= 599:
+            failure.http_status = int(status)
+        raise failure
 
 
 def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
@@ -219,9 +353,14 @@ def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
             parsed = json.loads(value)
         except (ValueError, TypeError):
             if value.lstrip().lower().startswith(("error:", "tool error:")):
+                if rejection := _safe_memory_rejection(value):
+                    raise MemoryEditRejected(rejection) from None
                 if re.search(r"\b429\b|too many requests|rate.?limit", value, re.I):
                     raise GatewayRateLimited() from None
-                raise GatewayError("The upstream Gateway tool reported a text error.") from None
+                from tradingagents.dataflows.router import _gateway_failure_details
+                failure = GatewayError("The upstream Gateway tool reported a text error.")
+                failure.error_details = _gateway_failure_details(GatewayError(value))
+                raise failure from None
             return value
         return normalize_tool_result(parsed, _depth=_depth + 1)
     if not isinstance(value, dict):
@@ -248,7 +387,7 @@ def normalize_tool_result(value: Any, *, _depth: int = 0) -> Any:
 
 
 class SdkMcpTransport:
-    """Official SDK Streamable HTTP transport, without custom MCP HTTP code."""
+    """Official SDK transport; timeout bounds connection and initialization, not tool execution."""
 
     def __init__(self, endpoint: str, timeout: float = 30.0):
         parsed = urlsplit(endpoint)
@@ -256,8 +395,8 @@ class SdkMcpTransport:
             raise ValueError("MCP endpoint must be an absolute HTTP or HTTPS URL.")
         if parsed.username or parsed.password or parsed.fragment:
             raise ValueError("MCP endpoint must not embed credentials or a URL fragment.")
-        if not math.isfinite(timeout) or timeout <= 0 or timeout > 300:
-            raise ValueError("MCP timeout must be greater than zero and at most 300 seconds.")
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("MCP timeout must be a positive finite number of seconds.")
         self.endpoint = endpoint
         self.timeout = timeout
 
@@ -270,11 +409,10 @@ class SdkMcpTransport:
             raise GatewayError(_EXTRAS_MESSAGE) from exc
 
         try:
-            # This bounds initialization, the tool call, and session teardown.
+            # Bound connection setup, but let active tools run until completion or cancellation.
             async with (
-                asyncio.timeout(self.timeout),
                 httpx.AsyncClient(
-                    timeout=httpx.Timeout(self.timeout),
+                    timeout=httpx.Timeout(self.timeout, read=None),
                     follow_redirects=False,
                     trust_env=False,
                 ) as http_client,
@@ -283,13 +421,10 @@ class SdkMcpTransport:
                     write_stream,
                     _,
                 ),
-                ClientSession(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds=timedelta(seconds=self.timeout),
-                ) as session,
+                ClientSession(read_stream, write_stream) as session,
             ):
-                await session.initialize()
+                async with asyncio.timeout(self.timeout):
+                    await session.initialize()
                 if on_dispatch is not None:
                     on_dispatch()
                 return await session.call_tool(name, arguments=arguments)
@@ -307,6 +442,83 @@ class SdkMcpTransport:
                 "Check that the configured Maenifold endpoint is running. "
                 "If this was an order submission, reconcile its client order ID before retrying."
             ) from exc
+
+
+_STRING_BOOLEANS = {"true": True, "false": False, "True": True, "False": False}
+
+
+def _schema_properties(schema: Any) -> dict[str, Any]:
+    """Merge declared top-level properties, including those in allOf/anyOf members."""
+    if not isinstance(schema, dict):
+        return {}
+    members = [schema]
+    for keyword in ("allOf", "anyOf"):
+        nested = schema.get(keyword)
+        if isinstance(nested, list):
+            members.extend(member for member in nested if isinstance(member, dict))
+    properties: dict[str, Any] = {}
+    for member in members:
+        declared = member.get("properties")
+        if isinstance(declared, dict):
+            for name, spec in declared.items():
+                properties.setdefault(name, spec)
+    return properties
+
+
+def _declared_types(spec: Any) -> list[str]:
+    """The JSON types a property declares, tolerating type arrays and anyOf branches."""
+    if not isinstance(spec, dict):
+        return []
+    declared = spec.get("type")
+    if isinstance(declared, list):
+        return [str(item) for item in declared]
+    if declared is not None:
+        return [str(declared)]
+    branches = spec.get("anyOf") if isinstance(spec.get("anyOf"), list) else []
+    return [str(branch["type"]) for branch in branches
+            if isinstance(branch, dict) and branch.get("type") is not None]
+
+
+def _coerce_schema_booleans(parameters: dict[str, Any], schema: Any) -> list[str]:
+    """Rewrite the exact strings "true"/"false"/"True"/"False" as JSON booleans.
+
+    Models emit string booleans for fields such as SequentialThinking.nextThoughtNeeded,
+    whose schema allOf rules key off the real boolean. Only fields the live schema
+    declares as boolean are touched, and nothing else in the payload changes.
+    """
+    coerced = []
+    for name, spec in _schema_properties(schema).items():
+        value = parameters.get(name)
+        if isinstance(value, str) and value in _STRING_BOOLEANS and "boolean" in _declared_types(spec):
+            parameters[name] = _STRING_BOOLEANS[value]
+            coerced.append(name)
+    return coerced
+
+
+def _schema_guidance(cause: Any, schema: Any) -> str:
+    """Corrective text assembled from our own live schema, never from upstream text."""
+    try:
+        from jsonschema.exceptions import ValidationError
+    except ImportError:
+        return ""
+    if not isinstance(cause, ValidationError):
+        return ""
+    properties = _schema_properties(schema)
+    path = [str(part) for part in getattr(cause, "absolute_path", ())]
+    text = f" Correct the schema rule {cause.validator}"
+    if path:
+        text += f" at {'.'.join(path)}"
+    spec = properties.get(path[0]) if len(path) == 1 else None
+    if isinstance(spec, dict):
+        field = path[0]
+        types = _declared_types(spec)
+        if types:
+            text += f"; {field} must be {' or '.join(types)}"
+        if isinstance(spec.get("enum"), list):
+            text += f"; {field} accepts: {', '.join(str(value) for value in spec['enum'])}"
+    if properties:
+        text += f"; accepted fields: {', '.join(sorted(properties))}"
+    return text[:400]
 
 
 def validate_parameters(parameters: dict[str, Any], schema: dict[str, Any]) -> None:
@@ -358,6 +570,8 @@ class MaenifoldGateway:
         self._domains: set[str] | None = None
         self._domains_at = 0.0
         self._lock = threading.RLock()
+        self._help_lock = threading.Lock()
+        self._help: dict[str, str] = {}
         self._limited_until = 0.0
         self._retrying = False
 
@@ -367,13 +581,15 @@ class MaenifoldGateway:
             retrying = self._retrying
         if remaining > 0 or retrying:
             raise GatewayRateLimited(remaining)
-        safe = name == "GatewayIndex" or (
+        safe = name in {"GatewayIndex", "GetHelp"} or (
             name == "GatewayExecute" and (
-                arguments.get("command") in ANALYSIS_COMMANDS.get(arguments.get("domain"), ())
+                (arguments.get("command") in ANALYSIS_COMMANDS.get(arguments.get("domain"), ())
+                 and arguments.get("command") not in _STATEFUL_RESEARCH_COMMANDS)
                 or (arguments.get("domain"), arguments.get("command")) == ("maenifold.system", "GetConfig")
             )
         )
         owns_retry = False
+        failures = []
         try:
             for attempt in range(4):
                 # A concurrent in-flight call may extend the shared deadline while
@@ -383,7 +599,7 @@ class MaenifoldGateway:
                     if remaining > 0 or (self._retrying and not owns_retry):
                         raise GatewayRateLimited(remaining)
                 domain = arguments.get("domain") if name == "GatewayExecute" else "gateway"
-                command = arguments.get("command") if name == "GatewayExecute" else "GatewayIndex"
+                command = arguments.get("command") if name == "GatewayExecute" else name
                 with gateway_observation(domain, command, "gateway_transport",
                                          parameters=arguments.get("parameters"), ordinal=attempt + 1) as observed:
                     try:
@@ -408,9 +624,39 @@ class MaenifoldGateway:
                             if (exc.retry_after > 60 or remaining > 60 or not safe or attempt == 3
                                     or (self._retrying and not owns_retry)):
                                 observed["receipt"]["retry_action"] = "defer"
-                                raise GatewayRateLimited(max(delay, remaining)) from exc
+                                failure = GatewayRateLimited(max(delay, remaining))
+                                failure.retry_details = [*failures, {"attempt": attempt + 1, "http_status": 429,
+                                    "retry_after_seconds": exc.retry_after, "retry_delay_seconds": delay, "scheduled_wait_seconds": 0,
+                                    "retry_action": "defer"}]
+                                raise failure from exc
                             self._retrying = owns_retry = True
                         observed["receipt"].update(retry_action="retry", scheduled_wait_seconds=delay)
+                        failures.append({"attempt": attempt + 1, "http_status": 429,
+                            "retry_after_seconds": exc.retry_after, "scheduled_wait_seconds": delay, "retry_action": "retry"})
+                    except GatewayError as exc:
+                        from tradingagents.dataflows.router import _gateway_failure_details, source_failure_details
+
+                        transient = _transient_exception(exc)
+                        receipt = observed["receipt"]
+                        receipt.update(outcome="error" if observed["result_available"] else "unknown", error_class=type(exc).__name__,
+                                       error_details=_gateway_failure_details(exc), retry_action="stop")
+                        failure = {"attempt": attempt + 1, **source_failure_details(exc),
+                                   "retry_action": "stop", "scheduled_wait_seconds": 0}
+                        failures.append(failure)
+                        exc.retry_details = failures
+                        response = getattr(transient, "response", None)
+                        header = response.headers.get("Retry-After") if response is not None else None
+                        if header is not None:
+                            failure["retry_after_seconds"] = retry_after_seconds(header)
+                        if transient is None or not safe or attempt == 3:
+                            raise
+                        delay = retry_delay(header if header is not None else 1, attempt)
+                        if delay > 60:
+                            receipt["retry_action"] = "defer"
+                            failure.update(retry_action="defer", retry_delay_seconds=delay)
+                            raise
+                        receipt.update(retry_action="retry", scheduled_wait_seconds=delay)
+                        failure.update(retry_action="retry", scheduled_wait_seconds=delay)
                 await asyncio.sleep(delay)
         finally:
             if owns_retry:
@@ -477,6 +723,19 @@ class MaenifoldGateway:
     def discover(self, domain: str) -> dict[str, GatewayCommand]:
         return _run_sync(lambda: self.adiscover(domain))
 
+    def get_help(self, tool_name: str) -> str:
+        with gateway_observation("gateway", "GetHelp", "gateway_help",
+                                 parameters={"toolName": tool_name}) as observed:
+            with self._help_lock:
+                if tool_name not in self._help:
+                    value = _run_sync(lambda: self._call("GetHelp", {"toolName": tool_name}))
+                    if not value:
+                        raise GatewayError(f"GetHelp returned no guidance for {tool_name}.")
+                    self._help[tool_name] = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                text = self._help[tool_name]
+            observed.update(output=text, result_available=True)
+            return text
+
     async def aexecute(self, domain: str, command: str, parameters: dict[str, Any], *, on_dispatch=None) -> Any:
         with gateway_observation(domain, command, "gateway_logical", parameters=parameters) as observed:
             response = await self._aexecute(domain, command, parameters, on_dispatch=on_dispatch)
@@ -523,7 +782,7 @@ ANALYSIS_COMMANDS: Mapping[str, frozenset[str]] = {
             "get_news",
         }
     ),
-    "maenifold.memory": frozenset({"SearchMemories", "ReadMemory"}),
+    **RESEARCH_COMMANDS,
     "laya": frozenset({"decide"}),
 }
 
@@ -657,7 +916,9 @@ def build_langchain_tools(
             raise GatewayError("Analysis date must be YYYY-MM-DD.") from exc
         if date.fromisoformat(trade_date) > datetime.now(ZoneInfo("America/New_York")).date():
             raise GatewayError("The analysis date cannot be in the future.")
-    tools = []
+    tools, help_names = [], []
+    memory_lock = threading.Lock()
+    memory_aliases, memory_checksums = {}, {}
     for domain in domains if domains is not None else tuple(ANALYSIS_COMMANDS):
         if domain not in ANALYSIS_COMMANDS:
             raise GatewayError(f"Domain is not permitted for analysis tools: {domain}.")
@@ -673,21 +934,121 @@ def build_langchain_tools(
 
             def bind(selected: GatewayCommand) -> Callable[..., str]:
                 def invoke(**parameters: Any) -> str:
+                    live: dict[str, GatewayCommand] = {}
                     with gateway_observation(selected.domain, selected.name, "gateway_invocation",
                                              purpose="analyst_tool") as observed:
                         try:
                             bounded = _bound_parameters(selected, parameters, symbol, trade_date)
                             observed["parameters"] = bounded
-                            value = gateway.execute(selected.domain, selected.name, bounded)
+                            live = gateway.discover(selected.domain)
+                            if selected.name not in live:
+                                raise GatewayError(f"Gateway command is unavailable: {selected.domain}.{selected.name}.")
+                            coerced = _coerce_schema_booleans(bounded, live[selected.name].schema)
+                            if coerced:
+                                logger.info("Coerced string booleans for %s.%s: %s", selected.domain,
+                                            selected.name, ", ".join(sorted(coerced)))
+                            validate_parameters(bounded, live[selected.name].schema)
+                            if (selected.domain == "maenifold.thinking" and selected.name == "SequentialThinking"
+                                    and not bounded.get("sessionId") and bounded.get("thoughtNumber", 0) != 0):
+                                raise GatewayRejected("SESSION_MISSING: Start with thoughtNumber=0 and no sessionId; continue using the returned sessionId.")
+                            is_memory = selected.domain == "maenifold.memory"
+                            editing = is_memory and selected.name == "EditMemory" and not bounded.get("learn")
+                            identifier = bounded.get("identifier")
+                            if editing:
+                                with memory_lock:
+                                    uri = memory_aliases.get(identifier)
+                                    checksum = memory_checksums.get(uri)
+                                if not checksum:
+                                    raise MemoryEditRejected("MEMORY_READ_REQUIRED: ReadMemory with checksum first, then reconcile and edit the same URI or identifier.")
+                                if bounded.get("checksum") != checksum:
+                                    raise MemoryEditRejected("MEMORY_CHECKSUM_MISMATCH: Supply the exact checksum from the last ReadMemory, including all characters; reread and reconcile if uncertain.")
+                                if (str(bounded.get("operation", "")).lower() in {"append", "prepend", "replace_section"}
+                                        and not _meaningful_wikilink(bounded.get("content", ""))):
+                                    raise MemoryEditRejected("MEMORY_WIKILINK_REQUIRED: Include a meaningful canonical [[concept]] in the supplied content.")
+                            try:
+                                value = gateway.execute(selected.domain, selected.name, bounded)
+                            finally:
+                                if editing:
+                                    # A successful or uncertain edit makes the last read stale.
+                                    with memory_lock:
+                                        memory_checksums.pop(uri, None)
+                            if (is_memory and selected.name == "ReadMemory" and not bounded.get("raw")
+                                    and not bounded.get("learn") and bounded.get("includeChecksum", True)):
+                                identity = _memory_read_identity(value)
+                                if identity:
+                                    read_uri, read_checksum = identity
+                                    with memory_lock:
+                                        memory_aliases[identifier] = read_uri
+                                        memory_aliases[read_uri] = read_uri
+                                        memory_checksums[read_uri] = read_checksum
                         except GatewayError as exc:
-                            raise ToolException(str(exc)) from exc
+                            from tradingagents.dataflows.router import tool_failure_details
+                            rule = getattr(exc.__cause__, "validator", None)
+                            guidance = _schema_guidance(exc.__cause__, getattr(live.get(selected.name), "schema", None)) or (
+                                f" Correct the advertised schema rule {rule}; use only supported fields and include required completion fields." if rule else "")
+                            safe_memory = (str(exc) if isinstance(exc, GatewayRejected) and
+                                           str(exc).startswith(("MEMORY_READ_REQUIRED:", "MEMORY_CHECKSUM_MISMATCH:",
+                                                                "MEMORY_CHECKSUM_CONFLICT:", "MEMORY_WIKILINK_REQUIRED:",
+                                                                "MEMORY_WIKILINK_REJECTED:", "SESSION_MISSING:",
+                                                                "SESSION_CLOSED:", "SESSION_EXISTS:")) else "")
+                            details = tool_failure_details(exc)
+                            if not guidance and not safe_memory:
+                                # The upstream Gateway reports wrong or missing parameters in its own words; pair
+                                # that notice with the real parameter names so the analyst can correct the call.
+                                retained = "; ".join(str(detail.get("message", "")) for detail in details.get("error_details", []))
+                                if "Missing required parameter" in retained or "GATEWAY_VALIDATION_FAILED" in retained:
+                                    fields = sorted(_schema_properties(getattr(live.get(selected.name), "schema", None)))
+                                    if fields:
+                                        guidance = f" Accepted parameters: {', '.join(fields)}."
+                            raise ToolException(json.dumps(details) + guidance + (" " + safe_memory if safe_memory else "")) from exc
                         observed.update(output=value, result_available=True)
                         return json.dumps(value, ensure_ascii=False, default=str)
 
                 return invoke
 
-            description = command.description
+            help_name = name if domain.startswith("maenifold.") else f"{domain}.{name}"
+            help_names.append(help_name)
+            description = command.description + "\n\nRead before use — canonical GetHelp guidance:\n" + gateway.get_help(help_name)
             schema = copy.deepcopy(command.schema)
+            if domain in RESEARCH_COMMANDS:
+                description += (
+                    " Research only; never authorizes trading. Cite source memory:// identifiers "
+                    f"and check source dates against analysis date {trade_date or 'the current run'}. "
+                    "Memory and reasoning do not replace external research or independently verify facts. "
+                    "Graph links and similarity are retrieval hints; repeated underlying sources are not independent corroboration."
+                )
+            if domain == "maenifold.graph":
+                description += (
+                    " Resolve uncertain names with FindSimilarConcepts; start BuildContext at "
+                    "depth=1, maxEntities=5, includeContent=true, then ReadMemory for sources. "
+                    "Preview RepairConcepts with dryRun=true before applying repairs."
+                )
+            if domain == "maenifold.memory":
+                description += (
+                    " Reuse existing notes and concepts. Knowledge notes need a ## Source section "
+                    "with source URLs, source/as-of dates, attribution, uncertainty and [[WikiLinks]]. "
+                    "Update reusable externally sourced findings without generalizing beyond the evidence; skip writes if nothing reusable is learned. "
+                    "Separate historical notes from current observations. Read before editing, preserve lineage and supply "
+                    "the returned checksum. Do not overwrite to bypass a stale edit. "
+                    "Pass memory:// identifiers byte-for-byte as SearchMemories, ListMemories or BuildContext "
+                    "returned them: one path segment per folder, and never reformat or collapse date folders, so "
+                    "a path containing .../2026/10/14/... keeps all three segments. "
+                    "Limit results with pageSize, never maxResults, which only maenifold.graph "
+                    "FindSimilarConcepts accepts. "
+                    "DeleteMemory requires explicit user confirmation."
+                )
+            if domain == "maenifold.thinking":
+                description += (
+                    " Think through externally collected evidence as it becomes available: integrate findings, "
+                    "examine assumptions and conflicts, and identify gaps. Put source-linked reasoning in response, "
+                    "not pre-research planning or status logging; memory and reasoning are not external evidence. "
+                    "Start with thoughtNumber=0, response, and nextThoughtNeeded=true; omit sessionId. "
+                    "Continue with the actual returned sessionId, incremented thoughtNumber, "
+                    "response, and nextThoughtNeeded=true. Complete using that sessionId, "
+                    "incremented thoughtNumber, response, nextThoughtNeeded=false, and a conclusion "
+                    "string containing the completion report (ConfessionReport) covering outcomes and gaps. "
+                    "Do not send top-level thought or ConfessionReport fields."
+                )
             if symbol and domain == "alpaca":
                 for key in ("symbols", "symbol", "symbol_or_asset_id"):
                     if key in schema.get("properties", {}):
@@ -709,6 +1070,20 @@ def build_langchain_tools(
                     handle_tool_error=True,
                 )
             )
+    if tools:
+        def get_help(toolName):
+            if toolName not in help_names:
+                raise ToolException("GetHelp is limited to the offered Gateway commands.")
+            return gateway.get_help(toolName)
+
+        tools.append(StructuredTool.from_function(
+            func=get_help,
+            name="GetHelp",
+            description="Reread canonical help for an offered Gateway command. Its help is already loaded in the command description; read it before use. This tool cannot execute commands.",
+            args_schema={"type": "object", "properties": {"toolName": {"type": "string", "enum": help_names}},
+                         "required": ["toolName"], "additionalProperties": False},
+            handle_tool_error=True,
+        ))
     return tools
 
 
@@ -754,3 +1129,73 @@ def verify_paper_configuration(gateway: Gateway) -> dict[str, Any]:
         "verification": "registered_server_configuration",
         "runtime_endpoint_attested": False,
     }
+
+
+# shortcut: readiness is inferred from a surviving child after this window; upgrade if Maenifold exposes a readiness probe.
+_READY_SECONDS = 3
+
+
+class MaenifoldInstance:
+    """Host one desk-owned Maenifold child on its own port and memory root.
+
+    Isolation comes from ``MAENIFOLD_ROOT`` and ``--port`` only. Stop terminates
+    the child this desk launched; it never touches another Maenifold installation.
+    """
+
+    def __init__(self) -> None:
+        self.lock = threading.RLock()
+        self.process, self.port, self.root = None, None, None
+        self.status, self.error, self.started_at = "not_running", None, None
+
+    def start(self, port: int, root: str | Path) -> dict[str, Any]:
+        with self.lock:
+            if self.process and self.process.poll() is None:
+                return self.state()
+            executable = shutil.which("maenifold")
+            if not executable:
+                self.status, self.error = "error", "Maenifold was not found on PATH"
+                raise ValueError(self.error)
+            self.root = Path(root)
+            self.root.mkdir(parents=True, exist_ok=True)
+            try:
+                self.process = subprocess.Popen(
+                    [executable, "--http", "--port", str(port)],
+                    env={**os.environ, "MAENIFOLD_ROOT": str(self.root)},
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+            except OSError as failure:
+                self.status, self.error = "error", f"Maenifold startup failed: {failure}"
+                raise ValueError(self.error) from None
+            self.port = port
+            self.started_at, self.status, self.error = datetime.now(UTC).isoformat(), "starting", None
+            return self.state()
+
+    def stop(self) -> dict[str, Any]:
+        with self.lock:
+            process = self.process
+            if process and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            self.process, self.started_at = None, None
+            self.status, self.error = "not_running", None
+            return self.state()
+
+    def state(self) -> dict[str, Any]:
+        with self.lock:
+            process, status, error = self.process, self.status, self.error
+            if process is not None:
+                exit_code = process.poll()
+                if exit_code is not None:
+                    status, error = "error", error or f"Maenifold exited with status {exit_code}"
+                    self.status, self.error = status, error
+                elif datetime.now(UTC) - datetime.fromisoformat(self.started_at) >= timedelta(seconds=_READY_SECONDS):
+                    status, self.status = "running", "running"
+            return {
+                "status": status, "port": self.port, "root": str(self.root) if self.root else None,
+                "pid": process.pid if process else None, "error": error, "started_at": self.started_at,
+            }

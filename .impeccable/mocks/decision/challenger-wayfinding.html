@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Terminal Yellow Wayfinding — first viewport</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1440px; height: 900px; overflow: hidden; background: #f2f1ee; color: #101114; font-family: "Archivo", system-ui, sans-serif; }
+  .band { background: #ffce1f; border-bottom: 3px solid #101114; padding: 18px 28px; display: flex; align-items: center; gap: 26px; }
+  .band .stage { font-size: 15px; font-weight: 700; letter-spacing: .14em; }
+  .band .next { font-size: 30px; font-weight: 900; letter-spacing: -.01em; }
+  .band .time { margin-left: auto; text-align: right; }
+  .band .time b { font-size: 40px; font-weight: 900; display: block; line-height: 1; }
+  .band .time span { font-size: 12px; letter-spacing: .18em; font-weight: 700; }
+  .arrow { width: 54px; height: 34px; background: #101114; color: #ffce1f; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; }
+  .chain { display: flex; gap: 0; margin-top: 26px; padding: 0 28px; }
+  .step { flex: 1; border: 3px solid #101114; background: #fff; padding: 14px 18px; position: relative; }
+  .step + .step { margin-left: -3px; }
+  .step h4 { font-size: 12px; letter-spacing: .16em; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .pic { width: 26px; height: 26px; background: #101114; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; flex: none; }
+  .step p { font-size: 13px; margin-top: 8px; line-height: 1.45; }
+  .step h3 { font-size: 44px; font-weight: 900; margin-top: 6px; line-height: 1; }
+  .step.now { background: #ffce1f; transform: translateY(-8px); box-shadow: 0 10px 0 rgba(16,17,20,.15); z-index: 1; }
+  .step.done h3 { color: #9b9a94; text-decoration: line-through; text-decoration-thickness: 4px; }
+  .below { display: grid; grid-template-columns: 1fr 420px; gap: 26px; padding: 30px 28px; }
+  .panel { border: 3px solid #101114; background: #fff; }
+  .panel > header { background: #101114; color: #ffce1f; font-size: 13px; letter-spacing: .16em; font-weight: 700; padding: 9px 16px; display: flex; justify-content: space-between; }
+  .rows { padding: 6px 0; }
+  .row { display: grid; grid-template-columns: 70px 1fr 120px 90px; gap: 10px; align-items: center; padding: 8px 16px; border-bottom: 1px solid #e3e1da; font-size: 13px; }
+  .row:last-child { border-bottom: none; }
+  .row b { font-weight: 900; font-size: 15px; }
+  .pill { font-size: 11px; letter-spacing: .1em; font-weight: 700; padding: 3px 8px; text-align: center; border: 2px solid #101114; }
+  .pill.live { background: #ffce1f; }
+  .pill.done { background: #fff; color: #6d6c66; border-color: #9b9a94; }
+  .logp { font-family: Consolas, monospace; font-size: 12px; line-height: 1.55; padding: 10px 16px; }
+  .logp div { border-bottom: 1px dotted #e3e1da; padding: 5px 0; }
+</style>
+</head>
+<body>
+  <div class="band">
+    <span class="stage">STAGE 2 OF 3 — MONITOR RUN</span>
+    <span class="next">NVDA · ticker 7 of 16</span>
+    <span class="arrow">→</span>
+    <div class="time"><b>04:12</b><span>ESTIMATED REMAINING</span></div>
+  </div>
+  <div class="chain">
+    <div class="step done"><h4><span class="pic">✓</span> CONFIGURE</h4><p>FANGMAN + semis · 16 tickers · openai deep</p><h3>DONE</h3></div>
+    <div class="step now"><h4><span class="pic">▶</span> RUN — DEBATE R1</h4><p>Bull vs bear on NVDA; research manager closing the round, then risk committee.</p><h3>7 / 16</h3></div>
+    <div class="step"><h4><span class="pic">◫</span> RESULTS</h4><p>Ratings, price targets and the full committee record per ticker.</p><h3>2 / 16 SO FAR</h3></div>
+  </div>
+  <div class="below">
+    <div class="panel">
+      <header><span>NEXT TICKERS IN LINE</span><span>SEQUENTIAL — ONE AT A TIME</span></header>
+      <div class="rows">
+        <div class="row"><b>NVDA</b>debate round 1 of 1<span class="pill live">RUNNING</span><span>~4 min</span></div>
+        <div class="row"><b>GOOGL</b>next in line<span class="pill">QUEUED 08</span><span>—</span></div>
+        <div class="row"><b>AMZN</b>queued<span class="pill">QUEUED 09</span><span>—</span></div>
+        <div class="row"><b>NFLX</b>queued<span class="pill">QUEUED 10</span><span>—</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <header><span>LIVE LOG — NVDA</span><span>RUN-0147</span></header>
+      <div class="logp">
+        <div>09:42:22 BEAR — 34x forward; slip = −12%</div>
+        <div>09:43:12 RESEARCH MGR — motion to vote…</div>
+        <div>09:43:58 RISK AGGRESSIVE — entering position…</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

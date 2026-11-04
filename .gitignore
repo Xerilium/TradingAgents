@@ -224,3 +224,28 @@ reports/
 .paper-desk/
 
 .gate/
+
+# Local runtime and preserved workspace data
+.local-workspace/
+.venv-nautilus-v1/
+tradingdesk.launch.json
+.runtime-stage/
+.runtime-cutover-backups/
+.tmp-nautilus-desk/
+.tmp-nautilus-task2/
+
+# Generated desktop dependencies and private runtime payloads
+/desktop/node_modules/
+/desktop/src-tauri/payload/
+/desktop/src-tauri/tauri.release.local.json
+/desktop/src-tauri/gen/
+/desktop/src-tauri/icons/android/
+/desktop/src-tauri/icons/ios/
+
+# Machine-local agent integration settings
+/.codex/config.toml
+/.codex/hooks.json
+/.codex_/
+/.mcp.json
+
+.venv-build/

@@ -1,0 +1,1 @@
+Detailed reasoning anchored in specific evidence from the analysts' debate. If prior lessons are referenced in the prompt context, incorporate them; otherwise rely solely on the current analysis.

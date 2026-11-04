@@ -1,0 +1,2 @@
+Nautilus / Alpaca IEX quote observation: {observation}
+Price follows the reported basis: last_trade or bid/ask quote_midpoint; it is not an official close. Missing quotes are unavailable, not zero. Respect the source timestamp and stale flag. This research observation grants no order authority; execution requires separate exact human approval and submission.

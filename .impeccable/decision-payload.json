@@ -1,0 +1,145 @@
+{
+  "title": "Choose the visual world",
+  "question": "The roll assigned The Committee Minutes — a run rendered as the formal record of agents deliberating, entry by entry. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "The Committee Minutes",
+      "kicker": "THE ROLL",
+      "lineage": "formal meeting minutes and deliberation records",
+      "thesis": "A run is a committee record: agents are named attendees, every message is a ruled entry with a speaker tag, and the final rating is the recorded resolution.",
+      "palette": ["#f7f5f0", "#16181d", "#c2402a", "#8a8f98"],
+      "materials": ["ruled paper record", "typewriter mono entries", "stamped resolutions"],
+      "viewport": "Shell first: status bar, a persistent phase band (ticker 7/16 · debate round · time left), an attendee rail of the twelve agents, the live minute in the center where the speaking agent's entry is an open line that grows as it streams, and the current ticker's sparkline and pending rating at right.",
+      "risk": "A record can read archival if entries stop moving; the open line must stay visibly alive.",
+      "raised": [
+        {
+          "from": "challenger-labanotation",
+          "raise": "Every entry carries a measured duration; live entries grow with elapsed time, so pacing is legible at a glance."
+        },
+        {
+          "from": "challenger-saville-catalog",
+          "raise": "Runs and tickers carry catalog numbers (RUN-0147 · NVDA) plus a compact sparkline identity line; selection lifts one to full weight."
+        },
+        {
+          "from": "challenger-ikeda-datamatics",
+          "raise": "The active ticker's entries stay full contrast while completed tickers' entries recede to a faint pattern — focus by receding."
+        }
+      ],
+      "html": ".impeccable/mocks/decision/assigned.html"
+    },
+    {
+      "id": "model-pick",
+      "label": "The Research Note",
+      "kicker": "IMPECCABLE'S PICK",
+      "lineage": "sell-side equity research notes and morning briefs",
+      "thesis": "A run is the note being written: analyst sections fill as agents finish, the debate runs in the margin, and results read as the finished note with its verdict band.",
+      "palette": ["#fbfaf7", "#191b20", "#1c3e7a", "#c2402a"],
+      "materials": ["crisp paper stock", "tabular figures", "verdict band and price-target box"],
+      "viewport": "Note header with ticker, date and committee line; a bold verdict band (rating + target) that stays pending until the run closes; dense sections — Market, Fundamentals, Debate — filling top to bottom as agents complete.",
+      "risk": "Also where most runs in this category land: report-shaped UI can read like a document, not a tool."
+    },
+    {
+      "id": "challenger-japanese-high-density-web",
+      "catalogId": "japanese-high-density-web",
+      "label": "Japanese High-Density Web",
+      "kicker": "CHALLENGER",
+      "verdict": "competitive",
+      "lineage": "Japanese e-commerce module mosaics",
+      "thesis": "The portfolio as a packed mosaic: sixteen hairline-ruled ticker modules edge to edge, each with its own header tab, state badge and progress strip.",
+      "palette": ["#ffffff", "#1a1a1a", "#e60012", "#8f979e"],
+      "materials": ["hairline module rules", "tiny gothic sans", "utility-red tabs"],
+      "viewport": "Multi-row nav rail left, a 4×4 grid of ticker modules filling the screen with one running under a red tab, run log rows in the right column.",
+      "case": "Holds product clarity: sixteen tickers × state is exactly what a dense ruled mosaic was made for; loses audience identification — catalog commerce, not trading culture.",
+      "risk": "Reads like a shopping catalog when the grid relaxes; density must stay strict.",
+      "hero": "https://impeccable.style/worlds/cards/japanese-high-density-web-hero.webp",
+      "html": ".impeccable/mocks/decision/challenger-japanese-high-density-web.html"
+    },
+    {
+      "id": "challenger-wayfinding",
+      "catalogId": "wayfinding-cartography-signage-terminal-yellow-wayfinding",
+      "label": "Terminal Yellow Wayfinding",
+      "kicker": "CHALLENGER",
+      "verdict": "competitive",
+      "lineage": "international airport sign systems",
+      "thesis": "Configure → run → monitor as a chain of decision bands: each band shows only the choices ahead, with the next step and time remaining monumental.",
+      "palette": ["#ffce1f", "#101114", "#ffffff", "#5c6066"],
+      "materials": ["saturated yellow panels", "black humanist sans", "white pictograms on black squares"],
+      "viewport": "A full-width yellow band naming the current stage and next step with an edge-locked arrow; below, the stage chain as hanging bands with monumental ticker counts.",
+      "case": "Holds product clarity: a 16-ticker run is a long corridor and wayfinding says exactly where you are and what is next; loses audience identification.",
+      "risk": "Yellow everywhere becomes a costume; panels must stay reserved for decisions only.",
+      "hero": "https://impeccable.style/worlds/cards/wayfinding-cartography-signage-terminal-yellow-wayfinding-hero.webp",
+      "html": ".impeccable/mocks/decision/challenger-wayfinding.html"
+    },
+    {
+      "id": "challenger-ticket-wallet",
+      "catalogId": "vernacular-ephemera-jet-age-ticket-wallet",
+      "label": "Jet-Age Ticket Wallet",
+      "kicker": "CHALLENGER",
+      "verdict": "competitive",
+      "lineage": "carbon-copy airline ticket wallets",
+      "thesis": "Each ticker is a coupon leg torn through in sequence: validated, in use, or void — nothing disappears, it cancels.",
+      "palette": ["#f4f1ea", "#14264d", "#c8342a", "#5b4a8a"],
+      "materials": ["coupon stock", "carbon numerals", "stamped states"],
+      "viewport": "Wallet spine of sixteen numbered stubs at left with stamped states; the active coupon expanded as a route arc from analysis through debate to verdict.",
+      "case": "Holds product clarity: per-ticker run states that stamp on and never vanish are exactly what a run ledger needs; loses audience identification — jet-age travel, not trading.",
+      "risk": "Ephemera charm can soften a working screen if the stamps outshine the data.",
+      "hero": "https://impeccable.style/worlds/cards/vernacular-ephemera-jet-age-ticket-wallet-hero.webp",
+      "html": ".impeccable/mocks/decision/challenger-ticket-wallet.html"
+    },
+    {
+      "id": "challenger-labanotation",
+      "catalogId": "notation-diagram-systems-labanotation",
+      "label": "Labanotation Score",
+      "kicker": "CHALLENGER",
+      "verdict": "declined",
+      "lineage": "labanotation dance scores",
+      "thesis": "The run as a vertical score read upward: symbol shape is direction, shading is level, length is exact duration.",
+      "palette": ["#f5f2ea", "#141414", "#b9b3a4"],
+      "materials": ["score paper", "shaded symbol blocks"],
+      "viewport": "A center staff with agent columns flanking it, time flowing bottom to top.",
+      "case": "Loses both axes: the audience does not read dance notation and a vertical score fights a working screen. Kept: duration as drawn length — raised into the assigned direction.",
+      "hero": "https://impeccable.style/worlds/cards/notation-diagram-systems-labanotation-hero.webp"
+    },
+    {
+      "id": "challenger-saville-catalog",
+      "catalogId": "brand-identity-canon-saville-catalog-sleeve",
+      "label": "Factory Records Catalog",
+      "kicker": "CHALLENGER",
+      "verdict": "declined",
+      "lineage": "Savile catalog sleeve identity",
+      "thesis": "Every run and ticker as a catalog entry: fac numbers, color-code strips standing in for words, one pulse plot on matte black.",
+      "palette": ["#0c0c0c", "#f2efe8", "#d94f30"],
+      "materials": ["matte black stock", "white hairline plots", "hue-block code strips"],
+      "viewport": "An index of fac numbers with one sparkline plot owning the field.",
+      "case": "Loses both axes: record-label identity is not trading culture and coded labels slow a working screen. Kept: catalog numbering plus a sparkline as identity line — raised into the assigned direction.",
+      "hero": "https://impeccable.style/worlds/cards/brand-identity-canon-saville-catalog-sleeve-hero.webp"
+    },
+    {
+      "id": "challenger-ikeda-datamatics",
+      "catalogId": "ikeda-datamatics",
+      "label": "Ikeda Datamatics Field",
+      "kicker": "CHALLENGER",
+      "verdict": "declined",
+      "lineage": "Ikeda datamatics data-sculpture fields",
+      "thesis": "The event log as a pure black-and-white barcode field: dense columns, one sine trace, strobing inversion.",
+      "palette": ["#000000", "#ffffff"],
+      "materials": ["pixel-crisp bars", "hairline rules", "monospace numerics"],
+      "viewport": "A wall of vertical bar columns with a single curve tracing the lattice.",
+      "case": "Loses both axes: strobing is hostile to a monitoring screen and the audience has no home in datamatics. Kept: focus by receding — the live ticker stays full contrast while finished entries drop to a faint pattern; raised into the assigned direction.",
+      "hero": "https://impeccable.style/worlds/cards/ikeda-datamatics-hero.webp"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "code" },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "What trading dashboards ship: near-black ground, neon candlesticks, card grid, played straight at full craft.",
+    "palette": ["#0b0e13", "#22c55e", "#ef4444", "#9aa4b2"],
+    "materials": ["dark cards", "glowing edges", "candlestick sparklines"],
+    "viewport": "Top tabs, a grid of ticker cards each with a mini chart and rating badge, one primary Run button.",
+    "risk": "Indistinguishable from every other trading app by design."
+  },
+  "steer": true
+}

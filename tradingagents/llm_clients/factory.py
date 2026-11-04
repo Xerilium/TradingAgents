@@ -78,6 +78,19 @@ def _coerce_max_retries(value):
     return n
 
 
+def _coerce_retry_int(value, name: str, minimum: int) -> int:
+    """Validate an inference-retry knob to an int (env vars arrive as strings)."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer, not a boolean: {value!r}")
+    try:
+        n = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+    if n < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {n}")
+    return n
+
+
 def _coerce_max_tokens(value):
     """Validate a ``max_tokens`` value to a positive int (env vars are strings)."""
     if isinstance(value, bool):
@@ -92,7 +105,7 @@ def _coerce_max_tokens(value):
 
 
 # Providers that take OpenAI's ``openai_reasoning_effort``.
-REASONING_EFFORT_PROVIDERS = ("openai", "chatgpt", "codex")
+REASONING_EFFORT_PROVIDERS = ("openai", "chatgpt", "codex", "openai_compatible")
 
 
 def build_llm_kwargs(config: dict) -> dict[str, Any]:
@@ -128,6 +141,23 @@ def build_llm_kwargs(config: dict) -> dict[str, Any]:
     if max_retries is not None and max_retries != "":
         kwargs["max_retries"] = _coerce_max_retries(max_retries)
 
+    # Product-side inference retries. A rate-limited deployment (e.g. a busy
+    # local queue that answers 429 once its own wait deadline expires) needs
+    # retries spaced over minutes; the SDK budget only ever waits a couple of
+    # seconds, so exhausting it used to abort the stock and the whole run.
+    # The SDK budget is dropped when our retries are on so the attempt count
+    # stays honest, unless the caller set it explicitly.
+    retries = config.get("llm_retries")
+    if retries is not None and retries != "":
+        retries = _coerce_retry_int(retries, "llm_retries", 0)
+        kwargs["rate_limit_retries"] = retries
+        if retries and "max_retries" not in kwargs:
+            kwargs["max_retries"] = 0
+        wait = config.get("llm_retry_seconds")
+        kwargs["rate_limit_wait_seconds"] = (
+            _coerce_retry_int(wait, "llm_retry_seconds", 0)
+            if wait is not None and wait != "" else 30)
+
     # Output-token cap is cross-provider, but Gemini names it
     # ``max_output_tokens``; forward under the right key when set (#1204).
     max_tokens = config.get("max_tokens")
@@ -155,6 +185,23 @@ def create_tier_client(config: dict, tier: str, **extra) -> BaseLLMClient:
         base_url = config.get(f"{tier}_think_backend_url") or config.get("backend_url")
     else:
         base_url = config.get(f"{tier}_think_backend_url")
-    kwargs = build_llm_kwargs({**config, "llm_provider": provider})
+    tier_config = {**config, "llm_provider": provider}
+    output_key = f"{tier}_max_output_tokens"
+    if output_key in config:
+        tier_config["max_tokens"] = config[output_key]
+    reasoning = config.get(f"{tier}_reasoning_effort")
+    if f"{tier}_reasoning_effort" in config:
+        tier_config["openai_reasoning_effort"] = reasoning
+    if reasoning is not None:
+        if provider not in REASONING_EFFORT_PROVIDERS:
+            raise ValueError(f"Reasoning effort is not supported for provider '{provider}'.")
+    total = config.get(f"{tier}_max_total_tokens")
+    if total is not None and provider != "openai_compatible":
+        raise ValueError(f"Total token limits are not supported for provider '{provider}'.")
+    if provider in ("codex", "chatgpt") and config.get(output_key) is not None:
+        raise ValueError(f"Output token limits are not supported for provider '{provider}'.")
+    kwargs = build_llm_kwargs(tier_config)
+    if total is not None:
+        kwargs["max_total_tokens"] = _coerce_max_tokens(total)
     return create_llm_client(provider=provider, model=config[f"{tier}_think_llm"], base_url=base_url,
                              **kwargs, **extra)

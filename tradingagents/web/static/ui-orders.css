@@ -1,0 +1,60 @@
+#universe-review.alerts-workspace .alert-rule-editor{display:flex;flex-direction:column;max-width:1040px}#universe-review.alerts-workspace .alert-rule-editor fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);min-width:0;margin:0 0 var(--space-4);padding:var(--space-3);border:1px solid var(--line)}#universe-review.alerts-workspace .alert-rule-editor fieldset>fieldset{grid-column:1/-1;margin:0}#universe-review.alerts-workspace .alert-rule-editor legend{padding:0 var(--space-1);font-weight:600}#universe-review.alerts-workspace .alert-rule-editor label{min-width:0;gap:var(--space-1)}#universe-review.alerts-workspace .alert-rule-editor input,#universe-review.alerts-workspace .alert-rule-editor select,#universe-review.alerts-workspace .alert-rule-editor textarea{min-width:0;width:100%}#universe-review.alerts-workspace .alert-rule-editor p,#universe-review.alerts-workspace .alert-rule-editor details{grid-column:1/-1;max-width:75ch}#universe-review.alerts-workspace .alert-rule-editor [hidden]{display:none!important}#universe-review.alerts-workspace .alert-rule-actions{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3);padding:var(--space-3) 0;border-top:1px solid var(--line)}#universe-review.alerts-workspace .alert-rule-actions input[type=checkbox]{width:auto}#universe-review.alerts-workspace .alert-rule-actions label{flex-direction:row;align-items:center}
+/* Alerts Inbox 2-column master-detail: list left, evidence/templates right. */
+.alerts-inbox-grid{display:grid;grid-template-columns:minmax(340px,52%) minmax(320px,48%);gap:var(--space-3);align-items:start}
+@media(max-width:1100px){.alerts-inbox-grid{grid-template-columns:1fr}}
+/* Direct Orders/Baskets composition. */
+#main[data-page=orders]{display:flex;flex-direction:column;min-height:0;overflow:auto}
+#universe-review.orders-workspace{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:visible;color:var(--ink);background:var(--ground)}
+.orders-workspace #orders-tabs{flex:none;margin:0;min-height:40px}
+.orders-readiness{flex:none;padding:var(--space-2);border-bottom:1px solid var(--line);font-size:var(--text-meta)}
+.orders-direct-grid{display:grid;grid-template-columns:minmax(340px,.82fr) minmax(520px,1fr);gap:var(--space-3);min-width:0;min-height:0;flex:1}
+.orders-preparation,.orders-review-pane{min-width:0;min-height:0;overflow:auto;padding:10px 12px;border:1px solid var(--line);background:var(--paper)}
+.orders-review-pane>section{padding-block:var(--space-3);border-bottom:1px solid var(--line)}
+.orders-workspace :is(input,select,textarea){max-width:100%;min-width:0}
+.orders-workspace label,.docked-ticket-drawer label{display:flex;flex-direction:column;gap:2px;margin-block:2px}
+.orders-workspace .proposal-fields,.docked-ticket-drawer .proposal-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px var(--space-2)}
+.orders-workspace .proposal-fields>:is(fieldset,details,section,.row,.field-full),.docked-ticket-drawer .proposal-fields>:is(fieldset,details,section,.row,.field-full){grid-column:1/-1}
+.orders-stage-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-2);margin-bottom:4px}
+.orders-stage-head h2{margin:0!important}
+.orders-stage-head label{flex-direction:row;align-items:center;gap:6px;margin:0}
+.orders-preparation #docked-ticket-title{display:none}
+#universe-review.orders-workspace .proposal-editor,.docked-ticket-drawer .proposal-editor{margin:4px 0;padding:4px 0;border-bottom:0}
+#universe-review.orders-workspace .proposal-fields fieldset,.docked-ticket-drawer .proposal-fields fieldset{padding:6px 8px;margin:0}
+.exit-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2)}
+#universe-review.orders-workspace textarea,.docked-ticket-drawer textarea{padding:4px 8px;min-height:34px}
+.ticket-context .instrument-header-strip{display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px;padding:4px 6px}
+.ticket-context .instrument-header-strip>details{flex-basis:100%;margin:0}
+.orders-workspace .table-scroll,.orders-workspace .basket-scroll{overflow:auto;max-width:100%}
+.orders-workspace td,.orders-workspace th{vertical-align:top}
+.orders-workspace dl,.ticket-context dl{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(0,1fr);gap:var(--space-1) var(--space-2)}
+.orders-workspace dd,.ticket-context dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.orders-workspace dt{color:var(--muted)}
+/* Blueprint §5.3: compact 4-column readout strip for the real #ticket-sizing estimate block. */
+#universe-review #ticket-sizing dl,#dockedTicketDrawer #ticket-sizing dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px;padding:4px 8px;background:var(--ground);border:1px solid var(--line)}
+#ticket-sizing dt,#ticket-sizing dd{font-size:var(--text-meta);margin:0}
+.orders-workspace details,.docked-ticket-drawer details{margin-block:2px}
+.orders-workspace summary,.docked-ticket-drawer summary{padding-block:2px!important}
+.orders-workspace button,.docked-ticket-drawer button{min-height:32px;padding:4px 10px!important}
+.orders-workspace :is(input,select):not([type=checkbox]):not([type=radio]),.docked-ticket-drawer :is(input,select):not([type=checkbox]):not([type=radio]){min-height:32px!important;padding:4px 8px!important}
+.orders-workspace :is(p,li),.docked-ticket-drawer :is(p,li){font-size:var(--text-meta);overflow-wrap:anywhere;margin-block:2px!important}
+.order-master-detail{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-2)}
+.order-inspector,.order-inspector-body{min-width:0;overflow:auto}
+.ticket-context{border-bottom:1px solid var(--line);padding-block:var(--space-2)}
+.ticket-quote-seeds,.ticket-drawer-actions,.basket-actions{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.ticket-handoff{padding:var(--space-2);border-top:1px solid var(--line);flex:none}
+.docked-ticket-drawer{position:fixed;right:0;bottom:0;width:380px;max-width:100vw;z-index:5;display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:var(--space-2)}
+.docked-ticket-drawer[hidden]{display:none}
+.docked-ticket-body{flex:1;min-height:0;overflow:auto;padding:var(--space-2)}
+.docked-ticket-drawer .proposal-editor{padding:0;border:0}
+.docked-ticket-drawer .proposal-fields{grid-template-columns:minmax(0,1fr)}
+.docked-ticket-drawer .proposal-fields fieldset{min-width:0}
+.docked-ticket-drawer p{margin-block:var(--space-2)}
+.order-eligibility .data-table{width:100%}
+.order-eligibility .policy-not-configured{color:var(--muted)}
+.command-confirmation{padding:var(--space-3);border:1px solid var(--warning);background:var(--paper)}
+[data-basket-pane][hidden]{display:none!important}
+#allocation-workspace{min-width:0;padding:var(--space-2)}
+#allocation-workspace .basket-actions{padding-block:var(--space-3);border-top:1px solid var(--line)}
+@media(min-width:1500px){body.ticket-is-open #main{margin-right:380px}}
+@media(max-width:1499px){.orders-direct-grid{grid-template-columns:minmax(0,1fr)}.orders-preparation,.orders-review-pane{overflow:visible}.docked-ticket-drawer{box-shadow:0 8px 28px #0005}}
+@media(max-width:790px),(max-height:800px){.orders-direct-grid{display:flex;flex-direction:column}.orders-workspace .proposal-fields{grid-template-columns:minmax(0,1fr)}.docked-ticket-drawer{max-height:calc(100dvh - 36px)}.ticket-handoff{max-height:30vh;overflow:auto}}

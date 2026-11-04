@@ -15,6 +15,7 @@ network call succeeded.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import html
 import http.client
 import json
@@ -22,6 +23,7 @@ import logging
 from datetime import datetime
 from urllib.request import Request, urlopen
 
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.date_window import coverage_gap, in_window
 from tradingagents.dataflows.symbols import crypto_base
 
@@ -57,7 +59,9 @@ def _within_window(messages, start_date, end_date):
 
 def _body(message) -> str:
     """The message text; the API serves it HTML-escaped (``&amp;``, ``&#39;``)."""
-    return html.unescape(message.get("body") or "")
+    body = html.unescape(message.get("body") or "")
+    quoted = (message.get("reshare_message") or {}).get("message") or {}
+    return body + (f"\nQuoted post: {html.unescape(quoted.get('body') or '')}" if quoted else "")
 
 
 def _stocktwits_symbol(ticker: str) -> str:
@@ -73,7 +77,7 @@ def _stocktwits_symbol(ticker: str) -> str:
 
 def fetch_stocktwits_messages(
     ticker: str,
-    limit: int = 30,
+    limit: int | None = None,
     timeout: float = 10.0,
     start_date: str | None = None,
     end_date: str | None = None,
@@ -94,41 +98,66 @@ def fetch_stocktwits_messages(
     symbol has no messages, or the response shape is unexpected — the
     caller never has to special-case None or exceptions.
     """
+    if limit is None:
+        limit = get_config().get("social_screen_max_posts", 100)
     url = _API.format(ticker=_stocktwits_symbol(ticker))
-    req = Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     from tradingagents.dataflows.router import observe_source_call
 
-    def read_response():
-        with urlopen(req, timeout=timeout) as resp:
+    def read_response(request):
+        with urlopen(request, timeout=timeout) as resp:
             return resp.read()
 
     try:
-        raw = observe_source_call("stocktwits_stream", "stocktwits", "http_response_bytes", read_response,
-                                  ticker=ticker, start_date=start_date, end_date=end_date)
-        data = json.loads(raw)
-    except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
+        if type(limit) is not int or limit <= 0:
+            raise ValueError("StockTwits limit must be a positive integer")
+        fetched, seen, cursor, more = [], set(), None, True
+        while more and len(_within_window(fetched, start_date, end_date)) < limit:
+            request = Request(url + (f"?max={cursor}" if cursor else ""), headers={"User-Agent": _UA, "Accept": "application/json"})
+            raw = observe_source_call("stocktwits_stream", "stocktwits", "http_response_bytes", lambda request=request: read_response(request),
+                                      ticker=ticker, start_date=start_date, end_date=end_date)
+            data = json.loads(raw)
+            if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
+                raise ValueError("StockTwits response has no message list")
+            page = data["messages"]
+            if any(not isinstance(m, dict) or not isinstance(m.get("id"), (int, str))
+                   or not m.get("id") or not isinstance(m.get("created_at"), str)
+                   or _created_at(m) is None for m in page):
+                raise ValueError("StockTwits response contains an invalid message")
+            fresh = [m for m in page if m.get("id") not in seen]
+            fetched.extend(fresh)
+            seen.update(m.get("id") for m in fresh)
+            next_cursor = (data.get("cursor") or {}).get("max")
+            more = bool(fresh and next_cursor and next_cursor != cursor and (data.get("cursor") or {}).get("more"))
+            if start_date and fresh and all(m.get("created_at", "9999")[:10] < start_date for m in fresh):
+                more = False
+            cursor = next_cursor
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
         logger.warning("StockTwits fetch failed for %s: %s", ticker, type(exc).__name__)
         return f"<stocktwits unavailable: {type(exc).__name__}>"
 
-    fetched = data.get("messages", []) if isinstance(data, dict) else []
-    messages = _within_window(fetched, start_date, end_date)
+    messages = _within_window(fetched, start_date, end_date)[:limit]
     if not messages:
         if start_date and end_date:
             gap = coverage_gap(
                 (_created_at(m) for m in fetched), start_date, end_date,
                 "StockTwits", f"messages about ${ticker.upper()}",
             )
-            return gap or (
-                f"<no StockTwits messages for ${ticker.upper()} within "
-                f"{start_date}..{end_date}>"
-            )
-        return f"<no StockTwits messages found for ${ticker.upper()}>"
+            if gap:
+                return gap
+            empty = f"<no StockTwits messages for ${ticker.upper()} within {start_date}..{end_date}>"
+        else:
+            empty = f"<no StockTwits messages found for ${ticker.upper()}>"
+        if screen:
+            _, screening_note = screen([])
+            return f"{screening_note}\n\n{empty}"
+        return empty
 
-    note = ""
+    note = f"StockTwits acquisition: {len(messages)} in-window messages, requested maximum {limit}; newest-page sample, not exhaustive window coverage."
     if screen:
-        keep, note = screen([_body(m) for m in messages])
+        keep, screening_note = screen([_body(m) for m in messages])
+        note += "\n" + screening_note
         screened = len(messages)
         messages = [m for m, kept in zip(messages, keep, strict=True) if kept]
         if not messages:
@@ -136,15 +165,13 @@ def fetch_stocktwits_messages(
 
     lines = []
     bullish = bearish = unlabeled = 0
-    for m in messages[:limit]:
+    for m in messages:
         created = m.get("created_at", "")
         user = (m.get("user") or {}).get("username", "?")
         entities = m.get("entities") or {}
         sentiment_obj = entities.get("sentiment") or {}
         sentiment = sentiment_obj.get("basic") if isinstance(sentiment_obj, dict) else None
         body = _body(m).replace("\n", " ").strip()
-        if len(body) > 280:
-            body = body[:280] + "…"
 
         if sentiment == "Bullish":
             bullish += 1
@@ -155,7 +182,8 @@ def fetch_stocktwits_messages(
         else:
             unlabeled += 1
             tag = "no-label"
-        lines.append(f"[{created} · @{user} · {tag}] {body}")
+        text_id = hashlib.sha256(_body(m).encode()).hexdigest()
+        lines.append(f"[stocktwits:{text_id}] [{created} · @{user} · {tag}] {body}")
 
     total = bullish + bearish + unlabeled
     bull_pct = round(100 * bullish / total) if total else 0

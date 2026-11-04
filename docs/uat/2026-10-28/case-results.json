@@ -1,0 +1,157 @@
+{
+  "observation_window": {
+    "start": "2026-10-29T02:30:00Z",
+    "end": "2026-10-29T02:39:01Z",
+    "market_open": false
+  },
+  "target": "http://127.0.0.1:8098",
+  "method": "read-only GET through scripts/desk_api.py and built-in browser hash navigation",
+  "revision": {
+    "assigned": "1690752f32f3b6711d4c8f177975467def2a150e",
+    "provenance_source_revision": "237cc048021be6798b9e975df14c1b0d0c388bca",
+    "working_changes_present": true,
+    "package": "tradingagents 0.7.1",
+    "web_files_matching_1690752": [
+      "tradingagents/web/server.py",
+      "tradingagents/web/service.py",
+      "tradingagents/web/static/app.js",
+      "tradingagents/web/static/index.html",
+      "tradingagents/default_config.py"
+    ],
+    "web_files_also_matching_worktree": [
+      "tradingagents/web/server.py",
+      "tradingagents/web/service.py",
+      "tradingagents/web/static/app.js",
+      "tradingagents/web/static/index.html",
+      "tradingagents/default_config.py"
+    ]
+  },
+  "account": {
+    "id": "e508ad3a-e816-4978-bbf1-3904ffde15d9",
+    "status": "ACTIVE",
+    "paper_verified": true,
+    "account_verified": true,
+    "endpoint": "https://paper-api.alpaca.markets",
+    "cash": "100000",
+    "equity": "100000",
+    "buying_power": "100000",
+    "long_market_value": "0",
+    "positions": 0,
+    "open_orders": 0,
+    "fills_array": 0,
+    "fill_history_records": 1,
+    "nautilus": "1.231.0",
+    "worker_pid": 57508,
+    "new_orders_blocked": false
+  },
+  "universe": {
+    "name": "PNIS",
+    "count": 24,
+    "config_revision": 30,
+    "research_retries": 10,
+    "provider": "codex",
+    "deep_model": "gpt-6.1-terra",
+    "quick_model": "gpt-6-luna"
+  },
+  "research": {
+    "run_id": "a1787835-aecb-4198-bdd0-5781f0578624",
+    "trade_date": "2026-10-28",
+    "status": "cancelled",
+    "completed": ["AMZN Hold", "INTC Underweight", "TER Sell"],
+    "cancelled_count": 21,
+    "saved_research_symbols": ["AMZN", "INTC", "TER"],
+    "list_route": "GET /api/runs is 404; detail is GET /api/runs/{id}"
+  },
+  "cases": [
+    {
+      "id": "S4-01",
+      "name": "Revision identity",
+      "result": "observed",
+      "evidence": "Provenance names 237cc04 with working changes. Compared installed web handlers match 1690752. Live research_retries is 10."
+    },
+    {
+      "id": "S4-02",
+      "name": "Health and paper account",
+      "result": "pass",
+      "evidence": "Engine connected, reconciled, 100000 USD cash equity and buying power, zero positions and open orders."
+    },
+    {
+      "id": "S4-03",
+      "name": "PNIS quotes",
+      "result": "pass",
+      "evidence": "24 of 24 IEX last-trade quotes. Stale and max age unset. UI says freshness limit is not configured."
+    },
+    {
+      "id": "S4-04",
+      "name": "Latest research contract",
+      "result": "pass",
+      "evidence": "3 completed and 21 cancelled in run detail and Research page. Saved research index holds only the 3 completed symbols."
+    },
+    {
+      "id": "S4-05",
+      "name": "Market history gate",
+      "result": "observed",
+      "evidence": "AMZN pagination complete with 501 bars, 252-session gate insufficient at 251 of 252. META INTC TER have no retained history."
+    },
+    {
+      "id": "S4-06",
+      "name": "Orders and commands",
+      "result": "pass",
+      "evidence": "One deferred SGOV draft. No open broker orders, approvals, or commands. Approval and submission were not used."
+    },
+    {
+      "id": "S4-07",
+      "name": "Journal",
+      "result": "pass",
+      "evidence": "Same deferred SGOV decision, no approval, no captured position outcomes."
+    },
+    {
+      "id": "S4-08",
+      "name": "Alerts",
+      "result": "pass",
+      "evidence": "No occurrences, no rules, browser permission denied. No rule was saved."
+    },
+    {
+      "id": "S4-09",
+      "name": "Workflows",
+      "result": "pass",
+      "evidence": "Active Default visible. Clicking Load (GET /api/workflows?name=Default) rendered the interactive Mermaid SVG workflow graph, 12 role prompt tabs, and Workflow YAML tab without mutation."
+    },
+    {
+      "id": "S4-10",
+      "name": "Settings",
+      "result": "pass",
+      "evidence": "Account, research, rules, integrations, and diagnostics rendered. No save, remove, start, or stop."
+    },
+    {
+      "id": "S4-11",
+      "name": "Strategy lab",
+      "result": "partial",
+      "evidence": "UI showed no selected simulation. API has Amazon 50-day moving average demonstration. Load and Simulate were not used."
+    },
+    {
+      "id": "S4-12",
+      "name": "Portfolio",
+      "result": "partial",
+      "evidence": "Positions empty and Performance has no equity history. Proposed was not opened."
+    },
+    {
+      "id": "S4-13",
+      "name": "Model limits and credential flags",
+      "result": "observed",
+      "evidence": "Codex limit discovery unavailable. Credential route returned flags only. OPENAI_COMPATIBLE, FRED, and TYPESAFE saved."
+    },
+    {
+      "id": "S4-14",
+      "name": "Broker and research mutations",
+      "result": "not_exercised",
+      "evidence": "No approve, submit, cancel, replace, pause, new research, or settings save."
+    }
+  ],
+  "side_effect": {
+    "workspace_revision_before": 98,
+    "workspace_revision_after": 102,
+    "changed_preferences": ["symbol AMZN to TER", "portfolioView universe to holdings"],
+    "unchanged": ["notes", "watchlist symbols", "chart definitions", "drawings", "saved screens"]
+  }
+}

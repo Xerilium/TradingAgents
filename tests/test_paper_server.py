@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 from email.message import Message
+from threading import RLock
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -21,6 +22,7 @@ def handler(path="/api/trading/pause", body=b'{"paused":true}', **headers):
         "Host": "127.0.0.1:8088",
         "Origin": "http://127.0.0.1:8088",
         "X-CSRF-Token": "session-token",
+        "Cookie": "tradingagents_session_8088=browser-session",
         "Content-Type": "application/json",
         "Content-Length": str(len(body)),
     }
@@ -28,10 +30,10 @@ def handler(path="/api/trading/pause", body=b'{"paused":true}', **headers):
     for name, value in defaults.items():
         if value is not None:
             instance.headers[name] = str(value)
-    service = Mock()
+    service = Mock(maintenance=RLock(), recovery_only=False, browse_only=False)
     service.state.return_value = {"paused": False}
-    service.pause.return_value = {"paused": True}
-    instance.server = SimpleNamespace(server_port=8088, csrf_token="session-token", service=service)
+    service.command_action.return_value = {"paused": True}
+    instance.server = SimpleNamespace(server_port=8088, csrf_token="session-token", session_token="browser-session", service=service)
     instance.rfile = io.BytesIO(body)
     instance.wfile = io.BytesIO()
     instance.close_connection = False
@@ -63,7 +65,7 @@ def test_rejects_foreign_host_origin_and_missing_or_wrong_csrf_before_dispatch(h
 def test_valid_local_json_request_dispatches_once():
     request, service = handler()
     request.do_POST()
-    service.pause.assert_called_once_with(True)
+    service.command_action.assert_called_once_with({"paused": True, "action": "block", "blocked": True})
     assert request._send.call_args.args == (200, {"paused": True})
 
 
@@ -94,7 +96,7 @@ def test_disconnected_browser_response_closes_without_retrying_the_operation():
 def test_same_localhost_origin_alias_is_accepted():
     request, service = handler(Host="localhost:8088", Origin="http://localhost:8088")
     request.do_POST()
-    service.pause.assert_called_once_with(True)
+    service.command_action.assert_called_once_with({"paused": True, "action": "block", "blocked": True})
 
 
 @pytest.mark.parametrize(
@@ -133,16 +135,16 @@ def test_truncated_request_body_is_rejected_before_dispatch():
     assert service.mock_calls == []
 
 
-def test_missing_required_identifier_returns_actionable_bad_request():
+def test_order_route_is_forbidden_before_service_dispatch():
     request, service = handler(path="/api/orders", body=b"{}")
     request.do_POST()
-    assert request._send.call_args.args[0] == 400
+    assert request._send.call_args.args[0] == 403
     assert service.mock_calls == []
 
 
 def test_service_failure_is_generic_and_does_not_echo_private_details():
     request, service = handler()
-    service.pause.side_effect = RuntimeError("secret broker credential")
+    service.command_action.side_effect = RuntimeError("secret broker credential")
     request.do_POST()
     status, body = request._send.call_args.args
     assert status == 502

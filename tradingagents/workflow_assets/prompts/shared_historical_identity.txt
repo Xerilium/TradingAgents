@@ -1,0 +1,1 @@
+{label}: {name} (its current name, given only to identify it; on {trade_date} it may have been named differently)

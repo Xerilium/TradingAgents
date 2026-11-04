@@ -1,12 +1,19 @@
 import asyncio
+import http.client
 import inspect
+import json
 import logging
+import math
 import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from urllib.error import HTTPError as UrlHTTPError
 from uuid import uuid4
+
+from requests import HTTPError
 
 from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.errors import (
@@ -51,16 +58,43 @@ logger = logging.getLogger(__name__)
 
 _evidence_recorder = ContextVar("vendor_evidence_recorder", default=None)
 _evidence_parent = ContextVar("vendor_evidence_parent", default=None)
+_source_requirement = ContextVar("source_requirement", default="required")
+_source_cancelled = ContextVar("source_cancelled", default=None)
+_source_cache = ContextVar("source_request_cache", default=None)
+
+
+def source_cancelled():
+    callback = _source_cancelled.get()
+    return bool(callback and callback())
+
+
+def wait_source(seconds):
+    end = time.monotonic() + max(0.0, seconds)
+    while True:
+        if source_cancelled():
+            raise InterruptedError("Research cancelled")
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.2, remaining))
+
+
+def source_request_cache():
+    return _source_cache.get()
 
 
 @contextmanager
-def capture_vendor_evidence(recorder):
+def capture_vendor_evidence(recorder, *, cancelled=None, cache=None):
     """Bind the desk's recorder to this execution context, including graph child tasks."""
     token = _evidence_recorder.set(recorder)
     parent_token = _evidence_parent.set(None)
+    cancelled_token = _source_cancelled.set(cancelled if cancelled is not None else _source_cancelled.get())
+    cache_token = _source_cache.set(cache if cache is not None else _source_cache.get())
     try:
         yield
     finally:
+        _source_cache.reset(cache_token)
+        _source_cancelled.reset(cancelled_token)
         _evidence_parent.reset(parent_token)
         _evidence_recorder.reset(token)
 
@@ -112,6 +146,64 @@ def observe_jev_call(boundary, *, parameters=None, ordinal=None, observation=Non
                                 origin="jev", observation=observation)
 
 
+def _gateway_failure_details(error):
+    """Retain bounded cause diagnostics without arbitrary exception/source text."""
+    pending, seen, details = [error], set(), []
+    messages = (r"All connection attempts failed|Connection refused|actively refused it|"
+                r"connection reset|connection aborted|connection closed|server disconnected|"
+                r"timed out|timeout|name resolution failed|No such host is known|"
+                r"certificate verify failed|SSL handshake failed|unsupported protocol|"
+                r"MCP operation failed|unhandled errors in a TaskGroup|invalid JSON|"
+                r"JSON Schema|failed schema validation at|Missing required argument|"
+                r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
+                r"no news articles tagged|maintenance|rate limited|temporarily unavailable|No results found|"
+                r"NOT_FOUND|Memory file not found|Directory not found|SESSION_CLOSED|SESSION_EXISTS|"
+                r"GATEWAY_VALIDATION_FAILED|Missing required parameter\(s\)(?: for [\w./-]+)?|"
+                r"YAHOO! FINANCE IS CURRENTLY DOWN")
+    safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
+                     r"MEMORY_(?:READ_REQUIRED|CHECKSUM_MISMATCH|CHECKSUM_CONFLICT|WIKILINK_REQUIRED|WIKILINK_REJECTED)|"
+                     r"The upstream Gateway tool reported (?:a text error|an error)\.|"
+                     r"GatewayIndex did not return (?:a domain catalog|command schemas)\.|"
+                     r"GatewayIndex returned a malformed command\.|"
+                     r"Gateway command advertised an invalid JSON Schema\.|"
+                     r"SESSION_MISSING: Start with thoughtNumber=0 and no sessionId\.?|"
+                     r"SESSION_CLOSED: Start a new session with thoughtNumber=0 and no sessionId\.?|"
+                     r"SESSION_EXISTS: Reuse the returned sessionId, or use a different sessionId\.?|"
+                     r"Upstream rate limit \(429\)\. Wait \d+ seconds before trying again\.|"
+                     r"(?:Original )?[Ss]ocial screening (?:time budget expired while queued|"
+                     r"processing budget expired before dispatch|stopped by operator)|"
+                     # The vendor wrapper names the swallowed cause class; fixed text, safe to show.
+                     r"Yahoo Finance request failed: [A-Za-z_][A-Za-z0-9_.]{0,79}")
+    while pending and len(details) < 6:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        text = current.args[0][:512] if current.args and isinstance(current.args[0], str) else ""
+        # Extract known diagnostic phrases only: never serialize URLs, quoted inputs,
+        # HTTP fields, response bodies, schema instances, or arbitrary message suffixes.
+        phrases = re.findall(safe_messages, text) or re.findall(messages, text, flags=re.IGNORECASE)
+        detail = {"class": type(current).__name__[:80],
+                  "message": "; ".join(dict.fromkeys(phrases))[:256] or "Exception details withheld"}
+        for name, value in (("errno", getattr(current, "errno", None)),
+                            ("winerror", getattr(current, "winerror", None)),
+                            ("http_status", getattr(current, "http_status", None) or getattr(current, "code", None)
+                             or getattr(getattr(current, "response", None), "status_code", None))):
+            if type(value) is int:
+                detail[name] = value
+        if detail["message"] == "Exception details withheld" and detail.get("http_status") in http.client.responses:
+            detail["message"] = http.client.responses[detail["http_status"]]
+        rule = getattr(current, "validator", None)
+        if isinstance(rule, str) and rule in {"required", "additionalProperties", "type", "enum", "const", "minimum", "maximum", "oneOf", "anyOf", "allOf", "format"}:
+            detail["schema_rule"] = rule
+        details.append(detail)
+        cause = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+        reason = getattr(current, "reason", None)
+        pending.extend(([cause] if cause else []) + ([reason] if isinstance(reason, BaseException) else [])
+                       + list(getattr(current, "exceptions", ()))[:6])
+    return details
+
+
 @contextmanager
 def observe_gateway_call(domain, command, boundary, *, eligible=False, parameters=None,
                          purpose=None, ordinal=None, origin="gateway", observation=None):
@@ -140,6 +232,24 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
                        receipt["outcome"] if receipt["outcome"] in {"deferred", "unknown"} else "error",
                        error_class=kind if kind in {"GatewayError", "GatewayTimeout", "GatewayRateLimited",
                                                    "CancelledError", "TimeoutError", "TypeSafeError"} else "UnexpectedError")
+        if origin == "local_laya" and domain == "laya" and command == "predict_batch" and boundary == "local_batch":
+            from tradingagents.integrations.laya import local_failure_details
+            receipt.update(error_class=kind[:80], error_details=local_failure_details(exc),
+                failure_kind="screening_budget_exhausted" if getattr(exc, "social_budget_expired", False)
+                else "cancelled_local_screening" if isinstance(exc, (asyncio.CancelledError, InterruptedError))
+                else "local_inference_failure")
+        if origin == "gateway":
+            receipt.setdefault("error_details", _gateway_failure_details(exc))
+            if any(detail.get("message", "").startswith("MEMORY_") for detail in receipt["error_details"]):
+                receipt["failure_kind"] = "invalid_request"
+            elif getattr(exc, "social_budget_expired", False):
+                receipt["failure_kind"] = "screening_budget_exhausted"
+            elif kind == "GatewayTimeout":
+                receipt["failure_kind"] = "service_timeout"
+            elif kind == "GatewayRejected":
+                receipt["failure_kind"] = "confirmed_rejection"
+            elif isinstance(exc, asyncio.CancelledError):
+                receipt["failure_kind"] = "cancelled_unknown_outcome"
         if kind == "GatewayRateLimited":
             receipt["retry_after_seconds"] = exc.retry_after
         raise
@@ -150,11 +260,7 @@ def observe_gateway_call(domain, command, boundary, *, eligible=False, parameter
 
 
 def _error_class(error):
-    for kind in (VendorUnavailableError, VendorNotConfiguredError, NoMarketDataError,
-                 TimeoutError, ConnectionError, ValueError, TypeError):
-        if isinstance(error, kind):
-            return kind.__name__
-    return "UnexpectedError"
+    return type(error).__name__[:80]
 
 
 def _logged_error(error):
@@ -167,7 +273,7 @@ def _source_arguments(function, args, kwargs):
         bound = inspect.signature(function).bind_partial(*args, **kwargs).arguments
     except (ValueError, TypeError):
         return {}, "unavailable"
-    return _safe_source_arguments(bound), "ticker_date_allowlist_only"
+    return _safe_source_arguments(bound), "bounded_research_arguments"
 
 
 def _safe_source_arguments(bound):
@@ -175,6 +281,7 @@ def _safe_source_arguments(bound):
     for key, value in bound.items():
         if isinstance(value, str) and (
             (key in {"symbol", "ticker"} and re.fullmatch(r"[A-Za-z0-9.^=+_-]{1,32}", value))
+            or (key in {"indicator", "freq"} and re.fullmatch(r"[A-Za-z0-9_,-]{1,256}", value))
             or (key in {"start_date", "end_date", "curr_date", "current_date", "as_of_date", "trade_date"}
                 and re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T[0-9:.+Z-]+)?", value))
         ):
@@ -182,29 +289,117 @@ def _safe_source_arguments(bound):
     return selected
 
 
-def observe_source_call(operation, vendor, origin, acquire, **arguments):
+def observe_source_call(operation, vendor, origin, acquire, *, requirement=None, retry=None, **arguments):
     """Observe one existing acquisition, without adding calls or changing its return.
 
     These boundaries can nest inside router attempts; they are not additional
     provider requests. Origins describe the consumed representation, not HTTP
     internals hidden by a cache parser or SDK.
     """
-    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments)
+    if requirement is None and operation in {"reddit_rss", "stocktwits_stream"}:
+        requirement = "supplemental"
+    return _invoke_vendor(operation, vendor, acquire, (), {}, origin=origin, source_arguments=arguments, requirement=requirement, retry=retry)
 
 
-def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None):
+def source_failure_details(error):
+    details = getattr(error, "error_details", None) or _gateway_failure_details(error)
+    status = (getattr(error, "http_status", None) or getattr(error, "code", None)
+              or getattr(getattr(error, "response", None), "status_code", None)
+              or next((item["http_status"] for item in details if "http_status" in item), None))
+    names = {item["class"] for item in details}
+    kind = ("unconfigured" if isinstance(error, VendorNotConfiguredError) else
+            "no_usable_coverage" if isinstance(error, NoMarketDataError) else
+            "authentication_or_access" if status in {401, 403} else
+            "invalid_request" if status in {400, 422} else
+            "not_found" if status == 404 else
+            "rate_limited" if status == 429 or names.intersection({"YFRateLimitError", "RatelimitException"}) else
+            "transient_server" if status in {500, 502, 503, 504} else
+            "transient_transport" if names.intersection({"Timeout", "TimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout", "ConnectionError", "ConnectionResetError", "ConnectionRefusedError", "ConnectionAbortedError", "BrokenPipeError", "RemoteDisconnected", "IncompleteRead"}) else
+            "search_unavailable" if "DDGSException" in names else
+            "invalid_response" if names.intersection({"ParseError", "JSONDecodeError", "UnicodeDecodeError"}) else
+            "invalid_request" if isinstance(error, (ValueError, TypeError)) or any(
+                detail.get("message", "").startswith("MEMORY_") for detail in details) else "source_unavailable")
+    return {"failure_kind": kind, "error_details": details,
+            **({"http_status": status} if type(status) is int else {})}
+
+
+def tool_failure_details(error):
+    """Expose bounded diagnostics to analysts using the same capture policy."""
+    return {"error_class": type(error).__name__[:80], **source_failure_details(error),
+            **({"http_status": 429, "retry_after_seconds": error.retry_after}
+               if type(error).__name__ == "GatewayRateLimited" else {}),
+            **({"attempts": error.retry_details} if getattr(error, "retry_details", None) else {})}
+
+
+def source_retry_plan(error, *, attempt):
+    """Retry transient data failures without imposing a total processing deadline."""
+    details = source_failure_details(error)
+    delay = min(30.0, 5.0 * 2 ** min(attempt - 1, 3))
+    value = getattr(error, "retry_after", None)
+    if value is None:
+        headers = getattr(error, "headers", None) or getattr(getattr(error, "response", None), "headers", {})
+        value = headers.get("Retry-After") if headers else None
+    try:
+        server_delay = float(value)
+    except (TypeError, ValueError):
+        try:
+            server_delay = parsedate_to_datetime(value).timestamp() - time.time()
+        except (TypeError, ValueError, OverflowError):
+            server_delay = 0.0
+    if math.isfinite(server_delay):
+        delay = min(30.0, max(delay, server_delay))
+    # DDGS can report a backend failure without retaining its HTTP status.
+    eligible = details["failure_kind"] in {"rate_limited", "transient_server", "transient_transport", "search_unavailable"}
+    retries = get_config().get("research_retries", 10)
+    return {"attempt": attempt, **details, "retry_after_seconds": delay,
+            "retry_action": "retry" if eligible and attempt <= retries else "defer" if eligible else "stop"}
+
+
+def retry_source_call(operation, vendor, origin, acquire, *, requirement="supplemental", **arguments):
+    """Use the run's existing retries, receipts and interruptible backoff."""
+    for attempt in range(1, get_config().get("research_retries", 10) + 2):
+        wait_source(0)
+        retry = {"attempt": attempt, "retry_action": "not_needed"}
+
+        def request():
+            try:
+                return acquire()
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                retry.update(source_retry_plan(exc, attempt=attempt))
+                raise
+
+        try:
+            result = observe_source_call(operation, vendor, origin, request,
+                                         requirement=requirement, retry=retry, **arguments)
+            wait_source(0)
+            return result
+        except InterruptedError:
+            raise
+        except Exception:
+            if retry["retry_action"] != "retry":
+                raise
+            wait_source(retry["retry_after_seconds"])
+
+
+def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_function_return", source_arguments=None, requirement=None, retry=None):
+    requirement = requirement or _source_requirement.get()
     recorder = _evidence_recorder.get()
     if recorder is None:
         return function(*args, **kwargs)
     arguments, argument_scope = _source_arguments(function, args, kwargs)
     if source_arguments is not None:
         arguments = _safe_source_arguments(source_arguments)
+        if method == "search_research_sources" and vendor == "ddgs":
+            arguments.update(query=source_arguments["query"], max_results=source_arguments["max_results"])
     receipt = {
         "attempt_id": str(uuid4()), "operation": method, "vendor": vendor,
         "origin": origin, "parent_attempt_id": _evidence_parent.get(),
         "boundary_kind": "router_function" if source_arguments is None else "acquisition",
         "function": f"{getattr(function, '__module__', '')}.{getattr(function, '__qualname__', type(function).__name__)}",
         "arguments": arguments, "argument_scope": argument_scope,
+        "requirement": requirement,
         "started_at": datetime.now(UTC).isoformat(), "ended_at": None,
         "elapsed_seconds": None, "outcome": "running",
     }
@@ -220,15 +415,31 @@ def _invoke_vendor(method, vendor, function, args, kwargs, *, origin="vendor_fun
     started = time.monotonic()
     output = None
     parent_token = _evidence_parent.set(receipt["attempt_id"])
+    requirement_token = _source_requirement.set(requirement)
     try:
         output = function(*args, **kwargs)
         receipt["outcome"] = "success"
+        if isinstance(output, str):
+            receipt["data_status"] = ("no_usable_coverage" if output.lstrip().startswith("NO_DATA_AVAILABLE") else "empty" if re.match(
+                r"(?is)\s*(?:No (?:news|articles|posts|markets) found|<no .*posts found)", output) else "unavailable" if re.match(
+                r"(?is)\s*(?:DATA_UNAVAILABLE|<[^>]*unavailable|Polymarket data is currently unavailable|.*?are withheld for)", output)
+                else "partial" if "DATA_PARTIAL:" in output else "returned_unvalidated")
         return output
     except Exception as exc:
-        receipt.update(outcome="error", error_class=_error_class(exc))
+        receipt.update(outcome="error", error_class=_error_class(exc), retry_action="stop", **source_failure_details(exc))
+        if isinstance(exc, (HTTPError, UrlHTTPError)):
+            receipt["error_class"] = "HTTPError"
+        if isinstance(exc, HTTPError) and exc.response is not None:
+            status = exc.response.status_code
+            if type(status) is int and 100 <= status <= 599:
+                receipt.update(error_class="HTTPError", http_status=status)
+                if method == "read_research_source" and vendor == "public_source" and origin == "source_document_text":
+                    receipt["source_url"] = exc.response.url
         raise
     finally:
         _evidence_parent.reset(parent_token)
+        _source_requirement.reset(requirement_token)
+        receipt.update(retry or {})
         receipt.update(ended_at=datetime.now(UTC).isoformat(), elapsed_seconds=time.monotonic() - started)
         emit(output)
 
@@ -368,7 +579,7 @@ def vendor_unavailable(method: str, error: Exception) -> str:
     """What a call returns when every vendor was throttled or unreachable."""
     return (
         f"DATA_UNAVAILABLE: no configured vendor could serve {method} right now "
-        f"({error}). This says nothing about the instrument; report the "
+        f"({json.dumps(tool_failure_details(error))}). This says nothing about the instrument; report the "
         f"data as unavailable and do not estimate or fabricate values."
     )
 
@@ -391,6 +602,7 @@ def no_data_available(error: NoMarketDataError) -> str:
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""
     category = get_category_for_method(method)
+    optional = category in OPTIONAL_CATEGORIES or method in {"get_news", "get_global_news"}
     vendor_config = get_vendor(category, method)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]
 
@@ -424,7 +636,8 @@ def route_to_vendor(method: str, *args, **kwargs):
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return _invoke_vendor(method, vendor, impl_func, args, kwargs)
+            return _invoke_vendor(method, vendor, impl_func, args, kwargs,
+                                  requirement="supplemental" if optional else "required")
         except VendorUnavailableError as e:
             logger.warning("Vendor %r unavailable for %s: %s; trying next vendor.", vendor, method, _logged_error(e))
             # Kept so an all-unavailable chain can say the vendor was the
@@ -477,11 +690,11 @@ def route_to_vendor(method: str, *args, **kwargs):
     # enrichment categories degrade to a sentinel instead, so flavour data can't
     # abort the run.
     if first_error is not None:
-        if category in OPTIONAL_CATEGORIES:
+        if optional:
             logger.warning("Optional %s unavailable for %s: %s", category, method, _logged_error(first_error))
             return (
                 f"DATA_UNAVAILABLE: optional {category} could not be retrieved "
-                f"({first_error}). Proceed without it; do not fabricate values."
+                f"({json.dumps(tool_failure_details(first_error))}). Do not fabricate values."
             )
         raise first_error
 

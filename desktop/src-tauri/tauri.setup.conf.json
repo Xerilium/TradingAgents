@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "resources": {
+      "payload/wheels/": "payload/wheels/",
+      "payload/setup/": "payload/setup/"
+    }
+  }
+}

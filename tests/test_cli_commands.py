@@ -1,6 +1,6 @@
 """The CLI keeps running an analysis with no arguments, and gains `backtest`.
 
-Every documented invocation is bare (`tradingagents --checkpoint`), so analysis
+Every documented invocation is bare (`tradingagents --ticker AAPL`), so analysis
 has to stay the default action while a second command exists alongside it.
 """
 
@@ -26,13 +26,13 @@ calls: list = []
 def test_no_arguments_still_runs_an_analysis(runner):
     assert runner.invoke(m.app, []).exit_code == 0
     no_flags = {"ticker": None, "date": None, "analysts": None, "save": None, "show": None, "html": None}
-    assert calls == [("analysis", {"checkpoint": None, "portfolio": None, "flags": no_flags})]
+    assert calls == [("analysis", {"portfolio": None, "flags": no_flags})]
 
 
 @pytest.mark.unit
 def test_options_still_parse_without_a_subcommand(runner):
-    assert runner.invoke(m.app, ["--checkpoint"]).exit_code == 0
-    assert calls[0][1]["checkpoint"] is True
+    assert runner.invoke(m.app, ["--ticker", "AAPL"]).exit_code == 0
+    assert calls[0][1]["flags"]["ticker"] == "AAPL"
 
 
 @pytest.mark.unit

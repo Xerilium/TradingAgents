@@ -1,0 +1,1 @@
+Exactly one allocation for every eligible symbol, including zero weights.

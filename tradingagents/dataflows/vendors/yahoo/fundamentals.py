@@ -1,3 +1,4 @@
+import json
 from typing import Annotated
 
 import yfinance as yf
@@ -98,10 +99,12 @@ def get_fundamentals(
     # unknown symbols, so `info` is truthy but every field is empty. Treat
     # "no usable fields" as no data rather than emitting a bare header the
     # agent might fabricate around.
-    if not lines:
+    if not any(value is not None for value in info.values()):
         raise_for_empty(ticker, canonical, "fundamental fields")
 
-    return f"# Company Fundamentals for {canonical}\n\n" + "\n".join(lines)
+    return (f"# Company Fundamentals for {canonical}\n\n" + "\n".join(lines)
+            + "\n\n## Complete available Yahoo profile (vendor field names and original values)\n"
+            + json.dumps(info, ensure_ascii=False, default=str))
 
 
 def _statement(ticker, freq, as_of_date, title, quarterly_attr, annual_attr) -> str:
@@ -163,7 +166,8 @@ def get_insider_transactions(
             raise VendorUnavailableError("Yahoo Finance is unreachable; insider filings were not retrieved")
         return f"No insider transactions reported for symbol '{canonical}'"
 
-    return f"# Insider Transactions data for {canonical}\n" + data.to_csv()
+    return (f"# Insider Transactions data for {canonical}\nOwnership D/I means direct/indirect ownership, not acquisition/disposition. "
+            "Infer buy/sell activity only from transaction details; blank details do not establish a trade type.\n\n" + data.to_csv())
 
 
 def get_company_profile(ticker: str) -> dict:

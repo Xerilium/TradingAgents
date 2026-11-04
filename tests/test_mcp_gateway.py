@@ -848,8 +848,7 @@ def test_gateway_schema_failure_is_one_logical_call_with_no_execution_attempt():
 
 
 @pytest.mark.parametrize("cancel", [False, True])
-def test_late_gateway_completion_preserves_incomplete_terminal_snapshot(tmp_path, cancel):
-    import hashlib
+def test_late_gateway_completion_preserves_incomplete_evidence(tmp_path, cancel):
     from uuid import uuid4
 
     from tradingagents.web.store import DeskStore
@@ -869,7 +868,8 @@ def test_late_gateway_completion_preserves_incomplete_terminal_snapshot(tmp_path
         await gateway.adiscover("alpaca")
         store = DeskStore(tmp_path / "late", {})
         run_id = str(uuid4())
-        record = {"id": run_id, "status": "running", "symbols": ["AAPL"], "results": []}
+        record = {"id": run_id, "status": "running", "symbols": ["AAPL"],
+                  "results": [{"symbol": "AAPL", "status": "failed"}]}
         store.data["runs"].append(record)
         with capture_vendor_evidence(lambda r, o: store.record_source_attempt(run_id, r, o)):
             task = asyncio.create_task(gateway.aexecute("alpaca", "get_asset", {"symbol": "AAPL"}))
@@ -877,16 +877,12 @@ def test_late_gateway_completion_preserves_incomplete_terminal_snapshot(tmp_path
             with pytest.raises(TimeoutError):
                 await asyncio.wait_for(asyncio.shield(task), timeout=0.01)
         record["status"] = "failed"
-        store.finalize_gateway_evidence(record)
-        store.save()
         evidence = record["gateway_evidence"]
-        terminal = evidence["snapshots"][0]
-        path = store.directory / terminal["path"]
-        original = path.read_bytes()
-        frozen = json.loads(original)
-        assert frozen["pending_count"] == 2  # Logical call and its one transport attempt.
-        assert frozen["capture_complete"] is False
-        assert frozen["counts"]["gateway_transport"]["source"] == 1
+        evidence["terminal_observed_at"] = "2026-10-25T00:00:00+00:00"
+        store._call_counts(evidence, "gateway")
+        assert evidence["pending_count"] == 2  # Logical call and its one transport attempt.
+        assert evidence["capture_complete"] is False
+        assert evidence["counts"]["gateway_transport"]["source"] == 1
         if cancel:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -894,13 +890,12 @@ def test_late_gateway_completion_preserves_incomplete_terminal_snapshot(tmp_path
         else:
             release.set()
             assert (await task)["cache"] == {"hit": True}
+        store._call_counts(evidence, "gateway")
         assert evidence["pending_count"] == 0
         assert evidence["unknown_count"] == (2 if cancel else 0)
         assert evidence["late_count"] == 2
         assert evidence["capture_complete"] is False
-        assert len(evidence["snapshots"]) == 3
-        assert path.read_bytes() == original
-        assert hashlib.sha256(original).hexdigest() == terminal["sha256"]
+        store.save_research()
         recovered = DeskStore(store.directory, {})
         assert recovered.snapshot()["runs"][0]["gateway_evidence"] == evidence
         compact = recovered.snapshot(compact=True)["runs"][0]["gateway_evidence"]

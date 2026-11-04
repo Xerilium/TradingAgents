@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Research Note — first viewport</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1440px; height: 900px; overflow: hidden; background: #e9e6df; font-family: "Public Sans", system-ui, sans-serif; color: #191b20; font-variant-numeric: tabular-nums; }
+  .sheet { width: 1180px; margin: 28px auto; background: #fbfaf7; border-top: 6px solid #1c3e7a; padding: 26px 44px 0; }
+  .head { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .18em; color: #1c3e7a; font-weight: 700; border-bottom: 1px solid #191b20; padding-bottom: 10px; }
+  .symrow { display: flex; align-items: baseline; gap: 16px; margin-top: 18px; }
+  .sym { font-size: 40px; font-weight: 800; letter-spacing: -.01em; }
+  .grp { font-size: 12px; letter-spacing: .14em; color: #6b6f76; }
+  .px { margin-left: auto; text-align: right; font-size: 13px; }
+  .px b { font-size: 20px; }
+  .px .up { color: #1d7a46; font-weight: 700; }
+  .verdict { display: flex; align-items: stretch; margin-top: 18px; border: 2px solid #191b20; }
+  .vcell { padding: 12px 18px; font-size: 12px; letter-spacing: .1em; }
+  .vcell + .vcell { border-left: 2px solid #191b20; }
+  .vcell b { display: block; font-size: 17px; letter-spacing: .04em; margin-top: 3px; }
+  .pending b { color: #8a6d1c; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 36px; margin-top: 22px; }
+  .sec { border-top: 1px solid #191b20; padding: 12px 0 18px; }
+  .sec h4 { font-size: 11px; letter-spacing: .16em; display: flex; align-items: center; gap: 8px; }
+  .sec h4 .done { color: #1d7a46; }
+  .sec h4 .prog { color: #c2402a; }
+  .sec p { font-size: 12.5px; line-height: 1.55; margin-top: 8px; color: #33363c; }
+  .quote { border-left: 3px solid #1c3e7a; padding: 6px 10px; margin-top: 8px; font-size: 12.5px; line-height: 1.5; background: #f1efe9; }
+  .quote b { letter-spacing: .06em; font-size: 11px; display: block; color: #1c3e7a; }
+  .quote.bear { border-color: #c2402a; }
+  .quote.bear b { color: #c2402a; }
+  .openline { font-size: 12.5px; line-height: 1.5; margin-top: 8px; color: #33363c; }
+  .caret { display: inline-block; width: 7px; height: 14px; background: #c2402a; vertical-align: -2px; }
+  .empty { border: 1.5px dashed #b9b4a6; margin-top: 8px; padding: 14px; text-align: center; font-size: 11px; letter-spacing: .16em; color: #8a8f98; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+  th { text-align: left; font-size: 10px; letter-spacing: .1em; color: #6b6f76; border-bottom: 1px solid #191b20; padding: 4px 6px; }
+  td { border-bottom: 1px dotted #c9c5bb; padding: 5px 6px; }
+  td.r, th.r { text-align: right; }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="head"><span>TRADINGAGENTS RESEARCH</span><span>2026-02-14 · COMMITTEE OF 12 AGENTS · RUN-0147</span></div>
+    <div class="symrow">
+      <span class="sym">NVIDIA CORP (NVDA)</span>
+      <span class="grp">FANGMAN · SEMICONDUCTORS</span>
+      <span class="px"><b>168.30</b> <span class="up">+2.1%</span><br>AS OF CLOSE 2026-02-13</span>
+    </div>
+    <div class="verdict">
+      <div class="vcell pending">RATING<b>PENDING — CLOSING AT RUN END</b></div>
+      <div class="vcell">PRICE TARGET<b>—</b></div>
+      <div class="vcell">HORIZON<b>3–6 MONTHS</b></div>
+      <div class="vcell">CONFIDENCE<b>SET AT VOTE</b></div>
+    </div>
+    <div class="cols">
+      <div class="sec">
+        <h4><span class="done">✓</span> MARKET</h4>
+        <p>Closes 168.30, +2.1% on the session; volume 312M vs a 289M 20-day average. Relative strength vs SOX index +0.8% for the week; options skew modestly call-rich into the guidance window.</p>
+      </div>
+      <div class="sec">
+        <h4><span class="done">✓</span> FUNDAMENTALS</h4>
+        <table>
+          <tr><th>METRIC</th><th class="r">LATEST</th><th class="r">PRIOR</th></tr>
+          <tr><td>Gross margin</td><td class="r">75.2%</td><td class="r">73.8%</td></tr>
+          <tr><td>Data-center revenue</td><td class="r">$26.0B</td><td class="r">$22.6B</td></tr>
+          <tr><td>Forward P/E</td><td class="r">34.1x</td><td class="r">31.7x</td></tr>
+        </table>
+      </div>
+      <div class="sec">
+        <h4><span class="prog">●</span> INVESTMENT DEBATE — ROUND 1 OF 1</h4>
+        <div class="quote"><b>BULL RESEARCHER</b>The AI capex cycle extends into FY26; second-order demand (networking, memory) is not priced in.</div>
+        <div class="quote bear"><b>BEAR RESEARCHER</b>Multiple at 34x forward; any guidance slip is a 12% drawdown by construction.</div>
+        <div class="openline">RESEARCH MANAGER — the bull case rests on capex durability; I put the motion to vote at round close<span class="caret"></span></div>
+      </div>
+      <div class="sec">
+        <h4>RISK COMMITTEE</h4>
+        <p>Queued: aggressive, conservative and neutral positions will be recorded after the debate closes, then referred to the portfolio manager for the final resolution.</p>
+      </div>
+    </div>
+    <div class="empty" style="margin-bottom: 26px;">VERDICT — RECORDED WHEN THE RUN CLOSES</div>
+  </div>
+</body>
+</html>

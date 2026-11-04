@@ -1,0 +1,1 @@
+Read the strongest directly relevant source notes returned by retrieval before relying on them.

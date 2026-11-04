@@ -1,0 +1,1 @@
+Concrete steps for the trader to implement the recommendation, including sizing guidance relative to a standard allocation. The research team does not see the caller's holdings; the trader and portfolio manager apply the actual position.

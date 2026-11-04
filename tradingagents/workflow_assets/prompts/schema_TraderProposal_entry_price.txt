@@ -1,0 +1,1 @@
+Optional entry price target as an absolute number in the instrument's quote currency (e.g. 189.5), never a percentage or a range. Omit it if you cannot state a specific level.

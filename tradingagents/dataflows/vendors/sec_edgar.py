@@ -41,6 +41,7 @@ _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 # company per day serves every date a run asks about.
 _CACHE_TTL_SECONDS = 24 * 60 * 60
 
+
 # Line items, each with the tags filers use for it, best first. First match wins
 # and values are never summed across tags: a company reporting revenue under two
 # tags would otherwise be counted twice.
@@ -105,11 +106,14 @@ def _user_agent() -> str:
 
 
 
-def _fetch_json(url: str) -> dict:
+def _fetch_json(url: str, *, receipt=False) -> dict:
     """Read a public EDGAR document, respecting SEC's identification rule."""
     try:
         response = requests.get(url, headers={"User-Agent": _user_agent()}, timeout=30)
         response.raise_for_status()
+        if receipt:
+            return {"raw": response.content, "data": json.loads(response.content, parse_float=str),
+                    "source_date": response.headers.get("Date")}
         return response.json()
     except requests.RequestException as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -188,16 +192,22 @@ def _as_of(facts: dict, tags: tuple[str, ...], as_of_date: str, spans: tuple[tup
     return dict(sorted(values.items())), chosen_unit
 
 
-def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -> str:
+def _statement(kind, ticker, freq, as_of_date, title):
+    from tradingagents.dataflows.vendors.sec_filing import financial_filing
+
     as_of_date = as_of_date or datetime.now().strftime("%Y-%m-%d")
     cik = cik_for(ticker)
     if cik is None:
         raise NoMarketDataError(ticker, ticker, "not a US SEC filer")
 
-    facts = _cached_json(_FACTS_URL.format(cik=cik), f"CIK{cik}.json")
+    filing = financial_filing(ticker, cik, freq, as_of_date, _cached_json, _user_agent())
+    try:
+        facts = _cached_json(_FACTS_URL.format(cik=cik), f"CIK{cik}.json")
+    except VendorUnavailableError:
+        return "# Supplemental SEC company-facts summary unavailable.\n\n" + filing
     us_gaap = (facts.get("facts") or {}).get("us-gaap")
     if not us_gaap:
-        raise NoMarketDataError(ticker, ticker, "US filer with no us-gaap facts")
+        return "# Supplemental SEC company-facts summary unavailable: no US GAAP facts.\n\n" + filing
 
     quarterly = freq.lower() == "quarterly"
     if quarterly:
@@ -216,7 +226,7 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
             chosen[label][end] = min(index, chosen[label].get(end, index))
     periods = sorted({(end, index) for spans_of in chosen.values() for end, index in spans_of.items()})
     if not periods:
-        raise NoMarketDataError(ticker, ticker, f"no {freq} {title.lower()} filed by {as_of_date}")
+        return f"# Supplemental SEC company-facts summary unavailable: no {freq} {title.lower()} by {as_of_date}.\n\n" + filing
     tagged = {label: line for label, line in lines.items() if line[0]}
     untagged = [label for label in lines if label not in tagged]
     header = (
@@ -236,7 +246,8 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
             value = values.get((end, index)) if chosen[label].get(end) == index else None
             cells.append("" if value is None else _millions(value) if unit == "USD" else f"{value:.2f}")
         rows.append(",".join([end + names[index]] + cells))
-    return header + "\n".join(rows) + "\n"
+    return header + "\n".join(rows) + "\n\n" + filing
+
 
 
 def _millions(value: float) -> str:
