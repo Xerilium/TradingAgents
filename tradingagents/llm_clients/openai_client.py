@@ -2,6 +2,7 @@ import logging
 import asyncio
 import json
 import httpx
+import math
 import time
 from contextvars import ContextVar
 import os
@@ -29,13 +30,16 @@ _budget_summary = ContextVar("budget_summary", default=False)
 
 
 def _is_rate_limit(exc: BaseException) -> bool:
-    """Whether a model endpoint refused the request on quota or queue pressure.
+    """Whether a model endpoint refused the request on transient pressure.
 
-    Matches the HTTP status the SDK raises on, and the machine-readable codes
-    local servers use (a busy queue answers 429 ``queue_wait_timeout`` once its
-    own wait deadline expires).
+    Matches 429 and 5xx statuses, timeouts and connection errors (permanent 4xx
+    stay fail-fast), and the machine-readable codes local servers use (a busy
+    queue answers 429 ``queue_wait_timeout`` once its own wait deadline expires).
     """
-    if getattr(exc, "status_code", None) == 429:
+    if isinstance(exc, (TimeoutError, httpx.TransportError)):
+        return True
+    status = getattr(exc, "status_code", None)
+    if status == 429 or (type(status) is int and 500 <= status <= 599):
         return True
     body = getattr(exc, "body", None)
     if isinstance(body, dict):
@@ -44,6 +48,16 @@ def _is_rate_limit(exc: BaseException) -> bool:
                 "rate_limit_error", "rate_limit_exceeded", "queue_wait_timeout", "overloaded"}:
             return True
     return False
+
+
+def _retry_after(exc: BaseException) -> float | None:
+    """Seconds from a Retry-After header, when the error carries one."""
+    response = getattr(exc, "response", None)
+    value = response.headers.get("retry-after") if response is not None else None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 class NormalizedChatOpenAI(ChatOpenAI):
@@ -68,15 +82,18 @@ class NormalizedChatOpenAI(ChatOpenAI):
     rate_limit_retries: int = 0
     rate_limit_wait_seconds: float = 30.0
 
-    def _rate_limit_delay(self, attempt: int) -> float | None:
+    def _rate_limit_delay(self, attempt: int, exc: BaseException | None = None) -> float | None:
         """Seconds to wait before the next attempt, or None once spent."""
         if attempt >= self.rate_limit_retries:
             if self.rate_limit_retries:
                 logger.error("Model endpoint rate limited after %d attempts; giving up.", attempt + 1)
             return None
+        delay = _retry_after(exc) if exc is not None else None
+        if delay is None:
+            delay = self.rate_limit_wait_seconds
         logger.warning("Model endpoint rate limited; retry %d/%d in %ss.",
-                       attempt + 1, self.rate_limit_retries + 1, self.rate_limit_wait_seconds)
-        return self.rate_limit_wait_seconds
+                       attempt + 1, self.rate_limit_retries + 1, delay)
+        return delay
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         attempt = 0
@@ -84,7 +101,7 @@ class NormalizedChatOpenAI(ChatOpenAI):
             try:
                 return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
             except Exception as exc:
-                delay = self._rate_limit_delay(attempt) if _is_rate_limit(exc) else None
+                delay = self._rate_limit_delay(attempt, exc) if _is_rate_limit(exc) else None
                 if delay is None:
                     raise
                 time.sleep(delay)
@@ -96,7 +113,7 @@ class NormalizedChatOpenAI(ChatOpenAI):
             try:
                 return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
             except Exception as exc:
-                delay = self._rate_limit_delay(attempt) if _is_rate_limit(exc) else None
+                delay = self._rate_limit_delay(attempt, exc) if _is_rate_limit(exc) else None
                 if delay is None:
                     raise
                 await asyncio.sleep(delay)
@@ -136,6 +153,65 @@ class _ContextBudgetExceeded(ValueError):
     pass
 
 
+# shortcut: byte/2 estimate, upgrade to exact tokenizer if trimming bites real
+# content. ceil(utf8_bytes/2) over-counts for byte-level BPE vocabularies, so
+# the enforced budget is never exceeded by the estimate.
+DEFAULT_LOCAL_CONTEXT_TOKENS = 262_144
+
+
+def _estimate_payload_tokens(payload: dict) -> int:
+    """Conservative prompt-token estimate: ceil(utf-8 bytes / 2)."""
+    total = len(json.dumps(payload.get("tools") or [], ensure_ascii=False).encode("utf-8"))
+    for message in payload.get("messages", []):
+        content = message.get("content")
+        if isinstance(content, str):
+            total += len(content.encode("utf-8"))
+        elif content is not None:
+            total += len(json.dumps(content, ensure_ascii=False).encode("utf-8"))
+    return math.ceil(total / 2)
+
+
+def _trim_to_fit(payload: dict, byte_budget: int) -> int:
+    """Cut the largest middle message blocks until the payload fits; returns bytes cut.
+
+    System messages and the final message (the task with the newest data) are
+    kept whole; middle blocks are trimmed largest-first from their tail.
+    """
+    messages = payload.get("messages", [])
+
+    def size(message) -> int:
+        content = message.get("content")
+        if isinstance(content, str):
+            return len(content.encode("utf-8"))
+        if content is None:
+            return 0
+        return len(json.dumps(content, ensure_ascii=False).encode("utf-8"))
+
+    total = sum(size(message) for message in messages)
+    total += len(json.dumps(payload.get("tools") or [], ensure_ascii=False).encode("utf-8"))
+    if total <= byte_budget:
+        return 0
+    candidates = [message for index, message in enumerate(messages)
+                  if message.get("role") != "system" and index != len(messages) - 1
+                  and isinstance(message.get("content"), str) and size(message) > 200]
+    cut = 0
+    for message in sorted(candidates, key=size, reverse=True):
+        if total <= byte_budget:
+            break
+        content = message["content"]
+        want = size(message) - (total - byte_budget)
+        # Keep room for the "[trimmed N bytes for context budget]" marker so the
+        # payload stays under the byte budget after it is appended.
+        keep = max(200, want - 64)
+        removed = len(content) - keep
+        if removed <= 0:
+            continue
+        message["content"] = content[:keep] + f"\n[trimmed {removed} bytes for context budget]"
+        total -= removed
+        cut += removed
+    return cut
+
+
 def _tokenization_error(stage, exc):
     """Report safe diagnostics without exposing server messages or request data."""
     details = [f"stage={stage}", f"error={type(exc).__name__}"]
@@ -173,6 +249,21 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
             return cached
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         if self.max_total_tokens is None:
+            # Blank limits still get a pre-send budget: the documented quarter
+            # of the default window is reserved for the answer, and the byte/2
+            # estimate trims oversized prompts here instead of letting the
+            # server 400 the whole research step.
+            total = DEFAULT_LOCAL_CONTEXT_TOKENS
+            output, buffer, available = budget_limits(total, payload)
+            estimate = _estimate_payload_tokens(payload)
+            if estimate > available:
+                cut = _trim_to_fit(payload, available * 2)
+                logger.warning("Prompt estimate %d tokens exceeds the %d-token budget; trimmed %d bytes of middle context.",
+                               estimate, total, cut)
+                estimate = _estimate_payload_tokens(payload)
+                if estimate > available:
+                    raise ValueError(f"Request still exceeds the context budget after trimming: estimate={estimate}, available={available}, output={output}, buffer={buffer}.")
+            set_output_limit(payload, output)
             return payload
         parts = urlsplit(str(self.root_client.base_url))
         path = parts.path.rstrip("/")
