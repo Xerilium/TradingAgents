@@ -262,6 +262,8 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
                                estimate, total, cut)
                 estimate = _estimate_payload_tokens(payload)
                 if estimate > available:
+                    # shortcut: temp GUARD_PROBE diagnosis, remove after call site identified
+                    logger.error("GUARD_PROBE: estimate=%s available=%s output=%s buffer=%s", estimate, available, output, buffer, stack_info=True)
                     raise ValueError(f"Request still exceeds the context budget after trimming: estimate={estimate}, available={available}, output={output}, buffer={buffer}.")
             set_output_limit(payload, output)
             return payload
