@@ -16,6 +16,7 @@ import math
 import os
 import re
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -1180,12 +1181,26 @@ class MaenifoldInstance:
             if not executable:
                 self.status, self.error = "error", "Maenifold was not found on PATH"
                 raise ValueError(self.error)
-            self.root = Path(root)
+            root = Path(root).resolve()
+            system_roots = {Path.home().joinpath("maenifold").resolve()}
+            if os.name == "nt":
+                system_roots.add(Path("D:/maenifold").resolve())
+            if port == 8080 or root in system_roots:
+                raise ValueError("The desk requires a separate Maenifold port and data root.")
+            try:
+                with socket.socket() as probe:
+                    if os.name == "nt":
+                        probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                    probe.bind(("127.0.0.1", port))
+            except OSError:
+                raise ValueError(f"Maenifold port {port} is unavailable. The desk will not reuse another instance.") from None
+            self.root = root
             self.root.mkdir(parents=True, exist_ok=True)
             try:
                 self.process = subprocess.Popen(
                     [executable, "--http", "--port", str(port)],
-                    env={**os.environ, "MAENIFOLD_ROOT": str(self.root)},
+                    env={**os.environ, "MAENIFOLD_ROOT": str(self.root),
+                         "MAENIFOLD_DATABASE_PATH": str(self.root / "memory.db")},
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
@@ -1219,7 +1234,11 @@ class MaenifoldInstance:
                     status, error = "error", error or f"Maenifold exited with status {exit_code}"
                     self.status, self.error = status, error
                 elif datetime.now(UTC) - datetime.fromisoformat(self.started_at) >= timedelta(seconds=_READY_SECONDS):
-                    status, self.status = "running", "running"
+                    try:
+                        with socket.create_connection(("127.0.0.1", self.port), timeout=0.1):
+                            status, self.status = "running", "running"
+                    except OSError:
+                        status, self.status = "starting", "starting"
             return {
                 "status": status, "port": self.port, "root": str(self.root) if self.root else None,
                 "pid": process.pid if process else None, "error": error, "started_at": self.started_at,

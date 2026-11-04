@@ -80,7 +80,7 @@ class ResearchMemoryNoteTests(unittest.TestCase):
         self.run = {"id": "run-77", "trade_date": "2026-11-04"}
 
     def publish(self, gateway):
-        receiver = types.SimpleNamespace(_research_note_gateway=lambda: gateway, _event=lambda *args: None)
+        receiver = types.SimpleNamespace(_desk_gateway=lambda: gateway, _event=lambda *args: None)
         DeskService._publish_research_note(receiver, self.run, self.result)
 
     def test_completed_symbol_writes_exactly_one_replacing_note(self):

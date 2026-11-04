@@ -255,7 +255,7 @@ class DeskService:
         self.maenifold = MaenifoldInstance()
         DeskConfig.model_validate(self.store.data["config"])
         self.configure_symbols()
-        self.gateway = gateway or MaenifoldGateway(timeout=90)
+        self.gateway = gateway
         from tradingagents.integrations.laya import LocalLaya
         self.local_laya = LocalLaya(
             cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None,
@@ -283,7 +283,7 @@ class DeskService:
             "connection": {
                 "connected": False,
                 "paper_verified": False,
-                "endpoint": getattr(self.gateway, "endpoint", "http://localhost:8080/mcp"),
+                "endpoint": getattr(self.gateway, "endpoint", None),
                 "domains": [],
                 "message": "Connect to load the configured Alpaca account.",
             },
@@ -1281,7 +1281,7 @@ class DeskService:
                 "native_cache_mode": "memory", "local_laya": self.local_laya.state(),
                 "startup_errors": list(getattr(self, "startup_errors", [])),
                 "configuration_error": self.configuration_error,
-                "gateway_status": self.gateway_status,
+                "gateway_status": {"running": "ready", "starting": "checking", "error": "failed"}.get(self.maenifold.state()["status"], self.gateway_status),
                 "native_durability": {"state": "in_memory", "durable_writes_confirmed": False,
                     "reason": "Native cache runs in memory. SQLite application records remain saved."},
                 "capabilities": {"saved_research": True, "workspace_records": True, "human_proposals": True,
@@ -2293,7 +2293,7 @@ class DeskService:
         trade_date = get_current_date() if analysis_date is None else analysis_date
         # Reuse the MCP binding's canonical/New York date validation without discovery.
         try:
-            build_langchain_tools(self.gateway, domains=(), trade_date=trade_date)
+            build_langchain_tools(self._desk_gateway(), domains=(), trade_date=trade_date)
         except GatewayError as exc:
             raise ValueError(str(exc)) from exc
         with self.store.lock:
@@ -2571,11 +2571,13 @@ class DeskService:
                     self._event(run_id, "coverage", line, symbol)
         return evidence_by_origin
 
-    def _research_note_gateway(self):
+    def _desk_gateway(self):
+        if self.gateway is not None:
+            return self.gateway
         instance = self.maenifold.state()
         if instance["status"] != "running":
-            raise GatewayError("Start the desk-hosted Maenifold service to publish research notes.")
-        return MaenifoldGateway(endpoint=f"http://localhost:{instance['port']}/mcp", timeout=30)
+            raise GatewayError("Start the desk-hosted Maenifold service before running research.")
+        return MaenifoldGateway(endpoint=f"http://127.0.0.1:{instance['port']}/mcp", timeout=90)
 
     def _publish_research_note(self, run, result, *, asset=None):
         """Publish a research asset or the final report without failing the run."""
@@ -2586,7 +2588,7 @@ class DeskService:
             if asset is not None:
                 title = asset.replace("_", "-")
                 result = {**result, "reports": {asset: result["reports"][asset]}}
-            self._research_note_gateway().execute("maenifold.memory", "WriteMemory", {
+            self._desk_gateway().execute("maenifold.memory", "WriteMemory", {
                 "title": title,
                 "folder": folder,
                 "content": build_research_note(run, result),
@@ -2643,7 +2645,7 @@ class DeskService:
                     "quick_think_backend_url": config.get("backend_url"), "deep_think_backend_url": config.get("backend_url"),
                     "results_dir": str(self.store.directory / "reports" / run_id),
                     "data_cache_dir": str(self.store.directory / "cache")}
-                tools = build_langchain_tools(self.gateway,
+                tools = build_langchain_tools(self._desk_gateway(),
                     domains=("maenifold.memory", "maenifold.graph", "maenifold.thinking"),
                     symbol=symbol, trade_date=run["trade_date"])
                 budget = {"remaining": config.get("social_screen_max_posts", 100), "deadline": None,

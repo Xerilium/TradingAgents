@@ -6,9 +6,6 @@ import argparse
 import json
 import mimetypes
 import os
-import shutil
-import socket
-import subprocess
 import secrets
 import sys
 import threading
@@ -546,7 +543,6 @@ def main():
     parser = argparse.ArgumentParser(description="TradingAgents paper trading workspace")
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--data-dir", type=Path, default=Path.cwd() / ".paper-desk")
-    parser.add_argument("--mcp-endpoint", default="http://localhost:8080/mcp")
     parser.add_argument("--nautilus-python", type=Path, default=Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe")
     parser.add_argument("--credential-profile", choices=("production", "development"),
                         default="development", help="Native credential-store profile")
@@ -564,7 +560,6 @@ def main():
     from .recovery import writer_lease
     import sqlite3
     original_root = args.data_dir.resolve()
-    from tradingagents.integrations.maenifold import MaenifoldGateway
 
     from .nautilus_runtime import NautilusRuntime
     # Reserve the endpoint before any journal migration or startup recovery writes.
@@ -574,25 +569,14 @@ def main():
         parser.exit(2, f"Cannot bind 127.0.0.1:{args.port}. The port is occupied or unavailable; use the launcher to identify a matching instance. No processes were stopped.\n")
     service = None
     runtime = None
-    gateway_process = None
-
     def close_owned():
-        try:
-            with server.service_lock:
-                server.closing = True
-                current_service = server.service if server.service is not None else service
-                if current_service is not None:
-                    current_service.close()
-                elif runtime is not None:
-                    runtime.stop()
-        finally:
-            if gateway_process is not None and gateway_process.poll() is None:
-                gateway_process.terminate()
-                try:
-                    gateway_process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    gateway_process.kill()
-                    gateway_process.wait()
+        with server.service_lock:
+            server.closing = True
+            current_service = server.service if server.service is not None else service
+            if current_service is not None:
+                current_service.close()
+            elif runtime is not None:
+                runtime.stop()
 
     try:
         try:
@@ -608,39 +592,15 @@ def main():
         else:
             runtime = NautilusRuntime(directory / "nautilus", args.nautilus_python, args.credential_profile,
                                       application_root=original_root)
-            service = DeskService(directory, gateway=MaenifoldGateway(args.mcp_endpoint, timeout=90), runtime=runtime,
+            service = DeskService(directory, runtime=runtime,
                                   browse_only=args.browse_only, history_dir=args.history_dir, migrate_legacy=args.migrate_journal)
             service.launch_root = original_root
             service.startup_errors = []
             if not args.browse_only:
-                service.gateway_status = "checking"
-                endpoint = urlsplit(args.mcp_endpoint)
-                if endpoint.scheme == "http" and endpoint.hostname in {"localhost", "127.0.0.1", "::1"}:
-                    port = endpoint.port or 80
-                    try:
-                        with socket.create_connection((endpoint.hostname, port), timeout=1):
-                            pass
-                    except OSError:
-                        try:
-                            executable = shutil.which("maenifold")
-                            if not executable:
-                                raise FileNotFoundError("Installed Maenifold executable was not found on PATH")
-                            gateway_process = subprocess.Popen([executable, "--http", "--port", str(port)],
-                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-                        except OSError as failure:
-                            service.startup_errors.append(f"Maenifold startup failed: {failure}")
-                def verify_gateway():
-                    from tradingagents.integrations.maenifold import GatewayError
-                    try:
-                        service.gateway.discover("maenifold.memory")
-                        if gateway_process is not None and gateway_process.poll() is not None:
-                            raise OSError("Maenifold exited with status " + str(gateway_process.returncode))
-                        service.gateway_status = "ready"
-                    except (GatewayError, OSError, ValueError) as failure:
-                        service.gateway_status = "failed"
-                        service.startup_errors.append("Maenifold readiness failed: " + str(failure))
-                threading.Thread(target=verify_gateway, name="gateway-readiness", daemon=True).start()
+                try:
+                    service.start_maenifold()
+                except (OSError, ValueError) as failure:
+                    service.startup_errors.append(f"Maenifold startup failed: {failure}")
                 try:
                     service.start_native()
                 except (OSError, ValueError) as failure:
