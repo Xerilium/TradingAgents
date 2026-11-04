@@ -524,6 +524,13 @@ function showToast(message){$('#toast').textContent=message;$('#toast').hidden=f
 function setError(message){errorMessage=message;renderNotice();}
 function renderNotice(){renderConnectionIdentity();const notice=$('#notice'); const conn=state?.connection;let message=errorMessage||stateErrorMessage||state?.health?.configuration_error;if(message&&message===quoteRefreshError)message+=conn?.connected?' Use Refresh to retry; automatic updates will also retry.':' Nautilus is disconnected. Reconnect Nautilus, then use Refresh. Automatic quote retries wait for a connected state.';let cls='error';if(!message&&state&&(!conn?.connected||!conn?.account_verified)){message=conn?.message || (!conn?.connected?'Account connection unavailable. Start Nautilus, then refresh.':'Account has not been verified. Refresh the configured connection before submitting orders.');cls='';}if(!message&&paused()&&activePage==='orders'){message=state.browse_only?'Review-only session. Local human proposals and basket drafts can be saved. New research, native Nautilus drafts, approvals, admission and broker writes are disabled.':'New orders are blocked. Account monitoring and cancellation of existing working orders remain available; use account order controls to review the block.';cls='';}notice.hidden=!message;notice.className=`notice ${cls}`;notice.innerHTML=message?`${esc(message)}${errorMessage?'<button class="icon-button" data-action="dismiss-error" aria-label="Dismiss error">×</button>':''}`:'';}
 function renderConnectionIdentity(){
+ const banner=$('#maenifold-notice'),instance=state?.maenifold;
+ const message=!instance||instance.status==='running'?'':instance.status==='starting'
+  ?'The dedicated Maenifold instance is starting. Research is unavailable until it is ready.'
+  :'The dedicated Maenifold instance is unavailable. Start Maenifold in Settings → Integrations.'
+    +(instance.error?' '+instance.error:'');
+ if(banner.textContent!==message)banner.textContent=message;
+ banner.hidden=!message;
  const identity=state?.connection?.identity||{},confirmed=!stateErrorMessage&&state?.connection?.connected&&['paper','live'].includes(identity.observed_mode),mode=confirmed?identity.observed_mode:'unknown';
  const label=mode==='paper'?'Paper trading':mode==='live'?'Live trading':'Account unverified',box=document.getElementById('connection-identity');
  if(box){box.title=confirmed?'Account '+identity.observed_account_id:'';box.innerHTML='<span class="status-dot '+(confirmed?'connected':'disconnected')+'"></span><strong>'+esc(confirmed?label+' · Verified':label)+'</strong>';}
