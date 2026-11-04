@@ -9,6 +9,7 @@ import unittest
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,7 @@ from tradingagents.integrations.maenifold import (
     GatewayTimeout,
     MaenifoldGateway,
     SdkMcpTransport,
+    _advertise_schema,
     build_langchain_tools,
     normalize_tool_result,
     verify_paper_configuration,
@@ -629,12 +631,15 @@ class FakeGateway:
         self.calls.append((domain, command, parameters))
         return self.config if command == "GetConfig" else {"ok": True}
 
+    def get_help(self, tool_name):
+        return ""
+
 
 class ToolBoundaryTests(unittest.TestCase):
     def test_only_exact_reviewed_commands_are_exposed(self):
         gateway = FakeGateway()
         tools = build_langchain_tools(gateway, domains=("alpaca",))
-        self.assertEqual([tool.name for tool in tools], ["alpaca__get_account_info"])
+        self.assertEqual([tool.name for tool in tools], ["alpaca__get_account_info", "GetHelp"])
         self.assertEqual(json.loads(tools[0].invoke({})), {"ok": True})
         self.assertEqual(gateway.calls, [("alpaca", "get_account_info", {})])
 
@@ -680,6 +685,54 @@ class ToolBoundaryTests(unittest.TestCase):
         gateway.config["mcpServers"]["alpaca"]["args"].append("--live")
         with self.assertRaises(GatewayError):
             verify_paper_configuration(gateway)
+
+
+class AdvertisedSchemaTests(unittest.TestCase):
+    # Plain unittest (no pytest marks) so it runs under the desk venv's unittest runner.
+    def test_advertised_schema_flattens_conditional_rules(self):
+        # Providers drop allOf/if/then from tool schemas, so the gateway's
+        # conditional conclusion requirement never reaches the model.
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"thoughtNumber": {"type": "integer"},
+                           "nextThoughtNeeded": {"type": "boolean"},
+                           "conclusion": {"type": ["string", "null"]}},
+            "required": ["thoughtNumber", "nextThoughtNeeded"],
+            "allOf": [{"if": {"not": {"anyOf": [
+                          {"properties": {"nextThoughtNeeded": {"const": True}}, "required": ["nextThoughtNeeded"]},
+                          {"properties": {"cancel": {"const": True}}, "required": ["cancel"]},
+                          {"properties": {"learn": {"const": True}}, "required": ["learn"]}]}},
+                       "then": {"required": ["conclusion"],
+                                "properties": {"cancel": {"type": "boolean"}}}}],
+        }
+        flat = _advertise_schema(schema)
+        self.assertNotIn("allOf", flat)
+        self.assertIn("conclusion", flat["required"])
+        self.assertIn("thoughtNumber", flat["required"])
+        # Branch-only properties must be visible too, or the model cannot emit them.
+        self.assertIn("cancel", flat["properties"])
+        self.assertEqual(flat.get("additionalProperties"), False)
+
+    def test_thinking_tool_advertises_conclusion_as_required(self):
+        thinking = GatewayCommand(
+            "maenifold.thinking", "SequentialThinking", "think",
+            json.loads((Path(__file__).resolve().parent / "fixtures" / "sequential_thinking_schema.json").read_text()),
+            "orchestration",
+        )
+
+        class ThinkingGateway(FakeGateway):
+            def discover(self, domain):
+                return {"SequentialThinking": thinking} if domain == "maenifold.thinking" else {}
+
+            def get_help(self, tool_name):
+                return ""
+
+        tools = build_langchain_tools(ThinkingGateway(), domains=("maenifold.thinking",))
+        tool = next(t for t in tools if t.name == "maenifold_thinking__SequentialThinking")
+        self.assertIn("conclusion", tool.args_schema["required"])
+        self.assertNotIn("allOf", tool.args_schema)
+        self.assertIn("conclusion", tool.args_schema["properties"])
 
 
 class MarketGateway(FakeGateway):
