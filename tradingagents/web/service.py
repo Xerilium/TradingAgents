@@ -2732,7 +2732,12 @@ class DeskService:
                 gaps = research_gaps(result)
                 if gaps:
                     raise ValueError("Research incomplete: " + "; ".join(gaps))
-                failed = [a["operation"] for a in evidence["source"]["attempts"] if source_attempt_failed(a, evidence["source"]["attempts"])]
+                attempts = evidence["source"]["attempts"]
+                failed = [
+                    attempt["operation"] for attempt in attempts
+                    if attempt.get("capture_error")
+                    or (attempt.get("vendor") in {"fred", "alpaca"} and source_attempt_failed(attempt, attempts))
+                ]
                 if failed or not evidence["source"].get("capture_complete"):
                     raise ValueError("Research incomplete: source collection or evidence capture failed: " + ", ".join(sorted(set(failed))))
                 for origin in ("gateway", "jev"):
