@@ -1,6 +1,6 @@
 """The desk mirrors each completed per-symbol research narrative into Maenifold memory.
 
-Covers the OKF note builder and the gateway write unit in tradingagents.web.service
+Covers the Maenifold note builder and the gateway write unit in tradingagents.web.service
 without starting servers: a recording fake gateway captures execute() arguments.
 """
 
@@ -89,23 +89,13 @@ class ResearchMemoryNoteTests(unittest.TestCase):
         self.assertEqual(len(gateway.calls), 1)
         domain, command, parameters = gateway.calls[0]
         self.assertEqual((domain, command), ("maenifold.memory", "WriteMemory"))
-        self.assertEqual(set(parameters), {"title", "folder", "content", "overwrite"})
+        self.assertEqual(set(parameters), {"title", "folder", "content", "overwrite", "tags"})
         self.assertEqual(parameters["title"], "report")
         self.assertEqual(parameters["folder"], "research/AAPL/2026/11/04")
         self.assertIs(parameters["overwrite"], True)
 
-    def test_note_carries_okf_frontmatter_and_every_report(self):
+    def test_note_carries_every_report(self):
         content = build_research_note(self.run, self.result)
-        self.assertTrue(content.startswith("---\n"))
-        for marker in (
-            "type: Equity Research Note",
-            'title: "AAPL research 2026-11-04"',
-            "description:",
-            "tags: [research, equity, AAPL, 2026-11-04, rating-Buy]",
-            "generated: {by: tradingagents/desk, at: 2026-11-04T20:00:00+00:00}",
-            "status: stable",
-        ):
-            self.assertIn(marker, content)
         self.assertIn("# AAPL research 2026-11-04", content)
         self.assertIn("Recommendation: Buy", content)
         self.assertIn("Run ID: run-77", content)

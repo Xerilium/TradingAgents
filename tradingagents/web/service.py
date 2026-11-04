@@ -81,21 +81,11 @@ def _number(value):
 
 
 def build_research_note(run, result):
-    """Render a completed per-symbol research result as an OKF-style Markdown note."""
+    """Render a completed per-symbol research result as a Markdown body for Maenifold."""
     symbol, trade_date = result["symbol"], result["trade_date"]
     rating = result.get("rating") or "unrated"
     reports = result.get("reports") or {}
-    tags = ", ".join(("research", "equity", symbol, trade_date, f"rating-{rating}"))
     lines = [
-        "---",
-        "type: Equity Research Note",
-        f'title: "{symbol} research {trade_date}"',
-        f'description: "Complete desk research narrative for [[{symbol}]] dated {trade_date}."',
-        f"tags: [{tags}]",
-        f"generated: {{by: tradingagents/desk, at: {result.get('completed_at') or now()}}}",
-        "status: stable",
-        "---",
-        "",
         f"# {symbol} research {trade_date}",
         "",
         f"Recommendation: {rating} for [[{symbol}]].",
@@ -2595,6 +2585,7 @@ class DeskService:
                 "title": "report",
                 "folder": f"research/{result['symbol']}/{yyyy}/{mm}/{dd}",
                 "content": build_research_note(run, result),
+                "tags": ["research", "equity", result["symbol"], result["trade_date"]],
                 "overwrite": True,
             })
         except Exception as exc:
