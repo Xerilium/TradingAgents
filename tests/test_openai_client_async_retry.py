@@ -104,48 +104,47 @@ class AsyncRateLimitRetryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(calls), 1, "a permanent 4xx must fail fast, no retry")
 
-    async def test_retry_after_shorter_than_configured_wait_is_floored(self):
-        """Azure Foundry answers a token-per-minute 429 with ``Retry-After: 1``.
+    async def test_configured_wait_is_used_even_with_a_retry_after_hint(self):
+        """Providers answer a token-per-minute 429 with a small ``Retry-After``.
 
-        Honouring that hint alone spaces the attempts a second apart, all inside
-        the same one-minute window, so every retry hits the same wall. The
-        configured wait has to act as a floor over the shorter server hint.
+        The hint is ignored outright: only the app-configured wait spaces the
+        retries, so the next attempt lands outside the blocked quota window.
         """
         calls = []
 
         def handler(request):
             calls.append(request)
             if len(calls) == 1:
-                return httpx.Response(429, headers={"Retry-After": "0"}, json={
+                return httpx.Response(429, headers={"Retry-After": "0.05"}, json={
                     "error": {"message": "Too Many Requests",
                               "type": "rate_limit_error", "code": "rate_limit_exceeded"},
                 })
-            return httpx.Response(200, json=_completion_body("floored"))
+            return httpx.Response(200, json=_completion_body("fixed"))
 
-        # 0.02s keeps the real sleep trivial while still proving the floor beat
-        # the server's zero-second hint (the old code slept 0).
-        model, aclient = self._client(handler, rate_limit_wait_seconds=0.02)
+        # The hint is larger than the configured wait, so a regression to
+        # hint-following would log 0.05s. Both values keep the real sleep tiny.
+        model, aclient = self._client(handler, rate_limit_wait_seconds=0.01)
         try:
             with self.assertLogs("tradingagents.llm_clients.openai_client", "WARNING") as logs:
                 result = await model.ainvoke([HumanMessage(content="hi")])
         finally:
             await aclient.aclose()
 
-        self.assertEqual(result.content, "floored")
+        self.assertEqual(result.content, "fixed")
         self.assertEqual(len(calls), 2, "the 429 must still be retried once")
-        self.assertIn("retry 1/2 in 0.02s", "\n".join(logs.output),
-                      "the configured wait must floor a shorter Retry-After hint")
+        self.assertIn("retry 1/2 in 0.01s", "\n".join(logs.output),
+                      "the configured wait must be used, not the server hint")
 
-    def test_longer_server_hint_still_wins_over_the_floor(self):
-        """The floor must not throw away a Retry-After that is already bigger."""
+    def test_retry_after_hints_never_change_the_wait(self):
+        """A server hint is ignored whichever way it points."""
         model = LocalCompatibleChatOpenAI(
             model="test-model", api_key="test-key",
             base_url="http://127.0.0.1:9/v1",
             rate_limit_retries=1, rate_limit_wait_seconds=5.0,
         )
-        self.assertEqual(model._rate_limit_delay(0, _rate_limited("0")), 5.0)
-        self.assertEqual(model._rate_limit_delay(0, _rate_limited(None)), 5.0)
-        self.assertEqual(model._rate_limit_delay(0, _rate_limited("90")), 90.0)
+        for hint in ("0", "90", None):
+            self.assertEqual(model._rate_limit_delay(0, _rate_limited(hint)), 5.0,
+                             f"the configured wait must survive a Retry-After: {hint} hint")
         self.assertIsNone(model._rate_limit_delay(1, _rate_limited("90")),
                           "a spent retry budget must still give up, hint or no hint")
 

@@ -48,16 +48,6 @@ def _is_rate_limit(exc: BaseException) -> bool:
     return False
 
 
-def _retry_after(exc: BaseException) -> float | None:
-    """Seconds from a Retry-After header, when the error carries one."""
-    response = getattr(exc, "response", None)
-    value = response.headers.get("retry-after") if response is not None else None
-    try:
-        return max(0.0, float(value))
-    except (TypeError, ValueError):
-        return None
-
-
 class NormalizedChatOpenAI(ChatOpenAI):
     """ChatOpenAI with normalized content output and capability-aware binding.
 
@@ -86,9 +76,8 @@ class NormalizedChatOpenAI(ChatOpenAI):
             if self.rate_limit_retries:
                 logger.error("Model endpoint rate limited after %d attempts; giving up.", attempt + 1)
             return None
-        # The configured wait is a floor: providers report Retry-After: 1 for a
-        # per-minute token-per-minute window, where that hint badly underestimates.
-        delay = max(self.rate_limit_wait_seconds, _retry_after(exc) or 0.0)
+        # Fixed app wait; provider Retry-After hints are unreliable for token windows.
+        delay = self.rate_limit_wait_seconds
         logger.warning("Model endpoint rate limited; retry %d/%d in %ss.",
                        attempt + 1, self.rate_limit_retries + 1, delay)
         return delay
