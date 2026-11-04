@@ -1,0 +1,1 @@
+Prompt copy curated: this source read returned {total} lines and only its first {shown} are shown here. The complete result stays in saved evidence. Re-read any passage with read_research_source using query, or start_line with line_count.

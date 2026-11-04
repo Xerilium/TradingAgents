@@ -7,6 +7,13 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
+# A read_research_source result above this size is a whole-document read (or an
+# oversized bounded read); its prompt copy is curated to its head plus a pointer.
+FULL_SOURCE_READ_LIMIT = 12_000
+FULL_SOURCE_READ_LINES = 100
+FULL_SOURCE_READ_CHARS = 8_000
+
+
 
 
 def research_memory_guidance(tools, workflow):
@@ -58,21 +65,38 @@ def project_history(messages, workflow):
     seen, projected = {}, []
     for message in messages:
         if isinstance(message, ToolMessage) and isinstance(message.content, str):
-            starts = list(re.finditer(r"(?m)^# [^\n]+ complete [^\n]+ filing: period [^\n]+\nSource: [^\n]+\n", message.content))
-            if starts:
-                parts = [message.content[:starts[0].start()]]
-                for index, start in enumerate(starts):
-                    end = starts[index + 1].start() if index + 1 < len(starts) else len(message.content)
-                    filing = message.content[start.start():end]
-                    digest = hashlib.sha256(filing.encode("utf-8")).hexdigest()
-                    if digest in seen:
-                        parts.append(start.group() + workflow.render('shared_duplicate_filing', response_id=seen[digest], digest=digest))
-                    else:
-                        seen[digest] = message.tool_call_id
-                        parts.append(filing)
-                message = message.model_copy(update={"content": "".join(parts)})
+            if message.name == "read_research_source" and len(message.content) > FULL_SOURCE_READ_LIMIT:
+                message = message.model_copy(update={"content": _curated_source_read(message.content, workflow)})
+            else:
+                starts = list(re.finditer(r"(?m)^# [^\n]+ complete [^\n]+ filing: period [^\n]+\nSource: [^\n]+\n", message.content))
+                if starts:
+                    parts = [message.content[:starts[0].start()]]
+                    for index, start in enumerate(starts):
+                        end = starts[index + 1].start() if index + 1 < len(starts) else len(message.content)
+                        filing = message.content[start.start():end]
+                        digest = hashlib.sha256(filing.encode("utf-8")).hexdigest()
+                        if digest in seen:
+                            parts.append(start.group() + workflow.render('shared_duplicate_filing', response_id=seen[digest], digest=digest))
+                        else:
+                            seen[digest] = message.tool_call_id
+                            parts.append(filing)
+                    message = message.model_copy(update={"content": "".join(parts)})
         projected.append(message)
     return projected
+
+
+def _curated_source_read(content, workflow):
+    """Prompt copy of an oversized source read: its head plus a pointer, never the whole document.
+
+    A full read (start_line=1, no line_count) returns the entire filing or article, which
+    re-enters every later round of the analyst and the review pass. The saved ToolMessage
+    stays complete; the model re-reads any passage with query or start_line/line_count.
+    """
+    lines = content.splitlines()
+    head = "\n".join(lines[:FULL_SOURCE_READ_LINES])
+    if len(head) > FULL_SOURCE_READ_CHARS:
+        head = head[:FULL_SOURCE_READ_CHARS].rsplit("\n", 1)[0]
+    return f"{head}\n\n{workflow.render('shared_full_source_read', shown=len(head.splitlines()), total=len(lines)).strip()}"
 
 
 def take_turn(prompt, llm, tools, messages, *, workflow):

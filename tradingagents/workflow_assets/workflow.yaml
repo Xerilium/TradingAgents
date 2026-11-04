@@ -107,6 +107,7 @@ prompts:
   shared_etf: prompts/shared_etf.txt
   shared_evidence_reference: prompts/shared_evidence_reference.txt
   shared_evidence_wrapper: prompts/shared_evidence_wrapper.txt
+  shared_full_source_read: prompts/shared_full_source_read.txt
   shared_historical_identity: prompts/shared_historical_identity.txt
   shared_instrument: prompts/shared_instrument.txt
   shared_language: prompts/shared_language.txt

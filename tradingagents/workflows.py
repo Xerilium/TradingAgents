@@ -98,6 +98,7 @@ PROMPT_VARIABLES = {
     'shared_etf': frozenset(()),
     'shared_evidence_reference': frozenset(('label',)),
     'shared_evidence_wrapper': frozenset(('label', 'text')),
+    'shared_full_source_read': frozenset(('shown', 'total')),
     'shared_historical_identity': frozenset(('label', 'name', 'trade_date')),
     'shared_instrument': frozenset(('instrument_label', 'ticker')),
     'shared_language': frozenset(('lang',)),
