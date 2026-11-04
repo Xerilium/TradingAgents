@@ -448,16 +448,13 @@ _STRING_BOOLEANS = {"true": True, "false": False, "True": True, "False": False}
 
 
 def _advertise_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Flatten conditional rules into the schema advertised to the model.
+    """Expose branch fields without making them mandatory on every call.
 
-    Providers drop allOf/if/then branches from tool schemas, so a field like
-    SequentialThinking.conclusion is invisible as a requirement. Union each
-    branch's required list into the top level; the model cannot over-ask for
-    fields every branch declares valid, and validation still runs on the real
-    schema before dispatch.
+    Field descriptions can explain when a conditional field is required.
+    The original schema is validated before dispatch.
     """
     flat = {**schema, "properties": _schema_properties(schema)}
-    required = list(flat.get("required") or [])
+
     for keyword in ("allOf", "anyOf"):
         for member in schema.get(keyword) or []:
             if not isinstance(member, dict):
@@ -465,16 +462,11 @@ def _advertise_schema(schema: dict[str, Any]) -> dict[str, Any]:
             for branch in (member, member.get("then"), member.get("else")):
                 if not isinstance(branch, dict):
                     continue
-                for field in branch.get("required") or []:
-                    if field not in required:
-                        required.append(field)
-                # Branch-local properties (e.g. conclusion) must be visible too,
-                # or the model cannot emit a field the branch requires.
+
                 for name, spec in (branch.get("properties") or {}).items():
                     if isinstance(spec, dict):
                         flat["properties"].setdefault(name, spec)
-    if required:
-        flat["required"] = required
+
     for keyword in ("allOf", "anyOf", "if", "then", "else"):
         flat.pop(keyword, None)
     return flat

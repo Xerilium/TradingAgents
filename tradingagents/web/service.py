@@ -1310,7 +1310,13 @@ class DeskService:
 
     def start_maenifold(self):
         config = self.store.data["config"]
-        root = Path(config["maenifold_root"]) if config["maenifold_root"] else self.application_root / "maenifold-printer"
+        configured_root = config["maenifold_root"]
+        default_root = self.application_root / "maenifold-printer"
+        if os.name == "nt":
+            default_root = Path("D:/src/printer-data/maenifold")
+            if configured_root and Path(configured_root) == Path("D:/maenifold-printer"):
+                configured_root = ""
+        root = Path(configured_root) if configured_root else default_root
         return self.maenifold.start(config["maenifold_port"], root)
 
     def recovery_action(self, request):
@@ -2575,11 +2581,17 @@ class DeskService:
                     self._event(run_id, "coverage", line, symbol)
         return evidence_by_origin
 
+    def _research_note_gateway(self):
+        instance = self.maenifold.state()
+        if instance["status"] != "running":
+            raise GatewayError("Start the desk-hosted Maenifold service to publish research notes.")
+        return MaenifoldGateway(endpoint=f"http://localhost:{instance['port']}/mcp", timeout=30)
+
     def _publish_research_note(self, run, result):
         """Mirror a completed narrative into Maenifold memory; this must never fail the research run."""
         try:
             yyyy, mm, dd = result["trade_date"].split("-")
-            self.gateway.execute("maenifold.memory", "WriteMemory", {
+            self._research_note_gateway().execute("maenifold.memory", "WriteMemory", {
                 "title": "report",
                 "folder": f"research/{result['symbol']}/{yyyy}/{mm}/{dd}",
                 "content": build_research_note(run, result),
@@ -2588,6 +2600,7 @@ class DeskService:
         except Exception as exc:
             logger.warning("Research memory write failed for %s %s: %s",
                            result["symbol"], result["trade_date"], exc)
+            self._event(run["id"], "error", "Research note publication failed. Check the desk-hosted Maenifold service.", result["symbol"])
 
     def _run_with_evidence(self, run_id, market, workflow):
         from tradingagents.agents.rating import run_rating

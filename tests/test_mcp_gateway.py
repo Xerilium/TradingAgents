@@ -708,13 +708,13 @@ class AdvertisedSchemaTests(unittest.TestCase):
         }
         flat = _advertise_schema(schema)
         self.assertNotIn("allOf", flat)
-        self.assertIn("conclusion", flat["required"])
+        self.assertNotIn("conclusion", flat["required"])
         self.assertIn("thoughtNumber", flat["required"])
         # Branch-only properties must be visible too, or the model cannot emit them.
         self.assertIn("cancel", flat["properties"])
         self.assertEqual(flat.get("additionalProperties"), False)
 
-    def test_thinking_tool_advertises_conclusion_as_required(self):
+    def test_thinking_tool_advertises_conclusion_as_optional(self):
         thinking = GatewayCommand(
             "maenifold.thinking", "SequentialThinking", "think",
             json.loads((Path(__file__).resolve().parent / "fixtures" / "sequential_thinking_schema.json").read_text()),
@@ -730,7 +730,7 @@ class AdvertisedSchemaTests(unittest.TestCase):
 
         tools = build_langchain_tools(ThinkingGateway(), domains=("maenifold.thinking",))
         tool = next(t for t in tools if t.name == "maenifold_thinking__SequentialThinking")
-        self.assertIn("conclusion", tool.args_schema["required"])
+        self.assertNotIn("conclusion", tool.args_schema.get("required", []))
         self.assertNotIn("allOf", tool.args_schema)
         self.assertIn("conclusion", tool.args_schema["properties"])
 

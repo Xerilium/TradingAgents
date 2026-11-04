@@ -277,8 +277,7 @@ provider, not the name of the Codex desk adapter.
 Maenifold's configured default endpoint is `http://localhost:8080/mcp`; it serves
 research integration, not the Nautilus engine. New research can require that
 service and provider authentication. The desk-hosted instance defaults to port
-8085 and a `maenifold-printer` folder under the desk data folder, and it shares
-nothing with that service. No new research was run in the latest UAT.
+8085. On Windows, the default data folder is `D:/src/printer-data/maenifold`. A saved `D:/maenifold-printer` path resolves to the new folder on startup. Completed research notes go to the desk-hosted service. No new research was run in the latest UAT.
 
 **No approved order** means there is no currently approved proposal; it does not
 mean the account is globally disabled. **Pause new orders** is an explicit

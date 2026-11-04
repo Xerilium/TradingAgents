@@ -80,8 +80,8 @@ class ResearchMemoryNoteTests(unittest.TestCase):
         self.run = {"id": "run-77", "trade_date": "2026-11-04"}
 
     def publish(self, gateway):
-        # The helper only touches self.gateway, so a stub receiver is sufficient.
-        DeskService._publish_research_note(types.SimpleNamespace(gateway=gateway), self.run, self.result)
+        receiver = types.SimpleNamespace(_research_note_gateway=lambda: gateway, _event=lambda *args: None)
+        DeskService._publish_research_note(receiver, self.run, self.result)
 
     def test_completed_symbol_writes_exactly_one_replacing_note(self):
         gateway = RecordingGateway()

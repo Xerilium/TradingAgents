@@ -27,6 +27,8 @@ TOOLS = (
 
 def create_news_analyst(llm, tools=None, *, relevance_screen=None, workflow):
     tools = TOOLS if tools is None else tuple(tools)
+    screened_news = {}
+
     def news_analyst_node(state):
         current_date = state["trade_date"]
         required = request_inputs(state, "news_report", [
@@ -48,11 +50,16 @@ def create_news_analyst(llm, tools=None, *, relevance_screen=None, workflow):
             news_calls = {call["id"] for message in state["messages"]
                           for call in getattr(message, "tool_calls", ()) if call["name"] == get_news.name}
             screen = relevance_screen(state["company_of_interest"], instrument_context=instrument_context)
-            state = {**state, "messages": [
-                message.model_copy(update={"content": screen(str(message.content))})
-                if isinstance(message, ToolMessage) and message.tool_call_id in news_calls
-                and isinstance(message.content, str) else message
-                for message in state["messages"]]}
+            messages = []
+            for message in state["messages"]:
+                if (isinstance(message, ToolMessage) and message.tool_call_id in news_calls
+                        and isinstance(message.content, str)):
+                    key = (state["company_of_interest"], current_date, message.tool_call_id)
+                    if key not in screened_news:
+                        screened_news[key] = screen(message.content)
+                    message = message.model_copy(update={"content": screened_news[key]})
+                messages.append(message)
+            state = {**state, "messages": messages}
 
         system_message = (
             workflow.render('news_analyst', asset_label=asset_label, research_memory_guidance=research_memory_guidance(tools, workflow), get_language_instruction=get_language_instruction(workflow))
