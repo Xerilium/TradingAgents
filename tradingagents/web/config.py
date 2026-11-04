@@ -42,6 +42,8 @@ class DeskConfig(BaseModel):
     llm_retries: int = Field(default=3, ge=0, le=10, strict=True)
     llm_retry_seconds: int = Field(default=30, ge=0, le=600, strict=True)
     laya_device: Literal["cpu", "gpu"] = "cpu"
+    maenifold_port: int = Field(default=8085, ge=1024, le=65535, strict=True)
+    maenifold_root: str = Field(default="", max_length=500)
     social_screen_timeout_seconds: int = Field(default=600, ge=1)
     social_screen_max_posts: int = Field(default=100, ge=1)
     selected_analysts: list[Literal["market", "social", "news", "fundamentals"]] = Field(

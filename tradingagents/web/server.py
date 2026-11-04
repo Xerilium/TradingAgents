@@ -420,6 +420,10 @@ class DeskHandler(BaseHTTPRequestHandler):
                 result = service.start_native(data)
             elif path == "/api/nautilus/stop":
                 result = service.runtime.stop()
+            elif path == "/api/maenifold/start":
+                result = service.start_maenifold()
+            elif path == "/api/maenifold/stop":
+                result = service.maenifold.stop()
             elif path == "/api/quotes/refresh":
                 result = service.refresh_quotes()
             elif path == "/api/refresh":

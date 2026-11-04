@@ -30,6 +30,7 @@ from tradingagents.integrations.maenifold import (
     GatewayError,
     GatewayRateLimited,
     MaenifoldGateway,
+    MaenifoldInstance,
     build_langchain_tools,
 )
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
@@ -203,6 +204,7 @@ class DeskService:
         self.runtime = runtime or NautilusRuntime(
             Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe",
             os.getenv("TRADINGAGENTS_DESKTOP_PROFILE", "development"))
+        self.maenifold = MaenifoldInstance()
         DeskConfig.model_validate(self.store.data["config"])
         self.configure_symbols()
         self.gateway = gateway or MaenifoldGateway(timeout=90)
@@ -637,6 +639,7 @@ class DeskService:
         data["trading_paused"] = data["commands"]["data"].get("new_orders_blocked", False)
         data["readiness"] = self.readiness(data["config"], probe=False)
         data["nautilus"] = self.runtime.state()
+        data["maenifold"] = self.maenifold.state()
         data["broker_mutations_enabled"] = self.admission.execution_enabled
         data["browse_only"] = self.browse_only
         data["company_names"] = {s: self.company_names[s] for s in set(data["config"]["universe"]) | {p["symbol"] for p in data.get("positions", [])} if s in self.company_names}
@@ -1246,6 +1249,11 @@ class DeskService:
         if current.get("status", "stopped") in {"stopped", "disconnected"} or selected is not None and selected != current.get("execution_profile"):
             self.runtime.configure(self.runtime.symbols, execution_profile=selected if selected is not None else "long_only")
         return self.runtime.start()
+
+    def start_maenifold(self):
+        config = self.store.data["config"]
+        root = Path(config["maenifold_root"]) if config["maenifold_root"] else self.application_root / "maenifold-printer"
+        return self.maenifold.start(config["maenifold_port"], root)
 
     def recovery_action(self, request):
         from .recovery import backup, restore, stage
@@ -3108,3 +3116,4 @@ class DeskService:
         self.attention_monitor.close()
         self.data_jobs.close()
         self.runtime.stop()
+        self.maenifold.stop()

@@ -13,7 +13,10 @@ import copy
 import json
 import logging
 import math
+import os
 import re
+import shutil
+import subprocess
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -21,6 +24,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time as datetime_time, timedelta
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any, Protocol, TypeVar
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
@@ -1125,3 +1129,73 @@ def verify_paper_configuration(gateway: Gateway) -> dict[str, Any]:
         "verification": "registered_server_configuration",
         "runtime_endpoint_attested": False,
     }
+
+
+# shortcut: readiness is inferred from a surviving child after this window; upgrade if Maenifold exposes a readiness probe.
+_READY_SECONDS = 3
+
+
+class MaenifoldInstance:
+    """Host one desk-owned Maenifold child on its own port and memory root.
+
+    Isolation comes from ``MAENIFOLD_ROOT`` and ``--port`` only. Stop terminates
+    the child this desk launched; it never touches another Maenifold installation.
+    """
+
+    def __init__(self) -> None:
+        self.lock = threading.RLock()
+        self.process, self.port, self.root = None, None, None
+        self.status, self.error, self.started_at = "not_running", None, None
+
+    def start(self, port: int, root: str | Path) -> dict[str, Any]:
+        with self.lock:
+            if self.process and self.process.poll() is None:
+                return self.state()
+            executable = shutil.which("maenifold")
+            if not executable:
+                self.status, self.error = "error", "Maenifold was not found on PATH"
+                raise ValueError(self.error)
+            self.root = Path(root)
+            self.root.mkdir(parents=True, exist_ok=True)
+            try:
+                self.process = subprocess.Popen(
+                    [executable, "--http", "--port", str(port)],
+                    env={**os.environ, "MAENIFOLD_ROOT": str(self.root)},
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+            except OSError as failure:
+                self.status, self.error = "error", f"Maenifold startup failed: {failure}"
+                raise ValueError(self.error) from None
+            self.port = port
+            self.started_at, self.status, self.error = datetime.now(UTC).isoformat(), "starting", None
+            return self.state()
+
+    def stop(self) -> dict[str, Any]:
+        with self.lock:
+            process = self.process
+            if process and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            self.process, self.started_at = None, None
+            self.status, self.error = "not_running", None
+            return self.state()
+
+    def state(self) -> dict[str, Any]:
+        with self.lock:
+            process, status, error = self.process, self.status, self.error
+            if process is not None:
+                exit_code = process.poll()
+                if exit_code is not None:
+                    status, error = "error", error or f"Maenifold exited with status {exit_code}"
+                    self.status, self.error = status, error
+                elif datetime.now(UTC) - datetime.fromisoformat(self.started_at) >= timedelta(seconds=_READY_SECONDS):
+                    status, self.status = "running", "running"
+            return {
+                "status": status, "port": self.port, "root": str(self.root) if self.root else None,
+                "pid": process.pid if process else None, "error": error, "started_at": self.started_at,
+            }

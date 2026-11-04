@@ -73,7 +73,8 @@ app-server provider. Read saved settings to establish the active selection.
 The Maenifold integration discovers Gateway command schemas and applies allowed
 tool boundaries. Configured agents can use context retrieval, memory reads,
 concept graphs and SequentialThinking. Not every model call, data request or
-local classifier pass travels through Maenifold.
+local classifier pass travels through Maenifold. The desk can host its own
+Maenifold instance on a separate port and data root from Settings.
 
 ### Research data and evidence
 
@@ -246,7 +247,7 @@ reload a concurrent change rather than silently overwriting it.
 | Research graph and validation | [graph/setup.py](../tradingagents/graph/setup.py), [workflows.py](../tradingagents/workflows.py) |
 | Provider selection and adapters | [factory.py](../tradingagents/llm_clients/factory.py), [chatgpt_client.py](../tradingagents/llm_clients/chatgpt_client.py), [openai_client.py](../tradingagents/llm_clients/openai_client.py) |
 | Laya and social policy | [integrations/laya.py](../tradingagents/integrations/laya.py), [post_screen.py](../tradingagents/agents/post_screen.py) |
-| Maenifold and data routing | [integrations/maenifold.py](../tradingagents/integrations/maenifold.py), [dataflows/router.py](../tradingagents/dataflows/router.py) |
+| Maenifold, desk-hosted instance and data routing | [integrations/maenifold.py](../tradingagents/integrations/maenifold.py), [dataflows/router.py](../tradingagents/dataflows/router.py) |
 | Joint model allocation | [portfolio_model.py](../tradingagents/web/portfolio_model.py) |
 | Drafts, baskets and exact review | [investor.py](../tradingagents/web/investor.py), [baskets.py](../tradingagents/web/baskets.py), [approval_review.py](../tradingagents/web/approval_review.py) |
 | Admission and command lifecycle | [admission.py](../tradingagents/web/admission.py), [execution_lifecycle.py](../tradingagents/web/execution_lifecycle.py) |

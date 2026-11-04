@@ -249,8 +249,9 @@ feed is not published and an end-to-end update has not been proven. macOS
 dependency locks target macOS 26 or later on Apple silicon; no macOS build has
 been made.
 
-The installed desk still depends on a signed-in Codex installation and an
-external Maenifold service for those integrations.
+The installed desk still depends on a signed-in Codex installation and a
+Maenifold service for those integrations. The desk can host its own Maenifold
+instance on a separate port and data folder from **Settings → Integrations**.
 
 Preserve these local files when moving the checkout. Do not replace them with
 fresh data or commit databases, credentials, environment files or backup archives.
@@ -267,7 +268,7 @@ Simulations**. Reusable experiments are **Strategy lab → Experiments**.
 | Portfolio | Check account balances and holdings; scan the universe using search, filters, sorting and columns. Select stocks to organize watchlists. Open a stock's market evidence and available charts before relying on an agent recommendation. |
 | Research | Choose a stock's latest saved result. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
 | Orders | Create or review a local proposal or basket. Check symbol, side, quantity, order type, limit price when applicable and time in force. Read readiness reasons. Approve exact terms, then separately Submit only when intentionally placing an order. |
-| Settings | Categories are Account, Research, Trading rules, Integrations, and Diagnostics. Start and stop Nautilus from Account. Edit the named universe, import a Symbol/Ticker CSV, and change models or provider under Research. Those changes apply to future research. Account and Integrations identify the observed account and price feed. |
+| Settings | Categories are Account, Research, Trading rules, Integrations, and Diagnostics. Start and stop Nautilus from Account. Start, stop, and check a desk-hosted Maenifold from Integrations. Edit the named universe, import a Symbol/Ticker CSV, and change models or provider under Research. Those changes apply to future research. Account and Integrations identify the observed account and price feed. |
 | Journal | Views are Decisions, Position outcomes, Notes, and Account history. Inspect saved decisions, research links, proposals and baskets. Record follow-up notes and export selected records. Reporting uses available records and configured periods; absent data is not fabricated performance. |
 
 The desk default provider is `codex`, with models `gpt-6-sol` and `gpt-6-luna`.
@@ -275,7 +276,9 @@ The desk default provider is `codex`, with models `gpt-6-sol` and `gpt-6-luna`.
 provider, not the name of the Codex desk adapter.
 Maenifold's configured default endpoint is `http://localhost:8080/mcp`; it serves
 research integration, not the Nautilus engine. New research can require that
-service and provider authentication. No new research was run in the latest UAT.
+service and provider authentication. The desk-hosted instance defaults to port
+8085 and a `maenifold-printer` folder under the desk data folder, and it shares
+nothing with that service. No new research was run in the latest UAT.
 
 **No approved order** means there is no currently approved proposal; it does not
 mean the account is globally disabled. **Pause new orders** is an explicit
