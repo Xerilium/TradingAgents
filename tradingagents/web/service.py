@@ -2584,7 +2584,6 @@ class DeskService:
             folder = f"research/{result['symbol']}/{yyyy}/{mm}/{dd}"
             title = "report"
             if asset is not None:
-                folder = f"{folder}/runs/{run['id']}"
                 title = asset.replace("_", "-")
                 result = {**result, "reports": {asset: result["reports"][asset]}}
             self._research_note_gateway().execute("maenifold.memory", "WriteMemory", {
