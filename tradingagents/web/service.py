@@ -2487,7 +2487,14 @@ class DeskService:
                     attempt = gap.get("attempt")
                     if attempt is None:
                         attempt = gap.get("ordinal")
+                    # A failed news fetch should say which window it failed on.
+                    window = ""
+                    if gap.get("outcome") == "error":
+                        args = gap.get("arguments") or {}
+                        if args.get("start_date") and args.get("end_date"):
+                            window = f"Window: {args['start_date']}..{args['end_date']}. "
                     line = (f"{gap.get('operation') or gap.get('source')} / {gap.get('vendor') or ('Laya' if gap.get('source') in {'reddit', 'stocktwits'} else 'local capture')}: {cause.rstrip('.')}. "
+                            f"{window}"
                             f"Coverage: {coverage}. Attempt: {attempt if attempt is not None else 'not captured'}; "
                             f"retry decision: {gap.get('retry_action') or 'not captured'}. Receipt: {gap.get('attempt_id', 'not captured')}. "
                             "Use retained evidence only; do not infer missing values or neutral sentiment.")

@@ -158,7 +158,8 @@ def _gateway_failure_details(error):
                 r"SESSION_MISSING|CONCEPT_NOT_FOUND|concept not found|not configured|no news response|"
                 r"no news articles tagged|maintenance|rate limited|temporarily unavailable|No results found|"
                 r"NOT_FOUND|Memory file not found|Directory not found|SESSION_CLOSED|SESSION_EXISTS|"
-                r"GATEWAY_VALIDATION_FAILED|Missing required parameter\(s\)(?: for [\w./-]+)?")
+                r"GATEWAY_VALIDATION_FAILED|Missing required parameter\(s\)(?: for [\w./-]+)?|"
+                r"YAHOO! FINANCE IS CURRENTLY DOWN")
     safe_messages = (r"MCP operation timed out\. Its result may be unknown; mutations must not be retried\.|"
                      r"MEMORY_(?:READ_REQUIRED|CHECKSUM_MISMATCH|CHECKSUM_CONFLICT|WIKILINK_REQUIRED|WIKILINK_REJECTED)|"
                      r"The upstream Gateway tool reported (?:a text error|an error)\.|"
@@ -170,7 +171,9 @@ def _gateway_failure_details(error):
                      r"SESSION_EXISTS: Reuse the returned sessionId, or use a different sessionId\.?|"
                      r"Upstream rate limit \(429\)\. Wait \d+ seconds before trying again\.|"
                      r"(?:Original )?[Ss]ocial screening (?:time budget expired while queued|"
-                     r"processing budget expired before dispatch|stopped by operator)")
+                     r"processing budget expired before dispatch|stopped by operator)|"
+                     # The vendor wrapper names the swallowed cause class; fixed text, safe to show.
+                     r"Yahoo Finance request failed: [A-Za-z_][A-Za-z0-9_.]{0,79}")
     while pending and len(details) < 6:
         current = pending.pop(0)
         if id(current) in seen:
