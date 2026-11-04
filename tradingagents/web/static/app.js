@@ -1053,10 +1053,14 @@ function researchPickerSymbols(){
  const view=listViews.research;return [...new Set([...universe(),...Object.keys(state.research||{})])].filter(symbol=>matchesStock(symbol,view.query)&&(view.filter==='all'||view.filter==='selected'&&selectedSymbols.has(symbol)||researchRowStatus(state.research?.[symbol],null)===view.filter));
 }
 function researchProgress(run){
- const results=run?.results||[],statuses=['completed','incomplete','failed','cancelled','running','queued'],counts=Object.fromEntries(statuses.map(status=>[status,0])),other={};
- for(const result of results){const status=researchRowStatus(result,run);if(status in counts)counts[status]++;else other[status]=(other[status]||0)+1;}
- const remaining=counts.running+counts.queued,estimate=remaining?DeskLists.estimate(runs(),run.config||{},remaining):null;
- return '<section class="research-progress" aria-label="Research queue status">'+statuses.map(status=>'<span class="research-progress-count '+status+'">'+counts[status]+' '+status+'</span>').join('')+Object.entries(other).map(([status,n])=>'<span>'+n+' '+esc(status)+'</span>').join('')+(remaining?'<span>'+esc(estimate?'About '+DeskLists.duration(estimate.seconds)+' remaining':'No timing yet')+'</span>':'')+'</section>';
+ const statuses=['completed','incomplete','failed','cancelled','running','queued'];
+ const symbols=[...new Set([...universe(),...Object.keys(state.research||{})])];
+ const counts=Object.fromEntries(statuses.map(status=>[status,0]));
+ for(const symbol of symbols){const status=researchRowStatus(state.research?.[symbol],null);if(status in counts)counts[status]++;}
+ const remaining=(run?.results||[]).filter(result=>['running','queued'].includes(result.status)).length;
+ const estimate=remaining?DeskLists.estimate(runs(),run.config||{},remaining):null;
+ const filters=[['all','All stocks'],['selected','Batch selected'],...statuses.map(status=>[status,counts[status]+' '+status])];
+ return '<section class="research-progress" aria-label="Filter research stocks">'+filters.map(([status,label])=>'<button type="button" class="research-progress-count '+status+'" data-research-filter="'+status+'" aria-pressed="'+(listViews.research.filter===status)+'">'+label+'</button>').join('')+(remaining?'<span>'+esc(estimate?'About '+DeskLists.duration(estimate.seconds)+' remaining':'No timing yet')+'</span>':'')+'</section>';
 }
 function researchDrift(symbol){
  const q=state?.quotes?.[symbol]||{},research=state?.research?.[symbol];
@@ -1074,13 +1078,20 @@ function researchSorted(items){
 }
 function researchCollection(run){
  const items=researchSorted(researchPickerSymbols()),p=listPage('research',items),selectable=p.items.filter(symbol=>universe().includes(symbol)),allSelected=selectable.length>0&&selectable.every(symbol=>selectedSymbols.has(symbol));
- const toolbar=listToolbar('research',[['all','All stocks'],['selected','Batch selected'],['completed','Completed'],['incomplete','Incomplete'],['running','Running'],['queued','Queued'],['failed','Failed'],['cancelled','Cancelled']]).replace(/<\/div>$/,'<label for="research-sort">Sort<select id="research-sort" class="form-control">'+RESEARCH_SORTS.map(([key,label])=>'<option value="'+key+'" '+(researchSort===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><button class="link-button" data-research-select-all aria-pressed="'+allSelected+'" title="Select every stock shown on this page for the research batch" '+(selectable.length?'':'disabled')+'>Select all</button><button class="link-button" data-research-manage>Manage</button></div>');
+ const toolbar=listToolbar('research').replace(/<\/div>$/,'<label for="research-sort">Sort<select id="research-sort" class="form-control">'+RESEARCH_SORTS.map(([key,label])=>'<option value="'+key+'" '+(researchSort===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><button class="link-button" data-research-select-all aria-pressed="'+allSelected+'" title="Select every stock shown on this page for the research batch" '+(selectable.length?'':'disabled')+'>Select all</button><button class="link-button" data-research-manage>Manage</button></div>');
  return toolbar+'<div class="research-rows">'+p.items.map(symbol=>{
   const held=positions().find(position=>position.symbol===symbol);
   return '<div class="research-picker-row"><input type="checkbox" class="symbol-select" id="research-batch-'+esc(symbol)+'" value="'+esc(symbol)+'" aria-label="Include '+esc(symbol)+' in research batch" '+(selectedSymbols.has(symbol)?'checked':'')+' '+(!universe().includes(symbol)?'disabled':'')+'><div id="research-symbol-'+esc(symbol)+'" role="button" tabindex="0" class="research-symbol" data-action="select-symbol" data-symbol="'+esc(symbol)+'" aria-pressed="'+(symbol===selectedSymbol)+'"><strong>'+esc(symbol)+'</strong><span>'+esc(researchAgeLabel(symbol))+' · Drift '+esc(researchDrift(symbol))+'</span><small>'+(!exposureKnown()?'UNKNOWN':held?esc(held.qty)+' sh':'—')+'</small></div></div>';
  }).join('')+'</div>'+(!items.length?emptyMatches():'')+listPager('research',p)+researchDeletePanel(run);
 }
 document.addEventListener('click',event=>{
+ const filter=event.target.closest('[data-research-filter]')?.dataset.researchFilter;
+ if(filter){
+  Object.assign(listViews.research,{filter,page:0});
+  render();
+  document.querySelector('[data-research-filter="'+filter+'"]')?.focus();
+  return;
+ }
  if(event.target.closest('[data-research-picker-focus]')){$('#research-search')?.focus();$('#research-search')?.scrollIntoView({block:'nearest'});}
  if(event.target.closest('[data-research-select-all]')){const symbols=listPage('research',researchSorted(researchPickerSymbols())).items.filter(symbol=>universe().includes(symbol));if(symbols.length&&symbols.every(symbol=>selectedSymbols.has(symbol)))symbols.forEach(symbol=>selectedSymbols.delete(symbol));else symbols.forEach(symbol=>selectedSymbols.add(symbol));render();}
  if(event.target.closest('[data-research-manage]')){const panel=$('#research-delete');panel.open=!panel.open;panel.scrollIntoView({block:'nearest'});}
