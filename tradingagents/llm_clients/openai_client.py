@@ -105,6 +105,21 @@ class NormalizedChatOpenAI(ChatOpenAI):
                 time.sleep(delay)
                 attempt += 1
 
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        # Research runs invoke every model call async, so the retry budget must
+        # exist here too; without this override the configured retries are dead
+        # on that path and a 429 aborts the run. Shares the sync decision helpers.
+        attempt = 0
+        while True:
+            try:
+                return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as exc:
+                delay = self._rate_limit_delay(attempt, exc) if _is_rate_limit(exc) else None
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+                attempt += 1
+
     def with_structured_output(self, schema, *, method=None, **kwargs):
         caps = get_capabilities(self.model_name)
         if caps.preferred_structured_method == "none":
