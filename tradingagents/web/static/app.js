@@ -3858,10 +3858,13 @@ async function runManualScenario(){
    const collection=await api('/api/evaluations',{action:'collect_inputs',portfolio_id:request.portfolio_id,portfolio_revision:request.portfolio_revision,start:request.start,end:request.end,...(jobIds.length?{job_ids:jobIds}:{})});
    jobIds=collection.job_ids||jobIds;
    const jobs=collection.jobs||[], failed=jobs.find(job=>['failed','error','interrupted','canceled','cancelled','completed_with_gaps'].includes(job.status));
-   if((failed||(collection.failures||[]).length)&&!jobs.some(job=>['queued','running'].includes(job.status))){manualScenario.failures=collection.failures||[];const first=manualScenario.failures[0];throw Error('Price or corporate action collection failed: '+(first?[first.symbol,first.source,first.reason].filter(Boolean).join(' · '):(failed?.error||failed?.status||'Unavailable input')));}
    const missing=(collection.missing?.history?.length||0)+(collection.missing?.corporate_actions?.length||0);
    manualScenario.message='Collecting prices and corporate actions · '+missing+' inputs missing · '+jobs.map(job=>job.status+(job.progress?' '+JSON.stringify(job.progress):'')).join(', ');render();
-   if(!jobs.some(job=>['queued','running'].includes(job.status))){if(missing)throw Error('Historical inputs remain unavailable for '+missing+' symbols or actions.');break;}
+   if(!jobs.some(job=>['queued','running'].includes(job.status))){
+    manualScenario.failures=[...(collection.failures||[]),...(collection.problems||[]).map(reason=>({reason})),...(collection.missing?.history||[]).map(symbol=>({symbol,source:'Price history',reason:'Unavailable'})),...(collection.missing?.corporate_actions||[]).map(symbol=>({symbol,source:'Corporate actions',reason:'Unavailable'}))];
+    if(failed||manualScenario.failures.length){const first=manualScenario.failures[0];throw Error('Historical inputs unavailable: '+(first?[first.symbol,first.source,first.reason].filter(Boolean).join(' · '):(failed?.error||failed?.status||'Unavailable input')));}
+    break;
+   }
    await new Promise(resolve=>setTimeout(resolve,3000));
   }
   manualScenario.message='Running historical scenario…';render();
