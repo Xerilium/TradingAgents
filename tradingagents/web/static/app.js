@@ -3676,7 +3676,6 @@ async function loadManualDates(){
  const scenario=manualScenario;if(scenario.datesLoading)return;
  scenario.datesRequested=true;scenario.datesLoading=true;scenario.datesMessage='Loading trading calendar…';
  const originalStart=scenario.start,originalEnd=scenario.end;
- if(activePage==='strategy')render();
  try{
   const dates=await api('/api/portfolio-dates');
   if(scenario.start===originalStart&&scenario.end===originalEnd){scenario.start=dates.start;scenario.end=dates.end;}
@@ -3839,7 +3838,7 @@ document.addEventListener('click',event=>{
  if(id==='manual-add-universe'&&d){const existing=new Set(d.allocations.map(row=>row.symbol)),refs=new Map((manualSnapshot()?.entries||[]).map(row=>[row.symbol,row]));for(const symbol of universe())if(!existing.has(symbol))d.allocations.push({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined});d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-equal'&&d&&d.allocations.length){const weight=manualDecimalString(10n**12n/BigInt(d.allocations.length),12);d.allocations.forEach(row=>row.weight=weight);d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-run'&&d&&!m.dirty){manualScenario.portfolioId=d.id;strategyTab='simulations';strategyView='setup';navigatePage('strategy');}
- if(id==='manual-scenario-ytd')loadManualDates();
+ if(id==='manual-scenario-ytd'){loadManualDates();render();}
  if(id==='manual-scenario-run')runManualScenario();
 });
 
