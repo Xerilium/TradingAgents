@@ -174,6 +174,28 @@ boundary needs the pre-fetch observation time or another conservative proof.
 Likewise, cash minus reserve alone is not free buying capacity when working
 commitments exist. Neither figure may be labeled withdrawable cash.
 
+### Independent review of `d98002a`
+
+The fresh money/authority and UI/scope reviewers inspected the changes from
+`b906008` to `d98002a`; separate source verifiers challenged their findings.
+No test, browser, API, credential or broker action was part of this review.
+Confirmed findings, deduplicated:
+
+- P1: the new pre-dispatch guard expected `admitted_not_dispatched`, but
+  `submit_approved()` already records `dispatch_intent` with transport not
+  started. It would block every otherwise admissible SPY leg.
+- P2: the new gain/loss view labeled connected live holdings as paper and exposed
+  its preparation action without a paper-identity gate. No submission occurred.
+- P1: old fund drafts lacked workspace-generation binding and could overwrite
+  same-revision restored terms after a restore.
+- P2: a lower restored fund-record revision could leave the old budget displayed.
+
+The primary assistant also identified introduced exact-equity equality gates
+that would reject ordinary price-driven mark changes, and editable controls
+during a fund save that could strand later edits on stale revisions. All six
+scenarios are being corrected as one batch before the browser cycle. Reviewer
+claims remain static source evidence, not observed broker execution.
+
 ### Verification matrix
 
 | Path | Required evidence | Current result |

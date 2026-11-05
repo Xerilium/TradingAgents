@@ -211,6 +211,36 @@ These are source capabilities, not proof of exercised broker/native acceptance
 for every profile. The live account, current permissions and readiness checks
 control actual availability. Paper fills also do not establish live execution.
 
+### Account fund plans and paper gain/loss review
+
+Orders → SPY Rebalance includes a saved plan for the currently observed USD paper
+account. Monthly net withdrawals from that account, reserve coverage in months,
+a manual tax provision and a trading cushion are explicit nullable terms. Blank
+is unknown; zero must be authored. Planning-only plans do not constrain sizing.
+An applied incomplete plan blocks SPY sizing. Other saved account plans are
+inspection-only, without unobserved balances or consolidated fund totals.
+
+The authored reserve is monthly withdrawals × months + tax provision + cushion.
+The SPY sizing reserve is the greater of that sum and the enabled Trading Rules
+percentage cash floor. It is not both added together. SPY weights apply to the
+remaining investable sleeve, with existing gross/single-stock caps and quantity
+precision. Working or unknown commitments make spendable-cash estimates
+unavailable. Observed cash is not a settled or withdrawable balance.
+
+Material plan changes pause automatic paper trading, invalidate the old preview
+and block further run dispatch. Explicit re-enablement is required; already-sent
+orders are not canceled. Plans and runs bind account, connection and revisions.
+After a fill, continuation requires reconciled expected holdings and an account
+fetch begun after that fill. Restore disables standing authority and invalidates
+active runs. These are source safety boundaries, not broker-execution evidence.
+
+Portfolio's paper gain/loss review uses broker-reported average-position
+unrealized P&L. Prepare sell opens an ordinary unsaved ticket; exact quantity,
+terms, approval and submission remain separate. It is not tax-lot selection,
+realized tax profit/loss, household wash-sale clearance or transfer execution.
+Existing qualified Performance comparisons remain price-only where stated;
+no new consolidated fund or SPY total-return calculation is implied.
+
 ## Strategy lab and historical evaluation
 
 Evaluation workers use retained qualified sources and Nautilus BacktestEngine
@@ -262,6 +292,7 @@ reload a concurrent change rather than silently overwriting it.
 | Maenifold, desk-hosted instance and data routing | [integrations/maenifold.py](../tradingagents/integrations/maenifold.py), [dataflows/router.py](../tradingagents/dataflows/router.py) |
 | Joint model allocation | [portfolio_model.py](../tradingagents/web/portfolio_model.py) |
 | Drafts, baskets and exact review | [investor.py](../tradingagents/web/investor.py), [baskets.py](../tradingagents/web/baskets.py), [approval_review.py](../tradingagents/web/approval_review.py) |
+| Account fund plans and paper SPY sizing | [fund_plans.py](../tradingagents/web/fund_plans.py), [spy_rebalance.py](../tradingagents/web/spy_rebalance.py) |
 | Admission and command lifecycle | [admission.py](../tradingagents/web/admission.py), [execution_lifecycle.py](../tradingagents/web/execution_lifecycle.py) |
 | Nautilus and Alpaca | [nautilus_worker.py](../tradingagents/web/nautilus_worker.py), [nautilus_runtime.py](../tradingagents/web/nautilus_runtime.py), [alpaca_readonly.py](../tradingagents/web/alpaca_readonly.py), [alpaca_stream.py](../tradingagents/web/alpaca_stream.py) |
 | History, discovery and evaluation | [market_history.py](../tradingagents/web/market_history.py), [market_discovery.py](../tradingagents/web/market_discovery.py), [evaluation.py](../tradingagents/web/evaluation.py), [evaluation_worker.py](../tradingagents/web/evaluation_worker.py) |
