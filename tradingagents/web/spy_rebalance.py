@@ -226,8 +226,6 @@ class SpyRebalance:
             raise ValueError("Paper holdings changed. Preview the SPY rebalance again.")
         if decimal(cash) is None or decimal(runtime["account"].get("cash")) != decimal(cash):
             raise ValueError("Paper cash changed. Preview the SPY rebalance again.")
-        if decimal(runtime["account"].get("equity")) != decimal(run.get("fund_budget", {}).get("equity_usd")):
-            raise ValueError("Paper equity changed. Preview the SPY rebalance again.")
 
     @staticmethod
     def check_plan_policy(store, run):
@@ -584,9 +582,9 @@ class SpyRebalance:
             expected = {key: Decimal(value) for key, value in run["current"].items() if Decimal(value) != 0}
             if positions != expected:
                 raise ValueError("Paper holdings changed after the daily plan was made.")
-            if run["fills_completed"] == 0 and (decimal(runtime["account"].get("cash")) != decimal(run["initial_cash"])
-                    or decimal(runtime["account"].get("equity")) != decimal(run["fund_budget"]["equity_usd"])):
-                raise ValueError("Paper cash or equity changed after the daily plan was made.")
+            if run["fills_completed"] == 0 and (decimal(run["initial_cash"]) is None
+                    or decimal(runtime["account"].get("cash")) != decimal(run["initial_cash"])):
+                raise ValueError("Paper cash changed after the daily plan was made.")
             terms = dict(run["legs"][run["completed"]])
             symbol, limited = terms["symbol"], run["limited"]
             if terms["side"] == "BUY":
@@ -608,7 +606,8 @@ class SpyRebalance:
                 current_plan = self.check_fund_binding(store, latest, run)
                 latest_commands = database.read("commands", COMMANDS)["data"]
                 admitted = latest_commands["commands"].get(command_id) or {}
-                if admitted.get("state") != "admitted_not_dispatched":
+                if (admitted.get("state") != "dispatch_intent"
+                        or admitted.get("transport_attempt") != {"version": 1, "state": "not_started"}):
                     raise ValueError("The admitted SPY order changed before dispatch. Review the rebalance.")
                 other_commands = {**latest_commands, "commands": {key: value for key, value in latest_commands["commands"].items() if key != command_id}}
                 self.require_no_working_orders(latest, other_commands)
@@ -618,7 +617,6 @@ class SpyRebalance:
                     if commitment is None or commitment < 0 or commitment > available:
                         raise ValueError("The admitted buy commitment exceeds cash available above the reserve.")
                 if (decimal(latest["account"].get("cash")) != decimal(runtime["account"].get("cash"))
-                        or decimal(latest["account"].get("equity")) != decimal(runtime["account"].get("equity"))
                         or latest.get("orders") != runtime.get("orders")
                         or self.check_positions(latest, set(data["managed_symbols"])) != self.check_positions(runtime, set(data["managed_symbols"]))):
                     raise ValueError("The account observation changed before dispatch. Review the rebalance.")
