@@ -635,7 +635,7 @@ async function readState({force=false,timeoutMs}={}){
 }
 async function act(key,path,body,success){if(busy.has(key))return;busy.add(key);errorMessage='';render();try{const result=await api(path,body);if(success)showToast(success);await readState({force:true});return result;}catch(e){setError(e.message);throw e;}finally{busy.delete(key);render();}}
 const disclosureViews=new Map(),closedDisclosures=new Map();
-const workspaceScrolls=new Map(),workspaceScrollSelectors=['.workspace-reading','.decision-reading','.settings-content','[data-alert-pane]','.alert-inspector-body','.portfolio-performance','.strategy-setup-rail','.strategy-result-reading'];
+const workspaceScrolls=new Map(),workspaceScrollSelectors=['.workspace-reading','.decision-reading','.settings-content','[data-alert-pane]','.alert-inspector-body','.portfolio-performance','.strategy-setup-rail','.strategy-result-reading','.spy-preview-trades'];
 function captureWorkspaceScroll(){for(const node of document.querySelectorAll('[data-workspace-scroll-key]'))if(node.getClientRects().length)workspaceScrolls.set(node.dataset.workspaceScrollKey,[node.scrollTop,node.scrollLeft]);}
 function restoreWorkspaceScroll(){
  const record=activePage==='strategy'?[strategyTab,strategyView,strategyTab==='simulations'?evaluationItem?.id:experimentItem?.id,experimentStrategyId]:activePage==='journal'?[journalTab,journalSelected||journalRecord?.decisions?.[0]?.id,decisionTab,journalCollection]:activePage==='settings'?[settingsTab]:activePage==='portfolio'?[portfolioTab,journalCollection]:[alertsTab,attentionEvidenceRequest?.id,alertEvidenceTab];
@@ -3196,13 +3196,16 @@ function policyPanel(){
  return '<details id="investor-policy" class="panel" '+(policyOpen?'open':'')+'><summary>Your risk checks · revision '+investorRecord.data.policy.revision+'</summary>'+investorStatus()+'<p>You can decide later and keep browsing. Only configured checks apply. Unset optional checks do not block orders; they are not treated as disabled or assigned defaults. Saving these choices does not approve or submit orders; exact-revision review and the account order block still apply.</p><div class="policy-rules">'+Object.entries(labels).map(([key,label])=>{const rule=rules[key]||{state:'unset',value:'',reason:''},copy=policyRuleCopy[key]||[label,label,''];return '<fieldset><legend>'+esc(copy[0])+'</legend><p>'+esc(copy[2])+'</p><label>Use this rule<select id="policy-state-'+key+'" data-policy-key="'+key+'" data-policy-field="state">'+['unset','enabled','disabled'].map(v=>'<option value="'+v+'" '+(rule.state===v?'selected':'')+'>'+esc(policyChoiceCopy[v])+'</option>').join('')+'</select></label><label>'+esc(copy[1])+'<input inputmode="decimal" id="policy-value-'+key+'" data-policy-key="'+key+'" data-policy-field="value" value="'+esc(rule.value||'')+'"></label><label>Optional note about this choice<input id="policy-rule-reason-'+key+'" data-policy-key="'+key+'" data-policy-field="reason" value="'+esc(rule.reason||'')+'"></label>'+policyParameterMarkup(key,rule)+'</fieldset>';}).join('')+'</div><label for="policy-reason">Optional note about these changes<textarea id="policy-reason" rows="2">'+esc(policyReason)+'</textarea></label><button id="save-policy">Save risk-check choices</button><p>Saving a policy revision invalidates dependent approval records. Missing source data can block an applied rule; a price-fall estimate is not a guaranteed loss cap.</p><details><summary>Policy history</summary><pre>'+esc(JSON.stringify(investorRecord.data.policy_history,null,2))+'</pre></details></details><details class="panel" id="investor-proposals" '+(proposalListOpen?'open':'')+'><summary>Saved human proposals · '+investorRecord.data.proposals.length+'</summary>'+investorRecord.data.proposals.map(p=>'<article><h3>'+esc(p.terms.side+' '+p.terms.quantity+' '+p.terms.symbol)+' · '+esc(p.status)+' · revision '+p.revision+'</h3><p>'+fullTime(p.updated_at)+(p.restored_requires_review?' · Restored records; impact review required':p.conditions_stale?' · Policy changed; impact review invalidated':'')+'</p><button data-open-proposal="'+esc(p.id)+'">Open exact terms / revise / review</button><details><summary>Revision history and source references</summary><pre>'+esc(JSON.stringify(p.history,null,2))+'</pre></details></article>').join('')+'</details>';
 }
 let basketOpen=false,basketForm={targets:[],reason:'',fee_per_leg:'',slippage_bps:'',assumed_filled:[]},basketPreview=null;
-let spyDedicatedAccount=null,spyRebalanceBusy=false,spyHoldingsMessage='';
+let spyDedicatedAccount=null,spyRebalanceBusy=false,spyHoldingsMessage='',spyPreview=null;
 function spyRebalanceMarkup(){
- const state=investorRecord.spy_rebalance;
- if(!state)return '';
- const {enabled,eligible_account_id:account,account_id:bound,run}=state;
+ const schedule=investorRecord.spy_rebalance;
+ if(!schedule)return '';
+ const {enabled,eligible_account_id:account,account_id:bound,run}=schedule;
  const eligible=account&&(!bound||bound===account)&&investorRecord.broker_transport_enabled;
  const status=enabled?(account===bound?'Enabled':'Waiting for the dedicated paper account'):'Off';
+ const preview=spyPreview?.generation===state.store_generation&&spyPreview?.account===account&&
+  state.nautilus?.status==='connected'&&state.nautilus.account?.id===account?spyPreview:null;
+ const message=spyPreview&&!preview?'':spyHoldingsMessage;
  return '<section aria-label="Daily SPY paper rebalance"><h3>Daily SPY paper rebalance</h3>'+
   '<p>Uses State Street’s holdings from the previous trading session. The desk must be open during regular market hours.</p>'+
   '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
@@ -3212,18 +3215,25 @@ function spyRebalanceMarkup(){
    '<p>Connect the dedicated Alpaca paper account to enable trading.</p>')+
   ' <button data-spy-rebalance="check" '+(spyRebalanceBusy?'disabled':'')+'>Check latest SPY holdings</button>'+
   ' <button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
-  '<p role="status">'+esc(spyRebalanceBusy?'Working…':spyHoldingsMessage)+'</p></section>';
+  '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
+  (preview?.trades.length?'<details id="spy-rebalance-trades" open><summary>Proposed trades ('+esc(preview.trades.length)+')</summary>'+
+   '<p>Share estimates use the latest available prices. The desk recalculates the trades during the next regular session.</p>'+
+   '<div class="table-scroll spy-preview-trades" role="region" aria-label="Proposed SPY trades" tabindex="0"><table class="data-table">'+
+   '<thead><tr><th scope="col">Stock</th><th scope="col">Action</th><th scope="col">Planned shares</th></tr></thead><tbody>'+
+   preview.trades.map(trade=>'<tr><td>'+esc(trade.symbol)+'</td><td>'+esc(trade.side)+'</td><td>'+esc(trade.quantity)+'</td></tr>').join('')+
+   '</tbody></table></div></details>':'')+'</section>';
 }
 async function spyRebalanceAction(action){
  if(spyRebalanceBusy)return;
  const generation=state.store_generation,config=investorRecord.spy_rebalance;
- spyRebalanceBusy=true;spyHoldingsMessage='';render();
+ spyRebalanceBusy=true;spyHoldingsMessage='';spyPreview=null;render();
  try{
   const result=await api('/api/investor',{action:'spy_rebalance_'+action,rebalance_revision:config.revision,
    account_id:config.eligible_account_id,dedicated:spyDedicatedAccount===config.eligible_account_id});
   if(state.store_generation!==generation)return;
   if(action==='check')spyHoldingsMessage='State Street holdings dated '+result.as_of+' · '+result.positions+' stocks';
   else if(action==='preview'){
+   spyPreview={generation,account:config.eligible_account_id,trades:result.trades??[]};
    const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
    spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
     ' · Last price check '+time(result.quote_at)+'.'+

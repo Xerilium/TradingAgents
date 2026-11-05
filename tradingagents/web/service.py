@@ -1617,7 +1617,7 @@ class DeskService:
         if request.get("action") == "spy_rebalance_check":
             return self.spy_rebalance.check_weights()
         if request.get("action") == "spy_rebalance_preview":
-            return self.spy_rebalance.preview_plan()
+            return self.spy_rebalance.preview_plan(request.get("account_id"))
         if request.get("action") == "chart_source":
             return {"chart_source": self.pinned_chart_source(request.get("pin"))}
         if request.get("action") == "chart_copy":

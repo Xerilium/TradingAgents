@@ -83,13 +83,13 @@ class SpyRebalance:
         snapshot = self.latest_weights(self.desk.store)
         return {"as_of": snapshot["as_of"], "positions": len(snapshot["entries"]), "cash_weight": snapshot["cash_weight"]}
 
-    def preview_plan(self):
+    def preview_plan(self, account_id):
         store = self.desk.store
         data = store.database.read(RECORD, DEFAULT)["data"]
         snapshot = self.latest_weights(store)
         runtime = self.desk.admission.checked_observation(CONSTRAINTS)
         account = paper_account(runtime)
-        if self.desk.store is not store or not account or data["account_id"] not in (None, account):
+        if self.desk.store is not store or not account or account != account_id or data["account_id"] not in (None, account):
             raise ValueError("Connect the dedicated Alpaca paper account to preview the rebalance.")
         symbols = [entry["symbol"] for entry in snapshot["entries"]] + data["managed_symbols"]
         if not set(symbols).issubset(runtime["desired_symbols"]):
@@ -110,6 +110,7 @@ class SpyRebalance:
             return {key: terms[key] for key in ("symbol", "side", "quantity", "order_type", "limit_price")} if terms else None
         return {"as_of": snapshot["as_of"], "positions": len(symbols), "total": run["total"],
                 "quote_at": runtime.get("prices_checked_at"),
+                "trades": [{key: terms[key] for key in ("symbol", "side", "quantity")} for terms in run["legs"]],
                 "first_sell": order(first) if first and first["side"] == "SELL" else None,
                 "has_buy": buy is not None, "first_buy": order(first_buy)}
 
