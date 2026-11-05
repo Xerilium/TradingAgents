@@ -1242,6 +1242,7 @@ def simulate_portfolio(spec):
     from nautilus_trader.trading.strategy import Strategy
     from portfolio_scenario import validate_model, model_weights, account_portfolio, entry_quantity
     from native_types import Equity as PortfolioEquity
+    from nautilus_trader.risk.config import RiskEngineConfig
 
     if digest({key: value for key, value in spec.items() if key != "spec_sha256"}) != spec.get("spec_sha256"):
         raise ValueError("Portfolio scenario specification changed")
@@ -1255,7 +1256,8 @@ def simulate_portfolio(spec):
     sizing = spec.get("share_sizing", "whole")
     venue = Venue("ALPACA")
     fee = Decimal(spec["fee_usd"])
-    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"), logging=LoggingConfig(bypass_logging=True)))
+    risk_config = RiskEngineConfig(max_order_submit_rate=f"{max(100, len(weights))}/00:00:01")
+    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"), logging=LoggingConfig(bypass_logging=True), risk_engine=risk_config))
     try:
         engine.add_venue(venue, OmsType.NETTING, AccountType.CASH, [Money(capital, USD)], base_currency=USD,
             allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True) if fee else None, bar_execution=True)
@@ -1270,7 +1272,8 @@ def simulate_portfolio(spec):
             quantities[symbol] = entry_quantity(capital, weight, first["close"], sizing)
             for day, row in rows.items():
                 timestamp = int(datetime.fromisoformat(day).replace(tzinfo=UTC).timestamp() * 1_000_000_000)
-                native_bars.append(Bar(bar_types[symbol], *(Price.from_str(format(Decimal(row[field]), f".{precision}f")) for field in ("open", "high", "low", "close")), Quantity.from_int(int(Decimal(row["volume"]))), timestamp, timestamp))
+                volume = Quantity.from_str(format(Decimal(row["volume"]), ".9f" if sizing == "fractional" else ".0f"))
+                native_bars.append(Bar(bar_types[symbol], *(Price.from_str(format(Decimal(row[field]), f".{precision}f")) for field in ("open", "high", "low", "close")), volume, timestamp, timestamp))
         class PortfolioEntry(Strategy):
             def __init__(self):
                 super().__init__(StrategyConfig())
@@ -1297,12 +1300,18 @@ def simulate_portfolio(spec):
         for symbol, quantity in quantities.items():
             if quantity == 0:
                 fills[symbol] = {"shares": "0", "price": spec["bars"][symbol][min(spec["bars"][symbol])]["close"], "fee_usd": "0"}
-        ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model, sizing)
-        return {"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
+        diagnostics = {"native_risk_config": risk_config.json_primitives(),
+            "order_events": {str(order.client_order_id): [type(event).to_dict(event) for event in order.events] for order in engine.cache.orders()},
+            "native_fills": clean(json.loads(report.to_json(orient="split", date_format="iso", default_handler=str)))}
+        try:
+            ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model, sizing)
+        except ValueError as error:
+            return clean({"kind": "portfolio_scenario", "status": "failed", "spec_sha256": spec["spec_sha256"], "error": str(error), **diagnostics})
+        return clean({"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
             "model_id": model["id"], "starting_cash": str(capital),
             "target_weights": {symbol: str(weight) for symbol, weight in weights.items()},
             "target_cash_weight": str(model["result"]["target_cash_weight"]),
-            "native_fills": clean(json.loads(report.to_json(orient="split", date_format="iso", default_handler=str)))}
+            **diagnostics})
     finally:
         engine.dispose()
 
