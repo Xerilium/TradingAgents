@@ -2963,9 +2963,9 @@ class DeskService:
             for symbol in model_weights(model):
                 try:
                     matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True]
-                    if len(matches) != 1:
-                        raise ValueError(f"{symbol} {start}..{end} history: expected exactly one complete raw daily receipt")
-                    meta = matches[0]
+                    if not matches:
+                        raise ValueError(f"{symbol} {start}..{end} history: no complete raw daily receipt")
+                    meta = max(matches, key=lambda item: item.get("captured_at", ""))
                     history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
                     if not isinstance(history, dict):
                         raise ValueError(f"{symbol} {start}..{end} history.artifact: unavailable or changed")
@@ -2989,19 +2989,24 @@ class DeskService:
                     sessions = {row["date"] for row in calendar if start <= row["date"] <= end}
                     selected = [row for row in history.get("bars", []) if start <= row.get("t", "") <= end]
                     by_day = {row["t"]: row for row in selected}
-                    missing = sorted(sessions - set(by_day))
-                    if missing:
-                        raise ValueError(f"{symbol} {missing[0]} daily_bar: missing from retained raw history ({len(missing)} missing sessions)")
-                    if len(selected) != len(by_day) or set(by_day) != sessions:
+                    if len(selected) != len(by_day) or set(by_day) - sessions:
                         raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
                     histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
                     meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
                     action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
                     if not action_ref:
                         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no retained provider receipt")
+                    if not histories[symbol] or min(sessions) not in histories[symbol]:
+                        raise ValueError(f"{symbol} {min(sessions)} daily_bar: missing opening mark")
                     shares = entry_quantity(model["result"]["capital"], model_weights(model)[symbol], histories[symbol][min(histories[symbol])]["close"], sizing)
+                    cusip = next((row.get("cusip") for row in model["inputs"] if row["symbol"] == symbol), None)
                     action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)),
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares)
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares, cusip=cusip)
+                    termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
+                    required = {day for day in sessions if not termination or day < termination}
+                    missing = sorted(required - set(by_day))
+                    if missing:
+                        raise ValueError(f"{symbol} {missing[0]} daily_bar: missing while held ({len(missing)} missing sessions)")
                     action_sources[symbol] = reference(action_ref)
                 except (ValueError, KeyError, TypeError) as error:
                     errors.append(str(error))
@@ -3012,7 +3017,7 @@ class DeskService:
                 required = {}
                 for actions in action_data.values():
                     for event in actions:
-                        if event["kind"] == "stock_distribution" and event["new_symbol"] not in histories:
+                        if event["kind"] in {"stock_distribution", "merger"} and event.get("new_symbol") and event["new_symbol"] not in histories:
                             target = event["new_symbol"]
                             required[target] = min(required.get(target, end), event["ex_date"])
                 if not required:
