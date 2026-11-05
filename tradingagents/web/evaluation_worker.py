@@ -1239,6 +1239,7 @@ def simulate_portfolio(spec):
     from nautilus_trader.model.identifiers import InstrumentId, Symbol, TraderId, Venue
     from nautilus_trader.model.instruments import Equity
     from nautilus_trader.model.objects import Money, Price, Quantity
+    from nautilus_trader.risk.config import RiskEngineConfig
     from nautilus_trader.trading.strategy import Strategy
     from portfolio_scenario import validate_model, model_weights, account_portfolio
 
@@ -1253,7 +1254,10 @@ def simulate_portfolio(spec):
     weights = model_weights(model)
     venue = Venue("ALPACA")
     fee = Decimal(spec["fee_usd"])
-    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"), logging=LoggingConfig(bypass_logging=True)))
+    # The scenario can submit one entry per stock at the same simulated close.
+    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"),
+        logging=LoggingConfig(bypass_logging=True),
+        risk_engine=RiskEngineConfig(max_order_submit_rate=f"{max(100, len(weights))}/00:00:01")))
     try:
         engine.add_venue(venue, OmsType.NETTING, AccountType.CASH, [Money(capital, USD)], base_currency=USD,
             allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True) if fee else None, bar_execution=True)
