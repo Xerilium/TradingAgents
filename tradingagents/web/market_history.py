@@ -243,15 +243,17 @@ class MarketDataJobs:
         return {row["new_symbol"] for row in payload.get("corporate_actions", {}).get("spin_offs", [])
                 if row.get("source_symbol") in instruments and isinstance(row.get("new_symbol"), str)}
 
-    def manual_symbols(self, body):
+    def manual_lifetimes(self, body):
         from .manual_portfolios import model
-        from .portfolio_scenario import valid_cusip, contingent_right, canonical_recipient
+        from .portfolio_scenario import model_weights, parse_actions, resolve_recipients, valid_cusip
         from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
         from .approval_review import read_artifact
         from .evaluation import reference
         saved = model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))
-        symbols = {row["symbol"] for row in saved["inputs"]}
-        identities = {row["symbol"]: valid_cusip(row.get("cusip")) for row in saved["inputs"]}
+        start, end = body["start"], body["end"]
+        positive = model_weights(saved)
+        symbols = {row["symbol"]: {"start": start, "cusip": valid_cusip(row.get("cusip"))}
+                   for row in saved["inputs"] if row["symbol"] in positive}
         observations = self.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
         pending = list(symbols)
         while pending:
@@ -259,22 +261,20 @@ class MarketDataJobs:
             meta = observations.get(symbol, {}).get("corporate_actions") or {}
             ref = meta.get("last_usable_artifact") or meta.get("artifact")
             observation = read_artifact(self.service.store.directory, reference(ref)) if ref else {}
-            for record in (observation or {}).get("records", []):
-                row, kind = record.get("reported") or {}, record.get("kind")
-                if contingent_right(symbol, kind, row, body.get("end") or "9999-12-31"):
-                    continue
-                reported_cusip = valid_cusip(row.get("source_cusip") if kind == "spin_offs" else row.get("acquiree_cusip"))
-                if identities.get(symbol) and reported_cusip and identities[symbol] != reported_cusip:
-                    continue
-                target = row.get("new_symbol") if kind == "spin_offs" and row.get("source_symbol") == symbol else row.get("acquirer_symbol") if kind in {"stock_mergers", "stock_and_cash_mergers"} and row.get("acquiree_symbol") == symbol else None
-                if target and target not in symbols:
-                    target = canonical_recipient(saved, target, row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip"))
-                    if target in symbols:
-                        continue
-                    symbols.add(target)
-                    identities[target] = valid_cusip(row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip"))
+            try:
+                actions = resolve_recipients(saved, parse_actions(symbol, symbols[symbol]["start"], end, observation,
+                    load_artifact=lambda value: read_artifact(self.service.store.directory, reference(value)), cusip=symbols[symbol]["cusip"]))
+            except (ValueError, KeyError, TypeError):
+                continue  # Collection reports missing/invalid receipts separately.
+            for action in actions:
+                target = action.get("new_symbol") if action["kind"] in {"stock_distribution", "merger"} and not action.get("contingent_right") else None
+                if target and (target not in symbols or action["ex_date"] < symbols[target]["start"]):
+                    symbols[target] = {"start": action["ex_date"], "cusip": valid_cusip(action.get("provider_new_cusip"))}
                     pending.append(target)
         return symbols
+
+    def manual_symbols(self, body):
+        return set(self.manual_lifetimes(body))
 
     def evidence_request(self, body):
         from .stock_evidence import PROVIDERS

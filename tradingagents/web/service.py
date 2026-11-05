@@ -2942,10 +2942,10 @@ class DeskService:
             history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
             missing_history, missing_actions, problems = [], [], []
-            selected = {row["symbol"] for row in model["result"]["allocations"] if Decimal(row["weight"]) > 0}
-            selected.update(self.data_jobs.manual_symbols(request) - {row["symbol"] for row in model["inputs"]})
+            selected = self.data_jobs.manual_lifetimes(request)
             for symbol in sorted(selected):
-                matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= start and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True and not item.get("error")]
+                first = selected[symbol]["start"]
+                matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= first and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True and not item.get("error")]
                 if not matches:
                     missing_history.append(symbol)
                 receipt = observations.get(symbol, {}).get("corporate_actions") or {}
@@ -2954,9 +2954,9 @@ class DeskService:
                 query = (observation or {}).get("request") or {}
                 try:
                     from .portfolio_scenario import parse_actions
-                    parse_actions(symbol, start, end, observation,
+                    parse_actions(symbol, first, end, observation,
                         load_artifact=lambda ref: read_artifact(store.directory, reference(ref)),
-                        cusip=next((row.get("cusip") for row in model["inputs"] if row["symbol"] == symbol), None))
+                        cusip=selected[symbol]["cusip"])
                     usable_actions = True
                 except (ValueError, KeyError, TypeError) as error:
                     usable_actions = False
@@ -3083,10 +3083,12 @@ class DeskService:
                     for event in actions:
                         if event["kind"] in {"stock_distribution", "merger"} and not event.get("contingent_right") and event.get("new_symbol") and event["new_symbol"] not in histories:
                             target = event["new_symbol"]
-                            required[target] = min(required.get(target, end), event["ex_date"])
+                            if target not in required or event["ex_date"] < required[target]["start"]:
+                                required[target] = {"start": event["ex_date"], "cusip": event.get("provider_new_cusip")}
                 if not required:
                     break
-                for symbol, first in required.items():
+                for symbol, identity in required.items():
+                    first = identity["start"]
                     matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
                     if not matches:
                         raise ValueError(f"{symbol} {first}..{end} distribution marks: no complete raw daily receipt")
@@ -3099,7 +3101,7 @@ class DeskService:
                     meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
                     action_ref = reference(meta_action.get("last_usable_artifact") or meta_action.get("artifact"))
                     action_data[symbol] = resolve_recipients(model, parse_actions(symbol, first, end, read_artifact(store.directory, action_ref),
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref))))
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), cusip=identity["cusip"]))
                     termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
                     required_sessions = {day for day in sessions if not termination or day < termination}
                     marks = {row["t"] for row in selected}
