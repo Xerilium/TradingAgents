@@ -306,8 +306,7 @@ class DeskService:
         self.data_jobs = MarketDataJobs(self)
         from .portfolio_weights import PortfolioWeights
         self.portfolio_weights = PortfolioWeights(self.store)
-        if not self.portfolio_weights.state().get("snapshot"):
-            threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
+        threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
         from .attention import AttentionMonitor
         from .market_discovery import due_scans
         self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
@@ -2154,8 +2153,6 @@ class DeskService:
                     self.store.data["config_revision"] += 1
                     self.store.save()
         if symbols_changed:
-            if not self.portfolio_weights.state().get("snapshot"):
-                threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
             try:
                 self.configure_symbols()
             except (OSError, ValueError) as error:
@@ -2913,18 +2910,27 @@ class DeskService:
                 raise ValueError("scenario dates: start must precede end")
             history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
-            missing_history, missing_actions = [], []
+            missing_history, missing_actions, problems = [], [], []
             selected = {row["symbol"] for row in model["result"]["allocations"] if Decimal(row["weight"]) > 0}
             selected.update(self.data_jobs.manual_symbols(request) - {row["symbol"] for row in model["inputs"]})
             for symbol in sorted(selected):
-                matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= start and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True]
+                matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= start and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True and not item.get("error")]
                 if not matches:
                     missing_history.append(symbol)
                 receipt = observations.get(symbol, {}).get("corporate_actions") or {}
                 action_ref = receipt.get("last_usable_artifact") or receipt.get("artifact")
                 observation = read_artifact(store.directory, reference(action_ref)) if action_ref else {}
                 query = (observation or {}).get("request") or {}
-                if not (observation and observation.get("complete") is True and query.get("start", "9999") <= start and query.get("end", "") >= end):
+                try:
+                    from .portfolio_scenario import parse_actions
+                    parse_actions(symbol, start, end, observation,
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)),
+                        cusip=next((row.get("cusip") for row in model["inputs"] if row["symbol"] == symbol), None))
+                    usable_actions = True
+                except (ValueError, KeyError, TypeError) as error:
+                    usable_actions = False
+                    problems.append(str(error))
+                if not usable_actions:
                     missing_actions.append(symbol)
             job_ids = request.get("job_ids")
             if job_ids is None:
@@ -2946,7 +2952,7 @@ class DeskService:
                         job_ids.extend(sorted(set(after) - before))
             jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
             return {"job_ids": job_ids, "jobs": [jobs[identity] for identity in job_ids if identity in jobs],
-                    "missing": {"history": missing_history, "corporate_actions": missing_actions}}
+                    "missing": {"history": missing_history, "corporate_actions": missing_actions}, "problems": problems}
         if action == "portfolio_scenario":
             from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity
             from .market_history import chart_calendar_coverage
@@ -2969,13 +2975,15 @@ class DeskService:
             scenario_calendar = None
             for symbol in model_weights(model):
                 try:
-                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True]
+                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
                     if not matches:
                         raise ValueError(f"{symbol} {start}..{end} history: no complete raw daily receipt")
                     meta = max(matches, key=lambda item: item.get("captured_at", ""))
                     history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
                     if not isinstance(history, dict):
                         raise ValueError(f"{symbol} {start}..{end} history.artifact: unavailable or changed")
+                    if history.get("currency") != "USD":
+                        raise ValueError(f"{symbol} {start}..{end} history.currency: expected USD")
                     coverage = chart_calendar_coverage(history)
                     if coverage and coverage["start"] <= start and coverage["end"] >= end:
                         calendar = read_artifact(store.directory, reference(coverage["reference"]))
@@ -3031,11 +3039,11 @@ class DeskService:
                     break
                 for symbol, first in required.items():
                     matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
-                    if len(matches) != 1:
-                        raise ValueError(f"{symbol} {first}..{end} distribution marks: expected one complete raw daily receipt")
-                    meta = matches[0]
+                    if not matches:
+                        raise ValueError(f"{symbol} {first}..{end} distribution marks: no complete raw daily receipt")
+                    meta = max(matches, key=lambda item: item.get("captured_at", ""))
                     history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
-                    sessions = {day for day in histories[next(iter(model_weights(model)))] if first <= day <= end}
+                    sessions = {day for rows in histories.values() for day in rows if first <= day <= end}
                     selected = [row for row in (history or {}).get("bars", []) if first <= row.get("t", "") <= end]
                     if len(selected) != len(sessions) or {row["t"] for row in selected} != sessions:
                         raise ValueError(f"{symbol} distribution marks: missing, duplicate or off-calendar daily bar")
