@@ -8,7 +8,7 @@ from pathlib import Path
 SHARED_RESEARCH = Path("D:/src/printer-data/maenifold/memory/research")
 SHARED_HISTORY = re.compile(
     r"reports/[0-9a-f-]{36}/shared-iex-history-([A-Z0-9][A-Z0-9.-]{0,31})"
-    r"-(series|[0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9a-f-]{36})\.json"
+    r"-(series|[0-9]{4}-[0-9]{2}(?:-[0-9]{2})?)-([0-9a-f-]{36})\.json"
 )
 
 
