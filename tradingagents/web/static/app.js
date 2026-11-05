@@ -818,7 +818,7 @@ document.addEventListener('click',event=>{
   const allocations=universe().map(symbol=>({symbol,weight:(allocationUnits(draft.weights[symbol]||'0')/1000000).toFixed(6)}));
   const model={id:crypto.randomUUID(),name:'Portfolio allocations',inputs:universe().map(symbol=>({symbol})),result:{capital:draft.capital,allocations,target_cash_weight:((1000000-total)/1000000).toFixed(6)}};
   Object.assign(portfolioScenarioDraft,{start:draft.start,end:draft.end,fee_usd:draft.fee});
-  strategyView='setup';location.hash='#strategy';runPortfolioScenario(model,{...portfolioScenarioDraft});
+  strategyTab='simulations';strategyView='setup';location.hash='#strategy';runPortfolioScenario(model,{...portfolioScenarioDraft});
  }catch(error){document.getElementById('allocation-status').textContent=error.message;}
 });
 const portfolioPrompt={bundle:null,draft:'',loading:false,message:'',error:false,storageError:''};
