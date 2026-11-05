@@ -418,17 +418,17 @@ class DeskStore:
                 evidence.update(status="cache_only", reason="Portfolio artifact could not be written; context remains in the latest research cache.")
             run["portfolio_evidence"] = evidence
 
-    def _write_json_artifact(self, run_id, kind, content, *, daily_history_date=None):
+    def _write_json_artifact(self, run_id, kind, content, *, daily_history_period=None):
         if str(UUID(run_id)) != run_id:
             raise ValueError("Invalid run ID for evidence export.")
         relative = Path("reports") / run_id / f"{kind}-{uuid4()}.json"
         destination = self.directory / relative
-        if daily_history_date is not None and os.name == "nt":
-            filename = f"shared-iex-history-{content['symbol']}-{daily_history_date}-{uuid4()}.json"
+        if daily_history_period is not None and os.name == "nt":
+            filename = f"shared-iex-history-{content['symbol']}-{daily_history_period}-{uuid4()}.json"
             relative = Path("reports") / run_id / filename
             destination = shared_history_path(relative.as_posix())
             if destination is None:
-                raise ValueError("Invalid ticker or date for the shared daily price folder")
+                raise ValueError("Invalid ticker or period for the shared daily price folder")
         destination.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(content, sort_keys=True, ensure_ascii=False,
                              indent=2, allow_nan=False).encode("utf-8")
