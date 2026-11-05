@@ -68,11 +68,26 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
             or any("Provider may publish actions after announcement" not in gap for gap in observation.get("gaps", []))
             or request.get("start", "9999") > start.isoformat() or request.get("end", "") < end.isoformat()):
         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no complete matching provider receipt")
+    identities = {cusip} if cusip else set()
+    # Only link CUSIPs reported for the same issuer, never merger or spin-off parties.
+    links = []
+    for record in observation.get("records", []):
+        row, kind = record.get("reported") or {}, record.get("kind")
+        old, new = row.get("old_cusip"), row.get("new_cusip")
+        same_split = kind in {"forward_splits", "reverse_splits"} and (row.get("symbol") == symbol or row.get("old_symbol") == row.get("new_symbol") == symbol)
+        rename = kind == "name_changes" and symbol in {row.get("old_symbol"), row.get("new_symbol")}
+        if old and new and (same_split or rename):
+            links.append((old, new))
+    while True:
+        expanded = identities | {value for pair in links if identities.intersection(pair) for value in pair}
+        if expanded == identities:
+            break
+        identities = expanded
     actions = []
     for record in observation.get("records", []):
         row, kind = record.get("reported") or {}, record.get("kind", "")
         identity = row.get("cusip") or (row.get("acquiree_cusip") if row.get("acquiree_symbol") == symbol else row.get("acquirer_cusip") if row.get("acquirer_symbol") == symbol else row.get("source_cusip") if row.get("source_symbol") == symbol else None)
-        if cusip and identity and identity != cusip:
+        if cusip and identity and identity not in identities:
             continue
         if kind == "name_changes":
             # Provider-mapped historical bars already follow the underlying issuer.
@@ -149,7 +164,7 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
     return sorted(actions, key=lambda item: (item["ex_date"], item["kind"]))
 
 
-def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole"):
+def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole", calendar=None):
     """Account for one synchronized hindsight portfolio; bars are validated raw daily marks."""
     from decimal import ROUND_FLOOR
 
@@ -161,7 +176,9 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
     symbols = tuple(bars)
     if not set(weights).issubset(bars) or set(actions) != set(bars):
         raise ValueError("portfolio inputs: bars and corporate actions are required for every positive allocation")
-    dates = sorted(set().union(*(set(rows) for rows in bars.values())))
+    dates = list(calendar) if calendar is not None else sorted(set().union(*(set(rows) for rows in bars.values())))
+    if dates != sorted(set(dates)) or any(set(rows) - set(dates) for rows in bars.values()):
+        raise ValueError("portfolio calendar: duplicate, unordered or off-calendar sessions")
     if not dates or any(dates[0] not in bars[symbol] for symbol in weights):
         raise ValueError("portfolio bars: every initial allocation requires an opening session mark")
     for symbol in symbols:
@@ -186,6 +203,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
     if cash < 0:
         raise ValueError(f"{dates[0]} transaction_cost.fee_usd: entry costs exceed available cash")
     for day in dates:
+        opening_shares = shares.copy()
         for symbol in symbols:
             for action in actions[symbol]:
                 if day != next((session for session in dates if session >= action["ex_date"]), None):
@@ -218,7 +236,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
                     shares[symbol] = quantity
                     events.append({"date": day, "symbol": symbol, "kind": "split", "shares": str(quantity)})
                 elif action["kind"] == "dividend":
-                    receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": shares[symbol] * Decimal(action["rate"])})
+                    receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": opening_shares[symbol] * Decimal(action["rate"])})
         due = [item for item in receivables if item["payable_date"] <= day]
         for item in due:
             cash += item["amount"]

@@ -1304,7 +1304,7 @@ def simulate_portfolio(spec):
             "order_events": {str(order.client_order_id): [type(event).to_dict(event) for event in order.events] for order in engine.cache.orders()},
             "native_fills": clean(json.loads(report.to_json(orient="split", date_format="iso", default_handler=str)))}
         try:
-            ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model, sizing)
+            ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model, sizing, spec.get("calendar_sessions"))
         except ValueError as error:
             return clean({"kind": "portfolio_scenario", "status": "failed", "spec_sha256": spec["spec_sha256"], "error": str(error), **diagnostics})
         return clean({"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
