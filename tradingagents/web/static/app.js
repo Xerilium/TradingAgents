@@ -1073,6 +1073,14 @@ function researchDrift(symbol){
  const q=state?.quotes?.[symbol]||{},research=state?.research?.[symbol];
  const histories=[UniverseReview.loadedDailyHistory(symbol),chartEvidence.get(`${research?.run_id}:${symbol}`)].filter(Boolean);
  const bar=histories.filter(h=>(!h.symbol||h.symbol===symbol)&&(!h.run_id||h.run_id===research?.run_id)&&(!h.timeframe||h.timeframe==='1Day')&&(!h.adjustment||h.adjustment==='raw')).flatMap(h=>h.bars||[]).find(b=>String(b.t).slice(0,10)===research?.trade_date&&number(b.raw?.c)>0);
+ const key=`${research?.run_id}:${symbol}`;
+ if(research?.run_id&&research.trade_date&&!bar&&!chartEvidence.has(key)&&!chartRequests.has(key)&&!chartErrors.has(key)){
+  chartRequests.add(key);
+  api(`/api/instruments/${encodeURIComponent(symbol)}?run_id=${encodeURIComponent(research.run_id)}`).then(detail=>{
+   if(detail.symbol!==symbol||detail.run_id!==research.run_id||!Array.isArray(detail.bars))throw new Error('Market evidence does not match the research.');
+   chartEvidence.set(key,detail);chartLoadedAt.set(key,Date.now());
+  }).catch(error=>chartErrors.set(key,error.message)).finally(()=>{chartRequests.delete(key);if(['research','overview'].includes(activePage))render();});
+ }
  const close=number(bar?.raw?.c),last=number(q.price);
  return close!==null&&close>0&&last!==null?percent((last/close-1)*100):'—';
 }
