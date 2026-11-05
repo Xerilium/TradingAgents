@@ -3025,6 +3025,11 @@ class DeskService:
                         first = first_dates[symbol]
                         if first > end:
                             raise ValueError(f"{symbol} listing date is after the simulation end")
+                        if symbol in listings and first > start and symbol in action_data and not any(
+                                item["kind"] == "issuer_distribution" and item["ex_date"] == first for item in action_data[symbol]):
+                            raise ValueError(f"{symbol} listing date is not confirmed by its provider receipt")
+                        termination = min((item["ex_date"] for item in action_data.get(symbol, [])
+                            if item["kind"] == "merger" and item["ex_date"] > first), default="9999-12-31")
                         matches = sorted([entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")], key=lambda item: item.get("captured_at", ""), reverse=True)
                         if not matches:
                             missing_history[symbol] = first
@@ -3051,8 +3056,8 @@ class DeskService:
                             calendar = scenario_calendar[0]
                         if not isinstance(calendar, list) or not calendar:
                             raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
-                        sessions = {row["date"] for row in calendar if first <= row["date"] <= end}
-                        selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end]
+                        sessions = {row["date"] for row in calendar if first <= row["date"] <= end and row["date"] < termination}
+                        selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end and row["t"] < termination]
                         by_day = {row["t"]: row for row in selected}
                         missing = sorted(sessions - set(by_day))
                         if missing:
@@ -3060,7 +3065,7 @@ class DeskService:
                                 raise ValueError(f"{symbol} {missing[0]} daily_bar: provider history is missing {len(missing)} required sessions")
                             missing_history[symbol] = first
                             continue
-                        if len(selected) != len(by_day) or set(by_day) != sessions:
+                        if not sessions or len(selected) != len(by_day) or set(by_day) != sessions:
                             raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
                         histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
                         source_references[symbol] = {"history": meta.get("last_usable_artifact") or meta.get("artifact"),
@@ -3072,7 +3077,9 @@ class DeskService:
                 for symbol, items in list(action_data.items()):
                     for item in items:
                         recipient = item.get("new_symbol") if item["kind"] in {"stock_distribution", "merger"} else None
-                        if not recipient or recipient in first_dates or item["ex_date"] <= first_dates[symbol]:
+                        if not recipient or item["ex_date"] <= first_dates[symbol]:
+                            continue
+                        if recipient in first_dates and first_dates[recipient] <= item["ex_date"]:
                             continue
                         if symbol in weights and symbol in histories:
                             from decimal import ROUND_FLOOR

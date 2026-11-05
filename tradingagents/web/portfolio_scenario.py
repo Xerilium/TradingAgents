@@ -203,36 +203,39 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model):
                 or Decimal(str(fill.get("fee_usd", "-1"))) != (fee if expected else 0)):
             raise ValueError(f"{symbol} {first} native_fill: expected {expected} shares at close {price} with fee {fee if expected else 0}; observed {fill}")
         entries.setdefault(first, []).append((symbol, expected, price))
+    previous_day = ""
     for day in dates:
-        for symbol in symbols:
-            for action in actions[symbol]:
-                if action["ex_date"] != day:
-                    continue
-                if not shares[symbol]:
-                    continue
-                if action["kind"] in {"issuer_acquisition", "issuer_distribution"}:
-                    events.append({"date": day, "symbol": symbol, **action})
-                elif action["kind"] == "split":
-                    quantity = shares[symbol] * Decimal(action["new"]) / Decimal(action["old"])
-                    shares[symbol] = quantity
-                    events.append({"date": day, "symbol": symbol, "kind": "split", "shares": str(quantity)})
-                elif action["kind"] == "dividend":
-                    receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": shares[symbol] * Decimal(action["rate"])})
-                elif action["kind"] in {"stock_distribution", "merger"}:
-                    quantity = shares[symbol]
-                    recipient = action.get("new_symbol")
-                    if recipient:
-                        if recipient not in shares:
-                            raise ValueError(f"{symbol} {day} recipient {recipient}: missing verified price history")
-                        entitlement = quantity * Decimal(action["new"]) / Decimal(action["old"])
-                        shares[recipient] += entitlement
-                        events.append({"date": day, "symbol": symbol, "kind": action["kind"],
-                            "recipient": recipient, "shares": str(entitlement), "source_id": action.get("source_id"),
-                            "basis": "Share entitlement retained at raw daily value; no cash-in-lieu sale is assumed"})
-                    if action["kind"] == "merger":
-                        receivables.append({"symbol": symbol, "payable_date": action["payable_date"],
-                            "amount": quantity * Decimal(action["cash_rate"])})
-                        shares[symbol] = Decimal(0)
+        opening_shares = shares.copy()
+        day_actions = [(symbol, action) for symbol in symbols for action in actions[symbol]
+            if action["ex_date"] and previous_day < action["ex_date"] <= day]
+        day_actions.sort(key=lambda item: item[1]["kind"] != "split")
+        for symbol, action in day_actions:
+            quantity = opening_shares[symbol]
+            if not quantity:
+                continue
+            if action["kind"] in {"issuer_acquisition", "issuer_distribution"}:
+                events.append({"date": day, "symbol": symbol, **action})
+            elif action["kind"] == "split":
+                adjusted = quantity * Decimal(action["new"]) / Decimal(action["old"])
+                shares[symbol] += adjusted - quantity
+                opening_shares[symbol] = adjusted
+                events.append({"date": day, "symbol": symbol, "kind": "split", "shares": str(adjusted)})
+            elif action["kind"] == "dividend":
+                receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": quantity * Decimal(action["rate"])})
+            elif action["kind"] in {"stock_distribution", "merger"}:
+                recipient = action.get("new_symbol")
+                if recipient:
+                    if recipient not in shares:
+                        raise ValueError(f"{symbol} {day} recipient {recipient}: missing verified price history")
+                    entitlement = quantity * Decimal(action["new"]) / Decimal(action["old"])
+                    shares[recipient] += entitlement
+                    events.append({"date": day, "symbol": symbol, "kind": action["kind"],
+                        "recipient": recipient, "shares": str(entitlement), "source_id": action.get("source_id"),
+                        "basis": "Share entitlement retained at raw daily value; no cash-in-lieu sale is assumed"})
+                if action["kind"] == "merger":
+                    receivables.append({"symbol": symbol, "payable_date": action["payable_date"],
+                        "amount": quantity * Decimal(action["cash_rate"])})
+                    shares[symbol] -= quantity
         for symbol, quantity, price in entries.get(day, []):
             shares[symbol] += quantity
             cash -= quantity * price + (fee if quantity else 0)
@@ -256,6 +259,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model):
                 raise ValueError(f"{symbol} {day} close: invalid")
             value += shares[symbol] * price
         curve.append({"date": day, "equity_usd": str(value), "cash_usd": str(cash)})
+        previous_day = day
     return {"cash_usd": str(cash), "shares": {key: str(value) for key, value in shares.items()},
             "receivables": [{**item, "amount": str(item["amount"])} for item in receivables], "events": events, "equity_curve": curve}
 
