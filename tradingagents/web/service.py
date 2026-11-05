@@ -2982,8 +2982,20 @@ class DeskService:
                         after = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
                         job_ids.extend(sorted(set(after) - before))
             jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+            failures = []
+            for identity in job_ids:
+                job = jobs.get(identity) or {}
+                source = "corporate_actions" if job.get("kind") == "supplementary" else "history"
+                for symbol, item in job.get("symbols", {}).items():
+                    if item.get("status") != "failed":
+                        continue
+                    reasons = [item["error"]] if item.get("error") else [gap for result in item.get("results", {}).values() for gap in result.get("gaps", [])]
+                    failures.append({"symbol": symbol, "source": source, "reason": "; ".join(reasons) or "Provider did not return usable data"})
+                if job.get("status") == "failed" and job.get("message"):
+                    failures.append({"symbol": None, "source": source, "reason": job["message"]})
             return {"job_ids": job_ids, "jobs": [jobs[identity] for identity in job_ids if identity in jobs],
-                    "missing": {"history": missing_history, "corporate_actions": missing_actions}, "problems": problems}
+                    "missing": {"history": missing_history, "corporate_actions": missing_actions}, "problems": problems,
+                    "failures": failures}
         if action == "portfolio_scenario":
             from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity
             from .market_history import chart_calendar_coverage
