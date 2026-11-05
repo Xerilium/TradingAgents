@@ -92,7 +92,7 @@ def action_observation(symbol, observation, load_artifact):
     return {**observation, "records": records, "gaps": gaps}
 
 
-def parse_actions(symbol, start, end, observation):
+def parse_actions(symbol, start, end, observation, contingent_terms=None):
     """Reject unproven coverage or unsupported action types; never infer events from bars."""
     start, end = date.fromisoformat(start), date.fromisoformat(end)
     if not isinstance(observation, dict):
@@ -148,10 +148,20 @@ def parse_actions(symbol, start, end, observation):
                 raise ValueError(f"{symbol} {event_date} merger: invalid consideration")
             if new and not row.get("acquirer_symbol"):
                 raise ValueError(f"{symbol} {event_date} merger: missing recipient symbol")
-            actions.append({"kind": "merger", "ex_date": date.fromisoformat(event_date).isoformat(),
+            merger = {"kind": "merger", "ex_date": date.fromisoformat(event_date).isoformat(),
                 "new_symbol": row.get("acquirer_symbol") if new else None, "new": str(new), "old": str(old),
                 "cash_rate": str(cash_rate), "new_cusip": row.get("acquirer_cusip"),
-                "payable_date": row.get("payable_date") or event_date, "source_id": row.get("id")})
+                "payable_date": row.get("payable_date") or event_date, "source_id": row.get("id")}
+            terms = (contingent_terms or {}).get(row.get("id"))
+            if terms and end.isoformat() <= terms["reviewed_through"]:
+                if (symbol != terms["from_symbol"] or row.get("acquiree_cusip") != terms["from_cusip"]
+                        or merger["new_symbol"] != terms["right_id"] or merger["new_cusip"] != terms["right_id"]
+                        or merger["ex_date"] != terms["effective_date"] or cash_rate != Decimal(terms["cash_per_share_usd"])
+                        or new / old != Decimal(terms["rights_per_share"])):
+                    raise ValueError(f"{symbol} {event_date} merger: provider data conflicts with filed terms")
+                merger["contingent_right"] = terms
+                merger["new_symbol"] = None
+            actions.append(merger)
             continue
         if kind not in {"cash_dividends", "forward_splits", "reverse_splits"}:
             raise ValueError(f"{symbol} {row.get('ex_date') or row.get('effective_date') or 'unknown'} corporate_actions.kind: unsupported {kind}")
@@ -194,6 +204,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, fractional=Fa
     if not dates or any(not rows for rows in bars.values()):
         raise ValueError("portfolio bars: actual dated sessions are required")
     cash, shares, receivables = capital, dict.fromkeys(symbols, Decimal(0)), []
+    unpriced_rights = []
     events, curve = [], []
     entries = {}
     for symbol, weight in weights.items():
@@ -242,6 +253,13 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, fractional=Fa
                         "payable_date": action.get("payable_date"),
                         "basis": "Share entitlement retained at raw daily value; no cash-in-lieu sale is assumed"})
                     if action["kind"] == "merger":
+                        terms = action.get("contingent_right")
+                        if terms:
+                            units = quantity * Decimal(terms["rights_per_share"])
+                            maximum = units * Decimal(terms["max_payment_per_right_usd"])
+                            unpriced_rights.append({"symbol": symbol, "right_id": terms["right_id"],
+                                "units": str(units), "maximum_payment_usd": str(maximum),
+                                "source_url": terms["source_url"]})
                         receivables.append({"symbol": symbol, "payable_date": action["payable_date"],
                             "amount": quantity * Decimal(action["cash_rate"])})
                         shares[symbol] -= quantity
@@ -270,5 +288,6 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, fractional=Fa
         curve.append({"date": day, "equity_usd": str(value), "cash_usd": str(cash)})
         previous_day = day
     return {"cash_usd": str(cash), "shares": {key: str(value) for key, value in shares.items()},
+            "unpriced_rights": unpriced_rights,
             "receivables": [{**item, "amount": str(item["amount"])} for item in receivables], "events": events, "equity_curve": curve}
 

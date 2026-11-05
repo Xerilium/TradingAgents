@@ -3026,6 +3026,8 @@ class DeskService:
             from .portfolio_scenario import entry_quantity
             fractional = filed_holdings is not None
             capital = Decimal(str(model["result"]["capital"]))
+            contingent_terms = json.loads(Path(__file__).with_name("static").joinpath(
+                "portfolio_contingent_rights.json").read_text(encoding="utf-8"))
             listings = listing_dates()
             first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
             missing_history, missing_actions = {}, []
@@ -3043,7 +3045,7 @@ class DeskService:
                                 or action_request.get("start", "9999") > start or action_request.get("end", "") < end):
                             missing_actions.append(symbol)
                         else:
-                            action_data[symbol] = parse_actions(symbol, start, end, observed)
+                            action_data[symbol] = parse_actions(symbol, start, end, observed, contingent_terms)
                         first = first_dates[symbol]
                         if first > end:
                             raise ValueError(f"{symbol} listing date is after the simulation end")
