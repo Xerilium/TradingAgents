@@ -3011,13 +3011,24 @@ class DeskService:
                 raise ValueError("scenario dates: start must precede end")
             saved_history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
             collection = request.get("collection") or {"job_ids": [], "attempted": []}
+
+            def collecting_response(collection, jobs):
+                stocks = {}
+                for job_id in collection["job_ids"]:
+                    job = jobs.get(job_id)
+                    if job is None:
+                        raise ValueError("Simulation data collection is no longer available")
+                    for symbol, item in job["symbols"].items():
+                        stocks[symbol] = stocks.get(symbol, True) and item["status"] == "completed"
+                return {"status": "collecting", "collection": collection,
+                        "message": f"Downloading missing simulation inputs from Alpaca… {sum(stocks.values())} of {len(stocks)} stocks downloaded."}
+
             for job_id in collection["job_ids"]:
                 job = saved_history["jobs"].get(job_id)
                 if job is None:
                     raise ValueError("Simulation data collection is no longer available")
                 if job["status"] in {"queued", "running"}:
-                    return {"status": "collecting", "collection": collection,
-                        "message": "Downloading missing simulation inputs from Alpaca…"}
+                    return collecting_response(collection, saved_history["jobs"])
                 if job["status"] != "completed":
                     failures = [f"{symbol}: {item.get('error') or item['status']}" for symbol, item in job["symbols"].items() if item["status"] != "completed"]
                     raise ValueError("Simulation input download failed. " + "; ".join(failures))
@@ -3150,9 +3161,9 @@ class DeskService:
                         allowed = set(first_dates) if filed_holdings else set(first_dates) - set(weights)
                         updated = self.data_jobs.request(body, recipient_symbols=allowed)
                         job_ids.extend(set(updated["data"]["jobs"]) - set(jobs))
+                        jobs = updated["data"]["jobs"]
                     attempted.extend(keys)
-                return {"status": "collecting", "collection": {"job_ids": job_ids, "attempted": attempted},
-                    "message": "Downloading missing simulation inputs from Alpaca…"}
+                return collecting_response({"job_ids": job_ids, "attempted": attempted}, jobs)
             if errors:
                 raise ValueError("; ".join(errors))
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
