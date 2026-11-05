@@ -25,6 +25,15 @@ Desktop host with a browser workspace. A Tauri 2 tray application (Windows x64 a
 
 ## Product Purpose
 
+The operator's goal is to manage their own small SPY-benchmarked fund across
+accounts, balancing index tracking with living-expense distributions, cash
+reserves and deliberate gain/loss management. Reserve amounts follow explicit
+spending and liquidity terms, not an invented fixed percentage. The current
+implementation phase uses US rules and paper accounts. The broker runtime
+observes one connected account at a time; a saved account plan is not a live
+consolidated fund, a bank transfer or a tax-lot service. Paper P&L is not a tax
+benefit. Those boundaries must remain visible as capabilities develop.
+
 TradingAgents is a local trading desk that combines AI research, market analysis, order preparation and portfolio monitoring around the user's own Alpaca account. Analyst agents (market, social, news, fundamentals) feed a bull/bear research debate, a research manager, a trader proposal and a three-way risk discussion, ending in a Portfolio Manager recommendation with a rating. NautilusTrader is the execution and accounting engine; the desk reconciles it with broker state. Success is an operator who can take stocks from selection to research to a reviewed order and its reconciled outcome in one application, with each step's source, timestamp and limits visible.
 
 ## Positioning

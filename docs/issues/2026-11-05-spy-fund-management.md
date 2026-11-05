@@ -2,7 +2,11 @@
 
 ## Status
 
-Research complete; implementation design in progress. Baseline: `b906008` on
+Research and safety-challenged design complete; implementation in progress.
+The user confirmed that fund-plan edits must require explicit automatic-trading
+re-enablement and authorized one real affected dev-browser verification cycle
+without trades, approvals, transfers, invented plan values or automated tests.
+Baseline: `b906008` on
 `nautilus`, 5 November 2026. Work is in `D:/src/TradingAgents`; the documented
 `C:/src/TradingAgents` checkout does not exist on this machine.
 
@@ -104,6 +108,54 @@ Accessed 5 November 2026. Primary sources distinguish guidance from requirements
   personal tax calculation or tax-effective paper harvesting is claimed.
 - [Fidelity: Performance reporting](https://www.fidelity.com/webcontent/ap002390-mlo-content/19.09/help/learn_performancereporting.shtml).
 - [State Street: SPY](https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy).
+
+## Implementation plan
+
+The user confirmed the safety and validation choices through the structured
+question dialog. This is the paper-account phase, not a live tax service.
+
+### Account plans and money safety
+
+- Save revisioned paper-account plans in the existing application store. Inputs
+  are monthly net withdrawals, reserve months, tax provision and trading cushion.
+  Inputs stay unset until authored. Inactive plans are planning-only; an active
+  incomplete plan blocks reserve-aware SPY sizing. Other accounts' saved terms
+  are inspectable, but their balances are not invented or summed.
+- Calculate `monthly withdrawals * months + tax provision + trading cushion`.
+  Compare that sum with the enabled percentage-policy cash floor and use the
+  larger amount, not their sum. Positive observed equity and known nonnegative
+  cash are required. Reserve above equity leaves no investable stock sleeve.
+- Scale fractional SPY weights into full-account percentage points for the
+  existing basket allocator. Apply gross and single-stock caps without silently
+  renormalizing. Pending sells are not money available for buys or withdrawals.
+- Bind plan presence/absence, revision and hash to preview and dispatch. Recheck
+  under the maintenance boundary. Reject stale/missing bindings and require a
+  reconciled account observation that reflects preceding fills before more buys.
+- Material plan changes pause standing paper trading and block the current run
+  before its next dispatch; the operator must re-enable explicitly. Never cancel
+  an already-sent order as a side effect. Restore disables standing authority
+  and makes active restored runs non-executable.
+
+### Interface and gain/loss preparation
+
+- Add account fund-plan terms and the derived reserve budget beside the existing
+  SPY workflow. Preserve draft fields across normal refresh, expose save/conflict
+  states and explain the trading pause. Missing contract values show unavailable
+  and cannot produce submit readiness.
+- Reuse observed holdings for a paper gain/loss review and the existing unsaved
+  SELL editor route. Exact quantity, terms, review, approval and submission stay
+  separate. Average-cost unrealized P&L is not selectable tax lots, realized tax
+  profit/loss or wash-sale clearance.
+- Keep the qualified account-history and price-only SPY comparison. No new fund
+  total return, tax benefit, bank withdrawal or simultaneous-account engine.
+
+### Delivery sequence
+
+Research checkpoint, coherent backend/schema/recovery commit, integrated UI
+commit, independent safety/scope review, coordinated corrections, then one
+real affected browser cycle. Static syntax and whitespace checks are allowed;
+no automated tests or synthetic inputs. Review and verification outcomes will
+be recorded with the exact revision. No push or production upgrade.
 
 ## Delivery and evidence
 
