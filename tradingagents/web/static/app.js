@@ -774,39 +774,53 @@ function renderWorkspace(){
  return renderSettings();
 }
 let portfolioTab='holdings';
-const portfolioAllocations={weights:{},capital:'100000',start:'',end:'',fee:'0',query:''};
+const portfolioAllocations={weights:{},capital:'100000',start:'',end:'',fee:'0',query:'',spy:null,loading:false,error:''};
+const allocationPercentScale=100000000,allocationTotalUnits=100*allocationPercentScale;
+function allocationSymbols(){return portfolioAllocations.spy?Object.keys(portfolioAllocations.spy.weights):universe();}
 function allocationUnits(value){
- const match=/^(\d+)(?:\.(\d{0,4}))?$/.exec(String(value).trim());
- if(!match)throw Error('Enter allocation percentages with up to four decimal places.');
- const units=Number(match[1])*10000+Number((match[2]||'').padEnd(4,'0'));
- if(!Number.isSafeInteger(units)||units>1000000)throw Error('Each allocation must be between 0% and 100%.');
+ const match=/^(\d+)(?:\.(\d{0,8}))?$/.exec(String(value).trim());
+ if(!match)throw Error('Enter allocation percentages with up to eight decimal places.');
+ const units=Number(match[1])*allocationPercentScale+Number((match[2]||'').padEnd(8,'0'));
+ if(!Number.isSafeInteger(units)||units>allocationTotalUnits)throw Error('Each allocation must be between 0% and 100%.');
  return units;
 }
 function allocationTotals(){
- const values=universe().map(symbol=>allocationUnits(portfolioAllocations.weights[symbol]||'0'));
+ const values=allocationSymbols().map(symbol=>allocationUnits(portfolioAllocations.weights[symbol]||'0'));
  const total=values.reduce((sum,value)=>sum+value,0);
- if(total>1000000)throw Error('Allocations exceed 100%.');
+ if(total>allocationTotalUnits)throw Error('Allocations exceed 100%.');
  return {total,positions:values.filter(value=>value>0).length};
 }
 function allocationStatus(){
- try{const {total,positions}=allocationTotals();return positions+' of '+universe().length+' stocks allocated · '+(total/10000).toFixed(4)+'% stocks · '+((1000000-total)/10000).toFixed(4)+'% cash';}
+ try{const {total,positions}=allocationTotals();return positions+' of '+allocationSymbols().length+' positions allocated · '+(total/allocationPercentScale).toFixed(4)+'% invested · '+((allocationTotalUnits-total)/allocationPercentScale).toFixed(4)+'% cash target';}
  catch(error){return error.message;}
 }
 function renderPortfolioAllocations(){
  const draft=portfolioAllocations;
  if(!draft.end&&state.portfolio_model?.as_of){draft.end=state.portfolio_model.as_of;draft.start=(Number(draft.end.slice(0,4))-1)+'-12-31';}
  const fields=[['capital','Capital / USD','number'],['start','Start date','date'],['end','End date','date'],['fee','Fee per order / USD','number']];
- const rows=universe().filter(symbol=>symbol.includes(draft.query.trim().toUpperCase()));
- return '<section class="panel"><h2>Portfolio allocations</h2><p>Set weights for your saved universe. Unallocated capital stays in cash. This draft runs directly in Strategy Lab.</p><div class="field-grid">'+fields.map(([key,label,type])=>'<div class="field"><label for="allocation-'+key+'">'+label+'</label><input class="form-control" id="allocation-'+key+'" data-allocation-field="'+key+'" type="'+type+'" value="'+esc(draft[key])+'" '+(type==='number'?'min="0" step="0.01"':'')+' ></div>').join('')+'</div><div class="form-actions"><button class="button button-primary" id="allocation-simulate" '+(portfolioScenarioBusy?'disabled':'')+'>Simulate in Strategy Lab</button><button class="button" id="allocation-equal">Equal weight</button> <button class="button" id="allocation-clear">Clear weights</button></div><p id="allocation-status" role="status">'+esc(allocationStatus())+'</p><label for="allocation-search">Find symbol<input id="allocation-search" data-allocation-field="query" value="'+esc(draft.query)+'"></label><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Allocation %</th></tr></thead><tbody>'+rows.map(symbol=>'<tr><th scope="row">'+esc(symbol)+'</th><td><input id="allocation-weight-'+esc(symbol)+'" data-allocation-symbol="'+esc(symbol)+'" aria-label="'+esc(symbol)+' allocation percent" type="number" min="0" max="100" step="0.0001" value="'+esc(draft.weights[symbol]||'0')+'"></td></tr>').join('')+'</tbody></table></div></section>';
+ const rows=allocationSymbols().filter(symbol=>symbol.includes(draft.query.trim().toUpperCase()));
+ const source=draft.spy?'<p>Starting list from SPY’s '+esc(draft.spy.as_of)+' filing, with SGOV. The simulation buys whole shares.</p>':'';
+ const load='<button class="button" id="allocation-spy" '+(draft.loading||portfolioScenarioBusy?'disabled':'')+'>'+(draft.loading?'Loading SPY weights…':'Load year-start SPY weights')+'</button> ';
+ return '<section class="panel"><h2>Portfolio allocations</h2><p>Set weights for your saved universe. Unallocated capital stays in cash. This draft runs directly in Strategy Lab.</p>'+source+'<div class="field-grid">'+fields.map(([key,label,type])=>'<div class="field"><label for="allocation-'+key+'">'+label+'</label><input class="form-control" id="allocation-'+key+'" data-allocation-field="'+key+'" type="'+type+'" value="'+esc(draft[key])+'" '+(type==='number'?'min="0" step="0.01"':'')+' ></div>').join('')+'</div><div class="form-actions"><button class="button button-primary" id="allocation-simulate" '+(portfolioScenarioBusy?'disabled':'')+'>Simulate in Strategy Lab</button>'+load+'<button class="button" id="allocation-equal">Equal weight</button> <button class="button" id="allocation-clear">Clear weights</button></div><p id="allocation-status" role="status">'+esc(draft.error||allocationStatus())+'</p><label for="allocation-search">Find symbol<input id="allocation-search" data-allocation-field="query" value="'+esc(draft.query)+'"></label><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Allocation %</th></tr></thead><tbody>'+rows.map(symbol=>'<tr><th scope="row">'+esc(symbol)+'</th><td><input id="allocation-weight-'+esc(symbol)+'" data-allocation-symbol="'+esc(symbol)+'" aria-label="'+esc(symbol)+' allocation percent" type="number" min="0" max="100" step="0.00000001" value="'+esc(draft.weights[symbol]||'0')+'"></td></tr>').join('')+'</tbody></table></div></section>';
 }
 document.addEventListener('input',event=>{
  const field=event.target.dataset.allocationField,symbol=event.target.dataset.allocationSymbol;
  if(field){portfolioAllocations[field]=event.target.value;if(field==='query')render();}
  if(symbol){portfolioAllocations.weights[symbol]=event.target.value;const status=document.getElementById('allocation-status');if(status)status.textContent=allocationStatus();}
 });
-document.addEventListener('click',event=>{
+document.addEventListener('click',async event=>{
+ if(event.target.closest('#allocation-spy')){
+  const draft=portfolioAllocations;
+  draft.loading=true;draft.error='';render();
+  try{
+   draft.spy=await api('/api/evaluations',{action:'spy_year_start'});
+   draft.weights={...draft.spy.weights};draft.start=draft.spy.as_of;draft.query='';
+  }catch(error){draft.error=error.message;}
+  finally{draft.loading=false;render();}
+  return;
+ }
  if(event.target.closest('#allocation-equal')){
-  const symbols=universe(),each=Math.floor(1000000/symbols.length),remainder=1000000%symbols.length;
+  const symbols=allocationSymbols(),each=Math.floor(1000000/symbols.length),remainder=1000000%symbols.length;
   symbols.forEach((symbol,index)=>{portfolioAllocations.weights[symbol]=((each+(index<remainder?1:0))/10000).toFixed(4);});render();
  }
  if(event.target.closest('#allocation-clear')){portfolioAllocations.weights={};render();}
@@ -815,8 +829,9 @@ document.addEventListener('click',event=>{
   const draft=portfolioAllocations,{total,positions}=allocationTotals();
   if(!positions)throw Error('Allocate at least one stock before simulating.');
   if(!draft.start||!draft.end||draft.start>=draft.end)throw Error('Choose a start date before the end date.');
-  const allocations=universe().map(symbol=>({symbol,weight:(allocationUnits(draft.weights[symbol]||'0')/1000000).toFixed(6)}));
-  const model={id:crypto.randomUUID(),name:'Portfolio allocations',inputs:universe().map(symbol=>({symbol})),result:{capital:draft.capital,allocations,target_cash_weight:((1000000-total)/1000000).toFixed(6)}};
+  const allocations=allocationSymbols().map(symbol=>({symbol,weight:(allocationUnits(draft.weights[symbol]||'0')/allocationTotalUnits).toFixed(10)}));
+  const model={id:crypto.randomUUID(),name:draft.spy?'SPY holdings and SGOV':'Portfolio allocations',inputs:allocationSymbols().map(symbol=>({symbol})),result:{capital:draft.capital,allocations,target_cash_weight:((allocationTotalUnits-total)/allocationTotalUnits).toFixed(10)}};
+  if(draft.spy)model.holdings_source='spy_year_start';
   Object.assign(portfolioScenarioDraft,{start:draft.start,end:draft.end,fee_usd:draft.fee});
   strategyTab='simulations';strategyView='setup';location.hash='#strategy';runPortfolioScenario(model,{...portfolioScenarioDraft});
  }catch(error){document.getElementById('allocation-status').textContent=error.message;}
@@ -1561,7 +1576,8 @@ function portfolioScenarioMarkup(result){
  const last=ledger.equity_curve.at(-1),ending=Number(last.equity_usd),capital=Number(result.starting_cash),entries=ledger.events.filter(row=>row.kind==='entry');
  const weights=Object.entries(result.target_weights||{}).map(([symbol,weight])=>symbol+' '+(Number(weight)*100).toFixed(2)+'%').concat(result.target_cash_weight!=null?['cash '+(Number(result.target_cash_weight)*100).toFixed(2)+'%']:[]).join(', ');
  const change=Number.isFinite(capital)&&capital>0?money(ending-capital)+' ('+((ending/capital-1)*100).toFixed(2)+'%)':'Unavailable: starting capital was not retained';
- return '<h3>Model portfolio · historical scenario</h3><p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+'. Ending equity '+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p>'+portfolioBenchmarkMarkup(result)+'<h4>Historical whole-share entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
+ const holdingsSource=result.holdings_as_of?'<p>Stock list and starting weights from SPY’s '+esc(result.holdings_as_of)+' SEC filing. This model includes SGOV and buys whole shares.</p>':'';
+ return '<h3>Model portfolio · historical scenario</h3>'+holdingsSource+'<p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+'. Ending equity '+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p>'+portfolioBenchmarkMarkup(result)+'<h4>Historical whole-share entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
 }
 function simulationResultMarkup(result){
  if(result.kind==='portfolio_scenario')return portfolioScenarioMarkup(result);

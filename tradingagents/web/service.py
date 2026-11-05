@@ -2937,6 +2937,17 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
+        if action == "spy_year_start":
+            from decimal import ROUND_FLOOR
+            filed = json.loads(Path(__file__).with_name("static").joinpath("spy_year_start_2026.json").read_text(encoding="utf-8"))
+            rows = filed.pop("holdings")
+            total = sum(Decimal(row["fund_percent"]) for row in rows)
+            weights = {row["symbol"]: (Decimal(row["fund_percent"]) * 90 / total).quantize(
+                Decimal("0.00000001"), rounding=ROUND_FLOOR) for row in rows}
+            largest = max(weights, key=weights.get)
+            weights[largest] += Decimal(90) - sum(weights.values())
+            weights["SGOV"] = Decimal(10)
+            return {**filed, "weights": {symbol: str(percent) for symbol, percent in weights.items()}}
         if action == "delete_simulations":
             from uuid import UUID
             selected = request.get("ids")
@@ -3004,6 +3015,11 @@ class DeskService:
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
             histories, action_data, errors, source_references = {}, {}, [], {}
             weights = model_weights(model)
+            filed_holdings = None
+            if model.get("holdings_source") == "spy_year_start":
+                filed_holdings = json.loads(Path(__file__).with_name("static").joinpath("spy_year_start_2026.json").read_text(encoding="utf-8"))
+                if {item["symbol"] for item in model["inputs"]} != {row["symbol"] for row in filed_holdings["holdings"]} | {"SGOV"}:
+                    raise ValueError("The model must include the complete December 31 SPY stock list and SGOV.")
             listings = listing_dates()
             first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
             missing_history, missing_actions = {}, []
@@ -3091,7 +3107,10 @@ class DeskService:
             if missing_history or missing_actions:
                 job_ids = []
                 attempted = list(collection["attempted"])
-                requests = [("history", [symbol], first) for symbol, first in missing_history.items()]
+                history_dates = {}
+                for symbol, first in missing_history.items():
+                    history_dates.setdefault(first, []).append(symbol)
+                requests = [("history", symbols, first) for first, symbols in history_dates.items()]
                 if missing_actions:
                     requests.append(("actions", missing_actions, start))
                 for kind, symbols, first in requests:
@@ -3100,7 +3119,7 @@ class DeskService:
                         raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
                     body = {"symbols": symbols, "start": first, "end": end}
                     body.update({"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]} if kind == "actions"
-                        else {"action": "start", "asof": end, "adjustment": "raw", "timeframe": "1Day"})
+                        else {"action": "start", "asof": first if filed_holdings else end, "adjustment": "raw", "timeframe": "1Day"})
                     jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
                     active = next((job for job in jobs.values() if job["status"] in {"queued", "running"}
                         and set(job["symbols"]) == set(symbols) and job["request"].get("start") == first
@@ -3111,7 +3130,8 @@ class DeskService:
                     if active:
                         job_ids.append(active["id"])
                     else:
-                        updated = self.data_jobs.request(body, recipient_symbols=set(first_dates) - set(weights))
+                        allowed = set(first_dates) if filed_holdings else set(first_dates) - set(weights)
+                        updated = self.data_jobs.request(body, recipient_symbols=allowed)
                         job_ids.extend(set(updated["data"]["jobs"]) - set(jobs))
                     attempted.extend(keys)
                 return {"status": "collecting", "collection": {"job_ids": job_ids, "attempted": attempted},
@@ -3123,6 +3143,8 @@ class DeskService:
                     "source_references": source_references,
                     "entry_basis": "first_retained_daily_close",
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
+            if filed_holdings:
+                spec["holdings_source"] = filed_holdings
             from .evaluation import digest
             spec["spec_sha256"] = digest(spec)
             identity = str(uuid4())
@@ -3182,6 +3204,8 @@ class DeskService:
             if spec.get("kind") == "portfolio_scenario":
                 result.update(kind="portfolio_scenario", start=spec["start"], end=spec["end"],
                     fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"])
+                if spec.get("holdings_source"):
+                    result["holdings_as_of"] = spec["holdings_source"]["as_of"]
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
                     return
