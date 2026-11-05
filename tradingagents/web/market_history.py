@@ -250,6 +250,9 @@ class MarketDataJobs:
             raise ValueError("Choose an existing provider and its supported evidence scopes")
         known = self.service.investor()["instruments"]
         related = self.distribution_symbols(body, known)
+        if body.get("purpose") == "manual_portfolio":
+            from .manual_portfolios import model
+            related |= set(row["symbol"] for row in model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))["inputs"])
         if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known and s not in related for s in symbols):
             raise ValueError("Choose configured stocks or observed holdings")
         first, last = date.fromisoformat(body["start"]), date.fromisoformat(body["end"])
@@ -258,7 +261,7 @@ class MarketDataJobs:
         identity = str(uuid4())
         job = {"id": identity, "kind": "supplementary", "status": "queued", "created_at": datetime.now(UTC).isoformat(),
             "request": {"provider": provider, "scopes": scopes, "start": first.isoformat(), "end": last.isoformat(),
-                "earnings_horizon": body.get("earnings_horizon"), "purpose": body.get("purpose"), "corporate_action_source": body.get("corporate_action_source")},
+                "earnings_horizon": body.get("earnings_horizon"), "purpose": body.get("purpose"), "corporate_action_source": body.get("corporate_action_source"), "portfolio_id": body.get("portfolio_id"), "portfolio_revision": body.get("portfolio_revision")},
             "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
@@ -308,6 +311,9 @@ class MarketDataJobs:
         if body.get("purpose") == "simulation_benchmark":
             benchmark_symbol = "SPY"
         related = self.distribution_symbols(body, instruments)
+        if body.get("purpose") == "manual_portfolio":
+            from .manual_portfolios import model
+            related |= set(row["symbol"] for row in model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))["inputs"])
         if any(s not in instruments and s != benchmark_symbol and s not in related for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
@@ -324,7 +330,9 @@ class MarketDataJobs:
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
             "resumes": body.get("resumes"), "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
         job["request"]["purpose"] = body.get("purpose")
-        if related:
+        if body.get("purpose") == "manual_portfolio":
+            job["request"].update(portfolio_id=body.get("portfolio_id"), portfolio_revision=body.get("portfolio_revision"))
+        if body.get("purpose") == "simulation_action" and related:
             job["request"]["corporate_action_source"] = body["corporate_action_source"]
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
