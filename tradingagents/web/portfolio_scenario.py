@@ -161,6 +161,15 @@ def parse_actions(symbol, start, end, observation, contingent_terms=None):
                     raise ValueError(f"{symbol} {event_date} merger: provider data conflicts with filed terms")
                 merger["contingent_right"] = terms
                 merger["new_symbol"] = None
+            duplicate = next((item for item in actions
+                if item["kind"] == "merger" and item["ex_date"] == merger["ex_date"]), None)
+            if duplicate:
+                economic_fields = ("new_symbol", "new_cusip", "new", "old", "cash_rate", "contingent_right")
+                if any(duplicate.get(key) != merger.get(key) for key in economic_fields):
+                    raise ValueError(f"{symbol} {event_date} merger: conflicting consideration in provider records")
+                duplicate.setdefault("source_ids", [duplicate["source_id"]]).append(merger["source_id"])
+                duplicate["payable_date"] = max(duplicate["payable_date"], merger["payable_date"])
+                continue
             actions.append(merger)
             continue
         if kind not in {"cash_dividends", "forward_splits", "reverse_splits"}:
@@ -249,6 +258,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, fractional=Fa
                         shares[recipient] += entitlement
                     events.append({"date": day, "ex_date": action["ex_date"], "symbol": symbol, "kind": action["kind"],
                         "recipient": recipient, "shares": str(entitlement), "source_id": action.get("source_id"),
+                        "source_ids": action.get("source_ids"),
                         "cash_usd": str(quantity * Decimal(action.get("cash_rate", "0"))),
                         "payable_date": action.get("payable_date"),
                         "basis": "Share entitlement retained at raw daily value; no cash-in-lieu sale is assumed"})
