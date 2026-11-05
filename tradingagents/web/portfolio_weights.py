@@ -3,11 +3,13 @@
 import base64
 import hashlib
 import io
+import json
 import re
 import threading
 import zipfile
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from urllib.request import Request, urlopen
 from uuid import uuid4
 from xml.etree import ElementTree as ET
@@ -64,19 +66,55 @@ class PortfolioWeights:
     def __init__(self, store):
         self.store = store
         self.lock = threading.Lock()
+        self._import_packaged_snapshots()
+
+    def _import_packaged_snapshots(self):
+        """Retain packaged public source data in the same cache as downloads."""
+        directory = Path(__file__).with_name("portfolio_weight_data")
+        for path in sorted(directory.glob("*.json")):
+            raw = path.read_bytes()
+            asset_hash = hashlib.sha256(raw).hexdigest()
+            data = self.store.database.read(RECORD, {"snapshots": [], "error": None})["data"]
+            if any(item.get("asset_sha256") == asset_hash for item in data["snapshots"]):
+                continue
+            asset = json.loads(raw)
+            datetime.strptime(asset["as_of"], "%Y-%m-%d")
+            if not all(asset.get(key) for key in ("provider", "source_url", "source_sha256", "entries")):
+                raise ValueError(f"Invalid packaged holdings snapshot: {path.name}")
+            entries = asset["entries"]
+            unresolved = asset.get("unresolved", [])
+            symbols = set()
+            for entry in entries:
+                symbol = entry.get("symbol")
+                weight = Decimal(entry["weight"])
+                if not symbol or symbol in symbols or not weight.is_finite() or weight < 0:
+                    raise ValueError(f"Invalid packaged holdings entry: {path.name}")
+                symbols.add(symbol)
+            identity = str(uuid4())
+            source = self.store._write_json_artifact(identity, "holdings-packaged-source", asset)
+            snapshot = {**asset, "id": identity, "source_artifact": source, "asset_sha256": asset_hash,
+                        "unresolved": unresolved}
+            artifact = self.store._write_json_artifact(identity, "holdings-snapshot", snapshot)
+            metadata = {k: snapshot[k] for k in ("id", "provider", "as_of", "source_url", "source_sha256", "asset_sha256")}
+            metadata["artifact"] = artifact
+            def save(records):
+                items = records[RECORD]["snapshots"]
+                if not any(item.get("asset_sha256") == asset_hash for item in items):
+                    items.append(metadata)
+            self.store.database.transact({RECORD: {"snapshots": [], "error": None}}, save)
 
     def state(self, symbols=None, as_of=None):
         data = self.store.database.read(RECORD, {"snapshots": [], "error": None})["data"]
         snapshots = data.get("snapshots", [])
         eligible = [item for item in snapshots if not as_of or item["as_of"] <= as_of]
-        selected = max(eligible, key=lambda item: (item["as_of"], item["id"])) if eligible else None
+        selected = max(enumerate(eligible), key=lambda item: (item[1]["as_of"], item[0]))[1] if eligible else None
         snapshot = read_artifact(self.store.directory, selected["artifact"]) if selected else None
         error = data.get("error")
         if selected and snapshot is None:
             error = "Saved holdings snapshot is missing or changed"
         known = {entry["symbol"] for entry in snapshot["entries"]} if snapshot else set()
         missing = [symbol for symbol in (symbols or []) if symbol.upper() not in known]
-        return {"status": "error" if error else ("ready" if snapshot else "unavailable"),
+        return {"status": "error" if error else ("partial" if snapshot and snapshot.get("unresolved") else ("ready" if snapshot else "unavailable")),
                 "snapshot": snapshot, "available_snapshots": [{k: v for k, v in item.items() if k != "artifact"} for item in snapshots],
                 "missing": missing, "error": error}
 
