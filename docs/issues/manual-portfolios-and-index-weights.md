@@ -48,3 +48,22 @@ separate runtime and profile.
 
 The Maenifold Gateway is not exposed in the current tool inventory. Project
 lessons cannot yet be retrieved or persisted through it.
+
+## Browser evidence
+
+- Created `Manual allocation smoke check`, revision 1, from the development
+  universe. Cleared the draft, then set AAPL to 25% and MSFT to 50%, leaving 25%
+  cash. Saved and ran it directly in Strategy Lab without a research run.
+- From October 30 through November 4, 2026, the $100,000 fractional-share
+  portfolio finished at $103,613.44, with $25,000 cash. The independent closing
+  mark calculation is `25000 + 25000 * 349.555 / 344.77 + 50000 * 556.07 / 521.97`
+  and rounds to the displayed result.
+- Saved and reopened `S&P 500 YTD from IVV`, revision 1, with 503 initial holdings
+  and 0.191380589433% residual cash. Strategy Lab selected December 31, 2025 to
+  November 4, 2026 from its market calendar. This is a fixed starting portfolio
+  from an ETF filing. Its comparison uses SPY adjusted closes over the same dates.
+- The first full run exposed three real data cases. Hologic's non-tradable CVR
+  needs a separate unmarked entitlement. AVB's merger delivers EQR, whose CUSIP
+  matches the existing VMRK position. Comcast's retained raw corporate action
+  page contains a VSNT spinoff omitted by the old normalization. Collection and
+  simulation now share the same parser and recipient resolution.
