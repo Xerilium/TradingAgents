@@ -49,6 +49,9 @@ def parse_actions(symbol, start, end, observation):
     actions = []
     for record in observation.get("records", []):
         row, kind = record.get("reported") or {}, record.get("kind", "")
+        event_date = row.get("ex_date") or row.get("effective_date")
+        if event_date and not start <= date.fromisoformat(event_date) <= end:
+            continue
         if kind == "cash_mergers" and row.get("acquirer_symbol") == symbol and row.get("acquiree_symbol") not in {None, symbol}:
             effective = date.fromisoformat(row["effective_date"])
             if start <= effective <= end:
