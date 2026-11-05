@@ -243,6 +243,33 @@ class MarketDataJobs:
         return {row["new_symbol"] for row in payload.get("corporate_actions", {}).get("spin_offs", [])
                 if row.get("source_symbol") in instruments and isinstance(row.get("new_symbol"), str)}
 
+    def manual_symbols(self, body):
+        from .manual_portfolios import model
+        from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+        from .approval_review import read_artifact
+        from .evaluation import reference
+        saved = model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))
+        symbols = {row["symbol"] for row in saved["inputs"]}
+        identities = {row["symbol"]: row.get("cusip") for row in saved["inputs"]}
+        observations = self.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
+        pending = list(symbols)
+        while pending:
+            symbol = pending.pop()
+            meta = observations.get(symbol, {}).get("corporate_actions") or {}
+            ref = meta.get("last_usable_artifact") or meta.get("artifact")
+            observation = read_artifact(self.service.store.directory, reference(ref)) if ref else {}
+            for record in (observation or {}).get("records", []):
+                row, kind = record.get("reported") or {}, record.get("kind")
+                reported_cusip = row.get("source_cusip") if kind == "spin_offs" else row.get("acquiree_cusip")
+                if identities.get(symbol) and reported_cusip and identities[symbol] != reported_cusip:
+                    continue
+                target = row.get("new_symbol") if kind == "spin_offs" and row.get("source_symbol") == symbol else row.get("acquirer_symbol") if kind in {"stock_mergers", "stock_and_cash_mergers"} and row.get("acquiree_symbol") == symbol else None
+                if target and target not in symbols:
+                    symbols.add(target)
+                    identities[target] = row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip")
+                    pending.append(target)
+        return symbols
+
     def evidence_request(self, body):
         from .stock_evidence import PROVIDERS
         provider, scopes, symbols = body.get("provider"), body.get("scopes"), body.get("symbols")
@@ -251,8 +278,7 @@ class MarketDataJobs:
         known = self.service.investor()["instruments"]
         related = self.distribution_symbols(body, known)
         if body.get("purpose") == "manual_portfolio":
-            from .manual_portfolios import model
-            related |= set(row["symbol"] for row in model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))["inputs"])
+            related |= self.manual_symbols(body)
         if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known and s not in related for s in symbols):
             raise ValueError("Choose configured stocks or observed holdings")
         first, last = date.fromisoformat(body["start"]), date.fromisoformat(body["end"])
@@ -312,8 +338,7 @@ class MarketDataJobs:
             benchmark_symbol = "SPY"
         related = self.distribution_symbols(body, instruments)
         if body.get("purpose") == "manual_portfolio":
-            from .manual_portfolios import model
-            related |= set(row["symbol"] for row in model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))["inputs"])
+            related |= self.manual_symbols(body)
         if any(s not in instruments and s != benchmark_symbol and s not in related for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
