@@ -63,7 +63,7 @@ def binding(data, account_id):
 
 def save(data, request, account_id):
     validate(data)
-    allowed = {"action", "account_id", "expected_revision", "fund_plans_revision", "plan_revision", "status", *FIELDS}
+    allowed = {"action", "account_id", "store_generation", "expected_revision", "fund_plans_revision", "plan_revision", "status", *FIELDS}
     if set(request) != allowed:
         raise ValueError("Supply only the required fund-plan fields and revisions.")
     key = account_key(account_id)

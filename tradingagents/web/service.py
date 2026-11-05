@@ -1640,6 +1640,9 @@ class DeskService:
             from .fund_plans import DEFAULT as FUND_DEFAULT, RECORD as FUND_RECORD, save as save_fund
             from .spy_rebalance import DEFAULT as SPY_DEFAULT, RECORD as SPY_RECORD, ACTIVE_RUN, CONSTRAINTS, paper_account
             with self.maintenance:
+                if request.get("store_generation") != self.store.directory.resolve().as_posix():
+                    from .app_database import StoreConflict
+                    raise StoreConflict(self.store.database.read(FUND_RECORD, FUND_DEFAULT)["revision"])
                 runtime = self.admission.checked_observation(CONSTRAINTS)
                 account_id = paper_account(runtime)
                 if not account_id or request.get("account_id") != account_id:
