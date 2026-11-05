@@ -3023,6 +3023,9 @@ class DeskService:
                 filed_holdings, expected_weights = spy_year_start()
                 if weights != {symbol: percent / 100 for symbol, percent in expected_weights.items()}:
                     raise ValueError("Reload the year-start weights to run the full SPY stock list with 10% SGOV.")
+            from .portfolio_scenario import entry_quantity
+            fractional = filed_holdings is not None
+            capital = Decimal(str(model["result"]["capital"]))
             listings = listing_dates()
             first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
             missing_history, missing_actions = {}, []
@@ -3101,8 +3104,8 @@ class DeskService:
                         if recipient in first_dates and first_dates[recipient] <= item["ex_date"]:
                             continue
                         if symbol in weights and symbol in histories:
-                            from decimal import ROUND_FLOOR
-                            quantity = (Decimal(str(model["result"]["capital"])) * weights[symbol] / Decimal(histories[symbol][min(histories[symbol])]["close"])).to_integral_value(rounding=ROUND_FLOOR)
+                            first_close = Decimal(histories[symbol][min(histories[symbol])]["close"])
+                            quantity = entry_quantity(capital, weights[symbol], first_close, fractional)
                             if quantity == 0:
                                 continue
                         first_dates[recipient] = item["ex_date"]
@@ -3148,6 +3151,7 @@ class DeskService:
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
             if filed_holdings:
                 spec["holdings_source"] = filed_holdings
+                spec["fractional_shares"] = True
             from .evaluation import digest
             spec["spec_sha256"] = digest(spec)
             identity = str(uuid4())
@@ -3209,6 +3213,7 @@ class DeskService:
                     fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"])
                 if spec.get("holdings_source"):
                     result["holdings_as_of"] = spec["holdings_source"]["as_of"]
+                    result["fractional_shares"] = spec.get("fractional_shares", False)
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
                     return

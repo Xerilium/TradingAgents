@@ -1,7 +1,7 @@
 """Validation for the fixed modeled-portfolio hindsight scenario."""
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from itertools import groupby
 
 def validate_model(model):
@@ -33,6 +33,11 @@ def validate_model(model):
 
 def model_weights(model):
     return {row["symbol"]: Decimal(str(row["weight"])) for row in model["result"]["allocations"] if Decimal(str(row["weight"])) > 0}
+
+
+def entry_quantity(capital, weight, price, fractional=False):
+    step = Decimal("0.000000001") if fractional else Decimal(1)
+    return (capital * weight / price).quantize(step, rounding=ROUND_FLOOR)
 
 
 def listing_dates():
@@ -175,10 +180,8 @@ def parse_actions(symbol, start, end, observation):
     return sorted(actions, key=lambda item: (item["ex_date"] or "", item["kind"]))
 
 
-def account_portfolio(bars, actions, fee_usd, native_fills, model):
+def account_portfolio(bars, actions, fee_usd, native_fills, model, fractional=False):
     """Account for one synchronized hindsight portfolio; bars are validated raw daily marks."""
-    from decimal import ROUND_FLOOR
-
     fee = Decimal(str(fee_usd))
     if not fee.is_finite() or fee < 0 or fee.as_tuple().exponent < -2:
         raise ValueError("transaction_cost.fee_usd: expected a nonnegative USD amount with at most two decimal places")
@@ -198,7 +201,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model):
         price = Decimal(str(bars[symbol][first]["close"]))
         if not price.is_finite() or price <= 0:
             raise ValueError(f"{symbol} {first} close: invalid")
-        expected = (capital * weight / price).to_integral_value(rounding=ROUND_FLOOR)
+        expected = entry_quantity(capital, weight, price, fractional)
         fill = native_fills.get(symbol) or {}
         if (Decimal(str(fill.get("shares", "-1"))) != expected or Decimal(str(fill.get("price", "-1"))) != price
                 or Decimal(str(fill.get("fee_usd", "-1"))) != (fee if expected else 0)):
