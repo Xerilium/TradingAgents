@@ -2,51 +2,6 @@
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-import re
-
-
-def valid_cusip(value):
-    return value if isinstance(value, str) and re.fullmatch(r"[A-Z0-9]{9}", value) else None
-
-
-def canonical_recipient(model, symbol, cusip):
-    """Map a provider's historical ticker only with an exact saved issuer identity."""
-    cusip = valid_cusip(cusip)
-    matches = [row["symbol"] for row in model.get("inputs", [])
-               if cusip and valid_cusip(row.get("cusip")) == cusip and row.get("historical_symbol") == symbol]
-    if len(matches) > 1:
-        raise ValueError(f"{symbol} recipient identity matches more than one saved holding")
-    return matches[0] if matches else symbol
-
-
-def resolve_recipients(model, actions):
-    for action in actions:
-        if action.get("new_symbol"):
-            provider = action["new_symbol"]
-            action["provider_new_symbol"] = provider
-            action["new_symbol"] = canonical_recipient(model, provider, action.get("provider_new_cusip"))
-    return actions
-
-
-def contingent_right(symbol, kind, row, end):
-    """Recognize only the documented HOLX right for the evidence-bounded period."""
-    if (kind != "stock_and_cash_mergers" or symbol != "HOLX" or end > "2026-11-04"
-            or row.get("id") != "3857592d-548a-4140-b254-61831ebd32b0"
-            or row.get("acquiree_symbol") != "HOLX" or row.get("acquiree_cusip") != "436440101"
-            or row.get("acquirer_symbol") != "436CVR021" or row.get("acquirer_cusip") != "436CVR021"
-            or row.get("effective_date") != "2026-04-07"):
-        return None
-    try:
-        if (Decimal(str(row.get("acquiree_rate"))) != 1 or Decimal(str(row.get("acquirer_rate"))) != 1
-                or Decimal(str(row.get("cash_rate"))) != 76):
-            return None
-    except InvalidOperation:
-        return None
-    return {"symbol": "436CVR021", "source_symbol": "HOLX", "classification": "non_tradable_contingent_right",
-            "cap_per_right_usd": "3", "evidence_through": "2026-11-04",
-            "provenance": ["https://www.sec.gov/Archives/edgar/data/859737/000119312526144632/d135035dex991.htm",
-                           "https://infomemo.theocc.com/infomemos?number=58724"],
-            "basis": "Two conditional payments of up to $1.50 each; no market price or payment is assumed"}
 
 def validate_model(model):
     if not isinstance(model, dict) or not isinstance(model.get("id"), str) or not model["id"].strip():
@@ -79,34 +34,11 @@ def model_weights(model):
     return {row["symbol"]: Decimal(str(row["weight"])) for row in model["result"]["allocations"] if Decimal(str(row["weight"])) > 0}
 
 
-def entry_quantity(capital, weight, price, sizing="whole"):
-    from decimal import ROUND_FLOOR
-    if sizing not in {"whole", "fractional"}:
-        raise ValueError("Share sizing must be whole or fractional")
-    step = Decimal("0.000000001") if sizing == "fractional" else Decimal(1)
-    return (Decimal(str(capital)) * weight / Decimal(str(price))).quantize(step, rounding=ROUND_FLOOR)
-
-
-def parse_actions(symbol, start, end, observation, *, load_artifact=None, initial_shares=None, cusip=None):
+def parse_actions(symbol, start, end, observation):
     """Reject unproven coverage or unsupported action types; never infer events from bars."""
     start, end = date.fromisoformat(start), date.fromisoformat(end)
-    cusip = valid_cusip(cusip)
     if not isinstance(observation, dict):
         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no complete matching provider receipt")
-    if load_artifact is not None and any(gap.startswith("Action has no exact selected-symbol association") for gap in observation.get("gaps", [])):
-        # Reinterpret the immutable provider pages with the corrected role mapping.
-        # Never edit the original observation or erase an unresolved coverage gap.
-        from .stock_evidence import corporate_action_records
-        records, gaps = [], [gap for gap in observation["gaps"] if not gap.startswith("Action has no exact selected-symbol association")]
-        pages = observation.get("receipts", [])
-        for index, receipt in enumerate(pages):
-            payload = load_artifact(receipt["artifact"])
-            if not isinstance(payload, dict) or bool(payload.get("next_page_token")) != (index < len(pages) - 1):
-                raise ValueError(f"{symbol} corporate_actions.receipt: unavailable or incomplete provider pages")
-            page_records, page_gaps = corporate_action_records(symbol, payload, receipt["source_url"])
-            records.extend(page_records)
-            gaps.extend(page_gaps)
-        observation = {**observation, "records": records, "gaps": gaps}
     request = observation.get("request") or {}
     if (observation.get("symbol") != symbol or observation.get("provider") != "alpaca"
             or observation.get("complete") is not True or observation.get("status") not in {"available", "missing"}
@@ -114,78 +46,17 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
             or any("Provider may publish actions after announcement" not in gap for gap in observation.get("gaps", []))
             or request.get("start", "9999") > start.isoformat() or request.get("end", "") < end.isoformat()):
         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no complete matching provider receipt")
-    identities = {cusip} if cusip else set()
-    # Only link CUSIPs reported for the same issuer, never merger or spin-off parties.
-    links = []
-    for record in observation.get("records", []):
-        row, kind = record.get("reported") or {}, record.get("kind")
-        old, new = row.get("old_cusip"), row.get("new_cusip")
-        same_split = kind in {"forward_splits", "reverse_splits"} and (row.get("symbol") == symbol or row.get("old_symbol") == row.get("new_symbol") == symbol)
-        rename = kind == "name_changes" and symbol in {row.get("old_symbol"), row.get("new_symbol")}
-        if old and new and (same_split or rename):
-            links.append((old, new))
-    while True:
-        expanded = identities | {value for pair in links if identities.intersection(pair) for value in pair}
-        if expanded == identities:
-            break
-        identities = expanded
     actions = []
     for record in observation.get("records", []):
         row, kind = record.get("reported") or {}, record.get("kind", "")
-        identity = row.get("cusip") or (row.get("acquiree_cusip") if row.get("acquiree_symbol") == symbol else row.get("acquirer_cusip") if row.get("acquirer_symbol") == symbol else row.get("source_cusip") if row.get("source_symbol") == symbol else None)
-        if cusip and identity and identity not in identities:
-            continue
-        if kind == "name_changes":
-            # Provider-mapped historical bars already follow the underlying issuer.
-            # A name/CUSIP change has no reported share ratio or cash entitlement.
-            # Keep its full receipt in the preview; do not invent an effective date.
-            if not row.get("old_symbol") or not row.get("new_symbol") or symbol not in {row["old_symbol"], row["new_symbol"]}:
-                raise ValueError(f"{symbol} corporate_actions.name_change: invalid symbol mapping")
-            continue
-        effective = date.fromisoformat(row.get("ex_date") or row.get("effective_date") or "")
-        # This portfolio is first bought at the opening date's completed close.
-        if effective <= start or effective > end:
-            continue
-        if kind in {"cash_mergers", "stock_mergers", "stock_and_cash_mergers"} and row.get("acquirer_symbol") == symbol and row.get("acquiree_symbol") not in {None, symbol}:
-            actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(),
-                "target_symbol": row["acquiree_symbol"], "source_id": row.get("id"),
-                "basis": "Selected stock is the acquirer; this is not a distribution or conversion of its shareholders' holdings"})
-            continue
-        if kind == "unit_splits" and row.get("new_symbol") == symbol and row.get("old_symbol") != symbol:
-            actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(), "source_id": row.get("id")})
-            continue
-        if kind in {"cash_mergers", "stock_mergers", "stock_and_cash_mergers"} and row.get("acquiree_symbol") == symbol:
-            cash_rate = Decimal(str(row.get("rate") if kind == "cash_mergers" else row.get("cash_rate", 0)))
-            old = Decimal(str(row.get("acquiree_rate", 1)))
-            new = Decimal(str(row.get("acquirer_rate", 0)))
-            if not all(value.is_finite() for value in (cash_rate, old, new)) or cash_rate < 0 or old <= 0 or new < 0:
-                raise ValueError(f"{symbol} {effective} merger: invalid consideration")
-            actions.append({"kind": "merger", "ex_date": effective.isoformat(), "new_symbol": row.get("acquirer_symbol") if new else None,
-                "new": str(new), "old": str(old), "cash_rate": str(cash_rate), "payable_date": row.get("payable_date") or effective.isoformat(), "source_id": row.get("id"),
-                "provider_new_cusip": row.get("acquirer_cusip"), "contingent_right": contingent_right(symbol, kind, row, end.isoformat())})
-            continue
-        if kind == "spin_offs" and row.get("source_symbol") == symbol and row.get("new_symbol") not in {None, symbol}:
-            if initial_shares == 0:
-                actions.append({"kind": "no_position_action", "ex_date": effective.isoformat(), "source_kind": kind,
-                    "source_id": row.get("id"), "basis": "Whole-share entry bought zero shares; this action has no portfolio entitlement"})
-                continue
-            new, old = Decimal(str(row["new_rate"])), Decimal(str(row["source_rate"]))
-            if not new.is_finite() or not old.is_finite() or new <= 0 or old <= 0:
-                raise ValueError(f"{symbol} {effective} spin_off ratio: invalid")
-            actions.append({"kind": "stock_distribution", "ex_date": effective.isoformat(),
-                "new_symbol": row["new_symbol"], "new": str(new), "old": str(old), "source_id": row.get("id"),
-                "provider_new_cusip": row.get("new_cusip"),
-                "payable_date": row.get("payable_date"), "basis": "Entitlement valued from ex-date; not a broker settlement record"})
-            continue
-        if kind == "spin_offs" and row.get("new_symbol") == symbol and row.get("source_symbol") not in {None, symbol}:
-            actions.append({"kind": "issuer_creation", "ex_date": effective.isoformat(), "source_id": row.get("id"),
-                "basis": "Receipt identifies the issued security; entitlement is accounted against holdings of its parent"})
+        if kind == "cash_mergers" and row.get("acquirer_symbol") == symbol and row.get("acquiree_symbol") not in {None, symbol}:
+            effective = date.fromisoformat(row["effective_date"])
+            if start <= effective <= end:
+                actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(),
+                    "target_symbol": row["acquiree_symbol"], "source_id": row.get("id"),
+                    "basis": "Selected stock is the acquirer; this is not a distribution or conversion of its shareholders' holdings"})
             continue
         if kind not in {"cash_dividends", "forward_splits", "reverse_splits"}:
-            if initial_shares == 0:
-                actions.append({"kind": "no_position_action", "ex_date": effective.isoformat(), "source_kind": kind,
-                    "source_id": row.get("id"), "basis": "Whole-share entry bought zero shares; this action has no portfolio entitlement"})
-                continue
             raise ValueError(f"{symbol} {row.get('ex_date') or row.get('effective_date') or 'unknown'} corporate_actions.kind: unsupported {kind}")
         def field(name):
             value = row.get(name)
@@ -212,7 +83,7 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
     return sorted(actions, key=lambda item: (item["ex_date"], item["kind"]))
 
 
-def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole", calendar=None):
+def account_portfolio(bars, actions, fee_usd, native_fills, model):
     """Account for one synchronized hindsight portfolio; bars are validated raw daily marks."""
     from decimal import ROUND_FLOOR
 
@@ -221,25 +92,23 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
         raise ValueError("transaction_cost.fee_usd: expected a nonnegative USD amount with at most two decimal places")
     weights = model_weights(validate_model(model))
     capital = Decimal(str(model["result"]["capital"]))
-    symbols = tuple(bars)
-    if not set(weights).issubset(bars) or set(actions) != set(bars):
+    symbols = tuple(weights)
+    if set(bars) != set(symbols) or set(actions) != set(symbols):
         raise ValueError("portfolio inputs: bars and corporate actions are required for every positive allocation")
-    dates = list(calendar) if calendar is not None else sorted(set().union(*(set(rows) for rows in bars.values())))
-    if dates != sorted(set(dates)) or any(set(rows) - set(dates) for rows in bars.values()):
-        raise ValueError("portfolio calendar: duplicate, unordered or off-calendar sessions")
-    if not dates or any(dates[0] not in bars[symbol] for symbol in weights):
-        raise ValueError("portfolio bars: every initial allocation requires an opening session mark")
+    dates = sorted(bars[symbols[0]])
+    if not dates or any(set(bars[symbol]) != set(dates) for symbol in symbols):
+        raise ValueError("portfolio bars: every symbol must have the same actual dated sessions")
     for symbol in symbols:
         for action in actions[symbol]:
-            if not any(day >= action["ex_date"] for day in dates):
-                raise ValueError(f"{symbol} {action['ex_date']} ex_date: no subsequent session")
-    cash, shares, receivables = capital, dict.fromkeys(symbols, Decimal(0)), []
-    events, curve, rights = [], [], []
-    for symbol in weights:
+            if action["ex_date"] not in dates:
+                raise ValueError(f"{symbol} {action['ex_date']} ex_date: no synchronized session mark")
+    cash, shares, receivables = capital, {}, []
+    events, curve = [], []
+    for symbol in symbols:
         price = Decimal(str(bars[symbol][dates[0]]["close"]))
         if not price.is_finite() or price <= 0:
             raise ValueError(f"{symbol} {dates[0]} close: invalid")
-        expected = entry_quantity(capital, weights[symbol], price, sizing)
+        expected = (capital * weights[symbol] / price).to_integral_value(rounding=ROUND_FLOOR)
         fill = native_fills.get(symbol) or {}
         if (Decimal(str(fill.get("shares", "-1"))) != expected or Decimal(str(fill.get("price", "-1"))) != price
                 or Decimal(str(fill.get("fee_usd", "-1"))) != (fee if expected else 0)):
@@ -251,45 +120,22 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
     if cash < 0:
         raise ValueError(f"{dates[0]} transaction_cost.fee_usd: entry costs exceed available cash")
     for day in dates:
-        opening_shares = shares.copy()
         for symbol in symbols:
             for action in actions[symbol]:
-                if day != next((session for session in dates if session >= action["ex_date"]), None):
+                if action["ex_date"] != day:
                     continue
                 if day == dates[0]:
                     continue
-                if action["kind"] in {"issuer_acquisition", "issuer_creation", "no_position_action"}:
-                    if action["kind"] == "no_position_action" and shares[symbol] != 0:
-                        raise ValueError(f"{symbol} {day} corporate_actions: ignored event has a nonzero holding")
+                if action["kind"] == "issuer_acquisition":
                     events.append({"date": day, "symbol": symbol, **action})
-                elif action["kind"] == "stock_distribution":
-                    quantity = shares[symbol] * Decimal(action["new"]) / Decimal(action["old"])
-                    if sizing == "whole" and quantity != quantity.to_integral_value():
-                        raise ValueError(f"{symbol} {day} distribution: fractional entitlement requires fractional sizing or cash-in-lieu evidence")
-                    shares[action["new_symbol"]] += quantity
-                    events.append({"date": day, "symbol": symbol, **action, "shares_received": str(quantity)})
-                elif action["kind"] == "merger":
-                    quantity = shares[symbol]
-                    if action["new_symbol"]:
-                        received = quantity * Decimal(action["new"]) / Decimal(action["old"])
-                        if action.get("contingent_right"):
-                            right = action["contingent_right"]
-                            rights.append({**right, "quantity": str(received), "maximum_usd": str(received * Decimal(right["cap_per_right_usd"])), "source_id": action.get("source_id"), "date": day})
-                        else:
-                            shares[action["new_symbol"]] += received
-                    amount = quantity * Decimal(action["cash_rate"])
-                    if amount:
-                        receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": amount})
-                    shares[symbol] = Decimal(0)
-                    events.append({"date": day, "symbol": symbol, **action, "shares_converted": str(quantity), "amount_usd": str(amount)})
                 elif action["kind"] == "split":
                     quantity = shares[symbol] * Decimal(action["new"]) / Decimal(action["old"])
-                    if sizing == "whole" and quantity != quantity.to_integral_value():
+                    if quantity != quantity.to_integral_value():
                         raise ValueError(f"{symbol} {day} splitnew_rate/splitold_rate: fractional entitlement requires explicit cash-in-lieu evidence")
                     shares[symbol] = quantity
                     events.append({"date": day, "symbol": symbol, "kind": "split", "shares": str(quantity)})
                 elif action["kind"] == "dividend":
-                    receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": opening_shares[symbol] * Decimal(action["rate"])})
+                    receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": shares[symbol] * Decimal(action["rate"])})
         due = [item for item in receivables if item["payable_date"] <= day]
         for item in due:
             cash += item["amount"]
@@ -297,18 +143,11 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
             receivables.remove(item)
         value = cash + sum(item["amount"] for item in receivables)
         for symbol in symbols:
-            if not shares[symbol]:
-                continue
-            if day not in bars[symbol]:
-                raise ValueError(f"{symbol} {day} close: missing while position is held")
             price = Decimal(str(bars[symbol][day]["close"]))
             if not price.is_finite() or price <= 0:
                 raise ValueError(f"{symbol} {day} close: invalid")
             value += shares[symbol] * price
-        contingent_max = sum((Decimal(item["maximum_usd"]) for item in rights), Decimal(0))
-        curve.append({"date": day, "equity_usd": str(value), "cash_usd": str(cash),
-                      "contingent_max_usd": str(contingent_max), "equity_max_usd": str(value + contingent_max)})
+        curve.append({"date": day, "equity_usd": str(value), "cash_usd": str(cash)})
     return {"cash_usd": str(cash), "shares": {key: str(value) for key, value in shares.items()},
-            "receivables": [{**item, "amount": str(item["amount"])} for item in receivables], "events": events, "equity_curve": curve,
-            "contingent_rights": rights, "conditional_equity_range_usd": {"marked": curve[-1]["equity_usd"], "maximum": curve[-1]["equity_max_usd"]}}
+            "receivables": [{**item, "amount": str(item["amount"])} for item in receivables], "events": events, "equity_curve": curve}
 

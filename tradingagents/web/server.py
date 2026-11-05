@@ -226,20 +226,6 @@ class DeskHandler(BaseHTTPRequestHandler):
             except (OSError, ValueError, KeyError):
                 self._send(400, {"error": "Saved current-market history is unavailable or changed"})
             return
-        if path == "/api/portfolio-dates":
-            try:
-                self._send(200, self.server.service.portfolio_dates())
-            except ValueError as exc:
-                self._send(400, {"error": str(exc)})
-            return
-        if path == "/api/portfolios":
-            from .manual_portfolios import state
-            self._send(200, state(self.server.service.store))
-            return
-        if path == "/api/portfolio-weights":
-            query = parse_qs(url.query)
-            self._send(200, self.server.service.portfolio_weights.state(as_of=query.get("as_of", [None])[0]))
-            return
         if path == "/api/evaluations":
             try:
                 query = parse_qs(url.query)
@@ -411,7 +397,7 @@ class DeskHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "Recovery-only startup accepts archive preview and deliberate restore only"})
                 return
             if service.browse_only and path not in {
-                    "/api/credentials", "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/portfolios", "/api/portfolio-weights", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model", "/api/research/delete", "/api/workflows"}:
+                    "/api/credentials", "/api/nautilus/start", "/api/nautilus/stop", "/api/refresh", "/api/quotes/refresh", "/api/config", "/api/workspace", "/api/investor", "/api/recovery", "/api/reporting", "/api/commands/reconcile", "/api/commands", "/api/trading/pause", "/api/attention", "/api/market-history", "/api/discovery", "/api/evaluations", "/api/native-report", "/api/runs/local-laya", "/api/portfolio-model", "/api/research/delete", "/api/workflows"}:
                 self._send(403, {"error": "Review-only session: new research, native Nautilus drafts, approvals, admission and broker writes are disabled. Local human proposals and baskets remain available."})
                 return
             if path == "/api/orders" or path.startswith("/api/orders/"):
@@ -450,13 +436,6 @@ class DeskHandler(BaseHTTPRequestHandler):
                     return
             elif path == "/api/portfolio-model":
                 result = service.model_portfolio(data)
-            elif path == "/api/portfolios":
-                from .manual_portfolios import save
-                result = save(service.store, data, service.portfolio_weights)
-            elif path == "/api/portfolio-weights":
-                if data.get("action") != "refresh":
-                    raise ValueError("Choose refresh")
-                result = service.portfolio_weights.refresh()
             elif path == "/api/workspace":
                 result = service.save_workspace(data)
             elif path == "/api/discovery":

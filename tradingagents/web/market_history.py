@@ -125,14 +125,14 @@ class RequestBudget:
     def __init__(self):
         self.lock, self.next_request = threading.Lock(), 0
 
-    def wait(self, canceled, interval=1.1):
+    def wait(self, canceled):
         while True:
             if canceled():
                 raise InterruptedError("Data job canceled before its next provider request")
             with self.lock:
                 delay = self.next_request - time.monotonic()
                 if delay <= 0:
-                    self.next_request = time.monotonic() + interval
+                    self.next_request = time.monotonic() + 1.1
                     return
             time.sleep(min(delay, .2))
 
@@ -217,7 +217,7 @@ class MarketDataJobs:
             "complete_history": sum(record["data"]["coverage"].get(s, {}).get("required_coverage", {}).get("sufficient") is True for s in universe),
             "missing_or_incomplete": sum(record["data"]["coverage"].get(s, {}).get("required_coverage", {}).get("sufficient") is not True for s in universe),
             "holdings_outside_universe": sum(item["holding"] and symbol not in universe for symbol, item in instruments.items())},
-            "local_request_budget": "Alpaca history/supplement requests are capped at 150 per minute, shared by two data workers; provider entitlement remains unverified"}
+            "local_request_budget": "At most one history/supplement request every 1.1 seconds, shared by two data workers; provider entitlement remains unverified"}
 
     def sources(self):
         saved = self.current_coverage(self.database.read("market_history", DEFAULT)["data"])
@@ -232,60 +232,13 @@ class MarketDataJobs:
                     "effective_dates": item.get("effective_dates"), "content_sha256": item.get("content_sha256")}
         return result
 
-    def distribution_symbols(self, body, instruments):
-        if body.get("purpose") != "simulation_action":
-            return set()
-        from .approval_review import read_artifact
-        from .evaluation import reference
-        payload = read_artifact(self.service.store.directory, reference(body.get("corporate_action_source")))
-        if not isinstance(payload, dict):
-            raise ValueError("Select a retained corporate-action source receipt")
-        return {row["new_symbol"] for row in payload.get("corporate_actions", {}).get("spin_offs", [])
-                if row.get("source_symbol") in instruments and isinstance(row.get("new_symbol"), str)}
-
-    def manual_lifetimes(self, body):
-        from .manual_portfolios import model
-        from .portfolio_scenario import model_weights, parse_actions, resolve_recipients, valid_cusip
-        from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
-        from .approval_review import read_artifact
-        from .evaluation import reference
-        saved = model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))
-        start, end = body["start"], body["end"]
-        positive = model_weights(saved)
-        symbols = {row["symbol"]: {"start": start, "cusip": valid_cusip(row.get("cusip"))}
-                   for row in saved["inputs"] if row["symbol"] in positive}
-        observations = self.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
-        pending = list(symbols)
-        while pending:
-            symbol = pending.pop()
-            meta = observations.get(symbol, {}).get("corporate_actions") or {}
-            ref = meta.get("last_usable_artifact") or meta.get("artifact")
-            observation = read_artifact(self.service.store.directory, reference(ref)) if ref else {}
-            try:
-                actions = resolve_recipients(saved, parse_actions(symbol, symbols[symbol]["start"], end, observation,
-                    load_artifact=lambda value: read_artifact(self.service.store.directory, reference(value)), cusip=symbols[symbol]["cusip"]))
-            except (ValueError, KeyError, TypeError):
-                continue  # Collection reports missing/invalid receipts separately.
-            for action in actions:
-                target = action.get("new_symbol") if action["kind"] in {"stock_distribution", "merger"} and not action.get("contingent_right") else None
-                if target and (target not in symbols or action["ex_date"] < symbols[target]["start"]):
-                    symbols[target] = {"start": action["ex_date"], "cusip": valid_cusip(action.get("provider_new_cusip"))}
-                    pending.append(target)
-        return symbols
-
-    def manual_symbols(self, body):
-        return set(self.manual_lifetimes(body))
-
     def evidence_request(self, body):
         from .stock_evidence import PROVIDERS
         provider, scopes, symbols = body.get("provider"), body.get("scopes"), body.get("symbols")
         if provider not in PROVIDERS or not isinstance(scopes, list) or not scopes or set(scopes) - PROVIDERS[provider]:
             raise ValueError("Choose an existing provider and its supported evidence scopes")
         known = self.service.investor()["instruments"]
-        related = self.distribution_symbols(body, known)
-        if body.get("purpose") == "manual_portfolio":
-            related |= self.manual_symbols(body)
-        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known and s not in related for s in symbols):
+        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known for s in symbols):
             raise ValueError("Choose configured stocks or observed holdings")
         first, last = date.fromisoformat(body["start"]), date.fromisoformat(body["end"])
         if first > last or (last - first).days > 3660:
@@ -293,7 +246,7 @@ class MarketDataJobs:
         identity = str(uuid4())
         job = {"id": identity, "kind": "supplementary", "status": "queued", "created_at": datetime.now(UTC).isoformat(),
             "request": {"provider": provider, "scopes": scopes, "start": first.isoformat(), "end": last.isoformat(),
-                "earnings_horizon": body.get("earnings_horizon"), "purpose": body.get("purpose"), "corporate_action_source": body.get("corporate_action_source"), "portfolio_id": body.get("portfolio_id"), "portfolio_revision": body.get("portfolio_revision")},
+                "earnings_horizon": body.get("earnings_horizon")},
             "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
@@ -342,10 +295,7 @@ class MarketDataJobs:
         benchmark_symbol = benchmark["symbol"] if benchmark and body.get("purpose") == "benchmark" else None
         if body.get("purpose") == "simulation_benchmark":
             benchmark_symbol = "SPY"
-        related = self.distribution_symbols(body, instruments)
-        if body.get("purpose") == "manual_portfolio":
-            related |= self.manual_symbols(body)
-        if any(s not in instruments and s != benchmark_symbol and s not in related for s in symbols):
+        if any(s not in instruments and s != benchmark_symbol for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
         if adjustment not in {"raw", "split", "dividend", "all"}:
@@ -359,12 +309,9 @@ class MarketDataJobs:
         request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment,
                    "timeframe": timeframe, "feed": "iex", "session": "provider_bar_aggregation", "currency": "USD"}
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
-            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
+            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or instruments.get(s, {}).get("supported") else "unsupported",
+                "error": instruments.get(s, {}).get("limitation")} for s in dict.fromkeys(symbols)}}
         job["request"]["purpose"] = body.get("purpose")
-        if body.get("purpose") == "manual_portfolio":
-            job["request"].update(portfolio_id=body.get("portfolio_id"), portfolio_revision=body.get("portfolio_revision"))
-        if body.get("purpose") == "simulation_action" and related:
-            job["request"]["corporate_action_source"] = body["corporate_action_source"]
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
         self.futures.add(future)
@@ -378,7 +325,7 @@ class MarketDataJobs:
             limit = getattr(self.scan_limits, "value", None)
             if limit:
                 from .market_discovery import scan_dispatch
-            self.budget.wait(lambda limit=limit: canceled() or bool(limit and (limit["run_id"] in self.canceled or time.monotonic() >= limit["deadline"])), interval=0.4)
+            self.budget.wait(lambda limit=limit: canceled() or bool(limit and (limit["run_id"] in self.canceled or time.monotonic() >= limit["deadline"])))
             if limit:
                 scan_dispatch(self, limit)
             try:

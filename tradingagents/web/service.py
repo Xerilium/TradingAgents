@@ -304,45 +304,11 @@ class DeskService:
         self.runtime.observers.append(self._observe_runtime)
         from .market_history import MarketDataJobs
         self.data_jobs = MarketDataJobs(self)
-        self._portfolio_dates_cache = None
-        from .portfolio_weights import PortfolioWeights
-        self.portfolio_weights = PortfolioWeights(self.store)
-        threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
         from .attention import AttentionMonitor
         from .market_discovery import due_scans
         self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
             tick=lambda: (self._expire_charts(), due_scans(self.data_jobs)))
         self.attention_monitor.start()
-
-    def portfolio_dates(self):
-        """Return completed market sessions for the current year's default scenario."""
-        from datetime import date
-        from urllib.parse import urlencode
-        now_ny = datetime.now(ZoneInfo("America/New_York"))
-        cached = self._portfolio_dates_cache
-        if cached and time.monotonic() - cached[0] < 60:
-            return cached[1]
-        first = date(now_ny.year - 1, 12, 20)
-        try:
-            response = self.data_jobs.read("/v2/calendar?" + urlencode({"start": first.isoformat(), "end": now_ny.date().isoformat()}), data=False, canceled=lambda: False)
-            rows = response["data"]
-            if not isinstance(rows, list):
-                raise ValueError("invalid calendar response")
-            completed = []
-            for row in rows:
-                session = date.fromisoformat(row["date"])
-                close = datetime.fromisoformat(f"{row['date']}T{row['close']}").replace(tzinfo=now_ny.tzinfo)
-                if close <= now_ny:
-                    completed.append(session)
-            previous = [day for day in completed if day.year == now_ny.year - 1]
-            current = [day for day in completed if day.year == now_ny.year]
-            if not previous or not current:
-                raise ValueError("no completed sessions for the requested year")
-            result = {"start": max(previous).isoformat(), "end": max(current).isoformat(), "source": "Alpaca market calendar"}
-        except Exception as error:
-            raise ValueError("Market calendar unavailable; enter the scenario dates manually") from error
-        self._portfolio_dates_cache = (time.monotonic(), result)
-        return result
 
     def _observe_runtime(self, observation):
         from .admission import DEFAULT
@@ -2931,81 +2897,10 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
-        if action == "collect_inputs":
-            from .manual_portfolios import model as manual_model
-            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
-            model = manual_model(store, request.get("portfolio_id"), request.get("portfolio_revision"))
-            start, end = request.get("start"), request.get("end")
-            from datetime import date
-            if date.fromisoformat(start) >= date.fromisoformat(end):
-                raise ValueError("scenario dates: start must precede end")
-            history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
-            observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
-            missing_history, missing_actions, problems = [], [], []
-            selected = self.data_jobs.manual_lifetimes(request)
-            for symbol in sorted(selected):
-                first = selected[symbol]["start"]
-                matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= first and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True and not item.get("error")]
-                if not matches:
-                    missing_history.append(symbol)
-                receipt = observations.get(symbol, {}).get("corporate_actions") or {}
-                action_ref = receipt.get("last_usable_artifact") or receipt.get("artifact")
-                observation = read_artifact(store.directory, reference(action_ref)) if action_ref else {}
-                query = (observation or {}).get("request") or {}
-                try:
-                    from .portfolio_scenario import parse_actions
-                    parse_actions(symbol, first, end, observation,
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)),
-                        cusip=selected[symbol]["cusip"])
-                    usable_actions = True
-                except (ValueError, KeyError, TypeError) as error:
-                    usable_actions = False
-                    problems.append(str(error))
-                if not usable_actions:
-                    missing_actions.append(symbol)
-            job_ids = request.get("job_ids")
-            if job_ids is None:
-                job_ids = []
-            current_jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
-            active = any(current_jobs.get(identity, {}).get("status") in {"queued", "running", "canceling"} for identity in job_ids)
-            if not active:
-                attempted_history, attempted_actions = set(), set()
-                for identity in job_ids:
-                    job = current_jobs.get(identity) or {}
-                    attempted = attempted_actions if job.get("kind") == "supplementary" else attempted_history
-                    attempted.update(job.get("symbols", {}))
-                common = {"purpose": "manual_portfolio", "portfolio_id": request["portfolio_id"], "portfolio_revision": request["portfolio_revision"], "start": start, "end": end}
-                for symbols, details in ((sorted(set(missing_history) - attempted_history), {"action": "start", "asof": end, "adjustment": "raw", "timeframe": "1Day"}), (sorted(set(missing_actions) - attempted_actions), {"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]})):
-                    if symbols:
-                        before = set(store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"])
-                        self.data_jobs.request({**common, **details, "symbols": symbols})
-                        after = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
-                        job_ids.extend(sorted(set(after) - before))
-            jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
-            failures = []
-            for identity in job_ids:
-                job = jobs.get(identity) or {}
-                source = "corporate_actions" if job.get("kind") == "supplementary" else "history"
-                for symbol, item in job.get("symbols", {}).items():
-                    if item.get("status") != "failed":
-                        continue
-                    reasons = [item["error"]] if item.get("error") else [gap for result in item.get("results", {}).values() for gap in result.get("gaps", [])]
-                    failures.append({"symbol": symbol, "source": source, "reason": "; ".join(reasons) or "Provider did not return usable data"})
-                if job.get("status") == "failed" and job.get("message"):
-                    failures.append({"symbol": None, "source": source, "reason": job["message"]})
-            return {"job_ids": job_ids, "jobs": [jobs[identity] for identity in job_ids if identity in jobs],
-                    "missing": {"history": missing_history, "corporate_actions": missing_actions}, "problems": problems,
-                    "failures": failures}
         if action == "portfolio_scenario":
-            from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity, resolve_recipients
+            from .portfolio_scenario import validate_model, model_weights, parse_actions
             from .market_history import chart_calendar_coverage
-            if request.get("portfolio_id") is not None:
-                from .manual_portfolios import model as manual_model
-                model = validate_model(manual_model(store, request["portfolio_id"], request.get("portfolio_revision")))
-            else:
-                model = validate_model(request.get("model"))
-            sizing = request.get("share_sizing", "fractional" if request.get("portfolio_id") is not None else "whole")
-            entry_quantity(1, Decimal(1), 1, sizing)
+            model = validate_model(request.get("model"))
             start, end = request.get("start"), request.get("end")
             from datetime import date
             start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
@@ -3014,19 +2909,17 @@ class DeskService:
             entries = store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"]
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
-            histories, action_data, action_sources, errors = {}, {}, {}, []
-            scenario_calendar, calendar_sessions = None, None
+            histories, action_data, errors = {}, {}, []
+            scenario_calendar = None
             for symbol in model_weights(model):
                 try:
-                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
-                    if not matches:
-                        raise ValueError(f"{symbol} {start}..{end} history: no complete raw daily receipt")
-                    meta = max(matches, key=lambda item: item.get("captured_at", ""))
+                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True]
+                    if len(matches) != 1:
+                        raise ValueError(f"{symbol} {start}..{end} history: expected exactly one complete raw daily receipt")
+                    meta = matches[0]
                     history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
                     if not isinstance(history, dict):
                         raise ValueError(f"{symbol} {start}..{end} history.artifact: unavailable or changed")
-                    if history.get("currency") != "USD":
-                        raise ValueError(f"{symbol} {start}..{end} history.currency: expected USD")
                     coverage = chart_calendar_coverage(history)
                     if coverage and coverage["start"] <= start and coverage["end"] >= end:
                         calendar = read_artifact(store.directory, reference(coverage["reference"]))
@@ -3045,77 +2938,25 @@ class DeskService:
                     if not isinstance(calendar, list) or not calendar:
                         raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
                     sessions = {row["date"] for row in calendar if start <= row["date"] <= end}
-                    if not sessions:
-                        raise ValueError(f"{symbol} {start}..{end} calendar: no trading sessions")
-                    if calendar_sessions is None:
-                        calendar_sessions = sessions
-                    elif sessions != calendar_sessions:
-                        raise ValueError(f"{symbol} {start}..{end} calendar: retained sessions differ")
                     selected = [row for row in history.get("bars", []) if start <= row.get("t", "") <= end]
                     by_day = {row["t"]: row for row in selected}
-                    if len(selected) != len(by_day) or set(by_day) - sessions:
+                    missing = sorted(sessions - set(by_day))
+                    if missing:
+                        raise ValueError(f"{symbol} {missing[0]} daily_bar: missing from retained raw history ({len(missing)} missing sessions)")
+                    if len(selected) != len(by_day) or set(by_day) != sessions:
                         raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
                     histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
                     meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
                     action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
                     if not action_ref:
                         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no retained provider receipt")
-                    if not histories[symbol] or min(sessions) not in histories[symbol]:
-                        raise ValueError(f"{symbol} {min(sessions)} daily_bar: missing opening mark")
-                    shares = entry_quantity(model["result"]["capital"], model_weights(model)[symbol], histories[symbol][min(histories[symbol])]["close"], sizing)
-                    cusip = next((row.get("cusip") for row in model["inputs"] if row["symbol"] == symbol), None)
-                    action_data[symbol] = resolve_recipients(model, parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)),
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares, cusip=cusip))
-                    termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
-                    required = {day for day in sessions if not termination or day < termination}
-                    missing = sorted(required - set(by_day))
-                    if missing:
-                        raise ValueError(f"{symbol} {missing[0]} daily_bar: missing while held ({len(missing)} missing sessions)")
-                    action_sources[symbol] = reference(action_ref)
+                    action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)))
                 except (ValueError, KeyError, TypeError) as error:
                     errors.append(str(error))
             if errors:
                 raise ValueError("; ".join(errors))
-            # A distributed security is part of equity even when it was not an initial target.
-            while True:
-                required = {}
-                for actions in action_data.values():
-                    for event in actions:
-                        if event["kind"] in {"stock_distribution", "merger"} and not event.get("contingent_right") and event.get("new_symbol") and event["new_symbol"] not in histories:
-                            target = event["new_symbol"]
-                            if target not in required or event["ex_date"] < required[target]["start"]:
-                                required[target] = {"start": event["ex_date"], "cusip": event.get("provider_new_cusip")}
-                if not required:
-                    break
-                for symbol, identity in required.items():
-                    first = identity["start"]
-                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
-                    if not matches:
-                        raise ValueError(f"{symbol} {first}..{end} distribution marks: no complete raw daily receipt")
-                    meta = max(matches, key=lambda item: item.get("captured_at", ""))
-                    history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
-                    if not isinstance(history, dict) or history.get("currency") != "USD":
-                        raise ValueError(f"{symbol} {first}..{end} distribution history: unavailable, changed or not USD")
-                    sessions = {day for day in calendar_sessions if first <= day <= end}
-                    selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end]
-                    meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
-                    action_ref = reference(meta_action.get("last_usable_artifact") or meta_action.get("artifact"))
-                    action_data[symbol] = resolve_recipients(model, parse_actions(symbol, first, end, read_artifact(store.directory, action_ref),
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), cusip=identity["cusip"]))
-                    termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
-                    required_sessions = {day for day in sessions if not termination or day < termination}
-                    marks = {row["t"] for row in selected}
-                    missing = sorted(required_sessions - marks)
-                    if missing:
-                        raise ValueError(f"{symbol} {missing[0]} distribution daily_bar: missing while held ({len(missing)} missing sessions)")
-                    if len(selected) != len(marks) or marks - sessions:
-                        raise ValueError(f"{symbol} distribution marks: duplicate or off-calendar daily bar")
-                    histories[symbol] = {row["t"]: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for row in selected}
-                    action_sources[symbol] = action_ref
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
-                    "share_sizing": sizing,
-                    "calendar_sessions": sorted(calendar_sessions),
-                    "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data, "corporate_action_sources": action_sources,
+                    "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data,
                     "entry_basis": "first_retained_daily_close",
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
             from .evaluation import digest
@@ -3176,7 +3017,7 @@ class DeskService:
                           "error": type(error).__name__ + ": " + str(error)}
             if spec.get("kind") == "portfolio_scenario":
                 result.update(kind="portfolio_scenario", start=spec["start"], end=spec["end"],
-                    fee_usd=spec["fee_usd"], basis=spec["basis"], share_sizing=spec.get("share_sizing", "whole"), model_basis=spec["model"].get("basis"), engine_version=spec["engine_version"])
+                    fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"])
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
                     return

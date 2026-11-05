@@ -51,9 +51,9 @@ or approval is not a broker fill.
 
 - **Dashboard and Markets** show account observations, watchlists, stock selection, discovery, charts, and instrument details.
 - **Research** configures and monitors batches and presents saved conclusions, reports, debate, sources, and activity.
-- **Portfolio** separates actual observed positions and performance from authored manual portfolios and a session-only joint model proposal. Manual portfolios save named capital and editable allocation percentages; cash is the unallocated balance. The complete dated S&P 500 snapshot can replace a draft, while adding universe symbols preserves existing allocations. Strategy Lab runs a saved manual revision using fractional shares and an explicit per-order fee. The model proposal uses eligible latest research and cached dated prices, separate model capital, and deterministic whole-share sizing.
+- **Portfolio** separates actual observed positions and performance from a session-only joint model proposal. The proposal uses eligible latest research and cached dated prices, separate model capital, and deterministic whole-share sizing.
 - **Orders** holds human drafts and baskets. Review exact terms, approve each order, and submit separately. A basket is not an atomic broker transaction.
-- **Strategy lab** evaluates saved plans and strategies against retained historical data with explicit assumptions. Saved manual portfolios retain their allocation weights and cash independently of research; their historical scenarios collect missing raw prices and corporate-action receipts and use an immutable preview.
+- **Strategy lab** evaluates saved plans and strategies against retained historical data with explicit assumptions.
 - **Journal, Alerts, Workflows, and Settings** support decisions and outcomes, attention rules, research workflow configuration, and operations.
 
 See the [platform reference](docs/platform-reference.md) for workflows, providers, data

@@ -761,9 +761,9 @@ function renderWorkspace(){
  if(activePage==='overview')return renderOverview();
  if(activePage==='markets')return (UniverseReview.renderMarkets||UniverseReview.render)(state);
  if(activePage==='portfolio'){
-  const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['manual','Manual portfolio'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
+  const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
   const portfolioActions=portfolioTab==='proposed'?portfolioModelActions():portfolioTab==='performance'?performanceExportActions():'';
-  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+(portfolioTab==='manual'?renderManualPortfolio():accountLedger()+(portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance()));
+  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+accountLedger()+(portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
  }
  if(activePage==='research')return renderResearch();
  if(activePage==='orders')return renderOrders();
@@ -902,7 +902,7 @@ function settingsFormMarkup(category){
  const mf=state.maenifold||{},mfStatus=mf.status||'not_running',mfStartBusy=busy.has('maenifold-start'),mfStopBusy=busy.has('maenifold-stop'),mfActionBusy=mfStartBusy||mfStopBusy;
  const mfStartTitle=mfActionBusy?'A Maenifold action is in progress.':mfStatus==='running'?'Maenifold is already running.':'Maenifold is starting.',mfStopTitle=mfActionBusy?'A Maenifold action is in progress.':'Maenifold is not running.';
  const maenifoldService='<h2>Maenifold service</h2><div class="field-grid">'+field('maenifold_port','Maenifold port',c.maenifold_port??8085,{type:'number',min:1024,max:65535,step:1})+field('maenifold_root','Maenifold data root',c.maenifold_root??'',{placeholder:'Leave blank to use the desk default folder'})+'</div><p role="status">'+(mfStartBusy?'Starting Maenifold…':mfStopBusy?'Stopping Maenifold…':'Status: '+esc({not_running:'Not running',starting:'Starting',running:'Running',error:'Error'}[mfStatus]||'Unknown')+' · Port '+esc(mf.port??'Unavailable')+' · Data root: '+esc(mf.root||'Desk default folder')+(mf.pid?' · PID '+esc(mf.pid):''))+'</p>'+(mfStatus==='error'&&mf.error?'<p class="negative">'+esc(mf.error)+'</p>':'')+'<p>Start uses the saved port and folder. Save any changes before starting.</p><button type="button" class="button" data-action="maenifold-start" '+(mfActionBusy||['starting','running'].includes(mfStatus)?'disabled title="'+mfStartTitle+'"':'')+'>'+(mfStartBusy?'Starting Maenifold…':'Start Maenifold')+'</button> <button type="button" class="button" data-action="maenifold-stop" '+(mfActionBusy||mfStatus==='not_running'?'disabled title="'+mfStopTitle+'"':'')+'>'+(mfStopBusy?'Stopping Maenifold…':'Stop Maenifold')+'</button>';
- const universe='<h2>Stock universe</h2><div class="settings-header-actions"><button type="button" class="button" data-action="discard-settings">Discard changes</button><button type="submit" class="button button-primary" '+(busy.has('config')||research&&state.browse_only?'disabled':'')+'>'+(busy.has('config')?'Saving…':'Save settings')+'</button></div><div class="field-grid">'+field('name','Universe name',c.name??'')+'<div class="field"><label>Preset</label><button type="button" class="button" data-action="reset-universe">Use FANGMAN · 7 stocks</button><small>Meta, Apple, NVIDIA, Alphabet, Microsoft, Amazon, Netflix.</small></div><div class="field field-full"><label for="config-universe">Stock symbols</label><textarea id="config-universe" name="universe" class="form-control" spellcheck="false" required>'+esc(Array.isArray(c.universe)?c.universe.join(', '):c.universe||'')+'</textarea><small>Up to 1,000 symbols, separated by commas or spaces.</small><div class="index-tools"><button type="button" class="button" data-action="import-index">Import CSV / text</button><input id="index-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden><button type="button" class="button" data-action="export-index">Export saved index</button><span id="index-feedback" role="status">'+(state.config.universe||[]).length+' saved stocks</span></div>'+indexImportMarkup()+'<div id="universe-reference-settings">'+universeReferenceMarkup('settings')+'</div></div></div>'+maenifoldService;
+ const universe='<h2>Stock universe</h2><div class="settings-header-actions"><button type="button" class="button" data-action="discard-settings">Discard changes</button><button type="submit" class="button button-primary" '+(busy.has('config')||research&&state.browse_only?'disabled':'')+'>'+(busy.has('config')?'Saving…':'Save settings')+'</button></div><div class="field-grid">'+field('name','Universe name',c.name??'')+'<div class="field"><label>Preset</label><button type="button" class="button" data-action="reset-universe">Use FANGMAN · 7 stocks</button><small>Meta, Apple, NVIDIA, Alphabet, Microsoft, Amazon, Netflix.</small></div><div class="field field-full"><label for="config-universe">Stock symbols</label><textarea id="config-universe" name="universe" class="form-control" spellcheck="false" required>'+esc(Array.isArray(c.universe)?c.universe.join(', '):c.universe||'')+'</textarea><small>Up to 1,000 symbols, separated by commas or spaces.</small><div class="index-tools"><button type="button" class="button" data-action="import-index">Import CSV / text</button><input id="index-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden><button type="button" class="button" data-action="export-index">Export saved index</button><span id="index-feedback" role="status">'+(state.config.universe||[]).length+' saved stocks</span></div>'+indexImportMarkup()+'</div></div>'+maenifoldService;
  return '<form id="settings-form" class="settings-form settings-category-form"><section class="settings-section"><fieldset '+(research&&state.browse_only?'disabled':'')+'>'+(research?'<h2>Core research models</h2><div class="settings-header-actions"><button type="button" class="button" data-action="discard-settings">Discard changes</button><button type="submit" class="button button-primary" '+(busy.has('config')||research&&state.browse_only?'disabled':'')+'>'+(busy.has('config')?'Saving…':'Save settings')+'</button></div><p>Applies to future research runs.</p><div class="field-grid">'+core+'</div><h3>Server model limits</h3><div id="model-limits" role="status" aria-live="polite"></div><button id="refresh-model-limits" type="button" class="button">Refresh model limits</button><details id="settings-research-advanced"><summary>Advanced Token Budgets, Rounds, Concurrency, Retries &amp; Local Laya Router</summary><div class="field-grid">'+advanced+'</div></details>':universe)+'</fieldset></section><div class="form-actions"><p>'+(settingsDirty?'Unsaved draft':'Changes apply to future runs')+'</p><button type="button" class="button" data-action="discard-settings">Discard changes</button><button type="submit" class="button button-primary" '+(busy.has('config')||research&&state.browse_only?'disabled':'')+'>'+(busy.has('config')?'Saving…':'Save settings')+'</button></div><div id="config-error" class="form-error" role="alert"></div></form>';
 }
 function renderSettings(){
@@ -1500,34 +1500,20 @@ async function loadPortfolioBenchmark(item,collect=false){
   if(portfolioBenchmark===comparison&&state.store_generation===comparison.generation&&activePage==='strategy')render();
  }
 }
-function portfolioIdentity(result){
- const model=evaluationItem?.preview?.model||{};
- const revision=result.portfolio_revision??model.portfolio_revision;
- return {name:result.portfolio_name||(revision!=null?model.name:null),revision,source:result.weight_source??model.weight_source};
-}
 function portfolioBenchmarkMarkup(result){
  const comparison=portfolioBenchmark?.id===evaluationItem?.id&&portfolioBenchmark.generation===state.store_generation?portfolioBenchmark:null;
- const identity=portfolioIdentity(result),hasRights=!!result.ledger?.contingent_rights?.length;
- const prefix='<section aria-label="S&P 500 comparison"><h4>S&P 500 comparison · SPY</h4>'+(hasRights?'<p>Portfolio comparison uses market-priced equity and excludes unmarked contingent rights.</p>':'');
+ const prefix='<section aria-label="S&P 500 comparison"><h4>S&P 500 comparison · SPY</h4>';
  if(!comparison?.history)return prefix+'<p role="status">'+esc(comparison?.busy?'Loading SPY comparison…':comparison?.error||'Load SPY prices for the same period.')+'</p><button class="button" id="portfolio-benchmark-load" '+(comparison?.busy?'disabled':'')+'>Load S&P 500 benchmark</button></section>';
  const benchmark=comparison.history,capital=Number(result.starting_cash),ending=Number(result.ledger.equity_curve.at(-1).equity_usd),portfolioReturn=(ending/capital-1)*100,gap=portfolioReturn-benchmark.return_pct;
  const signed=value=>(value>0?'+':'')+value.toFixed(2);
- return prefix+'<p>'+esc(benchmark.start)+' through '+esc(benchmark.end)+' · SPY dividend-adjusted closing prices.</p><div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">Portfolio / benchmark</th><th scope="col">Return</th><th scope="col">Ending value</th></tr></thead><tbody><tr><th scope="row">'+esc(identity.name?'Manual portfolio · '+identity.name:'Model portfolio')+'</th><td>'+signed(portfolioReturn)+'%</td><td>'+esc(money(ending))+'</td></tr><tr><th scope="row">S&P 500 proxy · SPY</th><td>'+signed(benchmark.return_pct)+'%</td><td>'+esc(money(capital*(1+benchmark.return_pct/100)))+'</td></tr></tbody></table></div><p>Portfolio minus SPY <strong>'+signed(gap)+' percentage points</strong>. Both start with '+esc(money(capital))+'.</p>'+simulationDetails('Benchmark price evidence',benchmark)+'</section>';
-}
-function contingentRightsMarkup(ledger){
- const rights=ledger.contingent_rights||[];if(!rights.length)return '';
- const bounds=ledger.conditional_equity_range_usd||{};
- return '<section><h4>Unmarked contingent rights</h4><p>Market-priced equity excludes these rights. Their conditional maximum is not a predicted value or a market price.</p><p>Market-priced equity '+esc(money(bounds.marked))+' · conditional maximum including rights '+esc(money(bounds.maximum))+'.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Right</th><th>Source holding</th><th>Entitlement</th><th>Maximum per right</th><th>Conditional maximum</th><th>Classification / source</th></tr></thead><tbody>'+rights.map(row=>'<tr><td>'+esc(row.symbol)+'</td><td>'+esc(row.source_symbol)+'</td><td>'+esc(row.quantity)+'</td><td>'+esc(money(row.cap_per_right_usd))+'</td><td>'+esc(money(row.maximum_usd))+'</td><td>'+esc(row.classification||'')+' · '+esc(row.basis||'')+' · Evidence through '+esc(row.evidence_through||'Unavailable')+' · '+esc(typeof row.provenance==='string'?row.provenance:JSON.stringify(row.provenance??'Unavailable'))+'</td></tr>').join('')+'</tbody></table></div></section>';
+ return prefix+'<p>'+esc(benchmark.start)+' through '+esc(benchmark.end)+' · SPY dividend-adjusted closing prices.</p><div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">Portfolio / benchmark</th><th scope="col">Return</th><th scope="col">Ending value</th></tr></thead><tbody><tr><th scope="row">Model portfolio</th><td>'+signed(portfolioReturn)+'%</td><td>'+esc(money(ending))+'</td></tr><tr><th scope="row">S&P 500 proxy · SPY</th><td>'+signed(benchmark.return_pct)+'%</td><td>'+esc(money(capital*(1+benchmark.return_pct/100)))+'</td></tr></tbody></table></div><p>Portfolio minus SPY <strong>'+signed(gap)+' percentage points</strong>. Both start with '+esc(money(capital))+'.</p>'+simulationDetails('Benchmark price evidence',benchmark)+'</section>';
 }
 function portfolioScenarioMarkup(result){
- const identity=portfolioIdentity(result),ledger=result.ledger;if(!ledger)return '<p class="negative">'+esc(result.error||'Portfolio calculation did not complete.')+'</p>'+simulationDetails('Native order diagnostics',result);
+ const ledger=result.ledger;if(!ledger)return '<p class="negative">'+esc(result.error||'Portfolio calculation did not complete.')+'</p>';
  const last=ledger.equity_curve.at(-1),ending=Number(last.equity_usd),capital=Number(result.starting_cash),entries=ledger.events.filter(row=>row.kind==='entry');
  const weights=Object.entries(result.target_weights||{}).map(([symbol,weight])=>symbol+' '+(Number(weight)*100).toFixed(2)+'%').concat(result.target_cash_weight!=null?['cash '+(Number(result.target_cash_weight)*100).toFixed(2)+'%']:[]).join(', ');
  const change=Number.isFinite(capital)&&capital>0?money(ending-capital)+' ('+((ending/capital-1)*100).toFixed(2)+'%)':'Unavailable: starting capital was not retained';
- const large=entries.length>20,held=entries.filter(row=>Number(row.shares)>0).length,entryCash=Number(ledger.equity_curve[0].cash_usd);
- const shareLabel=result.share_sizing==='fractional'?'Fractional-share':'Whole-share';
- const sizing='<p>'+shareLabel+' sizing bought '+held+' of '+entries.length+' target positions; '+(entries.length-held)+' rounded to zero. Cash at entry '+esc(money(entryCash))+' ('+(entryCash/capital*100).toFixed(2)+'%).</p>';
- return '<h3>'+esc(identity.name?'Manual portfolio · '+identity.name:'Model portfolio')+' · historical scenario</h3><p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital'+(large?'.':' · '+esc(weights||'Target weights unavailable')+'.')+'</p><p>'+(identity.name?'Saved manual portfolio · revision '+esc(identity.revision??'Unavailable')+' · '+esc(result.position_count??entries.length)+' positions · allocation source '+esc(identity.source?(identity.source.provider||'Index')+' as of '+identity.source.as_of:'Manual input')+'.':'Model '+esc(result.model_id||'Unavailable')+'.')+(ledger.contingent_rights?.length?' Market-priced equity excluding unmarked rights ':' Ending equity ')+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p>'+(result.model_basis?'<p>'+esc(result.model_basis)+'</p>':'')+sizing+portfolioBenchmarkMarkup(result)+contingentRightsMarkup(ledger)+(large?'<details><summary>Target weights and holdings</summary><p>'+esc(weights)+'</p>':'')+'<h4>Historical '+shareLabel.toLowerCase()+' entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+(large?'</details>':'')+'<p>Entry after the first completed raw daily bar, sized using the selected share precision and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Cash distributions stay cash; received securities are marked at retained daily closes. Not historical research performance or broker performance.</p><details><summary>Dated corporate actions and distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
+ return '<h3>Model portfolio · historical scenario</h3><p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+'. Ending equity '+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p>'+portfolioBenchmarkMarkup(result)+'<h4>Historical whole-share entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
 }
 function simulationResultMarkup(result){
  if(result.kind==='portfolio_scenario')return portfolioScenarioMarkup(result);
@@ -1535,24 +1521,24 @@ function simulationResultMarkup(result){
  return '<h3>Modeled simulation result · '+esc(simulationLabel(result.status))+'</h3><p>Native engine '+esc(result.engine_version||'Unavailable')+' · reported orders '+rows('orders')+' · fills '+rows('fills')+' · positions '+rows('positions')+'</p>'+(result.error?'<p class="negative">'+esc(result.error)+'</p>':'')+strategyHeadlineMarkup(result)+nativeAnalyzerMarkup(result.native_result)+(Array.isArray(result.equity_curve)?experimentCurves([{label:'Modeled equity',points:result.equity_curve},...(Array.isArray(result.benchmark_curve)?[{label:'Retained benchmark',points:result.benchmark_curve,benchmark:true}]:[])], 'Retained modeled equity / USD'):'<p>Dollar equity curve unavailable in this saved-plan result. '+esc(result.benchmark?.reason||'No matching benchmark supplied.')+'</p>')+(result.portfolio_returns?'<details><summary>Retained native return observations · source basis</summary>'+orderFacts(result.return_series_basis||'Basis not supplied')+experimentTable(Object.entries(result.portfolio_returns).map(([at,value])=>({at,return:value})))+'</details>':'')+'<p>Native simulation reports are separate from broker account performance. Report counts do not establish profit or loss.</p>'+['orders','fills','positions','account'].map(name=>simulationReportMarkup(name[0].toUpperCase()+name.slice(1),reports[name])).join('')+simulationDetails('Model limitations and assumptions',{limitations:result.limitations,assumptions:result.assumptions,return_series_basis:result.return_series_basis})+simulationDetails('Complete native result, events, and source references',result);
 }
 let portfolioScenarioModel=null,portfolioScenarioFile=null,portfolioScenarioStatus='',portfolioScenarioBusy=false;
-const portfolioScenarioDraft={start:'',end:'',fee_usd:'0',share_sizing:'whole'};
+const portfolioScenarioDraft={start:'',end:'',fee_usd:'0'};
 async function runPortfolioScenario(){
  if(portfolioScenarioBusy)return;
  const file=document.getElementById('portfolio-scenario-model').files[0]||portfolioScenarioFile;
- const start=document.getElementById('portfolio-scenario-start').value,end=document.getElementById('portfolio-scenario-end').value,fee_usd=document.getElementById('portfolio-scenario-fee').value,share_sizing=document.getElementById('portfolio-scenario-sizing').value;
+ const start=document.getElementById('portfolio-scenario-start').value,end=document.getElementById('portfolio-scenario-end').value,fee_usd=document.getElementById('portfolio-scenario-fee').value;
  portfolioScenarioBusy=true;
  try {
   if(!file)throw new Error('Select the original archived model JSON.');
   portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());
   portfolioScenarioStatus='Running historical scenario…';render();
-  const result=await api('/api/evaluations',{action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd,share_sizing});
+  const result=await api('/api/evaluations',{action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd});
   portfolioScenarioStatus='Simulation '+result.id+' · '+simulationLabel(result.status);
   evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
  }catch(error){portfolioScenarioStatus=error.message;}
  finally{portfolioScenarioBusy=false;render();}
 }
 document.addEventListener('change',event=>{if(event.target.id==='portfolio-scenario-model'){portfolioScenarioFile=event.target.files[0]||null;portfolioScenarioStatus='';}});
-document.addEventListener('input',event=>{const key={'portfolio-scenario-start':'start','portfolio-scenario-end':'end','portfolio-scenario-fee':'fee_usd','portfolio-scenario-sizing':'share_sizing'}[event.target.id];if(key)portfolioScenarioDraft[key]=event.target.value;});
+document.addEventListener('input',event=>{const key={'portfolio-scenario-start':'start','portfolio-scenario-end':'end','portfolio-scenario-fee':'fee_usd'}[event.target.id];if(key)portfolioScenarioDraft[key]=event.target.value;});
 function evaluationMarkup(){
  const sources=evaluationSources,selected=evaluationItem,preview=selected?.preview,sims=(sources?.items||[]).filter(item=>!['experiment','experiment_comparison'].includes(item.kind));
  const input=(key,label)=>'<label>'+label+'<input data-evaluation-field="'+key+'" value="'+esc(evaluationDraft[key])+'"></label>';
@@ -1560,7 +1546,7 @@ function evaluationMarkup(){
  const step1=sources?select('proposal_id','Immutable saved plan revision',sources.proposals.map(p=>[p.id,p.terms.symbol+' · '+p.terms.side+' '+p.terms.quantity+' '+p.terms.order_type+' '+p.terms.time_in_force+' · revision '+p.revision]))+select('history_key','Saved raw daily history receipt',sources.histories.filter(h=>!evaluationDraft.proposal_id||sources.proposals.find(p=>p.id===evaluationDraft.proposal_id)?.terms.symbol===h.symbol).map(h=>[h.key,h.symbol+' · '+h.start+' to '+h.end+' · '+h.adjustment+' · captured '+h.captured_at]))+input('start_at','Window start / ISO timestamp with timezone')+input('end_at','Window end / ISO timestamp with timezone')+input('decision_at','Plan available at / ISO timestamp with timezone')+select('decision_basis','Plan availability basis',[['recorded_decision','On or after this revision was recorded'],['hindsight_scenario','Historical scenario; availability not established']])+'<p>Complete raw daily bars, sourced session calendar and instrument receipt are required. Split-adjusted data cannot be relabeled raw.</p>':'<p>Load saved plans and data to select an exact revision and raw daily history receipt.</p>';
  const step2=sources?input('starting_cash','Starting cash / USD')+input('fee_usd','Assumed fee / USD (enter zero explicitly)')+select('fee_per','Fee charged per',[['order','Order'],['fill','Fill']])+input('limit_fill_probability','Limit fill probability / 0 to 1')+input('slippage_probability','Slippage probability / 0 to 1')+input('random_seed','Integer random seed')+input('latency_ns','Assumed latency / integer nanoseconds (DAY requires 0)'):'<p>Capital, fees and fill assumptions become available after loading sources.</p>';
  const step3=(sources?'<label><input type="checkbox" data-evaluation-field="reviewed" '+(evaluationDraft.reviewed?'checked':'')+'> I reviewed USD assumptions and empty starting holdings. Submit after the first completed daily bar; use OHLC ordering, FULL bracket activation and open ending positions. Actual fees are unknown. DAY expiry follows the next sourced close; same-bar stop/target order is ambiguous. Broker fills and historical research availability are not established.</label><button class="button" id="evaluation-preview" '+(evaluationBusy?'disabled':'')+'>Save Immutable Preview</button>':'<p>Load sources and review explicit assumptions before saving a preview.</p>')+strategyRunButton(true)+'<p>Changing any setup field invalidates the selected preview. Run uses its saved ID and specification hash.</p>';
- return strategyPanels('<section id="strategy-simulations"><div data-strategy-panel="setup"><h2>Setup</h2>'+manualScenarioMarkup()+'<details id="portfolio-scenario-form" class="strategy-step"><summary>Model portfolio · historical scenario</summary><p>Apply the archived model weights to historical data. This is not historical research performance or a broker result.</p><label>Original model archive <input id="portfolio-scenario-model" type="file" accept="application/json"></label><label>Start date <input id="portfolio-scenario-start" type="date" value="'+esc(portfolioScenarioDraft.start)+'"></label><label>End date <input id="portfolio-scenario-end" type="date" value="'+esc(portfolioScenarioDraft.end)+'"></label><label>Share sizing <select id="portfolio-scenario-sizing"><option value="whole" '+(portfolioScenarioDraft.share_sizing==='whole'?'selected':'')+'>Whole shares</option><option value="fractional" '+(portfolioScenarioDraft.share_sizing==='fractional'?'selected':'')+'>Fractional shares (9 decimals)</option></select></label><label>Fee per order / USD <input id="portfolio-scenario-fee" type="number" min="0" step="0.01" value="'+esc(portfolioScenarioDraft.fee_usd)+'"></label><button class="button" type="button" id="portfolio-scenario-run" '+(portfolioScenarioBusy?'disabled':'')+'>Run historical scenario</button><p>'+esc(portfolioScenarioFile?'Selected archive: '+portfolioScenarioFile.name:'No archive selected.')+'</p><pre id="portfolio-scenario-status" role="status">'+esc(portfolioScenarioStatus)+'</pre></details><button class="button" id="evaluation-load" '+(evaluationBusy?'disabled':'')+'>Load Saved Plans &amp; Data</button><p role="status">'+esc(evaluationError||(evaluationBusy?'Working…':selected?.status?simulationLabel(selected.status):''))+'</p><details id="simulation-step-1" class="strategy-step" open><summary>1. Plan &amp; history receipt</summary>'+step1+'</details><details id="simulation-step-2" class="strategy-step"><summary>2. Capital, fees &amp; fill assumptions</summary>'+step2+'</details><details id="simulation-step-3" class="strategy-step" open><summary>3. Immutable preview &amp; Run</summary>'+step3+'</details><details id="simulation-profile"><summary>Supported simulation profile</summary><p>Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</p></details></div><div data-strategy-panel="results">'+(selected?.result?simulationResultMarkup(selected.result):'')+(preview?'<details id="simulation-saved-preview" '+(!selected?.result?'open':'')+'><summary>Saved immutable preview</summary>'+(selected.kind==='portfolio_scenario'?simulationDetails('Historical inputs and accounting assumptions',preview):simulationPreviewMarkup(preview))+'</details>':!selected?.result?'<div class="empty-state"><h3>No simulation selected</h3><p>Save an immutable preview in Setup or open a retained simulation from Runs &amp; Compare.</p></div>':'')+'</div><div data-strategy-panel="runs">'+(sources?'<h3>Saved simulations</h3>'+sims.map(item=>'<button class="button" data-evaluation-open="'+esc(item.id)+'">'+esc((item.kind==='portfolio_scenario'?'Fixed portfolio · '+item.start+' to '+item.end:item.proposal.id+' revision '+item.proposal.revision)+' · '+simulationLabel(item.status))+'</button>').join('')+(sims.length?'':'<p>No saved simulations.</p>'):'<p>Load saved plans and data in Setup to browse retained simulations.</p>')+'</div></section>');
+ return strategyPanels('<section id="strategy-simulations"><div data-strategy-panel="setup"><h2>Setup</h2><details id="portfolio-scenario-form" class="strategy-step"><summary>Model portfolio · historical scenario</summary><p>Apply the archived model weights to historical data. This is not historical research performance or a broker result.</p><label>Original model archive <input id="portfolio-scenario-model" type="file" accept="application/json"></label><label>Start date <input id="portfolio-scenario-start" type="date" value="'+esc(portfolioScenarioDraft.start)+'"></label><label>End date <input id="portfolio-scenario-end" type="date" value="'+esc(portfolioScenarioDraft.end)+'"></label><label>Fee per order / USD <input id="portfolio-scenario-fee" type="number" min="0" step="0.01" value="'+esc(portfolioScenarioDraft.fee_usd)+'"></label><button class="button" type="button" id="portfolio-scenario-run" '+(portfolioScenarioBusy?'disabled':'')+'>Run historical scenario</button><p>'+esc(portfolioScenarioFile?'Selected archive: '+portfolioScenarioFile.name:'No archive selected.')+'</p><pre id="portfolio-scenario-status" role="status">'+esc(portfolioScenarioStatus)+'</pre></details><button class="button" id="evaluation-load" '+(evaluationBusy?'disabled':'')+'>Load Saved Plans &amp; Data</button><p role="status">'+esc(evaluationError||(evaluationBusy?'Working…':selected?.status?simulationLabel(selected.status):''))+'</p><details id="simulation-step-1" class="strategy-step" open><summary>1. Plan &amp; history receipt</summary>'+step1+'</details><details id="simulation-step-2" class="strategy-step"><summary>2. Capital, fees &amp; fill assumptions</summary>'+step2+'</details><details id="simulation-step-3" class="strategy-step" open><summary>3. Immutable preview &amp; Run</summary>'+step3+'</details><details id="simulation-profile"><summary>Supported simulation profile</summary><p>Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</p></details></div><div data-strategy-panel="results">'+(selected?.result?simulationResultMarkup(selected.result):'')+(preview?'<details id="simulation-saved-preview" '+(!selected?.result?'open':'')+'><summary>Saved immutable preview</summary>'+(selected.kind==='portfolio_scenario'?simulationDetails('Historical inputs and accounting assumptions',preview):simulationPreviewMarkup(preview))+'</details>':!selected?.result?'<div class="empty-state"><h3>No simulation selected</h3><p>Save an immutable preview in Setup or open a retained simulation from Runs &amp; Compare.</p></div>':'')+'</div><div data-strategy-panel="runs">'+(sources?'<h3>Saved simulations</h3>'+sims.map(item=>'<button class="button" data-evaluation-open="'+esc(item.id)+'">'+esc((item.kind==='portfolio_scenario'?'Fixed portfolio · '+item.start+' to '+item.end:item.proposal.id+' revision '+item.proposal.revision)+' · '+simulationLabel(item.status))+'</button>').join('')+(sims.length?'':'<p>No saved simulations.</p>'):'<p>Load saved plans and data in Setup to browse retained simulations.</p>')+'</div></section>');
 }
 async function evaluationAction(action,id){
  if(evaluationBusy)return;evaluationBusy=true;evaluationError='';render();
@@ -2006,7 +1992,7 @@ document.addEventListener('submit',async event=>{
  if(event.target.id!=='settings-form')return;
  event.preventDefault();
  if(busy.has('config'))return;
- const submittedDraft=settingsDraft,submittedKeys=settingsCategoryKeys[settingsTab]||[],previousUniverse=new Set(universe());
+ const submittedDraft=settingsDraft,submittedKeys=settingsCategoryKeys[settingsTab]||[];
  const c={...state.config};
  for(const [key,value] of new FormData(event.target))if(submittedKeys.includes(key))c[key]=value;
   if(submittedKeys.includes('research_stop_on_failure'))c.research_stop_on_failure=event.target.querySelector('#config-research_stop_on_failure').checked;
@@ -2577,7 +2563,7 @@ function bindScanner(){
 function discoveryInspection(){
  if(!discoveryDetailSymbol)return '';
  const observation=discoveryResult,row=observation?.rows.find(item=>item.symbol===discoveryDetailSymbol),eligible=/^[A-Z][A-Z0-9.\-]{0,9}$/.test(discoveryDetailSymbol);
- return '<section aria-label="Retained discovery stock detail"><h3>'+esc(discoveryDetailSymbol)+' / discovery observation</h3>'+(discoveryReading?'<p role="status">Reading saved observation…</p>':!row?'<p>No retained Yahoo observation is available for this watchlist symbol. No price, company details or tradability are inferred.</p>':'<p>'+esc(row.longName||row.shortName||'Company name unavailable')+' · '+esc(observation.provider)+' · captured '+fullTime(observation.captured_at)+'</p><p>Provider market event '+fullTime(row.regularMarketTime==null?null:new Date(row.regularMarketTime*1000).toISOString())+' · currency '+esc(row.currency||'Unavailable')+' · exchange '+esc(row.exchange||'Unavailable')+'</p><dl>'+[['Price','regularMarketPrice'],['Change %','regularMarketChangePercent'],['Market cap','marketCap'],['Volume','regularMarketVolume'],['Average daily volume / 3 months','averageDailyVolume3Month']].map(([label,key])=>'<dt>'+label+'</dt><dd>'+esc(row[key]??'Unavailable')+'</dd>').join('')+'</dl><p>'+esc(observation.limitation)+'</p><details><summary>Exact retained observation and source identity</summary><pre>'+esc(JSON.stringify({id:observation.id,sha256:observation.sha256,source_url:observation.source_url,library_version:observation.library_version,requested_at:observation.requested_at,captured_at:observation.captured_at,criteria:observation.criteria,query:observation.query,offset:observation.offset,total:observation.total,row},null,2))+'</pre></details>')+'<div id="universe-reference-discovery">'+(universeReferences.discovery?.symbols.includes(discoveryDetailSymbol)?universeReferenceMarkup('discovery'):'')+'</div><p>Discovery inspection does not request feeds, start research, or enable an order. Charts and approved research remain in their existing configured-symbol workflows.</p>'+(row?universe().includes(discoveryDetailSymbol)?'<p>This symbol is already in the configured universe.</p>':eligible?'<button id="discovery-add-universe" '+(discoveryReading||observation.status!=='completed'?'disabled':'')+'>Add this symbol to configured universe</button><p>This explicit action uses current configuration validation and its symbol limit. It does not establish broker eligibility or place an order.</p>':'<p>This provider symbol does not match the configured US equity symbol format. No automatic symbol conversion is applied.</p>':'')+'</section>';
+ return '<section aria-label="Retained discovery stock detail"><h3>'+esc(discoveryDetailSymbol)+' / discovery observation</h3>'+(discoveryReading?'<p role="status">Reading saved observation…</p>':!row?'<p>No retained Yahoo observation is available for this watchlist symbol. No price, company details or tradability are inferred.</p>':'<p>'+esc(row.longName||row.shortName||'Company name unavailable')+' · '+esc(observation.provider)+' · captured '+fullTime(observation.captured_at)+'</p><p>Provider market event '+fullTime(row.regularMarketTime==null?null:new Date(row.regularMarketTime*1000).toISOString())+' · currency '+esc(row.currency||'Unavailable')+' · exchange '+esc(row.exchange||'Unavailable')+'</p><dl>'+[['Price','regularMarketPrice'],['Change %','regularMarketChangePercent'],['Market cap','marketCap'],['Volume','regularMarketVolume'],['Average daily volume / 3 months','averageDailyVolume3Month']].map(([label,key])=>'<dt>'+label+'</dt><dd>'+esc(row[key]??'Unavailable')+'</dd>').join('')+'</dl><p>'+esc(observation.limitation)+'</p><details><summary>Exact retained observation and source identity</summary><pre>'+esc(JSON.stringify({id:observation.id,sha256:observation.sha256,source_url:observation.source_url,library_version:observation.library_version,requested_at:observation.requested_at,captured_at:observation.captured_at,criteria:observation.criteria,query:observation.query,offset:observation.offset,total:observation.total,row},null,2))+'</pre></details>')+'<p>Discovery inspection does not request feeds, start research, or enable an order. Charts and approved research remain in their existing configured-symbol workflows.</p>'+(row?universe().includes(discoveryDetailSymbol)?'<p>This symbol is already in the configured universe.</p>':eligible?'<button id="discovery-add-universe" '+(discoveryReading||observation.status!=='completed'?'disabled':'')+'>Add this symbol to configured universe</button><p>This explicit action uses current configuration validation and its symbol limit. It does not establish broker eligibility or place an order.</p>':'<p>This provider symbol does not match the configured US equity symbol format. No automatic symbol conversion is applied.</p>':'')+'</section>';
 }
 async function inspectDiscovery(selected,identity=''){
  if(discoveryBusy)return;const token=++discoveryReadToken;discoveryOpen=true;discoveryReading=true;discoveryDetailSymbol=selected||'';if(['overview','markets'].includes(activePage))bindDiscovery();
@@ -2646,7 +2632,7 @@ function bindDiscovery(){
  $('discovery-next')?.addEventListener('click',()=>run(discoveryResult.offset+25,discoveryResult.criteria));
  document.querySelectorAll('[data-discovery-symbol]').forEach(input=>input.addEventListener('change',e=>{e.target.checked?discoverySelected.add(input.dataset.discoverySymbol):discoverySelected.delete(input.dataset.discoverySymbol);$('discovery-add').disabled=!discoverySelected.size;}));
  document.querySelectorAll('[data-inspect-discovery]').forEach(button=>button.addEventListener('click',()=>inspectDiscovery(button.dataset.inspectDiscovery,discoveryResult?.id)));
- $('discovery-add-universe')?.addEventListener('click',async()=>{if(discoveryReading)return;const addedSymbol=discoveryDetailSymbol;discoveryReading=true;redraw();try{await api('/api/discovery',{action:'add_to_universe',observation_id:discoveryObservationId,symbol:addedSymbol,config_revision:state.config_revision});await readState();showUniverseReferences('discovery',[addedSymbol]);discoveryError='Symbol added through the existing universe validation. Tradability and current evidence remain separate.';}catch(error){discoveryError=error.message;}finally{discoveryReading=false;redraw();}});
+ $('discovery-add-universe')?.addEventListener('click',async()=>{if(discoveryReading)return;discoveryReading=true;redraw();try{await api('/api/discovery',{action:'add_to_universe',observation_id:discoveryObservationId,symbol:discoveryDetailSymbol,config_revision:state.config_revision});await readState();discoveryError='Symbol added through the existing universe validation. Tradability and current evidence remain separate.';}catch(error){discoveryError=error.message;}finally{discoveryReading=false;redraw();}});
  $('discovery-target')?.addEventListener('change',e=>targetListId=e.target.value);
  $('discovery-add')?.addEventListener('click',()=>{for(const s of discoverySelected)targetList().symbols.add(s);persistShortlist();discoverySelected.clear();discoveryError='Selected matches added to '+targetList().name+'. Universe unchanged; saving through workspace.';renderTable();redraw();});
  if(activePage==='markets'&&universe().includes(discoveryDetailSymbol)){
@@ -3679,228 +3665,3 @@ function commandReceiptLinks(command){
  walk(command.native_receipts);walk(command.timeline);
  return [...found].map(([sha,path])=>'<p><a href="/api/commands/'+encodeURIComponent(command.command_id)+'/receipts/'+sha+'" target="_blank" rel="noopener">Open saved receipt '+esc(path)+'</a> · SHA-256 '+esc(sha)+'</p>').join('');
 }
-
-// The portfolio-weight endpoint reads the retained snapshot; it does not refresh the provider.
-const universeReferences={settings:null,discovery:null};
-function universeReferenceMarkup(context){
- const reference=universeReferences[context];if(!reference)return '';
- if(reference.loading)return '<p role="status">Loading cached S&P 500 references…</p>';
- if(reference.error)return '<p role="status">'+esc((reference.symbols.length===1?reference.symbols[0]:reference.symbols.length+' added symbols')+': reference unavailable · '+reference.error)+'</p>';
- const snapshot=reference.data.snapshot;
- if(!snapshot)return '<p role="status">'+esc((reference.symbols.length===1?reference.symbols[0]:reference.symbols.length+' added symbols')+': reference unavailable · no cached snapshot')+'</p>';
- const rows=new Map((snapshot.entries||[]).map(row=>[row.symbol,row]));
- const values=reference.symbols.map(symbol=>{
-  const row=rows.get(symbol);
-  const status=row?manualShiftDecimal(row.weight,2)+'%':snapshot.unresolved?.length?'Reference unavailable · snapshot has unresolved constituents':'Not in snapshot';
-  return symbol+' · '+status;
- });
- const dated=(snapshot.provider||'S&P 500')+' · as of '+snapshot.as_of+(snapshot.source_url?' · '+snapshot.source_url:'')+(reference.data.error?' · last refresh failed; showing cached snapshot':'');
- if(values.length===1)return '<p role="status">'+esc(values[0]+' · '+dated)+'</p>';
- const matched=reference.symbols.filter(symbol=>rows.has(symbol)).length;
- return '<p role="status">'+esc(matched+' of '+values.length+' added symbols have reference weights · '+dated)+'</p><details><summary>Show added symbol references</summary><ul>'+values.map(value=>'<li>'+esc(value)+'</li>').join('')+'</ul></details>';
-}
-async function showUniverseReferences(context,symbols){
- if(!symbols.length){universeReferences[context]=null;return;}
- const reference={symbols:[...symbols],loading:true};universeReferences[context]=reference;
- const update=()=>{const node=document.getElementById('universe-reference-'+context);if(node&&universeReferences[context]===reference&&(context!=='discovery'||reference.symbols.includes(discoveryDetailSymbol)))node.innerHTML=universeReferenceMarkup(context);};
- update();
- try{reference.data=await api('/api/portfolio-weights');}catch(error){reference.error=error.message;}
- finally{reference.loading=false;update();}
-}
-// Authored allocations remain independent of the session-only model proposal.
-const manualPortfolio = {loaded:false, loading:false, revision:null, portfolios:[], weights:null, draft:null, dirty:false, message:'', query:'', selectedSnapshot:''};
-const manualScenario = {portfolioId:'', start:'', end:'', fee:'0', busy:false, message:''};
-async function loadManualDates(){
- const scenario=manualScenario;if(scenario.datesLoading)return;
- scenario.datesRequested=true;scenario.datesLoading=true;scenario.datesMessage='Loading trading calendar…';
- const originalStart=scenario.start,originalEnd=scenario.end;
- try{
-  const dates=await api('/api/portfolio-dates');
-  if(scenario.start===originalStart&&scenario.end===originalEnd){scenario.start=dates.start;scenario.end=dates.end;}
-  scenario.datesMessage='Year-to-date dates from '+dates.source+'.';
- }catch(error){scenario.datesMessage='Trading calendar unavailable: '+error.message+' Enter dates manually.';}
- finally{scenario.datesLoading=false;if(activePage==='strategy')render();}
-}
-async function loadManualPortfolio(){
- if(manualPortfolio.loading)return;
- manualPortfolio.loading=true;
- try{
-  const [data,weights]=await Promise.allSettled([api('/api/portfolios'),api('/api/portfolio-weights')]);
-  if(data.status==='rejected')throw data.reason;
-  manualPortfolio.revision=data.value.revision;manualPortfolio.portfolios=data.value.portfolios||[];
-  manualPortfolio.weights=weights.status==='fulfilled'?weights.value:null;
-  manualPortfolio.message=weights.status==='rejected'?'Index weights unavailable: '+weights.reason.message:weights.value.error||(!weights.value.snapshot?'No index weights are available.':'');
-  manualPortfolio.loaded=true;
- }catch(error){manualPortfolio.message=error.message;}
- finally{manualPortfolio.loading=false;if(activePage==='portfolio'&&portfolioTab==='manual'||activePage==='strategy')render();}
-}
-async function refreshManualWeights(){
- const m=manualPortfolio;if(m.weightLoading)return;
- m.weightLoading=true;m.message='Refreshing S&P 500 reference weights…';render();
- try{
-  const weights=await api('/api/portfolio-weights',{action:'refresh'},{timeoutMs:550000});
-  if(weights.error)throw Error(weights.error);
-  m.weights=weights;m.selectedSnapshot='';m.message=weights.snapshot?'Reference weights refreshed. Existing allocations were preserved.':'No index snapshot is available.';
- }catch(error){m.message='Index weights unavailable: '+error.message;}
- finally{m.weightLoading=false;render();}
-}
-function manualSnapshots(){
- const data=manualPortfolio.weights||{};
- return data.available_snapshots||[];
-}
-function manualSnapshot(){
- const data=manualPortfolio.weights||{},snapshot=data.snapshot;
- if(!manualPortfolio.selectedSnapshot)return snapshot;
- return snapshot && (snapshot.id===manualPortfolio.selectedSnapshot||snapshot.as_of===manualPortfolio.selectedSnapshot)?snapshot:null;
-}
-function manualSnapshotProblem(){
- const data=manualPortfolio.weights, snapshot=manualSnapshot();
- if(manualPortfolio.weightLoading)return 'Loading index weights.';
- if(!snapshot)return 'No selected index snapshot is available.';
- if(snapshot.unresolved?.length)return 'Index snapshot has '+snapshot.unresolved.length+' unresolved constituents.';
- if(!Array.isArray(snapshot.entries)||!snapshot.entries.length)return 'Index snapshot has no constituents.';
- return '';
-}
-function newManualPortfolio(){
- const snapshot=manualSnapshot(), refs=new Map((snapshot?.entries||[]).map(row=>[row.symbol,row]));
- manualPortfolio.draft={name:'Manual portfolio',capital_usd:'100000',allocations:universe().map(symbol=>({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined})),weight_source:null};
- manualPortfolio.dirty=true;manualPortfolio.message='';
-}
-// Decimal weights stay strings throughout editing and saving. BigInt avoids
-// binary rounding when hundreds of allocations must add up exactly.
-function manualDecimal(value){
- const text=String(value), match=/^(\d*)(?:\.(\d*))?$/.exec(text);
- if(!match||!((match[1]||'')+(match[2]||'')))return null;
- const scale=(match[2]||'').length;
- return {units:BigInt((match[1]||'0')+(match[2]||'')),scale};
-}
-function manualDecimalString(units,scale){
- const negative=units<0n;if(negative)units=-units;
- const digits=units.toString().padStart(scale+1,'0');
- const text=scale?digits.slice(0,-scale)+'.'+digits.slice(-scale):digits;
- return (negative?'-':'')+text;
-}
-function manualShiftDecimal(value,places){
- const parsed=manualDecimal(value);if(!parsed)return '';
- return places>=0?manualDecimalString(parsed.units*10n**BigInt(Math.max(0,places-parsed.scale)),Math.max(0,parsed.scale-places)):manualDecimalString(parsed.units,parsed.scale-places);
-}
-function manualTotals(){
- const rows=manualPortfolio.draft?.allocations||[], values=rows.map(row=>manualDecimal(row.weight));
- if(values.some(value=>!value))return {valid:false,positions:0};
- const scale=Math.max(0,...values.map(value=>value.scale));
- const total=values.reduce((sum,value)=>sum+value.units*10n**BigInt(scale-value.scale),0n);
- const cash=10n**BigInt(scale)-total;
- return {valid:cash>=0n,total:manualDecimalString(total,scale),cash:manualDecimalString(cash,scale),positions:values.filter(value=>value.units>0n).length};
-}
-function manualTotalsText(){
- const totals=manualTotals();
- if(!totals.valid)return 'Enter valid nonnegative allocations totaling no more than 100%.';
- return totals.positions+' positions / '+manualPortfolio.draft.allocations.length+' symbols · Allocated '+manualShiftDecimal(totals.total,2)+'% · Cash '+manualShiftDecimal(totals.cash,2)+'%';
-}
-function manualRowsMarkup(){
- const draft=manualPortfolio.draft,query=manualPortfolio.query.toUpperCase(), snapshot=manualSnapshot(), refs=new Map((snapshot?.entries||[]).map(row=>[row.symbol,row]));
- return (draft?.allocations||[]).filter(row=>row.symbol.toUpperCase().includes(query)).map(row=>{
-  const ref=refs.get(row.symbol);
-  const reference=ref?manualShiftDecimal(ref.weight,2)+'% · '+snapshot.as_of:(snapshot?'No index weight in selected snapshot':'Index weights unavailable');
-  return '<tr><th scope="row">'+esc(row.symbol)+(row.historical_symbol?' <small>('+esc(row.historical_symbol)+' at source)</small>':'')+'</th><td><input type="number" min="0" max="100" step="any" data-manual-weight="'+esc(row.symbol)+'" aria-label="'+esc(row.symbol)+' allocation percent" value="'+esc(manualShiftDecimal(row.weight,2))+'"></td><td>'+esc(reference)+'</td></tr>';
- }).join('');
-}
-function manualTotalsUpdate(){
- const totals=manualTotals(), node=document.getElementById('manual-totals');
- if(node)node.textContent=manualTotalsText();
- const save=document.getElementById('manual-save');if(save)save.disabled=manualPortfolio.loading||!manualPortfolio.dirty||!totals.valid;
- const run=document.getElementById('manual-run');if(run)run.disabled=manualPortfolio.dirty||!manualPortfolio.draft?.id;
- const source=document.getElementById('manual-source');if(source&&!manualPortfolio.draft?.weight_source)source.textContent='Allocation source: Manual input · Unsaved changes';
-}
-function renderManualPortfolio(){
- if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
- const m=manualPortfolio,d=m.draft,snapshot=manualSnapshot(),snapshots=manualSnapshots();
- const source=d?.weight_source;
- return '<section class="manual-portfolio"><h2>Manual portfolio</h2><p>Create allocations independently of research and model proposals.</p><div class="manual-actions"><label>Saved portfolio <select id="manual-open"><option value="">Choose a saved portfolio</option>'+m.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(d?.id===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><button class="button" id="manual-new">New portfolio from universe</button></div><p role="status">'+esc(m.loading?'Loading portfolios and index weights…':m.message)+'</p>'+(d?'<div class="manual-fields"><label>Name <input id="manual-name" value="'+esc(d.name)+'"></label><label>Capital / USD <input id="manual-capital" type="number" min="0.01" step="0.01" value="'+esc(d.capital_usd)+'"></label></div><div class="manual-actions"><label>S&P 500 snapshot <select id="manual-snapshot"><option value="">'+esc(!m.selectedSnapshot&&snapshot?'Current cached snapshot · '+snapshot.as_of:'Current cached snapshot')+'</option>'+snapshots.map(item=>{const value=item.as_of;return '<option value="'+esc(value)+'" '+(m.selectedSnapshot===value?'selected':'')+'>'+esc(item.as_of||value)+'</option>';}).join('')+'</select></label><button class="button" id="manual-refresh-weights" '+(m.weightLoading?'disabled':'')+'>'+(m.weightLoading?'Refreshing weights…':'Refresh weights')+'</button><button class="button" id="manual-use-index" '+(manualSnapshotProblem()?'disabled':'')+'>Use S&P 500 portfolio</button><button class="button" id="manual-add-universe">Add universe symbols</button><button class="button" id="manual-equal">Equal weight</button><button class="button" id="manual-clear">Clear allocations</button></div><p role="status">'+esc(manualSnapshotProblem())+'</p><p>Using the S&P 500 portfolio replaces these rows with the complete selected snapshot. Adding universe symbols preserves existing allocations.</p><p>Reference weights: '+esc(snapshot?(snapshot.provider||'Index')+' · as of '+snapshot.as_of:'Unavailable')+'.</p><p id="manual-source">Allocation source: '+esc(source?(source.provider||'Index')+' · as of '+source.as_of:'Manual input')+(m.dirty?' · Unsaved changes':'')+'</p><p id="manual-totals" role="status">'+esc(manualTotalsText())+'</p><label>Find symbol <input id="manual-search" value="'+esc(m.query)+'" autocomplete="off"></label><div class="table-scroll manual-table"><table class="data-table"><thead><tr><th scope="col">Symbol</th><th scope="col">Allocation %</th><th scope="col">Index reference</th></tr></thead><tbody id="manual-rows">'+manualRowsMarkup()+'</tbody></table></div><div class="manual-actions"><button class="button button-primary" id="manual-save" '+(!m.dirty?'disabled':'')+'>Save portfolio</button><button class="button" id="manual-run" '+(m.dirty||!d.id?'disabled':'')+'>Run in Strategy Lab</button></div>':'<p>Choose a saved portfolio or start with the configured universe.</p>')+'</section>';
-}
-function manualScenarioReady(){
- const scenario=manualScenario,portfolio=manualPortfolio.portfolios.find(p=>p.id===scenario.portfolioId);
- const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
- return !!portfolio&&portfolio.revision!=null&&validDate(scenario.start)&&validDate(scenario.end)&&scenario.start<=scenario.end&&manualDecimal(scenario.fee)!==null&&!scenario.busy&&!scenario.datesLoading;
-}
-function updateManualRunButton(){const button=document.getElementById('manual-scenario-run');if(button)button.disabled=!manualScenarioReady();}
-function manualScenarioMarkup(){
- if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
- if(!manualScenario.datesRequested)loadManualDates();
- return '<details class="strategy-step" open><summary>Manual portfolio · historical scenario</summary><p>Run an exact saved portfolio revision with fractional shares and the fee entered below.</p><label>Saved manual portfolio <select id="manual-scenario-portfolio" ' + (manualScenario.busy?'disabled':'') + ' ><option value="">Choose a saved portfolio</option>'+manualPortfolio.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(manualScenario.portfolioId===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><label>Start date <input id="manual-scenario-start" ' + (manualScenario.busy?'disabled':'') + ' type="date" value="'+esc(manualScenario.start)+'"></label><label>End date <input id="manual-scenario-end" ' + (manualScenario.busy?'disabled':'') + ' type="date" value="'+esc(manualScenario.end)+'"></label><button class="button" id="manual-scenario-ytd" '+(manualScenario.datesLoading||manualScenario.busy?'disabled':'')+'>Year to date</button><p role="status">'+esc(manualScenario.datesMessage||'')+'</p><label>Fee per order / USD <input id="manual-scenario-fee" ' + (manualScenario.busy?'disabled':'') + ' type="number" min="0" step="0.01" value="'+esc(manualScenario.fee)+'"></label><p>Fractional shares · 9 decimal places</p><button class="button button-primary" id="manual-scenario-run" '+(!manualScenarioReady()?'disabled':'')+'>Run manual portfolio</button><p role="status">'+esc(manualScenario.message)+'</p>'+manualFailureDetails()+'</details>';
-}
-async function saveManualPortfolio(){
- const m=manualPortfolio,d=m.draft,totals=manualTotals();
- if(!d||!totals.valid){m.message='Allocations cannot exceed 100%.';render();return;}
- m.loading=true;m.message='Saving portfolio…';render();
- try{
-  const result=await api('/api/portfolios',{action:'save',expected_revision:m.revision,portfolio:{...d,cash_weight:totals.cash}});
-  m.revision=result.revision;m.portfolios=result.portfolios||m.portfolios;
-  const saved=result.portfolio||m.portfolios.find(p=>p.id===d.id)||m.portfolios.find(p=>p.name===d.name);
-  if(!saved)throw Error('Saved portfolio was not returned. Reload portfolios before running.');
-  m.draft=structuredClone(saved);m.dirty=false;m.message='Saved revision '+saved.revision+'.';
- }catch(error){m.message=error.message;}
- finally{m.loading=false;render();}
-}
-function manualFailureDetails(){
- const failures=manualScenario.failures||[];
- if(failures.length<2)return '';
- return '<details><summary>All '+failures.length+' collection failures</summary><ul>'+failures.map(failure=>'<li>'+esc([failure.symbol,failure.source,failure.reason].filter(Boolean).join(' · '))+'</li>').join('')+'</ul></details>';
-}
-async function runManualScenario(){
- const portfolio=manualPortfolio.portfolios.find(p=>p.id===manualScenario.portfolioId);
- if(!manualScenarioReady()){manualScenario.message='Choose a saved portfolio, valid dates and a nonnegative fee.';render();return;}
- const request={portfolio_id:portfolio.id,portfolio_revision:portfolio.revision,start:manualScenario.start,end:manualScenario.end,fee_usd:manualScenario.fee};
- manualScenario.busy=true;manualScenario.failures=[];manualScenario.message='Collecting prices and corporate actions…';render();
- try{
-  let jobIds=[];
-  for(;;){
-   const collection=await api('/api/evaluations',{action:'collect_inputs',portfolio_id:request.portfolio_id,portfolio_revision:request.portfolio_revision,start:request.start,end:request.end,...(jobIds.length?{job_ids:jobIds}:{})});
-   jobIds=collection.job_ids||jobIds;
-   const jobs=collection.jobs||[], failed=jobs.find(job=>['failed','error','interrupted','canceled','cancelled','completed_with_gaps'].includes(job.status));
-   const missing=(collection.missing?.history?.length||0)+(collection.missing?.corporate_actions?.length||0);
-   manualScenario.message='Collecting prices and corporate actions · '+missing+' inputs missing · '+jobs.map(job=>job.status+(job.progress?' '+JSON.stringify(job.progress):'')).join(', ');render();
-   if(!jobs.some(job=>['queued','running'].includes(job.status))){
-    manualScenario.failures=[...(collection.failures||[]),...(collection.problems||[]).map(reason=>({reason})),...(collection.missing?.history||[]).map(symbol=>({symbol,source:'Price history',reason:'Unavailable'})),...(collection.missing?.corporate_actions||[]).map(symbol=>({symbol,source:'Corporate actions',reason:'Unavailable'}))];
-    if(failed||manualScenario.failures.length){const first=manualScenario.failures[0];throw Error('Historical inputs unavailable: '+(first?[first.symbol,first.source,first.reason].filter(Boolean).join(' · '):(failed?.error||failed?.status||'Unavailable input')));}
-    break;
-   }
-   await new Promise(resolve=>setTimeout(resolve,3000));
-  }
-  manualScenario.message='Running historical scenario…';render();
-  const result=await api('/api/evaluations',{action:'portfolio_scenario',...request,share_sizing:'fractional'},{timeoutMs:550000});
-  manualScenario.message='Simulation '+result.id+' · '+simulationLabel(result.status);evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
- }catch(error){manualScenario.message=error.message;}
- finally{manualScenario.busy=false;render();}
-}
-document.addEventListener('input',event=>{
- const el=event.target,m=manualPortfolio,d=m.draft;
- if(el.id==='manual-search'){m.query=el.value;const rows=document.getElementById('manual-rows');if(rows)rows.innerHTML=manualRowsMarkup();return;}
- if(d&&el.dataset.manualWeight){const row=d.allocations.find(item=>item.symbol===el.dataset.manualWeight);if(row){row.weight=manualShiftDecimal(el.value,-2);m.dirty=true;d.weight_source=null;manualTotalsUpdate();}return;}
- if(d&&(el.id==='manual-name'||el.id==='manual-capital')){d[el.id==='manual-name'?'name':'capital_usd']=el.value;m.dirty=true;manualTotalsUpdate();return;}
- const field={'manual-scenario-start':'start','manual-scenario-end':'end','manual-scenario-fee':'fee'}[el.id];if(field){manualScenario[field]=el.value;updateManualRunButton();}
-});
-document.addEventListener('change',async event=>{
- const el=event.target,m=manualPortfolio;
- if(el.id==='manual-open'&&el.value){const found=m.portfolios.find(p=>p.id===el.value);if(found){m.draft=structuredClone(found);m.dirty=false;m.message='';render();}}
- if(el.id==='manual-scenario-portfolio'){manualScenario.portfolioId=el.value;updateManualRunButton();}
- if(el.id==='manual-snapshot'){
-  m.selectedSnapshot=el.value;
-  m.weightLoading=true;m.message='Loading selected snapshot…';render();try{m.weights=await api('/api/portfolio-weights'+(el.value?'?as_of='+encodeURIComponent(el.value):''));m.message=m.weights.error||(!m.weights.snapshot?'No snapshot is available for this date.':'');}catch(error){m.message='Index weights unavailable: '+error.message;m.weights=null;}finally{m.weightLoading=false;} 
-  render();
- }
-});
-document.addEventListener('click',event=>{
- const id=event.target.closest('button')?.id,m=manualPortfolio,d=m.draft;
- if(id==='manual-new'){newManualPortfolio();render();}
- if(id==='manual-save')saveManualPortfolio();
- if(id==='manual-refresh-weights')refreshManualWeights();
- if(id==='manual-use-index'&&d){const s=manualSnapshot();if(s&&!manualSnapshotProblem()){d.allocations=s.entries.map(row=>({symbol:row.symbol,weight:String(row.weight),cusip:row.cusip||undefined,historical_symbol:row.historical_symbol||undefined}));d.weight_source={id:s.id,provider:s.provider,as_of:s.as_of,source_url:s.source_url,source_sha256:s.source_sha256};m.dirty=true;render();}}
- if(id==='manual-add-universe'&&d){const existing=new Set(d.allocations.map(row=>row.symbol)),refs=new Map((manualSnapshot()?.entries||[]).map(row=>[row.symbol,row]));for(const symbol of universe())if(!existing.has(symbol))d.allocations.push({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined});d.weight_source=null;m.dirty=true;render();}
- if(id==='manual-clear'&&d){d.allocations.forEach(row=>row.weight='0');d.weight_source=null;m.dirty=true;render();}
- if(id==='manual-equal'&&d&&d.allocations.length){const weight=manualDecimalString(10n**12n/BigInt(d.allocations.length),12);d.allocations.forEach(row=>row.weight=weight);d.weight_source=null;m.dirty=true;render();}
- if(id==='manual-run'&&d&&!m.dirty){manualScenario.portfolioId=d.id;strategyTab='simulations';strategyView='setup';navigatePage('strategy');}
- if(id==='manual-scenario-ytd'){loadManualDates();render();}
- if(id==='manual-scenario-run')runManualScenario();
-});
-

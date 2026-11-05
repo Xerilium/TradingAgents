@@ -1240,9 +1240,7 @@ def simulate_portfolio(spec):
     from nautilus_trader.model.instruments import Equity
     from nautilus_trader.model.objects import Money, Price, Quantity
     from nautilus_trader.trading.strategy import Strategy
-    from portfolio_scenario import validate_model, model_weights, account_portfolio, entry_quantity
-    from native_types import Equity as PortfolioEquity
-    from nautilus_trader.risk.config import RiskEngineConfig
+    from portfolio_scenario import validate_model, model_weights, account_portfolio
 
     if digest({key: value for key, value in spec.items() if key != "spec_sha256"}) != spec.get("spec_sha256"):
         raise ValueError("Portfolio scenario specification changed")
@@ -1253,11 +1251,9 @@ def simulate_portfolio(spec):
     model = validate_model(spec["model"])
     capital = Decimal(str(model["result"]["capital"]))
     weights = model_weights(model)
-    sizing = spec.get("share_sizing", "whole")
     venue = Venue("ALPACA")
     fee = Decimal(spec["fee_usd"])
-    risk_config = RiskEngineConfig(max_order_submit_rate=f"{max(100, len(weights))}/00:00:01")
-    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"), logging=LoggingConfig(bypass_logging=True), risk_engine=risk_config))
+    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"), logging=LoggingConfig(bypass_logging=True)))
     try:
         engine.add_venue(venue, OmsType.NETTING, AccountType.CASH, [Money(capital, USD)], base_currency=USD,
             allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True) if fee else None, bar_execution=True)
@@ -1266,14 +1262,13 @@ def simulate_portfolio(spec):
             rows = spec["bars"][symbol]
             precision = max(2, max(max(0, -Decimal(str(row[field])).as_tuple().exponent) for row in rows.values() for field in ("open", "high", "low", "close")))
             identity = InstrumentId.from_str(symbol + ".ALPACA")
-            engine.add_instrument(PortfolioEquity(identity, Symbol(symbol), USD, precision, Price.from_str(format(Decimal("0.01"), f".{precision}f")), 0, 0, lot_size=Quantity.from_int(1), fractional_precision=sizing == "fractional"))
+            engine.add_instrument(Equity(identity, Symbol(symbol), USD, precision, Price.from_str(format(Decimal("0.01"), f".{precision}f")), Quantity.from_int(1), 0, 0))
             bar_types[symbol] = BarType.from_str(str(identity) + "-1-DAY-LAST-EXTERNAL")
             first = rows[min(rows)]
-            quantities[symbol] = entry_quantity(capital, weight, first["close"], sizing)
+            quantities[symbol] = int((capital * weight / Decimal(first["close"])).to_integral_value(rounding=ROUND_FLOOR))
             for day, row in rows.items():
                 timestamp = int(datetime.fromisoformat(day).replace(tzinfo=UTC).timestamp() * 1_000_000_000)
-                volume = Quantity.from_str(format(Decimal(row["volume"]), ".9f" if sizing == "fractional" else ".0f"))
-                native_bars.append(Bar(bar_types[symbol], *(Price.from_str(format(Decimal(row[field]), f".{precision}f")) for field in ("open", "high", "low", "close")), volume, timestamp, timestamp))
+                native_bars.append(Bar(bar_types[symbol], *(Price.from_str(format(Decimal(row[field]), f".{precision}f")) for field in ("open", "high", "low", "close")), Quantity.from_int(int(Decimal(row["volume"]))), timestamp, timestamp))
         class PortfolioEntry(Strategy):
             def __init__(self):
                 super().__init__(StrategyConfig())
@@ -1286,33 +1281,26 @@ def simulate_portfolio(spec):
                 if symbol not in self.seen:
                     self.seen.add(symbol)
                     if quantities[symbol]:
-                        self.submit_order(self.order_factory.market(bar.bar_type.instrument_id, OrderSide.BUY, Quantity.from_str(str(quantities[symbol])), time_in_force=TimeInForce.GTC))
+                        self.submit_order(self.order_factory.market(bar.bar_type.instrument_id, OrderSide.BUY, Quantity.from_int(quantities[symbol]), time_in_force=TimeInForce.GTC))
         engine.add_data(sorted(native_bars, key=lambda row: row.ts_event))
         engine.add_strategy(PortfolioEntry())
         engine.run()
         report = engine.trader.generate_fills_report()
         fills = {}
         for _, row in report.iterrows():
-            symbol = str(row["instrument_id"]).rsplit(".", 1)[0]
+            symbol = str(row["instrument_id"]).split(".")[0]
             if symbol in fills:
                 raise ValueError(f"{symbol} native_fill: multiple fills require explicit aggregation")
             fills[symbol] = {"shares": str(row["last_qty"]), "price": str(row["last_px"]), "fee_usd": str(fee)}
         for symbol, quantity in quantities.items():
             if quantity == 0:
                 fills[symbol] = {"shares": "0", "price": spec["bars"][symbol][min(spec["bars"][symbol])]["close"], "fee_usd": "0"}
-        diagnostics = {"native_risk_config": risk_config.json_primitives(),
-            "order_events": {str(order.client_order_id): [type(event).to_dict(event) for event in order.events] for order in engine.cache.orders()},
-            "native_fills": clean(json.loads(report.to_json(orient="split", date_format="iso", default_handler=str)))}
-        try:
-            ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model, sizing, spec.get("calendar_sessions"))
-        except ValueError as error:
-            return clean({"kind": "portfolio_scenario", "status": "failed", "spec_sha256": spec["spec_sha256"], "error": str(error), **diagnostics})
-        return clean({"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
-            "model_id": model["id"], "portfolio_name": model.get("name"), "portfolio_revision": model.get("portfolio_revision"),
-            "weight_source": model.get("weight_source"), "position_count": len(weights), "starting_cash": str(capital),
+        ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model)
+        return {"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
+            "model_id": model["id"], "starting_cash": str(capital),
             "target_weights": {symbol: str(weight) for symbol, weight in weights.items()},
             "target_cash_weight": str(model["result"]["target_cash_weight"]),
-            **diagnostics})
+            "native_fills": clean(json.loads(report.to_json(orient="split", date_format="iso", default_handler=str)))}
     finally:
         engine.dispose()
 

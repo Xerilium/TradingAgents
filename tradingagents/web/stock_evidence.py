@@ -15,28 +15,6 @@ PROVIDERS = {"alpaca": {"news", "corporate_actions"}, "sec_edgar": {"fundamental
              "alpha_vantage": {"fundamentals", "classification", "earnings"}}
 
 
-def corporate_action_records(symbol, payload, source):
-    """Normalize provider roles, including the parent of a spin-off."""
-    groups = payload.get("corporate_actions")
-    if not isinstance(groups, dict):
-        raise ValueError("Corporate-action response schema is unsupported")
-    records, gaps = [], []
-    for kind, rows in groups.items():
-        if not isinstance(rows, list):
-            raise ValueError("Corporate-action group is unsupported")
-        for row in rows:
-            if symbol not in {row.get(key) for key in ("symbol", "old_symbol", "new_symbol", "source_symbol",
-                    "initiating_symbol", "target_symbol", "acquirer_symbol", "acquiree_symbol")}:
-                gaps.append("Action has no exact selected-symbol association; inspect its source receipt")
-                continue
-            effective = row.get("ex_date") or row.get("effective_date")
-            records.append({"kind": kind, "id": row.get("id"), "effective_at": effective,
-                "process_date": row.get("process_date"), "date_basis": "ex/effective date as reported; API interval filters process date",
-                "source_url": source, "reported": row, "comparison_requires_review": True,
-                "limitation": None if effective else "Effective date is missing; action timing remains unconfirmed"})
-    return records, gaps
-
-
 def usable(observation, scope=None):
     return observation.get("complete") is True and (observation.get("status") == "available" or
         observation.get("status") == "missing" and (observation.get("scope") or scope) in {"news", "corporate_actions"})
@@ -89,9 +67,21 @@ def fetch(jobs, identity, symbol, scope, provider, request):
                             "summary": row.get("summary"), "published_at": row.get("created_at"), "updated_at": row.get("updated_at"),
                             "source_url": row.get("url"), "publisher": row.get("source"), "retrieved_at": captured})
                 else:
-                    page_records, page_gaps = corporate_action_records(symbol, payload, source)
-                    records.extend(page_records)
-                    gaps.extend(page_gaps)
+                    groups = payload.get("corporate_actions")
+                    if not isinstance(groups, dict):
+                        raise ValueError("Corporate-action response schema is unsupported")
+                    for kind, rows in groups.items():
+                        if not isinstance(rows, list):
+                            raise ValueError("Corporate-action group is unsupported")
+                        for row in rows:
+                            if symbol not in {row.get("symbol"), row.get("old_symbol"), row.get("new_symbol"), row.get("initiating_symbol"), row.get("target_symbol"), row.get("acquirer_symbol"), row.get("acquiree_symbol")}:
+                                gaps.append("Action has no exact selected-symbol association; inspect its source receipt")
+                                continue
+                            effective = row.get("ex_date") or row.get("effective_date")
+                            records.append({"kind": kind, "id": row.get("id"), "effective_at": effective,
+                                "process_date": row.get("process_date"), "date_basis": "ex/effective date as reported; API interval filters process date",
+                                "source_url": source, "reported": row, "comparison_requires_review": True,
+                                "limitation": None if effective else "Effective date is missing; action timing remains unconfirmed"})
                     gaps.append("Provider may publish actions after announcement; process-date coverage is not proof of timely announcement coverage")
                 token = payload.get("next_page_token")
                 if not token:
