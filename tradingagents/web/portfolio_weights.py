@@ -42,6 +42,7 @@ def _parse_spy(raw):
         raise ValueError("State Street holdings date is missing")
     as_of = datetime.strptime(match.group(1), "%d-%b-%Y").date().isoformat()
     entries = []
+    excluded = []
     active = False
     for row in rows:
         if row.get("A") == "Name" and row.get("B") == "Ticker":
@@ -55,11 +56,20 @@ def _parse_spy(raw):
             continue
         if not weight.is_finite() or weight < 0:
             continue
-        entries.append({"symbol": row["B"].strip().upper(), "weight": str(weight),
-                        "cusip": row.get("C", ""), "name": row["A"]})
+        entry = {"symbol": row["B"].strip().upper(), "weight": str(weight),
+                 "cusip": row.get("C", ""), "name": row["A"]}
+        if entry["symbol"] == "USD" or entry["symbol"].endswith(".WS"):
+            excluded.append({**entry, "reason": "cash" if entry["symbol"] == "USD" else "warrant"})
+        else:
+            entries.append(entry)
     if len(entries) < 400:
         raise ValueError("State Street holdings are incomplete")
-    return as_of, entries
+    if len({entry["symbol"] for entry in entries}) != len(entries):
+        raise ValueError("State Street holdings contain duplicate symbols")
+    total = sum(Decimal(entry["weight"]) for entry in entries)
+    if total > 1 or total < Decimal("0.95"):
+        raise ValueError("State Street equity weights do not reconcile")
+    return as_of, entries, excluded, str(1 - total)
 
 
 class PortfolioWeights:
@@ -94,6 +104,15 @@ class PortfolioWeights:
             source = self.store._write_json_artifact(identity, "holdings-packaged-source", asset)
             snapshot = {**asset, "id": identity, "source_artifact": source, "asset_sha256": asset_hash,
                         "unresolved": unresolved}
+            if asset.get("source_file"):
+                source_path = (directory / asset["source_file"]).resolve()
+                if not source_path.is_relative_to(directory.resolve()):
+                    raise ValueError("Invalid packaged source path")
+                source_raw = source_path.read_bytes()
+                if hashlib.sha256(source_raw).hexdigest() != asset["source_sha256"]:
+                    raise ValueError("Packaged holdings source changed")
+                snapshot["original_source_artifact"] = self.store._write_json_artifact(
+                    identity, "holdings-original-source", {"encoding": "base64", "content": base64.b64encode(source_raw).decode("ascii")})
             artifact = self.store._write_json_artifact(identity, "holdings-snapshot", snapshot)
             metadata = {k: snapshot[k] for k in ("id", "provider", "as_of", "source_url", "source_sha256", "asset_sha256")}
             metadata["artifact"] = artifact
@@ -124,11 +143,12 @@ class PortfolioWeights:
                 request = Request(SOURCE_URL, headers={"User-Agent": "TradingAgents portfolio weights"})
                 with urlopen(request, timeout=45) as response:
                     raw = response.read()
-                as_of, entries = _parse_spy(raw)
+                as_of, entries, excluded, cash_weight = _parse_spy(raw)
                 digest = hashlib.sha256(raw).hexdigest()
                 identity = str(uuid4())
                 snapshot = {"id": identity, "provider": "State Street SPY", "as_of": as_of,
-                            "source_url": SOURCE_URL, "source_sha256": digest, "entries": entries}
+                            "source_url": SOURCE_URL, "source_sha256": digest, "entries": entries,
+                            "excluded": excluded, "cash_weight": cash_weight}
                 source = self.store._write_json_artifact(identity, "holdings-source", {"encoding": "base64", "content": base64.b64encode(raw).decode("ascii")})
                 snapshot["source_artifact"] = source
                 artifact = self.store._write_json_artifact(identity, "holdings-snapshot", snapshot)
