@@ -3672,14 +3672,17 @@ function commandReceiptLinks(command){
 // Authored allocations remain independent of the session-only model proposal.
 const manualPortfolio = {loaded:false, loading:false, revision:null, portfolios:[], weights:null, draft:null, dirty:false, message:'', query:'', selectedSnapshot:''};
 const manualScenario = {portfolioId:'', start:'', end:'', fee:'0', busy:false, message:''};
-function manualDateDefaults(){
- const now=new Date();
- // Use the New York date and avoid claiming that an unfinished session is complete.
- const ny=new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
- if(ny.getHours()<16)ny.setDate(ny.getDate()-1);
- while(ny.getDay()===0||ny.getDay()===6)ny.setDate(ny.getDate()-1);
- const end=[ny.getFullYear(),String(ny.getMonth()+1).padStart(2,'0'),String(ny.getDate()).padStart(2,'0')].join('-');
- return {start:(ny.getFullYear()-1)+'-12-31',end};
+async function loadManualDates(){
+ const scenario=manualScenario;if(scenario.datesLoading)return;
+ scenario.datesRequested=true;scenario.datesLoading=true;scenario.datesMessage='Loading trading calendar…';
+ const originalStart=scenario.start,originalEnd=scenario.end;
+ if(activePage==='strategy')render();
+ try{
+  const dates=await api('/api/portfolio-dates');
+  if(scenario.start===originalStart&&scenario.end===originalEnd){scenario.start=dates.start;scenario.end=dates.end;}
+  scenario.datesMessage='Year-to-date dates from '+dates.source+'.';
+ }catch(error){scenario.datesMessage='Trading calendar unavailable: '+error.message+' Enter dates manually.';}
+ finally{scenario.datesLoading=false;if(activePage==='strategy')render();}
 }
 async function loadManualPortfolio(){
  if(manualPortfolio.loading)return;
@@ -3715,7 +3718,7 @@ function manualSnapshot(){
 }
 function newManualPortfolio(){
  const snapshot=manualSnapshot(), refs=new Map((snapshot?.entries||[]).map(row=>[row.symbol,row]));
- manualPortfolio.draft={name:'Manual portfolio',capital_usd:'100000',allocations:universe().map(symbol=>({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined})),weight_source:null};
+ manualPortfolio.draft={name:'Manual portfolio',capital_usd:'100000',allocations:universe().map(symbol=>({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined})),weight_source:null};
  manualPortfolio.dirty=true;manualPortfolio.message='';
 }
 // Decimal weights stay strings throughout editing and saving. BigInt avoids
@@ -3754,7 +3757,7 @@ function manualRowsMarkup(){
  return (draft?.allocations||[]).filter(row=>row.symbol.toUpperCase().includes(query)).map(row=>{
   const ref=refs.get(row.symbol);
   const reference=ref?manualShiftDecimal(ref.weight,2)+'% · '+snapshot.as_of:(snapshot?'No index weight in selected snapshot':'Index weights unavailable');
-  return '<tr><th scope="row">'+esc(row.symbol)+'</th><td><input type="number" min="0" max="100" step="any" data-manual-weight="'+esc(row.symbol)+'" aria-label="'+esc(row.symbol)+' allocation percent" value="'+esc(manualShiftDecimal(row.weight,2))+'"></td><td>'+esc(reference)+'</td></tr>';
+  return '<tr><th scope="row">'+esc(row.symbol)+(row.historical_symbol?' <small>('+esc(row.historical_symbol)+' at source)</small>':'')+'</th><td><input type="number" min="0" max="100" step="any" data-manual-weight="'+esc(row.symbol)+'" aria-label="'+esc(row.symbol)+' allocation percent" value="'+esc(manualShiftDecimal(row.weight,2))+'"></td><td>'+esc(reference)+'</td></tr>';
  }).join('');
 }
 function manualTotalsUpdate(){
@@ -3772,8 +3775,8 @@ function renderManualPortfolio(){
 }
 function manualScenarioMarkup(){
  if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
- if(!manualScenario.start)Object.assign(manualScenario,manualDateDefaults());
- return '<details class="strategy-step" open><summary>Manual portfolio · historical scenario</summary><p>Run an exact saved portfolio revision with fractional shares and the fee entered below.</p><label>Saved manual portfolio <select id="manual-scenario-portfolio"><option value="">Choose a saved portfolio</option>'+manualPortfolio.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(manualScenario.portfolioId===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><label>Start date <input id="manual-scenario-start" type="date" value="'+esc(manualScenario.start)+'"></label><label>End date <input id="manual-scenario-end" type="date" value="'+esc(manualScenario.end)+'"></label><button class="button" id="manual-scenario-ytd">Year to date</button><label>Fee per order / USD <input id="manual-scenario-fee" type="number" min="0" step="0.01" value="'+esc(manualScenario.fee)+'"></label><p>Fractional shares · 9 decimal places</p><button class="button button-primary" id="manual-scenario-run" '+(manualScenario.busy?'disabled':'')+'>Run manual portfolio</button><p role="status">'+esc(manualScenario.message)+'</p></details>';
+ if(!manualScenario.datesRequested)loadManualDates();
+ return '<details class="strategy-step" open><summary>Manual portfolio · historical scenario</summary><p>Run an exact saved portfolio revision with fractional shares and the fee entered below.</p><label>Saved manual portfolio <select id="manual-scenario-portfolio"><option value="">Choose a saved portfolio</option>'+manualPortfolio.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(manualScenario.portfolioId===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><label>Start date <input id="manual-scenario-start" type="date" value="'+esc(manualScenario.start)+'"></label><label>End date <input id="manual-scenario-end" type="date" value="'+esc(manualScenario.end)+'"></label><button class="button" id="manual-scenario-ytd" '+(manualScenario.datesLoading?'disabled':'')+'>Year to date</button><p role="status">'+esc(manualScenario.datesMessage||'')+'</p><label>Fee per order / USD <input id="manual-scenario-fee" type="number" min="0" step="0.01" value="'+esc(manualScenario.fee)+'"></label><p>Fractional shares · 9 decimal places</p><button class="button button-primary" id="manual-scenario-run" '+(manualScenario.busy?'disabled':'')+'>Run manual portfolio</button><p role="status">'+esc(manualScenario.message)+'</p></details>';
 }
 async function saveManualPortfolio(){
  const m=manualPortfolio,d=m.draft,totals=manualTotals();
@@ -3832,11 +3835,11 @@ document.addEventListener('click',event=>{
  if(id==='manual-new'){newManualPortfolio();render();}
  if(id==='manual-save')saveManualPortfolio();
  if(id==='manual-refresh-weights')refreshManualWeights();
- if(id==='manual-use-index'&&d){const s=manualSnapshot();if(s){d.allocations=s.entries.map(row=>({symbol:row.symbol,weight:String(row.weight),cusip:row.cusip||undefined}));d.weight_source={id:s.id,provider:s.provider,as_of:s.as_of,source_url:s.source_url,source_sha256:s.source_sha256};m.dirty=true;render();}}
- if(id==='manual-add-universe'&&d){const existing=new Set(d.allocations.map(row=>row.symbol)),refs=new Map((manualSnapshot()?.entries||[]).map(row=>[row.symbol,row]));for(const symbol of universe())if(!existing.has(symbol))d.allocations.push({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined});d.weight_source=null;m.dirty=true;render();}
+ if(id==='manual-use-index'&&d){const s=manualSnapshot();if(s){d.allocations=s.entries.map(row=>({symbol:row.symbol,weight:String(row.weight),cusip:row.cusip||undefined,historical_symbol:row.historical_symbol||undefined}));d.weight_source={id:s.id,provider:s.provider,as_of:s.as_of,source_url:s.source_url,source_sha256:s.source_sha256};m.dirty=true;render();}}
+ if(id==='manual-add-universe'&&d){const existing=new Set(d.allocations.map(row=>row.symbol)),refs=new Map((manualSnapshot()?.entries||[]).map(row=>[row.symbol,row]));for(const symbol of universe())if(!existing.has(symbol))d.allocations.push({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined});d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-equal'&&d&&d.allocations.length){const weight=manualDecimalString(10n**12n/BigInt(d.allocations.length),12);d.allocations.forEach(row=>row.weight=weight);d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-run'&&d&&!m.dirty){manualScenario.portfolioId=d.id;strategyTab='simulations';strategyView='setup';navigatePage('strategy');}
- if(id==='manual-scenario-ytd'){Object.assign(manualScenario,manualDateDefaults());render();}
+ if(id==='manual-scenario-ytd')loadManualDates();
  if(id==='manual-scenario-run')runManualScenario();
 });
 
