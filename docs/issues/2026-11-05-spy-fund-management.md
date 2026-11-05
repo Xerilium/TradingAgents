@@ -2,7 +2,8 @@
 
 ## Status
 
-Research and safety-challenged design complete; implementation in progress.
+Implementation committed; source-review closure and real-browser verification
+are tracked below. No broker execution is part of this delivery.
 The user confirmed that fund-plan edits must require explicit automatic-trading
 re-enablement and authorized one real affected dev-browser verification cycle
 without trades, approvals, transfers, invented plan values or automated tests.
@@ -57,7 +58,12 @@ or describe cash withdrawals as investment losses.
    does not establish money available for household withdrawal.
 4. **Paper P&L is not a tax event.** Broker average position cost can support a
    labeled paper gain/loss estimate, not lot selection, holding-period taxation,
-   household wash-sale clearance or a proven deduction. An Alpaca community
+   household wash-sale clearance or a proven deduction. IRS Publication 550
+   includes substantially identical acquisitions within 30 days before or after
+   a loss sale, including spouse/controlled-corporation and IRA/Roth IRA cases.
+   The ordinary replacement-basis adjustment does not apply to the IRA/Roth
+   exception. The coordinator read that source section directly; none of these
+   rules is represented as an implemented tax engine. An Alpaca community
    response says FIFO/no lot selection; it is not a formal API guarantee.
 5. **Benchmarking needs matching evidence.** Existing qualified account-history
    comparisons can show SPY price return, explicitly excluding dividends and
@@ -193,23 +199,57 @@ Confirmed findings, deduplicated:
 The primary assistant also identified introduced exact-equity equality gates
 that would reject ordinary price-driven mark changes, and editable controls
 during a fund save that could strand later edits on stale revisions. All six
-scenarios are being corrected as one batch before the browser cycle. Reviewer
-claims remain static source evidence, not observed broker execution.
+scenarios were corrected in `97c6cf2` before the browser cycle. Targeted review
+confirmed five fixes but identified a remaining cross-restore save race before
+the browser notices the new generation. `2a8109e` adds the original draft's store
+generation to the save contract and checks it under the service maintenance lock
+before mutation, including an in-flight request delayed across a restore.
+Reviewer claims remain static source evidence, not observed broker execution.
+
+The final targeted verifier confirmed the server generation guard and shared
+maintenance lock at `2a8109e`. It also raised an old-budget retention candidate.
+The primary assistant checked the complete call path and did not accept that
+candidate: `readState()` calls `generationChanged()` before adopting the new
+state; that handler explicitly clears `investorRecord.fund_plans` and the SPY
+schedule. `refreshData()` therefore accepts the lower restored fund revision
+because the old contract is absent. Dirty old drafts remain visibly conflicted.
+No additional code change or test round was justified for that refuted candidate.
+
+Primary source decision: accept implementation at `2a8109e` for the authorized
+real development-browser verification, with no remaining confirmed source-review
+finding. This is not UI acceptance or broker-execution sign-off. Code delta from
+`b906008`: 377 added / 68 removed lines across five Python files and `app.js`;
+no test file changed and no automated test ran.
+
+### Source validation and delivery limits
+
+Python AST parsing passed for `fund_plans.py`, `nautilus_worker.py`, `recovery.py`,
+`service.py` and `spy_rebalance.py`. `node --check` passed for `static/app.js`;
+Git whitespace checks passed. No automated test was created, changed or run.
+Impeccable context, Operate guidance and craft floor were used. Its detector
+reported only an advisory for pre-existing `#4dabf7` at line 2371, outside the
+changed UI; no palette drift repair was added to this task.
+
+The browser cycle is authorized but has not started. The development Tauri host
+must restart its Python service to load backend changes; no alternate Python
+launcher, process kill, production start or package installation was used.
+No authored reserve amount, approval, submission, cancellation or transfer was
+made by this work. Inputs remain unknown until the operator supplies them.
 
 ### Verification matrix
 
 | Path | Required evidence | Current result |
 | --- | --- | --- |
-| Saved plan identity/revisions | Strict account and optimistic concurrency checks | Pending source review |
-| Blank versus explicit zero | Nullable contract; no invented values | Pending source and browser review |
-| Reserve overlap and weight units | Decimal max floor; fractional weights to percentage points | Pending source review |
-| Changed plan or policy | Old preview/run blocked; auto re-enable explicit | Pending source review |
-| Post-fill continuation | Observation begun after fill and expected holdings | Pending source review; no broker execution authorized |
-| Backup/restore | New record validation; standing and active authority invalidated | Pending source review; no restore authorized |
+| Saved plan identity/revisions | Strict account, generation and optimistic concurrency checks | Source reviewed; runtime save not exercised |
+| Blank versus explicit zero | Nullable contract; no invented values | Source reviewed; browser pending |
+| Reserve overlap and weight units | Decimal max floor; fractional weights to percentage points | Source reviewed, not an executed calculation test |
+| Changed plan or policy | Old preview/run blocked; auto re-enable explicit | Source reviewed; runtime mutation not exercised |
+| Post-fill continuation | Observation begun after fill and expected holdings | Source reviewed; no broker execution authorized |
+| Backup/restore | New record validation; standing and active authority invalidated | Source reviewed; no restore authorized or executed |
 | Empty paper account | Real observed equity/cash and honest empty gain/loss state | Pending browser cycle |
 | Populated gain/loss and SELL preparation | Actual retained holdings and existing unsaved ticket route | Requires real holdings; no fabricated position permitted |
-| Benchmark | Existing qualified price-only comparison remains labeled | Pending source/browser review |
-| Runtime integration | Restarted dev service loads new API contract | Pending; no production change |
+| Benchmark | Existing qualified price-only comparison remains labeled | Source preserved; rendered comparison not verified |
+| Runtime integration | Restarted dev service loads new API contract | Pending dev restart and one browser cycle; no production change |
 
 Use Impeccable in Operate mode for UI implementation and review. Preserve the
 established workstation and current workflows. No automated tests, mocks,
