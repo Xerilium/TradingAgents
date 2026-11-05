@@ -1254,7 +1254,7 @@ def simulate_portfolio(spec):
     engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"), logging=LoggingConfig(bypass_logging=True)))
     try:
         engine.add_venue(venue, OmsType.NETTING, AccountType.CASH, [Money(capital, USD)], base_currency=USD,
-            allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True), bar_execution=True)
+            allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True) if fee else None, bar_execution=True)
         bar_types, quantities, native_bars = {}, {}, []
         for symbol, weight in weights.items():
             rows = spec["bars"][symbol]
