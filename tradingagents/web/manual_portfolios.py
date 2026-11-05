@@ -9,7 +9,8 @@ DEFAULT = {"portfolios": []}
 
 def state(store):
     record = store.database.read("manual_portfolios", DEFAULT)
-    return {"revision": record["revision"], "portfolios": record["data"]["portfolios"],
+    portfolios = [{**item, "revision": item.get("revision", 1)} for item in record["data"]["portfolios"]]
+    return {"revision": record["revision"], "portfolios": portfolios,
             "universe": list(store.data["config"]["universe"])}
 
 
@@ -50,12 +51,14 @@ def save(store, request, weights=None):
         snapshot = weights.state(as_of=claim.get("as_of")).get("snapshot")
         if not snapshot or claim.get("id") != snapshot["id"] or claim.get("source_sha256") != snapshot["source_sha256"]:
             raise ValueError("Index snapshot is unavailable or changed")
-        expected = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip")) for row in snapshot["entries"]}
-        actual = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip")) for row in allocations}
+        expected = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip") or None) for row in snapshot["entries"]}
+        actual = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip") or None) for row in allocations}
         if actual != expected:
             raise ValueError("Edited allocations do not match the selected index snapshot; clear its source")
         portfolio["weight_source"] = {key: snapshot[key] for key in ("id", "as_of", "source_sha256", "provider")}
     def change(data):
+        previous = next((item for item in data["portfolios"] if item["id"] == identity), None)
+        portfolio["revision"] = previous.get("revision", 1) + 1 if previous else 1
         data["portfolios"] = [item for item in data["portfolios"] if item["id"] != identity] + [portfolio]
     record = store.database.update("manual_portfolios", request.get("expected_revision"), change, DEFAULT)
     return {"revision": record["revision"], "portfolios": record["data"]["portfolios"],
@@ -64,12 +67,13 @@ def save(store, request, weights=None):
 
 def model(store, identity, revision):
     record = store.database.read("manual_portfolios", DEFAULT)
-    if type(revision) is not int or revision != record["revision"]:
-        from .app_database import StoreConflict
-        raise StoreConflict(record["revision"])
     portfolio = next((item for item in record["data"]["portfolios"] if item["id"] == identity), None)
     if portfolio is None:
         raise ValueError("Choose a saved portfolio")
+    current_revision = portfolio.get("revision", 1)
+    if type(revision) is not int or revision != current_revision:
+        from .app_database import StoreConflict
+        raise StoreConflict(current_revision)
     return {"id": portfolio["id"], "name": portfolio["name"], "portfolio_revision": revision,
             "inputs": [{"symbol": row["symbol"], **({"cusip": row["cusip"]} if row.get("cusip") else {})} for row in portfolio["allocations"]],
             "result": {"capital": portfolio["capital_usd"], "target_cash_weight": portfolio["cash_weight"],
