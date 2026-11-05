@@ -36,7 +36,7 @@ def capital_amount(value):
     return amount
 
 
-def model_portfolio(config, inputs, capital, workflow=None):
+def model_portfolio(config, inputs, capital, workflow=None, as_of=None):
     workflow = workflow or WorkflowBundle.from_files(bundled_files())
     allocation_schema = create_model(
         "Allocation", __base__=Allocation,
@@ -50,7 +50,7 @@ def model_portfolio(config, inputs, capital, workflow=None):
         cash_rationale=(str, Field(description=workflow.text("joint_cash_rationale"))),
     )
     evidence = json.dumps({"model_capital": str(capital), "starting_model_holdings": [],
-                           "eligible_research": inputs}, ensure_ascii=False)
+                           "as_of": as_of, "eligible_research": inputs}, ensure_ascii=False)
     settings = {**build_default_config(), **config, "deep_think_provider": config["llm_provider"],
                 "deep_think_backend_url": config.get("backend_url")}
     client = create_tier_client(settings, "deep")
@@ -83,7 +83,7 @@ def model_portfolio(config, inputs, capital, workflow=None):
         raise ValueError("Joint allocation omitted symbols, exceeded 100% weights or exceeded model capital")
     if not proposed.cash_rationale.strip():
         raise ValueError("Joint allocation omitted the cash rationale")
-    return {"allocations": rows, "capital": str(capital), "reference_value": str(spent),
+    return {"allocations": rows, "capital": str(capital), "as_of": as_of, "reference_value": str(spent),
             "cash": str(capital - spent), "target_cash_weight": str(1 - total_weight),
             "cash_rationale": proposed.cash_rationale, "system_prompt": system_prompt, "provider": client.get_provider_name(),
             "model": client.model, "response_metadata": getattr(response.get("raw"), "response_metadata", {})}

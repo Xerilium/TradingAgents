@@ -749,19 +749,37 @@ class DeskService:
         from tradingagents.integrations.laya import local_failure_details
         identity = str(UUID(request["request_id"]))
         capital = capital_amount(request.get("capital", "10000"))
+        as_of = request.get("as_of") or None
+        if as_of:
+            as_of = datetime.fromisoformat(as_of).date().isoformat()
         with self.lock:
             if self.portfolio_model_job.get("id") == identity:
                 return copy.deepcopy(self.portfolio_model_job)
             if self.portfolio_model_job["status"] in {"queued", "running"}:
                 raise ValueError("A joint portfolio model is already running")
             with self.store.lock:
+                store = self.store
                 config = copy.deepcopy(self.store.data["config"])
                 runs = copy.deepcopy(self.store.data["runs"])
             workflow = self.workflows.active_bundle()
-            quotes = self._runtime_market()["quotes"]
+            quotes = self._runtime_market()["quotes"] if not as_of else {}
+            history_entries = []
+            if as_of:
+                from .market_history import DEFAULT as HISTORY_DEFAULT
+                history_entries = list(store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"].values())
+                from .approval_review import read_artifact
             latest = {}
             for run in sorted(runs, key=lambda row: row.get("created_at") or "", reverse=True):
                 for result in run.get("results", []):
+                    if as_of:
+                        observed = result.get("completed_at") or run.get("completed_at")
+                        try:
+                            observed = datetime.fromisoformat(observed.replace("Z", "+00:00"))
+                        except (AttributeError, TypeError, ValueError):
+                            continue
+                        if (observed.tzinfo is None or observed.astimezone(ZoneInfo("America/New_York")).date().isoformat() > as_of
+                                or (result.get("trade_date") or run.get("trade_date") or "9999") > as_of):
+                            continue
                     latest.setdefault(result["symbol"], (run, result))
             inputs, exclusions = [], []
             for symbol in config["universe"]:
@@ -770,6 +788,23 @@ class DeskService:
                            "trade_date": result.get("trade_date"), "status": result.get("status", "missing")}
                 decision = result.get("reports", {}).get("final_trade_decision")
                 reference = quotes.get(symbol, {})
+                if as_of:
+                    candidates = sorted((entry for entry in history_entries if entry.get("symbol") == symbol
+                        and entry.get("timeframe") == "1Day" and entry.get("adjustment") == "raw"
+                        and entry.get("complete") is True and entry.get("pagination_complete") is True),
+                        key=lambda entry: entry.get("captured_at", ""), reverse=True)
+                    for entry in candidates:
+                        artifact = entry.get("last_usable_artifact") or entry.get("artifact")
+                        history = read_artifact(store.directory, artifact) if artifact else None
+                        if not isinstance(history, dict) or history.get("symbol") != symbol or history.get("adjustment") != "raw":
+                            continue
+                        rows = [row for row in history.get("bars", []) if row.get("t") == as_of]
+                        if len(rows) != 1:
+                            continue
+                        reference = {"price": rows[0]["raw"]["c"], "timestamp": rows[0]["provider_timestamp"],
+                            "date": as_of, "basis": "Retained raw daily close", "source": history.get("source"),
+                            "artifact": artifact}
+                        break
                 price = _number(reference.get("price"))
                 if price is None or price <= 0 or not reference.get("timestamp"):
                     exclusions.append({**binding, "reason": "A positive dated cached reference price is unavailable"})
@@ -777,6 +812,7 @@ class DeskService:
                     "final_decision": decision if result.get("status") == "completed" else None,
                     "source_coverage": result.get("reports", {}).get("source_coverage")})
             job = {"id": identity, "status": "queued", "created_at": now(), "capital": str(capital),
+                   "as_of": as_of,
                    "configured_universe": config["universe"], "inputs": inputs, "exclusions": exclusions,
                    "provider": config["llm_provider"], "model": config["deep_think_llm"]}
             self.portfolio_model_job = job
@@ -791,7 +827,7 @@ class DeskService:
                     if exclusions:
                         raise ValueError("Reference prices are missing for " + ", ".join(row["symbol"] for row in exclusions)
                             + ". No stocks were removed. Load their prices before modeling the full universe.")
-                    output = model_portfolio(config, inputs, capital, workflow=workflow)
+                    output = model_portfolio(config, inputs, capital, workflow=workflow, as_of=as_of)
                     with self.lock:
                         job.update(status="completed", result=output)
                 except Exception as error:
