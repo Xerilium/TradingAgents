@@ -771,13 +771,11 @@ class DeskService:
                 decision = result.get("reports", {}).get("final_trade_decision")
                 reference = quotes.get(symbol, {})
                 price = _number(reference.get("price"))
-                if result.get("status") != "completed" or not decision:
-                    exclusions.append({**binding, "reason": result.get("error") or "Completed research with a final decision is unavailable"})
-                elif price is None or price <= 0 or not reference.get("timestamp"):
+                if price is None or price <= 0 or not reference.get("timestamp"):
                     exclusions.append({**binding, "reason": "A positive dated cached reference price is unavailable"})
-                else:
-                    inputs.append({**binding, "rating": result.get("rating"), "reference": reference,
-                        "final_decision": decision, "source_coverage": result.get("reports", {}).get("source_coverage")})
+                inputs.append({**binding, "rating": result.get("rating"), "reference": reference,
+                    "final_decision": decision if result.get("status") == "completed" else None,
+                    "source_coverage": result.get("reports", {}).get("source_coverage")})
             job = {"id": identity, "status": "queued", "created_at": now(), "capital": str(capital),
                    "configured_universe": config["universe"], "inputs": inputs, "exclusions": exclusions,
                    "provider": config["llm_provider"], "model": config["deep_think_llm"]}
@@ -789,7 +787,10 @@ class DeskService:
                     job.update(status="running", started_at=now())
                 try:
                     if not inputs:
-                        raise ValueError("No eligible completed research with dated reference prices; no model call made")
+                        raise ValueError("The configured universe is empty.")
+                    if exclusions:
+                        raise ValueError("Reference prices are missing for " + ", ".join(row["symbol"] for row in exclusions)
+                            + ". No stocks were removed. Load their prices before modeling the full universe.")
                     output = model_portfolio(config, inputs, capital, workflow=workflow)
                     with self.lock:
                         job.update(status="completed", result=output)
