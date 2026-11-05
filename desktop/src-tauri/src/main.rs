@@ -74,7 +74,7 @@ fn supervisor(app: tauri::AppHandle, rx: mpsc::Receiver<Action>, item: MenuItem<
                     readiness = None;
                     running = true;
                     status(&item, "Running");
-                    open(&app, port);
+                    if !development { open(&app, port); }
                 } else if Instant::now() >= *deadline {
                     failure = Some("The desk did not become ready in time. Open logs for details.".into());
                 }
