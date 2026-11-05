@@ -146,7 +146,7 @@ def records(database, resolve_artifact=None):
         rows = connection.execute("SELECT name,revision,payload FROM app_records").fetchall()
     result = {}
     for name, revision, payload in rows:
-        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery", "manual_portfolios", "portfolio_weight_snapshots", "spy_paper_rebalance"} or type(revision) is not int or revision < 1:
+        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery", "manual_portfolios", "portfolio_weight_snapshots", "spy_paper_rebalance", "fund_plans"} or type(revision) is not int or revision < 1:
             raise ValueError("Unsupported application record scope or revision")
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
@@ -169,6 +169,9 @@ def records(database, resolve_artifact=None):
     validate(result, resolve_artifact)
     if "spy_paper_rebalance" in result:
         validate_spy_rebalance(result["spy_paper_rebalance"])
+    if "fund_plans" in result:
+        from .fund_plans import validate as validate_fund_plans
+        validate_fund_plans(result["fund_plans"])
     validate_portfolio_records(result)
     if "discovery" in result:
         from .market_discovery import validate as validate_discovery
@@ -253,6 +256,16 @@ def validate_spy_rebalance(value):
                                     or "manual" in run and type(run["manual"]) is not bool
                                     or run.get("status") == "queued" and run.get("manual") is not True)):
         raise ValueError("Invalid saved SPY rebalance")
+    if run and "fund_binding" in run:
+        binding = run["fund_binding"]
+        if (not isinstance(binding, dict) or set(binding) != {"revision", "sha256"}
+                or type(binding["revision"]) is not int or binding["revision"] < 0
+                or not isinstance(binding["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", binding["sha256"])
+                or not isinstance(run.get("account_id"), str) or not run["account_id"]
+                or run.get("endpoint") != "https://paper-api.alpaca.markets"
+                or type(run.get("policy_revision")) is not int or run["policy_revision"] < 0
+                or not isinstance(run.get("connection_session"), str) or not run["connection_session"]):
+            raise ValueError("Invalid saved SPY fund binding")
 
 
 def validate_journal(journal):
@@ -420,7 +433,7 @@ def invalidate_authority(database, *, retained_commands=()):
             elif name == "spy_paper_rebalance":
                 value["enabled"] = False
                 run = value["run"]
-                if run and run.get("manual") is True and run["status"] in {"queued", "ready", "dispatching", "waiting_fill"}:
+                if run and run["status"] in {"queued", "ready", "dispatching", "waiting_fill"}:
                     run.update(status="blocked", message="Restored paper rebalance requires a new preview.")
                 collections = ()
             elif name == "commands":

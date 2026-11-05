@@ -1253,7 +1253,7 @@ class DeskService:
     def investor(self):
         from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version, working_commitments, decimal, contingent_group
         from .approval_review import evaluate
-        from .admission import DEFAULT as COMMANDS
+        from .admission import ACTIVE, DEFAULT as COMMANDS
         from .market_history import DEFAULT as HISTORY
         from .stock_evidence import DEFAULT as EVIDENCE
         record = self.store.database.read("investor", DEFAULT)
@@ -1293,7 +1293,32 @@ class DeskService:
             if quantity is not None and broker_available is not None:
                 quantity = min(quantity, max(broker_available, 0))
             instrument.update(available_exit_quantity=str(quantity) if quantity is not None else None, exit_availability_known=quantity is not None)
-        return {**record, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
+        from .fund_plans import DEFAULT as FUND_DEFAULT, RECORD as FUND_RECORD, account_key, budget, validate
+        from .spy_rebalance import paper_account
+        fund_record = self.store.database.read(FUND_RECORD, FUND_DEFAULT)
+        validate(fund_record["data"])
+        account_id = paper_account(runtime) if runtime.get("reconciliation", {}).get("status") == "reconciled" else None
+        current = fund_record["data"]["plans"].get(account_key(account_id)) if account_id else None
+        fund_budget, budget_error = None, None
+        try:
+            if account_id:
+                observed = self.admission.checked_observation({"account_max_age_seconds": "90"})
+                if paper_account(observed) != account_id:
+                    raise ValueError("The observed paper account changed.")
+                current_commands = self.store.database.read("commands", COMMANDS)["data"]
+                current_commitments, commitments_known = working_commitments(observed, current_commands)
+                commitments_clear = (commitments_known and not current_commitments
+                                     and not current_commands.get("recovery_required")
+                                     and not current_commands.get("new_orders_blocked")
+                                     and not any(item.get("state") in ACTIVE for item in current_commands["commands"].values()))
+                fund_budget = budget(current, observed, record["data"]["policy"], commitments_clear=commitments_clear)
+            else:
+                budget_error = "A current reconciled USD paper account is required."
+        except ValueError as error:
+            budget_error = str(error)
+        funds = {"revision": fund_record["revision"], "current_account_id": account_id, "current": current,
+                 "plans": list(fund_record["data"]["plans"].values()), "budget": fund_budget, "budget_error": budget_error}
+        return {**record, "fund_plans": funds, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
                 "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
                 "current_checks": checks, "broker_order_actions": broker_actions,
                 "spy_rebalance": self.spy_rebalance.status(runtime),
@@ -1611,6 +1636,25 @@ class DeskService:
     def save_investor(self, request):
         from .investor import DEFAULT, save
         from .admission import DEFAULT as COMMAND_DEFAULT, invalidate
+        if request.get("action") == "fund_plan_save":
+            from .fund_plans import DEFAULT as FUND_DEFAULT, RECORD as FUND_RECORD, save as save_fund
+            from .spy_rebalance import DEFAULT as SPY_DEFAULT, RECORD as SPY_RECORD, ACTIVE_RUN, CONSTRAINTS, paper_account
+            with self.maintenance:
+                runtime = self.admission.checked_observation(CONSTRAINTS)
+                account_id = paper_account(runtime)
+                if not account_id or request.get("account_id") != account_id:
+                    raise ValueError("Connect the exact reconciled USD paper account before saving its fund plan.")
+                def change(records):
+                    if save_fund(records[FUND_RECORD], request, account_id):
+                        spy = records[SPY_RECORD]
+                        spy["enabled"] = False
+                        run = spy["run"]
+                        if run and run.get("status") in ACTIVE_RUN:
+                            run.update(status="blocked", message="Fund plan changed. A new preview and explicit automatic-trading re-enablement are required.")
+                self.store.database.transact({FUND_RECORD: FUND_DEFAULT, SPY_RECORD: SPY_DEFAULT, "investor": DEFAULT}, change,
+                    expected={FUND_RECORD: request.get("fund_plans_revision"), "investor": request.get("expected_revision")})
+                self.spy_rebalance.manual_preview = None
+            return self.investor()
         if request.get("action") in {"spy_rebalance_enable", "spy_rebalance_pause"}:
             self.spy_rebalance.configure(request)
             return self.investor()
