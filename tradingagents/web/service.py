@@ -3064,6 +3064,14 @@ class DeskService:
             first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
             missing_history, missing_actions = {}, []
             scenario_calendar = None
+
+            def mapping_date(symbol, first):
+                renamed = any(item["kind"] == "name_change" and item.get("new_symbol") == symbol
+                    and item.get("old_symbol") != symbol and item.get("old_cusip")
+                    and item["old_cusip"] == item.get("new_cusip")
+                    for item in action_data.get(symbol, []))
+                return first if filed_holdings and not renamed else end
+
             pending = list(weights)
             while pending:
                 for symbol in pending:
@@ -3119,7 +3127,7 @@ class DeskService:
                         by_day = {row["t"]: row for row in selected}
                         missing = sorted(sessions - set(by_day))
                         if missing:
-                            if "history:" + symbol in collection["attempted"]:
+                            if f"history:{symbol}:{mapping_date(symbol, first)}" in collection["attempted"]:
                                 raise ValueError(f"{symbol} {missing[0]} daily_bar: provider history is missing {len(missing)} required sessions")
                             missing_history[symbol] = first
                             continue
@@ -3153,17 +3161,12 @@ class DeskService:
                     attempted = list(collection["attempted"])
                     history_dates = {}
                     for symbol, first in missing_history.items():
-                        renamed = any(item["kind"] == "name_change" and item.get("new_symbol") == symbol
-                            and item.get("old_symbol") != symbol and item.get("old_cusip")
-                            and item["old_cusip"] == item.get("new_cusip")
-                            for item in action_data.get(symbol, []))
-                        asof = first if filed_holdings and not renamed else end
-                        history_dates.setdefault((first, asof), []).append(symbol)
+                        history_dates.setdefault((first, mapping_date(symbol, first)), []).append(symbol)
                     requests = [("history", symbols, first, asof) for (first, asof), symbols in history_dates.items()]
                     if missing_actions:
                         requests.append(("actions", missing_actions, start, None))
                     for kind, symbols, first, asof in requests:
-                        keys = [kind + ":" + symbol for symbol in symbols]
+                        keys = [f"history:{symbol}:{asof}" if kind == "history" else f"actions:{symbol}" for symbol in symbols]
                         if any(key in attempted for key in keys):
                             raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
                         body = {"symbols": symbols, "start": first, "end": end}
