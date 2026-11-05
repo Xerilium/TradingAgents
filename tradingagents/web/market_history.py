@@ -245,7 +245,7 @@ class MarketDataJobs:
 
     def manual_symbols(self, body):
         from .manual_portfolios import model
-        from .portfolio_scenario import valid_cusip
+        from .portfolio_scenario import valid_cusip, contingent_right
         from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
         from .approval_review import read_artifact
         from .evaluation import reference
@@ -261,6 +261,8 @@ class MarketDataJobs:
             observation = read_artifact(self.service.store.directory, reference(ref)) if ref else {}
             for record in (observation or {}).get("records", []):
                 row, kind = record.get("reported") or {}, record.get("kind")
+                if contingent_right(symbol, kind, row, body.get("end") or "9999-12-31"):
+                    continue
                 reported_cusip = valid_cusip(row.get("source_cusip") if kind == "spin_offs" else row.get("acquiree_cusip"))
                 if identities.get(symbol) and reported_cusip and identities[symbol] != reported_cusip:
                     continue

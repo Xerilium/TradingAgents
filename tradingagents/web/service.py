@@ -3081,7 +3081,7 @@ class DeskService:
                 required = {}
                 for actions in action_data.values():
                     for event in actions:
-                        if event["kind"] in {"stock_distribution", "merger"} and event.get("new_symbol") and event["new_symbol"] not in histories:
+                        if event["kind"] in {"stock_distribution", "merger"} and not event.get("contingent_right") and event.get("new_symbol") and event["new_symbol"] not in histories:
                             target = event["new_symbol"]
                             required[target] = min(required.get(target, end), event["ex_date"])
                 if not required:

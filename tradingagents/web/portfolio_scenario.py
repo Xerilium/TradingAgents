@@ -8,6 +8,27 @@ import re
 def valid_cusip(value):
     return value if isinstance(value, str) and re.fullmatch(r"[A-Z0-9]{9}", value) else None
 
+
+def contingent_right(symbol, kind, row, end):
+    """Recognize only the documented HOLX right for the evidence-bounded period."""
+    if (kind != "stock_and_cash_mergers" or symbol != "HOLX" or end > "2026-11-04"
+            or row.get("id") != "3857592d-548a-4140-b254-61831ebd32b0"
+            or row.get("acquiree_symbol") != "HOLX" or row.get("acquiree_cusip") != "436440101"
+            or row.get("acquirer_symbol") != "436CVR021" or row.get("acquirer_cusip") != "436CVR021"
+            or row.get("effective_date") != "2026-04-07"):
+        return None
+    try:
+        if (Decimal(str(row.get("acquiree_rate"))) != 1 or Decimal(str(row.get("acquirer_rate"))) != 1
+                or Decimal(str(row.get("cash_rate"))) != 76):
+            return None
+    except InvalidOperation:
+        return None
+    return {"symbol": "436CVR021", "source_symbol": "HOLX", "classification": "non_tradable_contingent_right",
+            "cap_per_right_usd": "3", "evidence_through": "2026-11-04",
+            "provenance": ["https://www.sec.gov/Archives/edgar/data/859737/000119312526144632/d135035dex991.htm",
+                           "https://infomemo.theocc.com/infomemos?number=58724"],
+            "basis": "Two conditional payments of up to $1.50 each; no market price or payment is assumed"}
+
 def validate_model(model):
     if not isinstance(model, dict) or not isinstance(model.get("id"), str) or not model["id"].strip():
         raise ValueError("Model archive: expected an object with its original id")
@@ -121,7 +142,8 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
             if not all(value.is_finite() for value in (cash_rate, old, new)) or cash_rate < 0 or old <= 0 or new < 0:
                 raise ValueError(f"{symbol} {effective} merger: invalid consideration")
             actions.append({"kind": "merger", "ex_date": effective.isoformat(), "new_symbol": row.get("acquirer_symbol") if new else None,
-                "new": str(new), "old": str(old), "cash_rate": str(cash_rate), "payable_date": row.get("payable_date") or effective.isoformat(), "source_id": row.get("id")})
+                "new": str(new), "old": str(old), "cash_rate": str(cash_rate), "payable_date": row.get("payable_date") or effective.isoformat(), "source_id": row.get("id"),
+                "contingent_right": contingent_right(symbol, kind, row, end.isoformat())})
             continue
         if kind == "spin_offs" and row.get("source_symbol") == symbol and row.get("new_symbol") not in {None, symbol}:
             if initial_shares == 0:
@@ -192,7 +214,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
             if not any(day >= action["ex_date"] for day in dates):
                 raise ValueError(f"{symbol} {action['ex_date']} ex_date: no subsequent session")
     cash, shares, receivables = capital, dict.fromkeys(symbols, Decimal(0)), []
-    events, curve = [], []
+    events, curve, rights = [], [], []
     for symbol in weights:
         price = Decimal(str(bars[symbol][dates[0]]["close"]))
         if not price.is_finite() or price <= 0:
@@ -229,7 +251,12 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
                 elif action["kind"] == "merger":
                     quantity = shares[symbol]
                     if action["new_symbol"]:
-                        shares[action["new_symbol"]] += quantity * Decimal(action["new"]) / Decimal(action["old"])
+                        received = quantity * Decimal(action["new"]) / Decimal(action["old"])
+                        if action.get("contingent_right"):
+                            right = action["contingent_right"]
+                            rights.append({**right, "quantity": str(received), "maximum_usd": str(received * Decimal(right["cap_per_right_usd"])), "source_id": action.get("source_id"), "date": day})
+                        else:
+                            shares[action["new_symbol"]] += received
                     amount = quantity * Decimal(action["cash_rate"])
                     if amount:
                         receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": amount})
@@ -258,7 +285,10 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
             if not price.is_finite() or price <= 0:
                 raise ValueError(f"{symbol} {day} close: invalid")
             value += shares[symbol] * price
-        curve.append({"date": day, "equity_usd": str(value), "cash_usd": str(cash)})
+        contingent_max = sum((Decimal(item["maximum_usd"]) for item in rights), Decimal(0))
+        curve.append({"date": day, "equity_usd": str(value), "cash_usd": str(cash),
+                      "contingent_max_usd": str(contingent_max), "equity_max_usd": str(value + contingent_max)})
     return {"cash_usd": str(cash), "shares": {key: str(value) for key, value in shares.items()},
-            "receivables": [{**item, "amount": str(item["amount"])} for item in receivables], "events": events, "equity_curve": curve}
+            "receivables": [{**item, "amount": str(item["amount"])} for item in receivables], "events": events, "equity_curve": curve,
+            "contingent_rights": rights, "conditional_equity_range_usd": {"marked": curve[-1]["equity_usd"], "maximum": curve[-1]["equity_max_usd"]}}
 
