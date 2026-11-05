@@ -3715,6 +3715,14 @@ function manualSnapshot(){
  if(!manualPortfolio.selectedSnapshot)return snapshot;
  return snapshot && (snapshot.id===manualPortfolio.selectedSnapshot||snapshot.as_of===manualPortfolio.selectedSnapshot)?snapshot:null;
 }
+function manualSnapshotProblem(){
+ const data=manualPortfolio.weights, snapshot=manualSnapshot();
+ if(manualPortfolio.weightLoading)return 'Loading index weights.';
+ if(!snapshot)return 'No selected index snapshot is available.';
+ if(snapshot.unresolved?.length)return 'Index snapshot has '+snapshot.unresolved.length+' unresolved constituents.';
+ if(!Array.isArray(snapshot.entries)||!snapshot.entries.length)return 'Index snapshot has no constituents.';
+ return '';
+}
 function newManualPortfolio(){
  const snapshot=manualSnapshot(), refs=new Map((snapshot?.entries||[]).map(row=>[row.symbol,row]));
  manualPortfolio.draft={name:'Manual portfolio',capital_usd:'100000',allocations:universe().map(symbol=>({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined})),weight_source:null};
@@ -3770,12 +3778,18 @@ function renderManualPortfolio(){
  if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
  const m=manualPortfolio,d=m.draft,snapshot=manualSnapshot(),snapshots=manualSnapshots();
  const source=d?.weight_source;
- return '<section class="manual-portfolio"><h2>Manual portfolio</h2><p>Create allocations independently of research and model proposals.</p><div class="manual-actions"><label>Saved portfolio <select id="manual-open"><option value="">Choose a saved portfolio</option>'+m.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(d?.id===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><button class="button" id="manual-new">New portfolio from universe</button></div><p role="status">'+esc(m.loading?'Loading portfolios and index weights…':m.message)+'</p>'+(d?'<div class="manual-fields"><label>Name <input id="manual-name" value="'+esc(d.name)+'"></label><label>Capital / USD <input id="manual-capital" type="number" min="0.01" step="0.01" value="'+esc(d.capital_usd)+'"></label></div><div class="manual-actions"><label>S&P 500 snapshot <select id="manual-snapshot"><option value="">'+esc(snapshot?'Current cached snapshot · '+snapshot.as_of:'No snapshot loaded')+'</option>'+snapshots.map(item=>{const value=item.as_of;return '<option value="'+esc(value)+'" '+(m.selectedSnapshot===value?'selected':'')+'>'+esc(item.as_of||value)+'</option>';}).join('')+'</select></label><button class="button" id="manual-refresh-weights" '+(m.weightLoading?'disabled':'')+'>'+(m.weightLoading?'Refreshing weights…':'Refresh weights')+'</button><button class="button" id="manual-use-index" '+(!snapshot||m.weightLoading?'disabled':'')+'>Use S&P 500 portfolio</button><button class="button" id="manual-add-universe">Add universe symbols</button><button class="button" id="manual-equal">Equal weight</button></div><p>Using the S&P 500 portfolio replaces these rows with the complete selected snapshot. Adding universe symbols preserves existing allocations.</p><p>Reference weights: '+esc(snapshot?(snapshot.provider||'Index')+' · as of '+snapshot.as_of:'Unavailable')+'.</p><p id="manual-source">Allocation source: '+esc(source?(source.provider||'Index')+' · as of '+source.as_of:'Manual input')+(m.dirty?' · Unsaved changes':'')+'</p><p id="manual-totals" role="status">'+esc(manualTotalsText())+'</p><label>Find symbol <input id="manual-search" value="'+esc(m.query)+'" autocomplete="off"></label><div class="table-scroll manual-table"><table class="data-table"><thead><tr><th scope="col">Symbol</th><th scope="col">Allocation %</th><th scope="col">Index reference</th></tr></thead><tbody id="manual-rows">'+manualRowsMarkup()+'</tbody></table></div><div class="manual-actions"><button class="button button-primary" id="manual-save" '+(!m.dirty?'disabled':'')+'>Save portfolio</button><button class="button" id="manual-run" '+(m.dirty||!d.id?'disabled':'')+'>Run in Strategy Lab</button></div>':'<p>Choose a saved portfolio or start with the configured universe.</p>')+'</section>';
+ return '<section class="manual-portfolio"><h2>Manual portfolio</h2><p>Create allocations independently of research and model proposals.</p><div class="manual-actions"><label>Saved portfolio <select id="manual-open"><option value="">Choose a saved portfolio</option>'+m.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(d?.id===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><button class="button" id="manual-new">New portfolio from universe</button></div><p role="status">'+esc(m.loading?'Loading portfolios and index weights…':m.message)+'</p>'+(d?'<div class="manual-fields"><label>Name <input id="manual-name" value="'+esc(d.name)+'"></label><label>Capital / USD <input id="manual-capital" type="number" min="0.01" step="0.01" value="'+esc(d.capital_usd)+'"></label></div><div class="manual-actions"><label>S&P 500 snapshot <select id="manual-snapshot"><option value="">'+esc(!m.selectedSnapshot&&snapshot?'Current cached snapshot · '+snapshot.as_of:'Current cached snapshot')+'</option>'+snapshots.map(item=>{const value=item.as_of;return '<option value="'+esc(value)+'" '+(m.selectedSnapshot===value?'selected':'')+'>'+esc(item.as_of||value)+'</option>';}).join('')+'</select></label><button class="button" id="manual-refresh-weights" '+(m.weightLoading?'disabled':'')+'>'+(m.weightLoading?'Refreshing weights…':'Refresh weights')+'</button><button class="button" id="manual-use-index" '+(manualSnapshotProblem()?'disabled':'')+'>Use S&P 500 portfolio</button><button class="button" id="manual-add-universe">Add universe symbols</button><button class="button" id="manual-equal">Equal weight</button></div><p role="status">'+esc(manualSnapshotProblem())+'</p><p>Using the S&P 500 portfolio replaces these rows with the complete selected snapshot. Adding universe symbols preserves existing allocations.</p><p>Reference weights: '+esc(snapshot?(snapshot.provider||'Index')+' · as of '+snapshot.as_of:'Unavailable')+'.</p><p id="manual-source">Allocation source: '+esc(source?(source.provider||'Index')+' · as of '+source.as_of:'Manual input')+(m.dirty?' · Unsaved changes':'')+'</p><p id="manual-totals" role="status">'+esc(manualTotalsText())+'</p><label>Find symbol <input id="manual-search" value="'+esc(m.query)+'" autocomplete="off"></label><div class="table-scroll manual-table"><table class="data-table"><thead><tr><th scope="col">Symbol</th><th scope="col">Allocation %</th><th scope="col">Index reference</th></tr></thead><tbody id="manual-rows">'+manualRowsMarkup()+'</tbody></table></div><div class="manual-actions"><button class="button button-primary" id="manual-save" '+(!m.dirty?'disabled':'')+'>Save portfolio</button><button class="button" id="manual-run" '+(m.dirty||!d.id?'disabled':'')+'>Run in Strategy Lab</button></div>':'<p>Choose a saved portfolio or start with the configured universe.</p>')+'</section>';
 }
+function manualScenarioReady(){
+ const scenario=manualScenario,portfolio=manualPortfolio.portfolios.find(p=>p.id===scenario.portfolioId);
+ const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+ return !!portfolio&&portfolio.revision!=null&&validDate(scenario.start)&&validDate(scenario.end)&&scenario.start<=scenario.end&&manualDecimal(scenario.fee)!==null&&!scenario.busy&&!scenario.datesLoading;
+}
+function updateManualRunButton(){const button=document.getElementById('manual-scenario-run');if(button)button.disabled=!manualScenarioReady();}
 function manualScenarioMarkup(){
  if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
  if(!manualScenario.datesRequested)loadManualDates();
- return '<details class="strategy-step" open><summary>Manual portfolio · historical scenario</summary><p>Run an exact saved portfolio revision with fractional shares and the fee entered below.</p><label>Saved manual portfolio <select id="manual-scenario-portfolio"><option value="">Choose a saved portfolio</option>'+manualPortfolio.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(manualScenario.portfolioId===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><label>Start date <input id="manual-scenario-start" type="date" value="'+esc(manualScenario.start)+'"></label><label>End date <input id="manual-scenario-end" type="date" value="'+esc(manualScenario.end)+'"></label><button class="button" id="manual-scenario-ytd" '+(manualScenario.datesLoading?'disabled':'')+'>Year to date</button><p role="status">'+esc(manualScenario.datesMessage||'')+'</p><label>Fee per order / USD <input id="manual-scenario-fee" type="number" min="0" step="0.01" value="'+esc(manualScenario.fee)+'"></label><p>Fractional shares · 9 decimal places</p><button class="button button-primary" id="manual-scenario-run" '+(manualScenario.busy?'disabled':'')+'>Run manual portfolio</button><p role="status">'+esc(manualScenario.message)+'</p></details>';
+ return '<details class="strategy-step" open><summary>Manual portfolio · historical scenario</summary><p>Run an exact saved portfolio revision with fractional shares and the fee entered below.</p><label>Saved manual portfolio <select id="manual-scenario-portfolio" ' + (manualScenario.busy?'disabled':'') + ' ><option value="">Choose a saved portfolio</option>'+manualPortfolio.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(manualScenario.portfolioId===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><label>Start date <input id="manual-scenario-start" ' + (manualScenario.busy?'disabled':'') + ' type="date" value="'+esc(manualScenario.start)+'"></label><label>End date <input id="manual-scenario-end" ' + (manualScenario.busy?'disabled':'') + ' type="date" value="'+esc(manualScenario.end)+'"></label><button class="button" id="manual-scenario-ytd" '+(manualScenario.datesLoading||manualScenario.busy?'disabled':'')+'>Year to date</button><p role="status">'+esc(manualScenario.datesMessage||'')+'</p><label>Fee per order / USD <input id="manual-scenario-fee" ' + (manualScenario.busy?'disabled':'') + ' type="number" min="0" step="0.01" value="'+esc(manualScenario.fee)+'"></label><p>Fractional shares · 9 decimal places</p><button class="button button-primary" id="manual-scenario-run" '+(!manualScenarioReady()?'disabled':'')+'>Run manual portfolio</button><p role="status">'+esc(manualScenario.message)+'</p></details>';
 }
 async function saveManualPortfolio(){
  const m=manualPortfolio,d=m.draft,totals=manualTotals();
@@ -3792,12 +3806,13 @@ async function saveManualPortfolio(){
 }
 async function runManualScenario(){
  const portfolio=manualPortfolio.portfolios.find(p=>p.id===manualScenario.portfolioId);
- if(!portfolio){manualScenario.message='Choose a saved manual portfolio.';render();return;}
+ if(!manualScenarioReady()){manualScenario.message='Choose a saved portfolio, valid dates and a nonnegative fee.';render();return;}
+ const request={portfolio_id:portfolio.id,portfolio_revision:portfolio.revision,start:manualScenario.start,end:manualScenario.end,fee_usd:manualScenario.fee};
  manualScenario.busy=true;manualScenario.message='Collecting prices and corporate actions…';render();
  try{
   let jobIds=[];
   for(;;){
-   const collection=await api('/api/evaluations',{action:'collect_inputs',portfolio_id:portfolio.id,portfolio_revision:portfolio.revision,start:manualScenario.start,end:manualScenario.end,...(jobIds.length?{job_ids:jobIds}:{})});
+   const collection=await api('/api/evaluations',{action:'collect_inputs',portfolio_id:request.portfolio_id,portfolio_revision:request.portfolio_revision,start:request.start,end:request.end,...(jobIds.length?{job_ids:jobIds}:{})});
    jobIds=collection.job_ids||jobIds;
    const jobs=collection.jobs||[], failed=jobs.find(job=>['failed','error','interrupted','canceled','cancelled','completed_with_gaps'].includes(job.status));
    if(failed)throw Error('Price or corporate action collection failed: '+(failed.error||failed.status));
@@ -3807,7 +3822,7 @@ async function runManualScenario(){
    await new Promise(resolve=>setTimeout(resolve,3000));
   }
   manualScenario.message='Running historical scenario…';render();
-  const result=await api('/api/evaluations',{action:'portfolio_scenario',portfolio_id:portfolio.id,portfolio_revision:portfolio.revision,start:manualScenario.start,end:manualScenario.end,fee_usd:manualScenario.fee,share_sizing:'fractional'},{timeoutMs:550000});
+  const result=await api('/api/evaluations',{action:'portfolio_scenario',...request,share_sizing:'fractional'},{timeoutMs:550000});
   manualScenario.message='Simulation '+result.id+' · '+simulationLabel(result.status);evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
  }catch(error){manualScenario.message=error.message;}
  finally{manualScenario.busy=false;render();}
@@ -3816,16 +3831,16 @@ document.addEventListener('input',event=>{
  const el=event.target,m=manualPortfolio,d=m.draft;
  if(el.id==='manual-search'){m.query=el.value;const rows=document.getElementById('manual-rows');if(rows)rows.innerHTML=manualRowsMarkup();return;}
  if(d&&el.dataset.manualWeight){const row=d.allocations.find(item=>item.symbol===el.dataset.manualWeight);if(row){row.weight=manualShiftDecimal(el.value,-2);m.dirty=true;d.weight_source=null;manualTotalsUpdate();}return;}
- if(d&&(el.id==='manual-name'||el.id==='manual-capital')){d[el.id==='manual-name'?'name':'capital_usd']=el.value;d.weight_source=null;m.dirty=true;manualTotalsUpdate();return;}
- const field={'manual-scenario-start':'start','manual-scenario-end':'end','manual-scenario-fee':'fee'}[el.id];if(field)manualScenario[field]=el.value;
+ if(d&&(el.id==='manual-name'||el.id==='manual-capital')){d[el.id==='manual-name'?'name':'capital_usd']=el.value;m.dirty=true;manualTotalsUpdate();return;}
+ const field={'manual-scenario-start':'start','manual-scenario-end':'end','manual-scenario-fee':'fee'}[el.id];if(field){manualScenario[field]=el.value;updateManualRunButton();}
 });
 document.addEventListener('change',async event=>{
  const el=event.target,m=manualPortfolio;
  if(el.id==='manual-open'&&el.value){const found=m.portfolios.find(p=>p.id===el.value);if(found){m.draft=structuredClone(found);m.dirty=false;m.message='';render();}}
- if(el.id==='manual-scenario-portfolio')manualScenario.portfolioId=el.value;
+ if(el.id==='manual-scenario-portfolio'){manualScenario.portfolioId=el.value;updateManualRunButton();}
  if(el.id==='manual-snapshot'){
   m.selectedSnapshot=el.value;
-  if(el.value){m.weightLoading=true;m.message='Loading selected snapshot…';render();try{m.weights=await api('/api/portfolio-weights?as_of='+encodeURIComponent(el.value));m.message=m.weights.error||(!m.weights.snapshot?'No snapshot is available for this date.':'');}catch(error){m.message='Index weights unavailable: '+error.message;}finally{m.weightLoading=false;}} 
+  m.weightLoading=true;m.message='Loading selected snapshot…';render();try{m.weights=await api('/api/portfolio-weights'+(el.value?'?as_of='+encodeURIComponent(el.value):''));m.message=m.weights.error||(!m.weights.snapshot?'No snapshot is available for this date.':'');}catch(error){m.message='Index weights unavailable: '+error.message;m.weights=null;}finally{m.weightLoading=false;} 
   render();
  }
 });
@@ -3834,7 +3849,7 @@ document.addEventListener('click',event=>{
  if(id==='manual-new'){newManualPortfolio();render();}
  if(id==='manual-save')saveManualPortfolio();
  if(id==='manual-refresh-weights')refreshManualWeights();
- if(id==='manual-use-index'&&d){const s=manualSnapshot();if(s){d.allocations=s.entries.map(row=>({symbol:row.symbol,weight:String(row.weight),cusip:row.cusip||undefined,historical_symbol:row.historical_symbol||undefined}));d.weight_source={id:s.id,provider:s.provider,as_of:s.as_of,source_url:s.source_url,source_sha256:s.source_sha256};m.dirty=true;render();}}
+ if(id==='manual-use-index'&&d){const s=manualSnapshot();if(s&&!manualSnapshotProblem()){d.allocations=s.entries.map(row=>({symbol:row.symbol,weight:String(row.weight),cusip:row.cusip||undefined,historical_symbol:row.historical_symbol||undefined}));d.weight_source={id:s.id,provider:s.provider,as_of:s.as_of,source_url:s.source_url,source_sha256:s.source_sha256};m.dirty=true;render();}}
  if(id==='manual-add-universe'&&d){const existing=new Set(d.allocations.map(row=>row.symbol)),refs=new Map((manualSnapshot()?.entries||[]).map(row=>[row.symbol,row]));for(const symbol of universe())if(!existing.has(symbol))d.allocations.push({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined,historical_symbol:refs.get(symbol)?.historical_symbol||undefined});d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-equal'&&d&&d.allocations.length){const weight=manualDecimalString(10n**12n/BigInt(d.allocations.length),12);d.allocations.forEach(row=>row.weight=weight);d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-run'&&d&&!m.dirty){manualScenario.portfolioId=d.id;strategyTab='simulations';strategyView='setup';navigatePage('strategy');}
