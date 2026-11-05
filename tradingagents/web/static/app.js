@@ -761,9 +761,9 @@ function renderWorkspace(){
  if(activePage==='overview')return renderOverview();
  if(activePage==='markets')return (UniverseReview.renderMarkets||UniverseReview.render)(state);
  if(activePage==='portfolio'){
-  const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
+  const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['allocations','Allocations'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
   const portfolioActions=portfolioTab==='proposed'?portfolioModelActions():portfolioTab==='performance'?performanceExportActions():'';
-  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+accountLedger()+(portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
+  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+accountLedger()+(portfolioTab==='allocations'?renderPortfolioAllocations():portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
  }
  if(activePage==='research')return renderResearch();
  if(activePage==='orders')return renderOrders();
@@ -774,6 +774,53 @@ function renderWorkspace(){
  return renderSettings();
 }
 let portfolioTab='holdings';
+const portfolioAllocations={weights:{},capital:'100000',start:'',end:'',fee:'0',query:''};
+function allocationUnits(value){
+ const match=/^(\d+)(?:\.(\d{0,4}))?$/.exec(String(value).trim());
+ if(!match)throw Error('Enter allocation percentages with up to four decimal places.');
+ const units=Number(match[1])*10000+Number((match[2]||'').padEnd(4,'0'));
+ if(!Number.isSafeInteger(units)||units>1000000)throw Error('Each allocation must be between 0% and 100%.');
+ return units;
+}
+function allocationTotals(){
+ const values=universe().map(symbol=>allocationUnits(portfolioAllocations.weights[symbol]||'0'));
+ const total=values.reduce((sum,value)=>sum+value,0);
+ if(total>1000000)throw Error('Allocations exceed 100%.');
+ return {total,positions:values.filter(value=>value>0).length};
+}
+function allocationStatus(){
+ try{const {total,positions}=allocationTotals();return positions+' of '+universe().length+' stocks allocated · '+(total/10000).toFixed(4)+'% stocks · '+((1000000-total)/10000).toFixed(4)+'% cash';}
+ catch(error){return error.message;}
+}
+function renderPortfolioAllocations(){
+ const draft=portfolioAllocations;
+ if(!draft.end&&state.portfolio_model?.as_of){draft.end=state.portfolio_model.as_of;draft.start=(Number(draft.end.slice(0,4))-1)+'-12-31';}
+ const fields=[['capital','Capital / USD','number'],['start','Start date','date'],['end','End date','date'],['fee','Fee per order / USD','number']];
+ const rows=universe().filter(symbol=>symbol.includes(draft.query.trim().toUpperCase()));
+ return '<section class="panel"><h2>Portfolio allocations</h2><p>Set weights for your saved universe. Unallocated capital stays in cash. This draft runs directly in Strategy Lab.</p>'+fields.map(([key,label,type])=>'<label for="allocation-'+key+'">'+label+'<input id="allocation-'+key+'" data-allocation-field="'+key+'" type="'+type+'" value="'+esc(draft[key])+'" '+(type==='number'?'min="0" step="0.01"':'')+'></label>').join('')+'<button class="button" id="allocation-equal">Equal weight</button> <button class="button" id="allocation-clear">Clear weights</button><p id="allocation-status" role="status">'+esc(allocationStatus())+'</p><label for="allocation-search">Find symbol<input id="allocation-search" data-allocation-field="query" value="'+esc(draft.query)+'"></label><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Allocation %</th></tr></thead><tbody>'+rows.map(symbol=>'<tr><th scope="row">'+esc(symbol)+'</th><td><input id="allocation-weight-'+esc(symbol)+'" data-allocation-symbol="'+esc(symbol)+'" aria-label="'+esc(symbol)+' allocation percent" type="number" min="0" max="100" step="0.0001" value="'+esc(draft.weights[symbol]||'0')+'"></td></tr>').join('')+'</tbody></table></div><button class="button button-primary" id="allocation-simulate" '+(portfolioScenarioBusy?'disabled':'')+'>Simulate in Strategy Lab</button></section>';
+}
+document.addEventListener('input',event=>{
+ const field=event.target.dataset.allocationField,symbol=event.target.dataset.allocationSymbol;
+ if(field){portfolioAllocations[field]=event.target.value;if(field==='query')render();}
+ if(symbol){portfolioAllocations.weights[symbol]=event.target.value;const status=document.getElementById('allocation-status');if(status)status.textContent=allocationStatus();}
+});
+document.addEventListener('click',event=>{
+ if(event.target.closest('#allocation-equal')){
+  const symbols=universe(),each=Math.floor(1000000/symbols.length),remainder=1000000%symbols.length;
+  symbols.forEach((symbol,index)=>{portfolioAllocations.weights[symbol]=((each+(index<remainder?1:0))/10000).toFixed(4);});render();
+ }
+ if(event.target.closest('#allocation-clear')){portfolioAllocations.weights={};render();}
+ if(!event.target.closest('#allocation-simulate'))return;
+ try{
+  const draft=portfolioAllocations,{total,positions}=allocationTotals();
+  if(!positions)throw Error('Allocate at least one stock before simulating.');
+  if(!draft.start||!draft.end||draft.start>=draft.end)throw Error('Choose a start date before the end date.');
+  const allocations=universe().map(symbol=>({symbol,weight:(allocationUnits(draft.weights[symbol]||'0')/1000000).toFixed(6)}));
+  const model={id:crypto.randomUUID(),name:'Portfolio allocations',inputs:universe().map(symbol=>({symbol})),result:{capital:draft.capital,allocations,target_cash_weight:((1000000-total)/1000000).toFixed(6)}};
+  Object.assign(portfolioScenarioDraft,{start:draft.start,end:draft.end,fee_usd:draft.fee});
+  strategyView='setup';location.hash='#strategy';runPortfolioScenario(model,{...portfolioScenarioDraft});
+ }catch(error){document.getElementById('allocation-status').textContent=error.message;}
+});
 const portfolioPrompt={bundle:null,draft:'',loading:false,message:'',error:false,storageError:''};
 let portfolioPromptChecked=false;
 try{const saved=JSON.parse(sessionStorage.getItem('portfolioPromptDraft')||'null');if(saved?.bundle&&typeof saved.draft==='string')Object.assign(portfolioPrompt,saved);}catch{portfolioPrompt.storageError='Draft storage is unavailable. A refresh may lose unsaved changes.';}
@@ -1523,14 +1570,15 @@ function simulationResultMarkup(result){
 }
 let portfolioScenarioModel=null,portfolioScenarioFile=null,portfolioScenarioStatus='',portfolioScenarioBusy=false;
 const portfolioScenarioDraft={start:'',end:'',fee_usd:'0'};
-async function runPortfolioScenario(){
+async function runPortfolioScenario(model=null,terms=null){
  if(portfolioScenarioBusy)return;
- const file=document.getElementById('portfolio-scenario-model').files[0]||portfolioScenarioFile;
- const start=document.getElementById('portfolio-scenario-start').value,end=document.getElementById('portfolio-scenario-end').value,fee_usd=document.getElementById('portfolio-scenario-fee').value;
+ const file=document.getElementById('portfolio-scenario-model')?.files[0]||portfolioScenarioFile;
+ const start=terms?.start??document.getElementById('portfolio-scenario-start').value,end=terms?.end??document.getElementById('portfolio-scenario-end').value,fee_usd=terms?.fee_usd??document.getElementById('portfolio-scenario-fee').value;
  portfolioScenarioBusy=true;
  try {
-  if(!file)throw new Error('Select the original archived model JSON.');
-  portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());
+  if(!model&&!file)throw new Error('Select the original archived model JSON.');
+  if(model)portfolioScenarioModel=model;
+  else{portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());}
   portfolioScenarioStatus='Running historical scenario…';render();
   const result=await api('/api/evaluations',{action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd});
   portfolioScenarioStatus='Simulation '+result.id+' · '+simulationLabel(result.status);
@@ -1869,7 +1917,8 @@ function renderStrategy(){
  const selected=simulations?evaluationItem:experimentItem;
  const content=strategyView==='setup'?'<section class="strategy-setup-rail"><p class="strategy-isolation">Isolated model over retained bars.<br>Results never establish broker fills or account performance.</p>'+setup+'</section>':strategyView==='runs'?runs:results;
  const runAction=strategyView==='results'&&selected?.status==='preview'?'<div class="strategy-run-action">'+strategyRunButton(simulations)+'</div>':'';
- return '<div class="strategy-workspace">'+pageHeader('Strategy Lab','','',workspaceTabs('strategy',strategyTab,[['simulations','Saved-Plan Simulations'],['experiments','Walk-Forward Experiments']]))+'<fieldset id="strategy-engine-panel" class="strategy-grid" '+((simulations?evaluationBusy:experimentBusy)?'disabled':'')+'><section class="strategy-canvas">'+workspaceTabs('strategy-view',strategyView,[['setup','Setup'],['results','Preview & Results'],['runs','Runs & Compare']])+'<p class="strategy-status" role="status">'+esc((simulations?evaluationError:experimentError)||(simulations?evaluationBusy:experimentBusy)?(simulations?evaluationError:experimentError)||'Working…':selected?.status?simulationLabel(selected.status):'No evaluation selected')+'</p>'+runAction+'<div id="strategy-view-panel" class="strategy-result-reading">'+content+'</div></section></fieldset></div>';
+ const status=simulations&&strategyView==='setup'&&portfolioScenarioStatus?portfolioScenarioStatus:(simulations?evaluationError:experimentError)||(simulations?evaluationBusy:experimentBusy)?(simulations?evaluationError:experimentError)||'Working…':selected?.status?simulationLabel(selected.status):'No evaluation selected';
+ return '<div class="strategy-workspace">'+pageHeader('Strategy Lab','','',workspaceTabs('strategy',strategyTab,[['simulations','Saved-Plan Simulations'],['experiments','Walk-Forward Experiments']]))+'<fieldset id="strategy-engine-panel" class="strategy-grid" '+((simulations?evaluationBusy:experimentBusy)?'disabled':'')+'><section class="strategy-canvas">'+workspaceTabs('strategy-view',strategyView,[['setup','Setup'],['results','Preview & Results'],['runs','Runs & Compare']])+'<p class="strategy-status" role="status">'+esc(status)+'</p>'+runAction+'<div id="strategy-view-panel" class="strategy-result-reading">'+content+'</div></section></fieldset></div>';
 }
 function journalSettings(){return reportingSettingsDraft||{benchmark:journalRecord.data.benchmark?.symbol||'',currency:journalRecord.data.benchmark?.currency||'',treatment:journalRecord.data.benchmark?.treatment||'',horizon:journalRecord.data.horizon_days??'',reason:''};}
 function accountHistoryWorkspace(){
