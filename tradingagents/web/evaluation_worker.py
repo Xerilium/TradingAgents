@@ -1308,7 +1308,8 @@ def simulate_portfolio(spec):
         except ValueError as error:
             return clean({"kind": "portfolio_scenario", "status": "failed", "spec_sha256": spec["spec_sha256"], "error": str(error), **diagnostics})
         return clean({"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
-            "model_id": model["id"], "portfolio_name": model.get("name"), "position_count": len(weights), "starting_cash": str(capital),
+            "model_id": model["id"], "portfolio_name": model.get("name"), "portfolio_revision": model.get("portfolio_revision"),
+            "weight_source": model.get("weight_source"), "position_count": len(weights), "starting_cash": str(capital),
             "target_weights": {symbol: str(weight) for symbol, weight in weights.items()},
             "target_cash_weight": str(model["result"]["target_cash_weight"]),
             **diagnostics})
