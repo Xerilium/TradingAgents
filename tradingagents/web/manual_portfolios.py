@@ -51,8 +51,8 @@ def save(store, request, weights=None):
         claim = source["weight_source"]
         if not isinstance(claim, dict) or weights is None:
             raise ValueError("Invalid index weight source")
-        snapshot = weights.state(as_of=claim.get("as_of")).get("snapshot")
-        if not snapshot or claim.get("id") != snapshot["id"] or claim.get("source_sha256") != snapshot["source_sha256"]:
+        snapshot = weights.snapshot(claim.get("id"))
+        if not snapshot or claim.get("as_of") != snapshot["as_of"] or claim.get("source_sha256") != snapshot["source_sha256"]:
             raise ValueError("Index snapshot is unavailable or changed")
         expected = {row["symbol"]: (Decimal(row["weight"]), valid_cusip(row.get("cusip")), row.get("historical_symbol") or None) for row in snapshot["entries"]}
         actual = {row["symbol"]: (Decimal(row["weight"]), valid_cusip(row.get("cusip")), row.get("historical_symbol") or None) for row in allocations}

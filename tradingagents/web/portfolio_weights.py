@@ -18,6 +18,7 @@ from .approval_review import read_artifact
 
 SOURCE_URL = "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spy.xlsx"
 RECORD = "portfolio_weight_snapshots"
+PARSER_VERSION = 2
 NS = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
 
@@ -58,8 +59,12 @@ def _parse_spy(raw):
             continue
         entry = {"symbol": row["B"].strip().upper(), "weight": str(weight),
                  "cusip": row.get("C", ""), "name": row["A"]}
-        if entry["symbol"] == "USD" or entry["symbol"].endswith(".WS"):
-            excluded.append({**entry, "reason": "cash" if entry["symbol"] == "USD" else "warrant"})
+        if entry["symbol"] == "USD" or entry["symbol"] == "-" and entry["name"] == "US DOLLAR":
+            excluded.append({**entry, "reason": "cash"})
+        elif entry["cusip"] == "436CVR021" and entry["name"] == "CONTRA HOLOGIC INCORPO":
+            excluded.append({**entry, "reason": "non-tradable contingent value right"})
+        elif entry["symbol"].endswith(".WS"):
+            excluded.append({**entry, "reason": "warrant"})
         else:
             entries.append(entry)
     if len(entries) < 400:
@@ -77,6 +82,49 @@ class PortfolioWeights:
         self.store = store
         self.lock = threading.Lock()
         self._import_packaged_snapshots()
+        self._upgrade_cached_snapshots()
+
+    def _upgrade_cached_snapshots(self):
+        """Reparse retained SPY source without replacing old snapshot identities."""
+        data = self.store.database.read(RECORD, {"snapshots": [], "error": None})["data"]
+        for item in list(data["snapshots"]):
+            if item.get("provider") != "State Street SPY" or item.get("parser_version", 1) >= PARSER_VERSION:
+                continue
+            if any(row.get("source_sha256") == item["source_sha256"] and row.get("parser_version") == PARSER_VERSION for row in data["snapshots"]):
+                continue
+            original = read_artifact(self.store.directory, item["artifact"])
+            source_ref = (original or {}).get("source_artifact")
+            source = read_artifact(self.store.directory, source_ref) if source_ref else None
+            if not isinstance(source, dict) or source.get("encoding") != "base64":
+                continue
+            try:
+                raw = base64.b64decode(source["content"], validate=True)
+                if hashlib.sha256(raw).hexdigest() != item["source_sha256"]:
+                    continue
+                as_of, entries, excluded, cash = _parse_spy(raw)
+                if as_of != item["as_of"]:
+                    continue
+            except (ValueError, KeyError, TypeError, zipfile.BadZipFile):
+                continue
+            identity = str(uuid4())
+            snapshot = {"id": identity, "provider": item["provider"], "as_of": as_of,
+                        "source_url": item["source_url"], "source_sha256": item["source_sha256"],
+                        "source_artifact": source_ref, "parser_version": PARSER_VERSION,
+                        "entries": entries, "excluded": excluded, "cash_weight": cash}
+            artifact = self.store._write_json_artifact(identity, "holdings-snapshot", snapshot)
+            metadata = {key: snapshot[key] for key in ("id", "provider", "as_of", "source_url", "source_sha256", "parser_version")}
+            metadata["artifact"] = artifact
+            def save(records):
+                rows = records[RECORD]["snapshots"]
+                if not any(row.get("source_sha256") == item["source_sha256"] and row.get("parser_version") == PARSER_VERSION for row in rows):
+                    rows.append(metadata)
+            self.store.database.transact({RECORD: {"snapshots": [], "error": None}}, save)
+            data["snapshots"].append(metadata)
+
+    def snapshot(self, identity):
+        data = self.store.database.read(RECORD, {"snapshots": [], "error": None})["data"]
+        selected = next((item for item in data["snapshots"] if item["id"] == identity), None)
+        return read_artifact(self.store.directory, selected["artifact"]) if selected else None
 
     def _import_packaged_snapshots(self):
         """Retain packaged public source data in the same cache as downloads."""
@@ -153,14 +201,14 @@ class PortfolioWeights:
                 identity = str(uuid4())
                 snapshot = {"id": identity, "provider": "State Street SPY", "as_of": as_of,
                             "source_url": SOURCE_URL, "source_sha256": digest, "entries": entries,
-                            "excluded": excluded, "cash_weight": cash_weight}
+                            "excluded": excluded, "cash_weight": cash_weight, "parser_version": PARSER_VERSION}
                 source = self.store._write_json_artifact(identity, "holdings-source", {"encoding": "base64", "content": base64.b64encode(raw).decode("ascii")})
                 snapshot["source_artifact"] = source
                 artifact = self.store._write_json_artifact(identity, "holdings-snapshot", snapshot)
                 def save(records):
                     data = records[RECORD]
-                    if not any(item["source_sha256"] == digest for item in data["snapshots"]):
-                        data["snapshots"].append({k: snapshot[k] for k in ("id", "provider", "as_of", "source_url", "source_sha256")} | {"artifact": artifact})
+                    if not any(item["source_sha256"] == digest and item.get("parser_version") == PARSER_VERSION for item in data["snapshots"]):
+                        data["snapshots"].append({k: snapshot[k] for k in ("id", "provider", "as_of", "source_url", "source_sha256", "parser_version")} | {"artifact": artifact})
                     data["error"] = None
                 self.store.database.transact({RECORD: {"snapshots": [], "error": None}}, save)
             except Exception as exc:
