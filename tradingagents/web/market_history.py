@@ -14,6 +14,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .alpaca_readonly import AlpacaREST
+from .history_storage import artifact_path
 from .investor import decimal, digest
 from .store import SourceEvidenceError
 
@@ -479,7 +480,8 @@ class MarketDataJobs:
             "source": {"vendor": "Alpaca IEX", "captured_at": captured},
             "missing_fields": [] if converted else ["daily_ohlcv" if timeframe == "1Day" else "intraday_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
         self.derive(result)
-        result["artifact"] = self.service.store._write_json_artifact(identity, "iex-history-cache", result)
+        result["artifact"] = self.service.store._write_json_artifact(
+            identity, "iex-history-cache", result, daily_history_symbol=symbol if timeframe == "1Day" else None)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
         def save(saved):
@@ -566,9 +568,7 @@ class MarketDataJobs:
             if not any(ref and all(ref.get(field) == artifact.get(field) for field in ("path", "sha256")) for ref in retained):
                 raise ValueError("Pinned history artifact is not retained for this exact cache")
             reference = artifact
-        path = (self.service.store.directory / reference["path"]).resolve()
-        if not path.is_relative_to(self.service.store.directory.resolve()):
-            raise ValueError("History cache reference escapes its boundary")
+        path = artifact_path(self.service.store.directory, reference["path"])
         import json
         payload = path.read_bytes()
         import hashlib

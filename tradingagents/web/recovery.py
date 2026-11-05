@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from .app_database import ApplicationDatabase
 from .config import DeskConfig
+from .history_storage import artifact_path
 
 MAX_ARCHIVE = 64 * 1024 * 1024
 MAX_EXPANDED = 512 * 1024 * 1024
@@ -89,7 +90,7 @@ def references(value, *, native_reconstruction=False):
             yield from references(item, native_reconstruction=native_reconstruction)
 
 
-def artifacts(root, value):
+def artifacts(root, value, *, allow_shared=False):
     root = root.resolve()
     queue, seen, total = list(references(value)), {}, 0
     while queue:
@@ -98,8 +99,8 @@ def artifacts(root, value):
             if seen[relative] != expected:
                 raise ValueError("Artifact identity has conflicting hashes")
             continue
-        path = root / relative
-        if path.is_symlink() or not path.resolve().is_relative_to(root) or not path.is_file():
+        path = artifact_path(root, relative, allow_shared=allow_shared)
+        if path.is_symlink() or not path.is_file():
             raise ValueError("Referenced immutable artifact is missing or escapes its backup boundary: " + relative)
         payload = path.read_bytes()
         total += len(payload)
@@ -288,7 +289,7 @@ def backup(service):
                     scopes.append(("history", service.history_directory, history))
                 application_directory = service.store.directory
             for scope, root, value in scopes:
-                for relative, payload in artifacts(root, value):
+                for relative, payload in artifacts(root, value, allow_shared=scope == "application"):
                     files[scope + "/" + relative] = payload
         for name in ("constituents.csv", "sp500-constituents.csv"):
             path = application_directory / name

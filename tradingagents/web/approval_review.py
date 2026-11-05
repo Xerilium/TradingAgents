@@ -6,13 +6,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from .investor import RULES, decimal, digest, execution_costs, price_evidence, validated_replacement
+from .history_storage import artifact_path
 
 
 def read_artifact(root, reference):
     try:
-        path = (root / reference["path"]).resolve()
-        if not path.is_relative_to(root.resolve()):
-            return None
+        path = artifact_path(root, reference["path"])
         raw = path.read_bytes()
         return json.loads(raw) if hashlib.sha256(raw).hexdigest() == reference["sha256"] else None
     except (OSError, ValueError, KeyError, TypeError):
