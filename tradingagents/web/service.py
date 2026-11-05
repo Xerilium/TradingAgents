@@ -2938,20 +2938,22 @@ class DeskService:
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
         spy_snapshots = {
-            "spy_year_start": "spy_year_start_2026.json",
-            "spy_october": "spy_october_2026.json",
+            "spy_year_start": ("spy_year_start_2026.json", 90),
+            "spy_year_start_stocks": ("spy_year_start_2026.json", 100),
+            "spy_october": ("spy_october_2026.json", 90),
         }
         def spy_allocations(snapshot):
             from decimal import ROUND_FLOOR
-            filed = json.loads(Path(__file__).with_name("static").joinpath(
-                spy_snapshots[snapshot]).read_text(encoding="utf-8"))
+            filename, stock_percent = spy_snapshots[snapshot]
+            filed = json.loads(Path(__file__).with_name("static").joinpath(filename).read_text(encoding="utf-8"))
             rows = filed["holdings"]
             total = sum(Decimal(row["fund_percent"]) for row in rows)
-            weights = {row["symbol"]: (Decimal(row["fund_percent"]) * 90 / total).quantize(
+            weights = {row["symbol"]: (Decimal(row["fund_percent"]) * stock_percent / total).quantize(
                 Decimal("0.00000001"), rounding=ROUND_FLOOR) for row in rows}
             largest = max(weights, key=weights.get)
-            weights[largest] += Decimal(90) - sum(weights.values())
-            weights["SGOV"] = Decimal(10)
+            weights[largest] += stock_percent - sum(weights.values())
+            if stock_percent < 100:
+                weights["SGOV"] = Decimal(100 - stock_percent)
             return filed, weights
         if isinstance(action, str) and action in spy_snapshots:
             filed, weights = spy_allocations(action)
@@ -3029,7 +3031,7 @@ class DeskService:
             if isinstance(holdings_source, str) and holdings_source in spy_snapshots:
                 filed_holdings, expected_weights = spy_allocations(holdings_source)
                 if weights != {symbol: percent / 100 for symbol, percent in expected_weights.items()}:
-                    raise ValueError("Reload the SPY weights to run the full stock list with 10% SGOV.")
+                    raise ValueError("Reload the selected SPY weights before running the simulation.")
             from .portfolio_scenario import entry_quantity
             fractional = filed_holdings is not None
             capital = Decimal(str(model["result"]["capital"]))
