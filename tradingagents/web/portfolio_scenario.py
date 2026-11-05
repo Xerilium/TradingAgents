@@ -9,6 +9,25 @@ def valid_cusip(value):
     return value if isinstance(value, str) and re.fullmatch(r"[A-Z0-9]{9}", value) else None
 
 
+def canonical_recipient(model, symbol, cusip):
+    """Map a provider's historical ticker only with an exact saved issuer identity."""
+    cusip = valid_cusip(cusip)
+    matches = [row["symbol"] for row in model.get("inputs", [])
+               if cusip and valid_cusip(row.get("cusip")) == cusip and row.get("historical_symbol") == symbol]
+    if len(matches) > 1:
+        raise ValueError(f"{symbol} recipient identity matches more than one saved holding")
+    return matches[0] if matches else symbol
+
+
+def resolve_recipients(model, actions):
+    for action in actions:
+        if action.get("new_symbol"):
+            provider = action["new_symbol"]
+            action["provider_new_symbol"] = provider
+            action["new_symbol"] = canonical_recipient(model, provider, action.get("provider_new_cusip"))
+    return actions
+
+
 def contingent_right(symbol, kind, row, end):
     """Recognize only the documented HOLX right for the evidence-bounded period."""
     if (kind != "stock_and_cash_mergers" or symbol != "HOLX" or end > "2026-11-04"
@@ -143,7 +162,7 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
                 raise ValueError(f"{symbol} {effective} merger: invalid consideration")
             actions.append({"kind": "merger", "ex_date": effective.isoformat(), "new_symbol": row.get("acquirer_symbol") if new else None,
                 "new": str(new), "old": str(old), "cash_rate": str(cash_rate), "payable_date": row.get("payable_date") or effective.isoformat(), "source_id": row.get("id"),
-                "contingent_right": contingent_right(symbol, kind, row, end.isoformat())})
+                "provider_new_cusip": row.get("acquirer_cusip"), "contingent_right": contingent_right(symbol, kind, row, end.isoformat())})
             continue
         if kind == "spin_offs" and row.get("source_symbol") == symbol and row.get("new_symbol") not in {None, symbol}:
             if initial_shares == 0:
@@ -155,6 +174,7 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
                 raise ValueError(f"{symbol} {effective} spin_off ratio: invalid")
             actions.append({"kind": "stock_distribution", "ex_date": effective.isoformat(),
                 "new_symbol": row["new_symbol"], "new": str(new), "old": str(old), "source_id": row.get("id"),
+                "provider_new_cusip": row.get("new_cusip"),
                 "payable_date": row.get("payable_date"), "basis": "Entitlement valued from ex-date; not a broker settlement record"})
             continue
         if kind == "spin_offs" and row.get("new_symbol") == symbol and row.get("source_symbol") not in {None, symbol}:

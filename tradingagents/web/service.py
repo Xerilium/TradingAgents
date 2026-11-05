@@ -2997,7 +2997,7 @@ class DeskService:
                     "missing": {"history": missing_history, "corporate_actions": missing_actions}, "problems": problems,
                     "failures": failures}
         if action == "portfolio_scenario":
-            from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity
+            from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity, resolve_recipients
             from .market_history import chart_calendar_coverage
             if request.get("portfolio_id") is not None:
                 from .manual_portfolios import model as manual_model
@@ -3064,8 +3064,8 @@ class DeskService:
                         raise ValueError(f"{symbol} {min(sessions)} daily_bar: missing opening mark")
                     shares = entry_quantity(model["result"]["capital"], model_weights(model)[symbol], histories[symbol][min(histories[symbol])]["close"], sizing)
                     cusip = next((row.get("cusip") for row in model["inputs"] if row["symbol"] == symbol), None)
-                    action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)),
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares, cusip=cusip)
+                    action_data[symbol] = resolve_recipients(model, parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)),
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares, cusip=cusip))
                     termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
                     required = {day for day in sessions if not termination or day < termination}
                     missing = sorted(required - set(by_day))
@@ -3098,8 +3098,8 @@ class DeskService:
                     selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end]
                     meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
                     action_ref = reference(meta_action.get("last_usable_artifact") or meta_action.get("artifact"))
-                    action_data[symbol] = parse_actions(symbol, first, end, read_artifact(store.directory, action_ref),
-                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)))
+                    action_data[symbol] = resolve_recipients(model, parse_actions(symbol, first, end, read_artifact(store.directory, action_ref),
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref))))
                     termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
                     required_sessions = {day for day in sessions if not termination or day < termination}
                     marks = {row["t"] for row in selected}
