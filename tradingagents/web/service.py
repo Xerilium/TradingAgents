@@ -2898,9 +2898,11 @@ class DeskService:
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
         if action == "portfolio_scenario":
-            from .portfolio_scenario import validate_model, model_weights, parse_actions
+            from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity
             from .market_history import chart_calendar_coverage
             model = validate_model(request.get("model"))
+            sizing = request.get("share_sizing", "whole")
+            entry_quantity(1, Decimal(1), 1, sizing)
             start, end = request.get("start"), request.get("end")
             from datetime import date
             start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
@@ -2950,8 +2952,7 @@ class DeskService:
                     action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
                     if not action_ref:
                         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no retained provider receipt")
-                    from decimal import ROUND_FLOOR
-                    shares = (Decimal(str(model["result"]["capital"])) * model_weights(model)[symbol] / Decimal(histories[symbol][min(histories[symbol])]["close"])).to_integral_value(rounding=ROUND_FLOOR)
+                    shares = entry_quantity(model["result"]["capital"], model_weights(model)[symbol], histories[symbol][min(histories[symbol])]["close"], sizing)
                     action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)),
                         load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares)
                     action_sources[symbol] = reference(action_ref)
@@ -2959,7 +2960,34 @@ class DeskService:
                     errors.append(str(error))
             if errors:
                 raise ValueError("; ".join(errors))
+            # A distributed security is part of equity even when it was not an initial target.
+            while True:
+                required = {}
+                for actions in action_data.values():
+                    for event in actions:
+                        if event["kind"] == "stock_distribution" and event["new_symbol"] not in histories:
+                            target = event["new_symbol"]
+                            required[target] = min(required.get(target, end), event["ex_date"])
+                if not required:
+                    break
+                for symbol, first in required.items():
+                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
+                    if len(matches) != 1:
+                        raise ValueError(f"{symbol} {first}..{end} distribution marks: expected one complete raw daily receipt")
+                    meta = matches[0]
+                    history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
+                    sessions = {day for day in histories[next(iter(model_weights(model)))] if first <= day <= end}
+                    selected = [row for row in (history or {}).get("bars", []) if first <= row.get("t", "") <= end]
+                    if len(selected) != len(sessions) or {row["t"] for row in selected} != sessions:
+                        raise ValueError(f"{symbol} distribution marks: missing, duplicate or off-calendar daily bar")
+                    histories[symbol] = {row["t"]: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for row in selected}
+                    meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
+                    action_ref = reference(meta_action.get("last_usable_artifact") or meta_action.get("artifact"))
+                    action_data[symbol] = parse_actions(symbol, first, end, read_artifact(store.directory, action_ref),
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)))
+                    action_sources[symbol] = action_ref
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
+                    "share_sizing": sizing,
                     "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data, "corporate_action_sources": action_sources,
                     "entry_basis": "first_retained_daily_close",
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
@@ -3021,7 +3049,7 @@ class DeskService:
                           "error": type(error).__name__ + ": " + str(error)}
             if spec.get("kind") == "portfolio_scenario":
                 result.update(kind="portfolio_scenario", start=spec["start"], end=spec["end"],
-                    fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"])
+                    fee_usd=spec["fee_usd"], basis=spec["basis"], share_sizing=spec.get("share_sizing", "whole"), model_basis=spec["model"].get("basis"), engine_version=spec["engine_version"])
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
                     return

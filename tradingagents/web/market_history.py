@@ -232,13 +232,25 @@ class MarketDataJobs:
                     "effective_dates": item.get("effective_dates"), "content_sha256": item.get("content_sha256")}
         return result
 
+    def distribution_symbols(self, body, instruments):
+        if body.get("purpose") != "simulation_action":
+            return set()
+        from .approval_review import read_artifact
+        from .evaluation import reference
+        payload = read_artifact(self.service.store.directory, reference(body.get("corporate_action_source")))
+        if not isinstance(payload, dict):
+            raise ValueError("Select a retained corporate-action source receipt")
+        return {row["new_symbol"] for row in payload.get("corporate_actions", {}).get("spin_offs", [])
+                if row.get("source_symbol") in instruments and isinstance(row.get("new_symbol"), str)}
+
     def evidence_request(self, body):
         from .stock_evidence import PROVIDERS
         provider, scopes, symbols = body.get("provider"), body.get("scopes"), body.get("symbols")
         if provider not in PROVIDERS or not isinstance(scopes, list) or not scopes or set(scopes) - PROVIDERS[provider]:
             raise ValueError("Choose an existing provider and its supported evidence scopes")
         known = self.service.investor()["instruments"]
-        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known for s in symbols):
+        related = self.distribution_symbols(body, known)
+        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known and s not in related for s in symbols):
             raise ValueError("Choose configured stocks or observed holdings")
         first, last = date.fromisoformat(body["start"]), date.fromisoformat(body["end"])
         if first > last or (last - first).days > 3660:
@@ -246,7 +258,7 @@ class MarketDataJobs:
         identity = str(uuid4())
         job = {"id": identity, "kind": "supplementary", "status": "queued", "created_at": datetime.now(UTC).isoformat(),
             "request": {"provider": provider, "scopes": scopes, "start": first.isoformat(), "end": last.isoformat(),
-                "earnings_horizon": body.get("earnings_horizon")},
+                "earnings_horizon": body.get("earnings_horizon"), "purpose": body.get("purpose"), "corporate_action_source": body.get("corporate_action_source")},
             "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
@@ -295,7 +307,8 @@ class MarketDataJobs:
         benchmark_symbol = benchmark["symbol"] if benchmark and body.get("purpose") == "benchmark" else None
         if body.get("purpose") == "simulation_benchmark":
             benchmark_symbol = "SPY"
-        if any(s not in instruments and s != benchmark_symbol for s in symbols):
+        related = self.distribution_symbols(body, instruments)
+        if any(s not in instruments and s != benchmark_symbol and s not in related for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
         if adjustment not in {"raw", "split", "dividend", "all"}:
@@ -311,6 +324,8 @@ class MarketDataJobs:
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
             "resumes": body.get("resumes"), "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
         job["request"]["purpose"] = body.get("purpose")
+        if related:
+            job["request"]["corporate_action_source"] = body["corporate_action_source"]
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
         self.futures.add(future)
