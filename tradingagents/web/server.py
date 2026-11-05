@@ -226,6 +226,12 @@ class DeskHandler(BaseHTTPRequestHandler):
             except (OSError, ValueError, KeyError):
                 self._send(400, {"error": "Saved current-market history is unavailable or changed"})
             return
+        if path == "/api/portfolio-dates":
+            try:
+                self._send(200, self.server.service.portfolio_dates())
+            except ValueError as exc:
+                self._send(400, {"error": str(exc)})
+            return
         if path == "/api/portfolios":
             from .manual_portfolios import state
             self._send(200, state(self.server.service.store))
