@@ -235,10 +235,15 @@ user-specified `C:/Users/brett/OneDrive/Desktop/Start-TradingDesk-Dev.lnk` was
 launched once. Its PowerShell target and `D:/src/TradingAgents` working directory
 were observed. Cargo subsequently started the development desktop executable
 at `desktop/src-tauri/target/debug/tradingagents-desktop.exe` (PID 39988).
-Two consecutive 180-second readiness waits for that same launch timed out;
-port 8099 had no listener at the final check. The desktop process remained
-running and responsive, but no backend child was observed. This establishes a
-startup blocker, not its cause or successful loading of the new API contract.
+The user subsequently confirmed that the desk restarted within seconds and
+identified the assistant's probe as broken. The earlier startup-failure claim
+in `a2b211b` is withdrawn. Two 180-second HTTP probes timed out, but both discarded
+request exceptions and accepted only HTTP 200. They did not record why access
+failed and could not establish application startup failure. The listener query
+also suppressed errors and exited with code 1, so its empty output did not prove
+there was no listener. A responsive desktop process and a momentary child-process
+query do not resolve those limitations. The startup success is human-observed;
+loading of the changed API contract remains unverified by the assistant.
 
 The two development virtual environments name Python 3.14.10. Their configured
 base interpreter, virtual-environment executables and site-packages directories
@@ -248,12 +253,20 @@ startup error. No runtime was recreated or changed. No second shortcut copy,
 alternate Python server launcher, process kill, production start, package
 installation or PowerShell-policy change was used.
 
-The built-in browser could not navigate to dev8099. The app also reported this
-session was not open in a window, so visible visual verification was unavailable.
+After the correction, direct built-in-browser navigation to dev8099 still
+returned only a generic denied-or-failed result, and the tab had no loaded page.
+The Browser pane was displayed at this later check. A single read-only request
+through `scripts/desk_api.py --dev get /api/health --timeout 5` in the user's
+Terminal panel returned `URLError`; that helper also omits the underlying reason.
+These are assistant access failures, not evidence that the user's restart failed.
+No additional launch, process action or runtime change was attempted.
+
 No affected UI case is marked passed, and the authorized browser cycle remains
-unstarted. No authored reserve amount, approval, submission, cancellation or
-transfer was made by this work. Inputs remain unknown until the operator
-supplies them. Startup diagnosis and runtime acceptance remain unresolved.
+unstarted because the assistant has not obtained a loaded page. No authored
+reserve amount, approval, submission, cancellation or transfer was made by this
+work. Inputs remain unknown until the operator supplies them. The remaining
+verification limitation is assistant access and runtime acceptance, not an
+established application startup defect.
 
 ### Verification matrix
 
@@ -268,7 +281,7 @@ supplies them. Startup diagnosis and runtime acceptance remain unresolved.
 | Empty paper account | Real observed equity/cash and honest empty gain/loss state | Pending browser cycle |
 | Populated gain/loss and SELL preparation | Actual retained holdings and existing unsaved ticket route | Requires real holdings; no fabricated position permitted |
 | Benchmark | Existing qualified price-only comparison remains labeled | Source preserved; rendered comparison not verified |
-| Runtime integration | Restarted dev service loads new API contract | Shortcut launched; service unavailable after two readiness waits; new contract and browser cycle blocked; no production change |
+| Runtime integration | Restarted dev service loads new API contract | User confirms restart within seconds; earlier failure claim withdrawn; assistant probe/browser access inconclusive and changed contract unverified; no production change |
 
 Use Impeccable in Operate mode for UI implementation and review. Preserve the
 established workstation and current workflows. No automated tests, mocks,
