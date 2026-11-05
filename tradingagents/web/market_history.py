@@ -309,8 +309,7 @@ class MarketDataJobs:
         request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment,
                    "timeframe": timeframe, "feed": "iex", "session": "provider_bar_aggregation", "currency": "USD"}
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
-            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or instruments.get(s, {}).get("supported") else "unsupported",
-                "error": instruments.get(s, {}).get("limitation")} for s in dict.fromkeys(symbols)}}
+            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued"} for s in dict.fromkeys(symbols)}}
         job["request"]["purpose"] = body.get("purpose")
         self.update(lambda saved: saved["jobs"].update({identity: job}))
         future = self.executor.submit(self.run, identity)
