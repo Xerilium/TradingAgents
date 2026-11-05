@@ -25,7 +25,8 @@
 .ticket-context .instrument-header-strip{display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px;padding:4px 6px}
 .ticket-context .instrument-header-strip>details{flex-basis:100%;margin:0}
 .orders-workspace .table-scroll,.orders-workspace .basket-scroll{overflow:auto;max-width:100%}
-.orders-workspace .spy-preview-trades{max-height:24rem}
+.orders-spy-rebalance{display:flex;flex:1;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;padding:10px 12px;border:1px solid var(--line);background:var(--paper)}
+#universe-review .spy-preview-trades{flex:1;height:auto;min-height:12rem}
 .orders-workspace td,.orders-workspace th{vertical-align:top}
 .orders-workspace dl,.ticket-context dl{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(0,1fr);gap:var(--space-1) var(--space-2)}
 .orders-workspace dd,.ticket-context dd{margin:0;min-width:0;overflow-wrap:anywhere}
