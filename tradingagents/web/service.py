@@ -304,6 +304,7 @@ class DeskService:
         self.runtime.observers.append(self._observe_runtime)
         from .market_history import MarketDataJobs
         self.data_jobs = MarketDataJobs(self)
+        self._portfolio_dates_cache = None
         from .portfolio_weights import PortfolioWeights
         self.portfolio_weights = PortfolioWeights(self.store)
         threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
@@ -312,6 +313,36 @@ class DeskService:
         self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
             tick=lambda: (self._expire_charts(), due_scans(self.data_jobs)))
         self.attention_monitor.start()
+
+    def portfolio_dates(self):
+        """Return completed market sessions for the current year's default scenario."""
+        from datetime import date
+        from urllib.parse import urlencode
+        now_ny = datetime.now(ZoneInfo("America/New_York"))
+        cached = self._portfolio_dates_cache
+        if cached and time.monotonic() - cached[0] < 60:
+            return cached[1]
+        first = date(now_ny.year - 1, 12, 20)
+        try:
+            response = self.data_jobs.read("/v2/calendar?" + urlencode({"start": first.isoformat(), "end": now_ny.date().isoformat()}), data=False, canceled=lambda: False)
+            rows = response["data"]
+            if not isinstance(rows, list):
+                raise ValueError("invalid calendar response")
+            completed = []
+            for row in rows:
+                session = date.fromisoformat(row["date"])
+                close = datetime.fromisoformat(f"{row['date']}T{row['close']}").replace(tzinfo=now_ny.tzinfo)
+                if close <= now_ny:
+                    completed.append(session)
+            previous = [day for day in completed if day.year == now_ny.year - 1]
+            current = [day for day in completed if day.year == now_ny.year]
+            if not previous or not current:
+                raise ValueError("no completed sessions for the requested year")
+            result = {"start": max(previous).isoformat(), "end": max(current).isoformat(), "source": "Alpaca market calendar"}
+        except Exception as error:
+            raise ValueError("Market calendar unavailable; enter the scenario dates manually") from error
+        self._portfolio_dates_cache = (time.monotonic(), result)
+        return result
 
     def _observe_runtime(self, observation):
         from .admission import DEFAULT
