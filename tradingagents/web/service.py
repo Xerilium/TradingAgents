@@ -89,7 +89,7 @@ def build_research_note(run, result):
         f"# {symbol} research {trade_date}",
         "",
         *([f"Recommendation: {rating} for [[{symbol}]].", ""] if rating else []),
-        f"Symbol: {symbol}",
+        f"Symbol: [[{symbol}]]",
         f"Trade date: {trade_date}",
         f"Run ID: {run.get('id', '')}",
         "",
@@ -2897,6 +2897,75 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
+        if action == "portfolio_scenario":
+            from .portfolio_scenario import validate_model, parse_actions, model_weights
+            from .market_history import chart_calendar_coverage
+            model = validate_model(request.get("model"))
+            start, end = request.get("start"), request.get("end")
+            from datetime import date
+            start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
+            if start_date >= end_date:
+                raise ValueError("scenario dates: start must precede end")
+            entries = store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"]
+            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+            observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
+            histories, action_data, errors = {}, {}, []
+            scenario_calendar = None
+            for symbol in model_weights(model):
+                try:
+                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True]
+                    if len(matches) != 1:
+                        raise ValueError(f"{symbol} {start}..{end} history: expected exactly one complete raw daily receipt")
+                    meta = matches[0]
+                    history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
+                    if not isinstance(history, dict):
+                        raise ValueError(f"{symbol} {start}..{end} history.artifact: unavailable or changed")
+                    coverage = chart_calendar_coverage(history)
+                    if coverage and coverage["start"] <= start and coverage["end"] >= end:
+                        calendar = read_artifact(store.directory, reference(coverage["reference"]))
+                    else:
+                        if scenario_calendar is None:
+                            from urllib.parse import urlencode
+                            try:
+                                response = self.data_jobs.read("/v2/calendar?" + urlencode({"start": start, "end": end}), data=False, canceled=lambda: False)
+                                if not isinstance(response["data"], list):
+                                    raise ValueError("unsupported calendar response")
+                                calendar_ref = store._write_source_result(str(uuid4()), str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
+                                scenario_calendar = (response["data"], calendar_ref)
+                            except Exception as error:
+                                raise ValueError(f"{symbol} {start}..{end} calendar.coverage: provider request failed ({type(error).__name__}: {error})") from error
+                        calendar = scenario_calendar[0]
+                    if not isinstance(calendar, list) or not calendar:
+                        raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
+                    sessions = {row["date"] for row in calendar if start <= row["date"] <= end}
+                    selected = [row for row in history.get("bars", []) if start <= row.get("t", "") <= end]
+                    by_day = {row["t"]: row for row in selected}
+                    missing = sorted(sessions - set(by_day))
+                    if missing:
+                        raise ValueError(f"{symbol} {missing[0]} daily_bar: missing from retained raw history ({len(missing)} missing sessions)")
+                    if len(selected) != len(by_day) or set(by_day) != sessions:
+                        raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
+                    histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
+                    meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
+                    action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
+                    if not action_ref:
+                        raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no retained provider receipt")
+                    action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)))
+                except (ValueError, KeyError, TypeError) as error:
+                    errors.append(str(error))
+            if errors:
+                raise ValueError("; ".join(errors))
+            spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
+                    "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data,
+                    "basis": "Hindsight scenario; not historical research performance"}
+            from .evaluation import digest
+            spec["spec_sha256"] = digest(spec)
+            identity = str(uuid4())
+            preview_ref = store._write_json_artifact(identity, "portfolio-scenario-preview", spec)
+            save({"id": identity, "kind": "portfolio_scenario", "status": "preview",
+                "created_at": datetime.now(UTC).isoformat(), "start": start, "end": end,
+                "spec_sha256": spec["spec_sha256"], "preview_artifact": preview_ref})
+            return self.evaluation_action({"action": "run", "id": identity, "spec_sha256": spec["spec_sha256"]})
         if action == "preview":
             proposal = next((p for p in store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
                              if p["id"] == request.get("proposal_id")), None)
@@ -2945,6 +3014,9 @@ class DeskService:
             except Exception as error:
                 result = {"kind": "simulation", "status": "failed", "spec_sha256": spec["spec_sha256"],
                           "error": type(error).__name__ + ": " + str(error)}
+            if spec.get("kind") == "portfolio_scenario":
+                result.update(kind="portfolio_scenario", start=spec["start"], end=spec["end"],
+                    fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"], model=spec["model"])
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
                     return
