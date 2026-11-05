@@ -91,6 +91,16 @@ class SpyRebalance:
         account = paper_account(runtime)
         if self.desk.store is not store or not account or data["account_id"] not in (None, account):
             raise ValueError("Connect the dedicated Alpaca paper account to preview the rebalance.")
+        symbols = [entry["symbol"] for entry in snapshot["entries"]] + data["managed_symbols"]
+        if not set(symbols).issubset(runtime["desired_symbols"]):
+            with self.desk.maintenance:
+                if self.desk.store is not store or paper_account(self.desk.runtime.state()) != account:
+                    raise ValueError("The paper account or workspace changed. Open a new preview.")
+                self.desk.configure_symbols(additional_symbols=[*runtime["desired_symbols"], *symbols])
+            self.desk.refresh_quotes()
+            runtime = self.desk.admission.checked_observation(CONSTRAINTS)
+            if self.desk.store is not store or paper_account(runtime) != account:
+                raise ValueError("The paper account or workspace changed. Open a new preview.")
         session = datetime.now(NEW_YORK).date().isoformat()
         run, symbols = self.plan(store, session, snapshot, runtime, data["managed_symbols"])
         first = next(iter(run["legs"]), None)
