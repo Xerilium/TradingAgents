@@ -3226,7 +3226,7 @@ async function spyRebalanceAction(action){
   else if(action==='preview'){
    const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
    spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
-    ' · Last price check '+fullTime(result.quote_at)+'.'+
+    ' · Last price check '+time(result.quote_at)+'.'+
     (result.first_sell?' First sell: '+showOrder(result.first_sell)+'.':'')+
     (result.first_buy?' First buy at current cash: '+showOrder(result.first_buy)+'.':
      result.has_buy?' Current cash cannot fund the first buy before sales.':'');
