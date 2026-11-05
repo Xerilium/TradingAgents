@@ -3212,10 +3212,9 @@ function spyRebalanceMarkup(){
   '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
   '<div class="basket-actions">'+
   (enabled?'<button data-spy-rebalance="pause" '+(spyRebalanceBusy?'disabled':'')+'>Pause daily paper trades</button>':
-   eligible?'<label><input type="checkbox" id="spy-dedicated-account" '+(spyDedicatedAccount===account?'checked':'')+'> Paper account ending '+esc(account.slice(-8))+' is dedicated to SPY and may trade automatically</label> '+
+   eligible?'<label><input type="checkbox" id="spy-dedicated-account" '+(spyDedicatedAccount===account?'checked':'')+'> I confirm this paper account is dedicated to SPY</label> '+
    '<button data-spy-rebalance="enable" '+(spyDedicatedAccount!==account||spyRebalanceBusy?'disabled':'')+'>Enable daily paper trades</button>':
    '<p>Connect the dedicated Alpaca paper account to enable trading.</p>')+
-  ' <button data-spy-rebalance="check" '+(spyRebalanceBusy?'disabled':'')+'>Check latest SPY holdings</button>'+
   ' <button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button></div>'+
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
   (preview?.trades.length?'<h3>Proposed trades ('+esc(preview.trades.length)+')</h3>'+
@@ -3233,8 +3232,7 @@ async function spyRebalanceAction(action){
   const result=await api('/api/investor',{action:'spy_rebalance_'+action,rebalance_revision:config.revision,
    account_id:config.eligible_account_id,dedicated:spyDedicatedAccount===config.eligible_account_id});
   if(state.store_generation!==generation)return;
-  if(action==='check')spyHoldingsMessage='State Street holdings dated '+result.as_of+' · '+result.positions+' stocks';
-  else if(action==='preview'){
+  if(action==='preview'){
    spyPreview={generation,account:config.eligible_account_id,trades:result.trades??[]};
    const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
    spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
