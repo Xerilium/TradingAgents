@@ -53,7 +53,7 @@ or approval is not a broker fill.
 - **Research** configures and monitors batches and presents saved conclusions, reports, debate, sources, and activity.
 - **Portfolio** separates actual observed positions and performance from a session-only joint model proposal. The proposal uses eligible latest research and cached dated prices, separate model capital, and deterministic whole-share sizing.
 - **Orders** holds human drafts and baskets. Review exact terms, approve each order, and submit separately. A basket is not an atomic broker transaction.
-- **Strategy lab** evaluates saved plans and strategies against retained historical data with explicit assumptions.
+- **Strategy lab** evaluates saved plans and strategies against retained historical data with explicit assumptions. Saved manual portfolios retain their allocation weights and cash independently of research; their historical scenarios collect missing raw prices and corporate-action receipts and use an immutable preview.
 - **Journal, Alerts, Workflows, and Settings** support decisions and outcomes, attention rules, research workflow configuration, and operations.
 
 See the [platform reference](docs/platform-reference.md) for workflows, providers, data
