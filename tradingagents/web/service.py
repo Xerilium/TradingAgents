@@ -796,10 +796,13 @@ class DeskService:
                     for entry in candidates:
                         artifact = entry.get("last_usable_artifact") or entry.get("artifact")
                         history = read_artifact(store.directory, artifact) if artifact else None
-                        if not isinstance(history, dict) or history.get("symbol") != symbol or history.get("adjustment") != "raw":
+                        if (not isinstance(history, dict) or history.get("symbol") != symbol
+                                or history.get("adjustment") != "raw" or history.get("currency", "USD") != "USD"):
                             continue
                         rows = [row for row in history.get("bars", []) if row.get("t") == as_of]
-                        if len(rows) != 1:
+                        if (len(rows) != 1 or not isinstance(rows[0].get("raw"), dict)
+                                or _number(rows[0]["raw"].get("c")) is None
+                                or not isinstance(rows[0].get("provider_timestamp"), str)):
                             continue
                         reference = {"price": rows[0]["raw"]["c"], "timestamp": rows[0]["provider_timestamp"],
                             "date": as_of, "basis": "Retained raw daily close", "source": history.get("source"),
