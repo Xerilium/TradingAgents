@@ -481,7 +481,8 @@ class MarketDataJobs:
             "missing_fields": [] if converted else ["daily_ohlcv" if timeframe == "1Day" else "intraday_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
         self.derive(result)
         result["artifact"] = self.service.store._write_json_artifact(
-            identity, "iex-history-cache", result, daily_history_symbol=symbol if timeframe == "1Day" else None)
+            identity, "iex-history-cache", result,
+            daily_history_date=converted[-1]["t"] if timeframe == "1Day" and converted else None)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
         def save(saved):

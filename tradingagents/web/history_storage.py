@@ -7,7 +7,8 @@ from pathlib import Path
 
 SHARED_RESEARCH = Path("D:/src/printer-data/maenifold/memory/research")
 SHARED_HISTORY = re.compile(
-    r"reports/[0-9a-f-]{36}/shared-iex-history-([A-Z0-9][A-Z0-9.-]{0,31})-([0-9a-f-]{36})\.json"
+    r"reports/[0-9a-f-]{36}/shared-iex-history-([A-Z0-9][A-Z0-9.-]{0,31})"
+    r"-(\d{4})-(\d{2})-(\d{2})-([0-9a-f-]{36})\.json"
 )
 
 
@@ -15,9 +16,9 @@ def shared_history_path(relative):
     match = SHARED_HISTORY.fullmatch(relative) if isinstance(relative, str) else None
     if match is None or os.name != "nt":
         return None
-    symbol, identity = match.groups()
+    symbol, year, month, day, identity = match.groups()
     root = SHARED_RESEARCH.resolve()
-    path = root / symbol / "market-data" / f"iex-history-cache-{identity}.json"
+    path = root / symbol / year / month / day / f"iex-history-cache-{identity}.json"
     if not path.resolve().is_relative_to(root):
         raise ValueError("Daily price file escapes the shared research folder")
     return path
