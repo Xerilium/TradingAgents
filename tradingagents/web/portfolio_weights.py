@@ -94,12 +94,17 @@ class PortfolioWeights:
             entries = asset["entries"]
             unresolved = asset.get("unresolved", [])
             symbols = set()
+            total = Decimal(0)
             for entry in entries:
                 symbol = entry.get("symbol")
                 weight = Decimal(entry["weight"])
                 if not symbol or symbol in symbols or not weight.is_finite() or weight < 0:
                     raise ValueError(f"Invalid packaged holdings entry: {path.name}")
                 symbols.add(symbol)
+                total += weight
+            cash = Decimal(asset["cash_weight"])
+            if not cash.is_finite() or cash < 0 or total + cash != Decimal(1):
+                raise ValueError(f"Packaged holdings weights do not reconcile: {path.name}")
             identity = str(uuid4())
             source = self.store._write_json_artifact(identity, "holdings-packaged-source", asset)
             snapshot = {**asset, "id": identity, "source_artifact": source, "asset_sha256": asset_hash,
