@@ -190,7 +190,8 @@ available. Use the tray controls for the installed app when maintenance
 requires taking it offline.
 
 For isolated source development, run `.\Start-TradingDesk-Dev.cmd`
-from `C:\src\TradingAgents` and open <http://127.0.0.1:8099/>. It uses the
+from the current checkout (`D:\src\TradingAgents` on this PC) and open
+<http://127.0.0.1:8099/>. It uses the
 checkout's `.venv` and `.venv-nautilus-v1` and
 `%USERPROFILE%\.cache\trader\development`. It does not copy production credentials or
 share production settings or data. `Start-TradingDesk.cmd` starts the installed
@@ -225,6 +226,27 @@ shows only whether a value is saved. Blank fields keep existing values.
 Saving credentials does not switch an active account. Stop Nautilus, then start
 it to load the saved account and endpoint. Normal app startup also uses that
 native store. Verify the observed paper/live account before preparing orders.
+
+### Check development access without restarting
+
+Use `scripts/desk_api.py` for local API reads. It opens the workspace normally,
+keeps its session cookie in memory and preserves the server's session and CSRF
+checks. A direct sessionless `/api/health` request can return HTTP 403 while the
+desk is running; that is not evidence of startup failure.
+
+From Git Bash, prevent MSYS from converting `/api/...` arguments into Windows
+filesystem paths when invoking the Windows Python executable:
+
+```bash
+MSYS_NO_PATHCONV=1 ./.venv/Scripts/python.exe -I scripts/desk_api.py --dev get /api/health --timeout 10
+```
+
+The prefix applies only to this command; it does not change system settings.
+PowerShell does not need that prefix. Check the actual HTTP/connection error and
+use the normal browser session before diagnosing startup failure. Empty output
+from a listener query that failed is not proof that the port is unused. Do not
+launch duplicate hosts or recreate runtimes on that evidence. This command is
+for development; production maintenance uses its installed isolated runtime.
 
 ## Where things live
 

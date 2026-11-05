@@ -230,58 +230,91 @@ Impeccable context, Operate guidance and craft floor were used. Its detector
 reported only an advisory for pre-existing `#4dabf7` at line 2371, outside the
 changed UI; no palette drift repair was added to this task.
 
-The browser cycle is authorized but has not started. On 5 November 2026, the
-user-specified `C:/Users/brett/OneDrive/Desktop/Start-TradingDesk-Dev.lnk` was
-launched once. Its PowerShell target and `D:/src/TradingAgents` working directory
-were observed. Cargo subsequently started the development desktop executable
-at `desktop/src-tauri/target/debug/tradingagents-desktop.exe` (PID 39988).
-The user subsequently confirmed that the desk restarted within seconds and
-identified the assistant's probe as broken. The earlier startup-failure claim
-in `a2b211b` is withdrawn. Two 180-second HTTP probes timed out, but both discarded
-request exceptions and accepted only HTTP 200. They did not record why access
-failed and could not establish application startup failure. The listener query
-also suppressed errors and exited with code 1, so its empty output did not prove
-there was no listener. A responsive desktop process and a momentary child-process
-query do not resolve those limitations. The startup success is human-observed;
-loading of the changed API contract remains unverified by the assistant.
+### Development access resolution — 5 November 2026
 
-The two development virtual environments name Python 3.14.10. Their configured
-base interpreter, virtual-environment executables and site-packages directories
-exist; those file checks do not prove runtime health. Development log inspection
-and non-input startup-window inspection did not capture an actionable current
-startup error. No runtime was recreated or changed. No second shortcut copy,
-alternate Python server launcher, process kill, production start, package
-installation or PowerShell-policy change was used.
+The earlier startup-failure conclusion is withdrawn, consistent with the
+correction committed in `92f912e`. The user-named development shortcut was
+invoked once earlier; two unsuccessful readiness probes did not establish that
+the app had failed. On the resolve request, the current desktop host (PID 36712)
+had a Python backend child (PID 23860). No additional launch, stop, process kill,
+runtime modification, installation or production operation was performed.
+A fresh independent source-only startup review found no established root cause;
+its hypotheses were not treated as observed failures.
 
-After the correction, direct built-in-browser navigation to dev8099 still
-returned only a generic denied-or-failed result, and the tab had no loaded page.
-The Browser pane was displayed at this later check. A single read-only request
-through `scripts/desk_api.py --dev get /api/health --timeout 5` in the user's
-Terminal panel returned `URLError`; that helper also omits the underlying reason.
-These are assistant access failures, not evidence that the user's restart failed.
-No additional launch, process action or runtime change was attempted.
+Two concrete probe problems were observed. A direct sessionless request to
+`/api/health` received HTTP 403 Forbidden: `server.py` requires the normal local
+workspace session for API access. Separately, Git Bash converted the helper's
+`/api/health` argument into a filesystem path, which its strict argument guard
+rejected. With `MSYS_NO_PATHCONV=1`, the existing session-aware `desk_api.py --dev`
+helper succeeded. It reported service running, Nautilus 1.231.0 connected,
+reconciled positions and orders, no startup errors and no configuration error.
+The live `/api/investor` fund-plan contract was also read successfully. No
+application-code or runtime repair was needed; the launch guide now documents
+the correct development access command and the limits of failed probes.
 
-No affected UI case is marked passed, and the authorized browser cycle remains
-unstarted because the assistant has not obtained a loaded page. No authored
-reserve amount, approval, submission, cancellation or transfer was made by this
-work. Inputs remain unknown until the operator supplies them. The remaining
-verification limitation is assistant access and runtime acceptance, not an
-established application startup defect.
+### Affected browser batch
+
+The authorized single affected functional browser batch was exercised on the
+real dev8099 desk, using current observations and one SPY dry-run preview.
+The implementation remains the source-reviewed `2a8109e`; later changes in this
+closure are documentation only.
+
+- The verified USD paper account displayed $100,000 cash and equity, no positions
+  and no open broker orders. Fund plans revision and own plan revision were 0;
+  no plan was saved. All four unknown reserve inputs rendered blank, and authored
+  reserve components rendered unavailable rather than invented zeroes.
+- The saved budget displayed the existing $0 policy floor, $0 required reserve,
+  $100,000 spendable-cash estimate and $100,000 SPY sleeve. The max-overlap rule
+  and the warning that observed cash is not settled or withdrawable cash rendered.
+  This is the absent-plan case, not proof of an authored nonzero reserve result.
+- One **Preview SPY rebalance** completed: 503 stocks and 503 proposed trades,
+  State Street weights dated 2026-11-04, Trading Rules revision 0 and 99.91%
+  full-account target stock exposure. The first estimated buy was AAPL with
+  explicit quantity and limit. Neither `undefined` nor `NaN` appeared in that
+  preview summary. No submission was made, including next-session queuing.
+- Portfolio rendered the honest empty paper gain/loss state and average-position
+  P/L/tax-lot limitations. **Open account fund plan** navigated to the account
+  editor in Orders. No populated holding or SELL ticket was fabricated.
+- Performance rendered unavailable returns with no saved interval loaded and
+  preserved the benchmark-only price-return limitation. No account-history
+  collection or total-return calculation was run. Browser console inspection
+  reported no error messages.
+
+The built-in browser page, rendered captures and DOM were inspected, but the app
+reported this session was not open in a window and could not show its Browser
+pane. These functional observations are not joint user-visible-pane acceptance
+or a complete visual sign-off. Runtime saves, explicit-zero mutation, stale-save
+conflicts, restore, populated gain/loss and post-fill continuation were not
+exercised. The existing automatic-SPY setting displayed on and was left unchanged;
+this work did not enable or disable it. No reserve amount, approval, broker
+submission, cancellation, transfer, research run, simulation or automated test
+was performed. Actual reserve terms remain for the operator to author.
+
+### Closure review
+
+A fresh independent documentation/scope reviewer inspected the working diff
+against `92f912e`, the session helper and server session guard, with no confirmed
+findings. Reviewed document blobs before this closure note:
+`local-desk-guide.md` `f41af7690d6e968d1ac5c2551e94c2638eb4c4fa`;
+this issue `14bfc8977fb3045f0ae0ecc88c49358a71ee12ea`.
+Primary decision: development access is resolved; accept the observed functional
+batch with the unexercised paths and visual limitation stated above. No app code
+or test changed in this closure. Scoped Git whitespace validation passed.
 
 ### Verification matrix
 
 | Path | Required evidence | Current result |
 | --- | --- | --- |
-| Saved plan identity/revisions | Strict account, generation and optimistic concurrency checks | Source reviewed; runtime save not exercised |
-| Blank versus explicit zero | Nullable contract; no invented values | Source reviewed; browser pending |
-| Reserve overlap and weight units | Decimal max floor; fractional weights to percentage points | Source reviewed, not an executed calculation test |
+| Saved plan identity/revisions | Strict account, generation and optimistic concurrency checks | Live absent-plan contract read; runtime save not exercised |
+| Blank versus explicit zero | Nullable contract; no invented values | Unknown fields rendered blank; explicit-zero mutation not exercised |
+| Reserve overlap and weight units | Decimal max floor; fractional weights to percentage points | Overlap explanation rendered; absent-plan budget and 99.91% preview observed; nonzero authored case source-only |
 | Changed plan or policy | Old preview/run blocked; auto re-enable explicit | Source reviewed; runtime mutation not exercised |
 | Post-fill continuation | Observation begun after fill and expected holdings | Source reviewed; no broker execution authorized |
 | Backup/restore | New record validation; standing and active authority invalidated | Source reviewed; no restore authorized or executed |
-| Empty paper account | Real observed equity/cash and honest empty gain/loss state | Pending browser cycle |
-| Populated gain/loss and SELL preparation | Actual retained holdings and existing unsaved ticket route | Requires real holdings; no fabricated position permitted |
-| Benchmark | Existing qualified price-only comparison remains labeled | Source preserved; rendered comparison not verified |
-| Runtime integration | Restarted dev service loads new API contract | User confirms restart within seconds; earlier failure claim withdrawn; assistant probe/browser access inconclusive and changed contract unverified; no production change |
+| Empty paper account | Real observed equity/cash and honest empty gain/loss state | Real $100,000 cash/equity and empty holdings observed; account-plan navigation worked |
+| Populated gain/loss and SELL preparation | Actual retained holdings and existing unsaved ticket route | Not exercised: actual account empty; no fabricated position permitted |
+| Benchmark | Existing qualified price-only comparison remains labeled | Price-only limitation rendered; no interval loaded or collection run |
+| Runtime integration | Restarted dev service loads new API contract | Session-aware health and fund-plan API reads succeeded; real browser functional batch exercised with visibility limitation stated above; no production change |
 
 Use Impeccable in Operate mode for UI implementation and review. Preserve the
 established workstation and current workflows. No automated tests, mocks,
