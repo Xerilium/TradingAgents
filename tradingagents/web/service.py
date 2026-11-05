@@ -304,6 +304,10 @@ class DeskService:
         self.runtime.observers.append(self._observe_runtime)
         from .market_history import MarketDataJobs
         self.data_jobs = MarketDataJobs(self)
+        from .portfolio_weights import PortfolioWeights
+        self.portfolio_weights = PortfolioWeights(self.store)
+        if not self.portfolio_weights.state().get("snapshot"):
+            threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
         from .attention import AttentionMonitor
         from .market_discovery import due_scans
         self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
@@ -2150,6 +2154,8 @@ class DeskService:
                     self.store.data["config_revision"] += 1
                     self.store.save()
         if symbols_changed:
+            if not self.portfolio_weights.state().get("snapshot"):
+                threading.Thread(target=self.portfolio_weights.refresh, name="portfolio-weights", daemon=True).start()
             try:
                 self.configure_symbols()
             except (OSError, ValueError) as error:
@@ -2897,11 +2903,52 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
+        if action == "collect_inputs":
+            from .manual_portfolios import model as manual_model
+            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+            model = manual_model(store, request.get("portfolio_id"), request.get("portfolio_revision"))
+            start, end = request.get("start"), request.get("end")
+            from datetime import date
+            if date.fromisoformat(start) >= date.fromisoformat(end):
+                raise ValueError("scenario dates: start must precede end")
+            history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
+            observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
+            missing_history, missing_actions = [], []
+            for row in model["result"]["allocations"]:
+                if Decimal(row["weight"]) == 0:
+                    continue
+                symbol = row["symbol"]
+                matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= start and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True]
+                if not matches:
+                    missing_history.append(symbol)
+                receipt = observations.get(symbol, {}).get("corporate_actions") or {}
+                action_ref = receipt.get("last_usable_artifact") or receipt.get("artifact")
+                observation = read_artifact(store.directory, reference(action_ref)) if action_ref else {}
+                query = (observation or {}).get("request") or {}
+                if not (observation and observation.get("complete") is True and query.get("start", "9999") <= start and query.get("end", "") >= end):
+                    missing_actions.append(symbol)
+            job_ids = request.get("job_ids")
+            if job_ids is None:
+                job_ids = []
+                common = {"purpose": "manual_portfolio", "portfolio_id": request["portfolio_id"], "portfolio_revision": request["portfolio_revision"], "start": start, "end": end}
+                for symbols, details in ((missing_history, {"action": "start", "asof": end, "adjustment": "raw", "timeframe": "1Day"}), (missing_actions, {"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]})):
+                    if symbols:
+                        before = set(store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"])
+                        self.data_jobs.request({**common, **details, "symbols": symbols})
+                        after = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+                        job_ids.extend(sorted(set(after) - before))
+            jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+            return {"job_ids": job_ids, "jobs": [jobs[identity] for identity in job_ids if identity in jobs],
+                    "missing": {"history": missing_history, "corporate_actions": missing_actions}}
         if action == "portfolio_scenario":
             from .portfolio_scenario import validate_model, model_weights, parse_actions, entry_quantity
             from .market_history import chart_calendar_coverage
-            model = validate_model(request.get("model"))
-            sizing = request.get("share_sizing", "whole")
+            if request.get("portfolio_id") is not None:
+                from .manual_portfolios import model as manual_model
+                model = validate_model(manual_model(store, request["portfolio_id"], request.get("portfolio_revision")))
+            else:
+                model = validate_model(request.get("model"))
+            sizing = request.get("share_sizing", "fractional" if request.get("portfolio_id") is not None else "whole")
             entry_quantity(1, Decimal(1), 1, sizing)
             start, end = request.get("start"), request.get("end")
             from datetime import date
