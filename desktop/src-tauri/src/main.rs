@@ -187,7 +187,9 @@ fn check_updates(app: tauri::AppHandle) {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(host) = app.try_state::<Host>() { let _ = host.tx.send(Action::Open); }
+            if app.config().identifier != "com.tradingagents.desktop.dev" {
+                if let Some(host) = app.try_state::<Host>() { let _ = host.tx.send(Action::Open); }
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
