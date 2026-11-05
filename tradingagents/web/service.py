@@ -2897,6 +2897,47 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
+        if action == "delete_simulations":
+            from uuid import UUID
+            selected = request.get("ids")
+            if (not isinstance(selected, list) or not selected
+                    or any(not isinstance(identity, str) for identity in selected)
+                    or len(set(selected)) != len(selected)):
+                raise ValueError("Choose saved simulations to delete.")
+            for identity in selected:
+                if str(UUID(identity)) != identity:
+                    raise ValueError("Invalid saved simulation identity.")
+            removed = {}
+            def remove(records):
+                simulations = records["reporting"].setdefault("simulations", {})
+                for identity in selected:
+                    item = simulations.get(identity)
+                    if not item or item.get("kind") not in {"simulation", "portfolio_scenario"}:
+                        raise ValueError("Saved simulations changed. Reload the list before deleting.")
+                    if (item.get("status") in {"queued", "running", "cancelling"}
+                            and item.get("session_id") == self.simulation_session):
+                        raise ValueError("Wait for running simulations to finish before deleting.")
+                for identity in selected:
+                    removed[identity] = simulations.pop(identity)
+            with self.maintenance:
+                if self.store is not store:
+                    raise ValueError("Application records changed. Reload the list before deleting.")
+                store.database.transact({"reporting": REPORTING_DEFAULT}, remove,
+                    expected={"reporting": request.get("expected_revision")})
+                warnings = []
+                with store.database.transaction() as connection:
+                    files, warnings = store._research_cleanup_files(removed, {"runs": store.data["runs"]}, connection, set(selected))
+                    for relative, (expected_hash, expected_size) in files.items():
+                        path = store.directory / relative
+                        try:
+                            if (path.is_symlink() or not path.resolve().is_relative_to(store.directory.resolve())
+                                    or path.stat().st_size != expected_size
+                                    or hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash):
+                                raise ValueError("Saved simulation file changed")
+                            path.unlink()
+                        except (OSError, ValueError):
+                            warnings.append("Some shared or changed files were retained.")
+            return {"deleted": len(removed), "warnings": list(dict.fromkeys(warnings))}
         if action == "portfolio_scenario":
             from .portfolio_scenario import validate_model, model_weights, parse_actions
             from .market_history import chart_calendar_coverage
