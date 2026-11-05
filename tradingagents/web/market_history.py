@@ -14,7 +14,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .alpaca_readonly import AlpacaREST
-from .history_storage import artifact_path
+from .history_storage import artifact_path, load_daily_bars
 from .investor import decimal, digest
 from .store import SourceEvidenceError
 
@@ -480,11 +480,15 @@ class MarketDataJobs:
             "source": {"vendor": "Alpaca IEX", "captured_at": captured},
             "missing_fields": [] if converted else ["daily_ohlcv" if timeframe == "1Day" else "intraday_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
         self.derive(result)
-        daily_period = None
+        store = self.service.store
+        saved_result = result
         if timeframe == "1Day" and converted:
-            daily_period = converted[0]["t"] if len(converted) == 1 else "series"
-        result["artifact"] = self.service.store._write_json_artifact(
-            identity, "iex-history-cache", result, daily_history_period=daily_period)
+            daily_context = {field: result[field] for field in ("symbol", "provider", "feed", "timeframe", "adjustment")}
+            receipts = [store._write_json_artifact(identity, "iex-history-bar", {**daily_context, "bar": bar},
+                daily_history_period=bar["t"]) for bar in converted]
+            saved_result = {key: value for key, value in result.items() if key != "bars"}
+            saved_result["daily_bar_artifacts"] = receipts
+        result["artifact"] = store._write_json_artifact(identity, "iex-history-cache", saved_result)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
         def save(saved):
@@ -577,7 +581,7 @@ class MarketDataJobs:
         import hashlib
         if hashlib.sha256(payload).hexdigest() != reference["sha256"]:
             raise ValueError("History cache artifact hash differs")
-        result = json.loads(payload)
+        result = load_daily_bars(self.service.store.directory, json.loads(payload))
         if result.get("timeframe") not in TIMEFRAMES:
             raise ValueError("Retained history interval is missing or unsupported; no interval was inferred from its dates")
         if result.get("symbol") != symbol or result.get("key") != meta["key"] or meta.get("timeframe", result["timeframe"]) != result["timeframe"]:

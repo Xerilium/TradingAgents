@@ -6,14 +6,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from .investor import RULES, decimal, digest, execution_costs, price_evidence, validated_replacement
-from .history_storage import artifact_path
+from .history_storage import artifact_path, load_daily_bars
 
 
 def read_artifact(root, reference):
     try:
         path = artifact_path(root, reference["path"])
         raw = path.read_bytes()
-        return json.loads(raw) if hashlib.sha256(raw).hexdigest() == reference["sha256"] else None
+        return load_daily_bars(root, json.loads(raw)) if hashlib.sha256(raw).hexdigest() == reference["sha256"] else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
 

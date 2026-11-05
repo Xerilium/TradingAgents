@@ -1,5 +1,7 @@
 """Paths for retained daily prices in the shared research folder."""
 
+import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -34,3 +36,18 @@ def artifact_path(root, relative, *, allow_shared=True):
     if allow_shared and not path.exists():
         return shared_history_path(relative) or path
     return path
+
+
+def load_daily_bars(root, result):
+    if not isinstance(result, dict) or "daily_bar_artifacts" not in result:
+        return result
+    bars = []
+    for receipt in result["daily_bar_artifacts"]:
+        payload = artifact_path(root, receipt["path"]).read_bytes()
+        if hashlib.sha256(payload).hexdigest() != receipt["sha256"]:
+            raise ValueError("Daily price file hash differs")
+        daily = json.loads(payload)
+        if any(daily[field] != result[field] for field in ("symbol", "provider", "feed", "timeframe", "adjustment")):
+            raise ValueError("Daily price file does not match its history receipt")
+        bars.append(daily["bar"])
+    return {**result, "bars": bars}
