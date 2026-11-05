@@ -232,13 +232,13 @@ class MarketDataJobs:
                     "effective_dates": item.get("effective_dates"), "content_sha256": item.get("content_sha256")}
         return result
 
-    def evidence_request(self, body):
+    def evidence_request(self, body, *, recipient_symbols=()):
         from .stock_evidence import PROVIDERS
         provider, scopes, symbols = body.get("provider"), body.get("scopes"), body.get("symbols")
         if provider not in PROVIDERS or not isinstance(scopes, list) or not scopes or set(scopes) - PROVIDERS[provider]:
             raise ValueError("Choose an existing provider and its supported evidence scopes")
         known = self.service.investor()["instruments"]
-        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known for s in symbols):
+        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known and s not in recipient_symbols for s in symbols):
             raise ValueError("Choose configured stocks or observed holdings")
         first, last = date.fromisoformat(body["start"]), date.fromisoformat(body["end"])
         if first > last or (last - first).days > 3660:
@@ -254,13 +254,13 @@ class MarketDataJobs:
         future.add_done_callback(self.futures.discard)
         return self.state()
 
-    def request(self, body):
+    def request(self, body, *, recipient_symbols=()):
         if str(body.get("action", "")).startswith("chart_"):
             return self.service.chart_analysis_action(body)
         today = datetime.now(ZoneInfo("America/New_York")).date()
         action = body.get("action", "start")
         if action == "evidence":
-            return self.evidence_request(body)
+            return self.evidence_request(body, recipient_symbols=recipient_symbols)
         if action == "baseline":
             body = {**body, "start": (today - timedelta(days=730)).isoformat(), "end": today.isoformat(),
                     "asof": body.get("asof") or today.isoformat(), "purpose": "required_baseline", "timeframe": "1Day"}
@@ -295,7 +295,7 @@ class MarketDataJobs:
         benchmark_symbol = benchmark["symbol"] if benchmark and body.get("purpose") == "benchmark" else None
         if body.get("purpose") == "simulation_benchmark":
             benchmark_symbol = "SPY"
-        if any(s not in instruments and s != benchmark_symbol for s in symbols):
+        if any(s not in instruments and s != benchmark_symbol and s not in recipient_symbols for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
         if adjustment not in {"raw", "split", "dividend", "all"}:
@@ -309,7 +309,7 @@ class MarketDataJobs:
         request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment,
                    "timeframe": timeframe, "feed": "iex", "session": "provider_bar_aggregation", "currency": "USD"}
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
-            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or instruments.get(s, {}).get("supported") else "unsupported",
+            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or s in recipient_symbols or instruments.get(s, {}).get("supported") else "unsupported",
                 "error": instruments.get(s, {}).get("limitation")} for s in dict.fromkeys(symbols)}}
         job["request"]["purpose"] = body.get("purpose")
         self.update(lambda saved: saved["jobs"].update({identity: job}))

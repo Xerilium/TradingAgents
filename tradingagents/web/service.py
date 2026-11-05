@@ -2979,7 +2979,7 @@ class DeskService:
                             warnings.append("Some shared or changed files were retained.")
             return {"deleted": len(removed), "warnings": list(dict.fromkeys(warnings))}
         if action == "portfolio_scenario":
-            from .portfolio_scenario import validate_model, model_weights, parse_actions
+            from .portfolio_scenario import validate_model, model_weights, parse_actions, action_observation, listing_dates, resolve_recipients
             from .market_history import chart_calendar_coverage
             model = validate_model(request.get("model"))
             start, end = request.get("start"), request.get("end")
@@ -2987,57 +2987,133 @@ class DeskService:
             start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
             if start_date >= end_date:
                 raise ValueError("scenario dates: start must precede end")
-            entries = store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"]
+            saved_history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
+            collection = request.get("collection") or {"job_ids": [], "attempted": []}
+            for job_id in collection["job_ids"]:
+                job = saved_history["jobs"].get(job_id)
+                if job is None:
+                    raise ValueError("Simulation data collection is no longer available")
+                if job["status"] in {"queued", "running"}:
+                    return {"status": "collecting", "collection": collection,
+                        "message": "Downloading missing simulation inputs from Alpaca…"}
+                if job["status"] != "completed":
+                    failures = [f"{symbol}: {item.get('error') or item['status']}" for symbol, item in job["symbols"].items() if item["status"] != "completed"]
+                    raise ValueError("Simulation input download failed. " + "; ".join(failures))
+            entries = saved_history["entries"]
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
-            histories, action_data, errors = {}, {}, []
+            histories, action_data, errors, source_references = {}, {}, [], {}
+            weights = model_weights(model)
+            listings = listing_dates()
+            first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
+            missing_history, missing_actions = {}, []
             scenario_calendar = None
-            for symbol in model_weights(model):
-                try:
-                    matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True]
-                    if len(matches) != 1:
-                        raise ValueError(f"{symbol} {start}..{end} history: expected exactly one complete raw daily receipt")
-                    meta = matches[0]
-                    history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
-                    if not isinstance(history, dict):
-                        raise ValueError(f"{symbol} {start}..{end} history.artifact: unavailable or changed")
-                    coverage = chart_calendar_coverage(history)
-                    if coverage and coverage["start"] <= start and coverage["end"] >= end:
-                        calendar = read_artifact(store.directory, reference(coverage["reference"]))
+            pending = list(weights)
+            while pending:
+                for symbol in pending:
+                    try:
+                        meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
+                        action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
+                        observed = action_observation(symbol, read_artifact(store.directory, reference(action_ref)),
+                            lambda ref: read_artifact(store.directory, reference(ref))) if action_ref else None
+                        action_request = (observed or {}).get("request", {})
+                        if (not observed or not observed.get("complete") or observed.get("status") not in {"available", "missing"}
+                                or action_request.get("start", "9999") > start or action_request.get("end", "") < end):
+                            missing_actions.append(symbol)
+                        else:
+                            action_data[symbol] = parse_actions(symbol, start, end, observed)
+                        first = first_dates[symbol]
+                        if first > end:
+                            raise ValueError(f"{symbol} listing date is after the simulation end")
+                        matches = sorted([entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")], key=lambda item: item.get("captured_at", ""), reverse=True)
+                        if not matches:
+                            missing_history[symbol] = first
+                            continue
+                        meta = matches[0]
+                        history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
+                        if not isinstance(history, dict):
+                            missing_history[symbol] = first
+                            continue
+                        coverage = chart_calendar_coverage(history)
+                        if coverage and coverage["start"] <= start and coverage["end"] >= end:
+                            calendar = read_artifact(store.directory, reference(coverage["reference"]))
+                        else:
+                            if scenario_calendar is None:
+                                from urllib.parse import urlencode
+                                try:
+                                    response = self.data_jobs.read("/v2/calendar?" + urlencode({"start": start, "end": end}), data=False, canceled=lambda: False)
+                                    if not isinstance(response["data"], list):
+                                        raise ValueError("unsupported calendar response")
+                                    calendar_ref = store._write_source_result(str(uuid4()), str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
+                                    scenario_calendar = (response["data"], calendar_ref)
+                                except Exception as error:
+                                    raise ValueError(f"{symbol} {start}..{end} calendar.coverage: provider request failed ({type(error).__name__}: {error})") from error
+                            calendar = scenario_calendar[0]
+                        if not isinstance(calendar, list) or not calendar:
+                            raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
+                        sessions = {row["date"] for row in calendar if first <= row["date"] <= end}
+                        selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end]
+                        by_day = {row["t"]: row for row in selected}
+                        missing = sorted(sessions - set(by_day))
+                        if missing:
+                            if "history:" + symbol in collection["attempted"]:
+                                raise ValueError(f"{symbol} {missing[0]} daily_bar: provider history is missing {len(missing)} required sessions")
+                            missing_history[symbol] = first
+                            continue
+                        if len(selected) != len(by_day) or set(by_day) != sessions:
+                            raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
+                        histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
+                        source_references[symbol] = {"history": meta.get("last_usable_artifact") or meta.get("artifact"),
+                            "corporate_actions": action_ref, "listing": listings.get(symbol)}
+                    except (ValueError, KeyError, TypeError, ArithmeticError) as error:
+                        errors.append(str(error))
+                resolve_recipients(action_data, weights)
+                pending = []
+                for symbol, items in list(action_data.items()):
+                    for item in items:
+                        recipient = item.get("new_symbol") if item["kind"] in {"stock_distribution", "merger"} else None
+                        if not recipient or recipient in first_dates or item["ex_date"] <= first_dates[symbol]:
+                            continue
+                        if symbol in weights and symbol in histories:
+                            from decimal import ROUND_FLOOR
+                            quantity = (Decimal(str(model["result"]["capital"])) * weights[symbol] / Decimal(histories[symbol][min(histories[symbol])]["close"])).to_integral_value(rounding=ROUND_FLOOR)
+                            if quantity == 0:
+                                continue
+                        first_dates[recipient] = item["ex_date"]
+                        pending.append(recipient)
+            if missing_history or missing_actions:
+                job_ids = []
+                attempted = list(collection["attempted"])
+                requests = [("history", [symbol], first) for symbol, first in missing_history.items()]
+                if missing_actions:
+                    requests.append(("actions", missing_actions, start))
+                for kind, symbols, first in requests:
+                    keys = [kind + ":" + symbol for symbol in symbols]
+                    if any(key in attempted for key in keys):
+                        raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
+                    body = {"symbols": symbols, "start": first, "end": end}
+                    body.update({"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]} if kind == "actions"
+                        else {"action": "start", "asof": end, "adjustment": "raw", "timeframe": "1Day"})
+                    jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+                    active = next((job for job in jobs.values() if job["status"] in {"queued", "running"}
+                        and set(job["symbols"]) == set(symbols) and job["request"].get("start") == first
+                        and job["request"].get("end") == end
+                        and (job.get("kind") == "supplementary") == (kind == "actions")
+                        and (job["request"].get("scopes") == ["corporate_actions"] if kind == "actions"
+                             else job["request"].get("adjustment") == "raw" and job["request"].get("timeframe") == "1Day")), None)
+                    if active:
+                        job_ids.append(active["id"])
                     else:
-                        if scenario_calendar is None:
-                            from urllib.parse import urlencode
-                            try:
-                                response = self.data_jobs.read("/v2/calendar?" + urlencode({"start": start, "end": end}), data=False, canceled=lambda: False)
-                                if not isinstance(response["data"], list):
-                                    raise ValueError("unsupported calendar response")
-                                calendar_ref = store._write_source_result(str(uuid4()), str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
-                                scenario_calendar = (response["data"], calendar_ref)
-                            except Exception as error:
-                                raise ValueError(f"{symbol} {start}..{end} calendar.coverage: provider request failed ({type(error).__name__}: {error})") from error
-                        calendar = scenario_calendar[0]
-                    if not isinstance(calendar, list) or not calendar:
-                        raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
-                    sessions = {row["date"] for row in calendar if start <= row["date"] <= end}
-                    selected = [row for row in history.get("bars", []) if start <= row.get("t", "") <= end]
-                    by_day = {row["t"]: row for row in selected}
-                    missing = sorted(sessions - set(by_day))
-                    if missing:
-                        raise ValueError(f"{symbol} {missing[0]} daily_bar: missing from retained raw history ({len(missing)} missing sessions)")
-                    if len(selected) != len(by_day) or set(by_day) != sessions:
-                        raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
-                    histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
-                    meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
-                    action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
-                    if not action_ref:
-                        raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no retained provider receipt")
-                    action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)))
-                except (ValueError, KeyError, TypeError) as error:
-                    errors.append(str(error))
+                        updated = self.data_jobs.request(body, recipient_symbols=set(first_dates) - set(weights))
+                        job_ids.extend(set(updated["data"]["jobs"]) - set(jobs))
+                    attempted.extend(keys)
+                return {"status": "collecting", "collection": {"job_ids": job_ids, "attempted": attempted},
+                    "message": "Downloading missing simulation inputs from Alpaca…"}
             if errors:
                 raise ValueError("; ".join(errors))
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
                     "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data,
+                    "source_references": source_references,
                     "entry_basis": "first_retained_daily_close",
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
             from .evaluation import digest

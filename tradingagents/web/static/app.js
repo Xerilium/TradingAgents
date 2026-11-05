@@ -1580,7 +1580,14 @@ async function runPortfolioScenario(model=null,terms=null){
   if(model)portfolioScenarioModel=model;
   else{portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());}
   portfolioScenarioStatus='Running historical scenario…';render();
-  const result=await api('/api/evaluations',{action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd});
+  const request={action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd};
+  let result=await api('/api/evaluations',request);
+  while(result.status==='collecting'){
+   portfolioScenarioStatus=result.message;render();
+   request.collection=result.collection;
+   await new Promise(resolve=>setTimeout(resolve,2000));
+   result=await api('/api/evaluations',request);
+  }
   portfolioScenarioStatus='Simulation '+result.id+' · '+simulationLabel(result.status);
   evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
  }catch(error){portfolioScenarioStatus=error.message;}
