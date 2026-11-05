@@ -2,6 +2,11 @@
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
+import re
+
+
+def valid_cusip(value):
+    return value if isinstance(value, str) and re.fullmatch(r"[A-Z0-9]{9}", value) else None
 
 def validate_model(model):
     if not isinstance(model, dict) or not isinstance(model.get("id"), str) or not model["id"].strip():
@@ -45,6 +50,7 @@ def entry_quantity(capital, weight, price, sizing="whole"):
 def parse_actions(symbol, start, end, observation, *, load_artifact=None, initial_shares=None, cusip=None):
     """Reject unproven coverage or unsupported action types; never infer events from bars."""
     start, end = date.fromisoformat(start), date.fromisoformat(end)
+    cusip = valid_cusip(cusip)
     if not isinstance(observation, dict):
         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no complete matching provider receipt")
     if load_artifact is not None and any(gap.startswith("Action has no exact selected-symbol association") for gap in observation.get("gaps", [])):

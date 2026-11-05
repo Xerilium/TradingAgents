@@ -245,12 +245,13 @@ class MarketDataJobs:
 
     def manual_symbols(self, body):
         from .manual_portfolios import model
+        from .portfolio_scenario import valid_cusip
         from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
         from .approval_review import read_artifact
         from .evaluation import reference
         saved = model(self.service.store, body.get("portfolio_id"), body.get("portfolio_revision"))
         symbols = {row["symbol"] for row in saved["inputs"]}
-        identities = {row["symbol"]: row.get("cusip") for row in saved["inputs"]}
+        identities = {row["symbol"]: valid_cusip(row.get("cusip")) for row in saved["inputs"]}
         observations = self.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
         pending = list(symbols)
         while pending:
@@ -260,13 +261,13 @@ class MarketDataJobs:
             observation = read_artifact(self.service.store.directory, reference(ref)) if ref else {}
             for record in (observation or {}).get("records", []):
                 row, kind = record.get("reported") or {}, record.get("kind")
-                reported_cusip = row.get("source_cusip") if kind == "spin_offs" else row.get("acquiree_cusip")
+                reported_cusip = valid_cusip(row.get("source_cusip") if kind == "spin_offs" else row.get("acquiree_cusip"))
                 if identities.get(symbol) and reported_cusip and identities[symbol] != reported_cusip:
                     continue
                 target = row.get("new_symbol") if kind == "spin_offs" and row.get("source_symbol") == symbol else row.get("acquirer_symbol") if kind in {"stock_mergers", "stock_and_cash_mergers"} and row.get("acquiree_symbol") == symbol else None
                 if target and target not in symbols:
                     symbols.add(target)
-                    identities[target] = row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip")
+                    identities[target] = valid_cusip(row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip"))
                     pending.append(target)
         return symbols
 
