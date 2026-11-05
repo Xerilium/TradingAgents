@@ -12,6 +12,7 @@ import stat
 import zipfile
 from contextlib import closing
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 from urllib.parse import quote
@@ -144,7 +145,7 @@ def records(database, resolve_artifact=None):
         rows = connection.execute("SELECT name,revision,payload FROM app_records").fetchall()
     result = {}
     for name, revision, payload in rows:
-        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery"} or type(revision) is not int or revision < 1:
+        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery", "manual_portfolios", "portfolio_weight_snapshots"} or type(revision) is not int or revision < 1:
             raise ValueError("Unsupported application record scope or revision")
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
@@ -165,6 +166,7 @@ def records(database, resolve_artifact=None):
                 symbols.add(item["symbol"])
     from .record_integrity import validate
     validate(result, resolve_artifact)
+    validate_portfolio_records(result)
     if "discovery" in result:
         from .market_discovery import validate as validate_discovery
         validate_discovery(result["discovery"], result.get("workspace"), resolve_artifact)
@@ -184,6 +186,57 @@ def records(database, resolve_artifact=None):
     if reporting and (not isinstance(reporting.get("entries"), dict) or not isinstance(reporting.get("collections"), list)):
         raise ValueError("Invalid saved journal/reporting records")
     return result
+
+
+def validate_portfolio_records(records):
+    """Validate saved human portfolios and retained source snapshot indexes."""
+    snapshots = records.get("portfolio_weight_snapshots")
+    if snapshots is not None:
+        if not isinstance(snapshots, dict) or not isinstance(snapshots.get("snapshots"), list) or snapshots.get("error") is not None and not isinstance(snapshots["error"], str):
+            raise ValueError("Invalid portfolio weight snapshot index")
+        seen = set()
+        for item in snapshots["snapshots"]:
+            if not isinstance(item, dict):
+                raise ValueError("Invalid portfolio weight snapshot")
+            try:
+                identifier = str(UUID(item["id"]))
+                datetime.strptime(item["as_of"], "%Y-%m-%d")
+                if (identifier != item["id"] or identifier in seen or not all(isinstance(item.get(key), str) and item[key] for key in ("provider", "source_url"))
+                        or not re.fullmatch(r"[0-9a-f]{64}", item["source_sha256"]) or not isinstance(item.get("artifact"), dict)
+                        or len(list(references(item["artifact"]))) != 1):
+                    raise ValueError("Invalid portfolio weight snapshot")
+            except (KeyError, TypeError, AttributeError) as error:
+                raise ValueError("Invalid portfolio weight snapshot") from error
+            seen.add(identifier)
+    saved = records.get("manual_portfolios")
+    if saved is None:
+        return
+    if not isinstance(saved, dict) or not isinstance(saved.get("portfolios"), list):
+        raise ValueError("Invalid saved portfolio index")
+    seen = set()
+    for item in saved["portfolios"]:
+        try:
+            if (not isinstance(item, dict) or not isinstance(item["id"], str) or not item["id"].strip() or item["id"] in seen
+                    or not isinstance(item["name"], str) or not item["name"].strip()
+                    or type(item.get("revision", 1)) is not int or item.get("revision", 1) < 1
+                    or not isinstance(item["allocations"], list) or not 1 <= len(item["allocations"]) <= 1000):
+                raise ValueError("Invalid saved portfolio")
+            capital, cash = Decimal(str(item["capital_usd"])), Decimal(str(item["cash_weight"]))
+            symbols, total = set(), cash
+            for allocation in item["allocations"]:
+                symbol, weight = allocation["symbol"], Decimal(str(allocation["weight"]))
+                if (not isinstance(symbol, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,19}", symbol)
+                        or symbol in symbols or not weight.is_finite() or not 0 <= weight <= 1):
+                    raise ValueError("Invalid saved portfolio allocation")
+                symbols.add(symbol)
+                total += weight
+            if not capital.is_finite() or capital <= 0 or not cash.is_finite() or not 0 <= cash <= 1 or total != 1:
+                raise ValueError("Invalid saved portfolio weights")
+            if item.get("weight_source") is not None and not isinstance(item["weight_source"], dict):
+                raise ValueError("Invalid saved portfolio weight source")
+            seen.add(item["id"])
+        except (KeyError, TypeError, AttributeError, InvalidOperation) as error:
+            raise ValueError("Invalid saved portfolio") from error
 
 
 def validate_journal(journal):
