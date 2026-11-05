@@ -3003,6 +3003,15 @@ class DeskService:
         if action == "portfolio_scenario":
             from .portfolio_scenario import validate_model, model_weights, parse_actions, action_observation, listing_dates, resolve_recipients
             from .market_history import chart_calendar_coverage
+            with self.maintenance:
+                store, session, data_jobs = self.store, self.simulation_session, self.data_jobs
+                if self.simulation_closed:
+                    raise ValueError("Simulation preparation is unavailable while the workspace is stopping")
+
+            def check_workspace():
+                if self.store is not store or self.simulation_closed or self.simulation_session != session:
+                    raise ValueError("The workspace changed during simulation preparation. Open Strategy Lab to start again.")
+
             model = validate_model(request.get("model"))
             start, end = request.get("start"), request.get("end")
             from datetime import date
@@ -3032,6 +3041,9 @@ class DeskService:
                 if job["status"] != "completed":
                     failures = [f"{symbol}: {item.get('error') or item['status']}" for symbol, item in job["symbols"].items() if item["status"] != "completed"]
                     raise ValueError("Simulation input download failed. " + "; ".join(failures))
+            if collection["job_ids"] and not collection.get("preparing"):
+                return {"status": "collecting", "collection": {**collection, "preparing": True},
+                        "message": "Preparing the simulation from saved daily prices…"}
             entries = saved_history["entries"]
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
@@ -3074,7 +3086,7 @@ class DeskService:
                             raise ValueError(f"{symbol} listing date is not confirmed by its provider receipt")
                         termination = min((item["ex_date"] for item in action_data.get(symbol, [])
                             if item["kind"] == "merger" and item["ex_date"] > first), default="9999-12-31")
-                        matches = sorted([entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")], key=lambda item: item.get("captured_at", ""), reverse=True)
+                        matches = sorted([entry for entry in entries.values() if entry.get("symbol") == symbol and data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")], key=lambda item: item.get("captured_at", ""), reverse=True)
                         if not matches:
                             missing_history[symbol] = first
                             continue
@@ -3090,10 +3102,12 @@ class DeskService:
                             if scenario_calendar is None:
                                 from urllib.parse import urlencode
                                 try:
-                                    response = self.data_jobs.read("/v2/calendar?" + urlencode({"start": start, "end": end}), data=False, canceled=lambda: False)
+                                    response = data_jobs.read("/v2/calendar?" + urlencode({"start": start, "end": end}), data=False, canceled=lambda: False)
                                     if not isinstance(response["data"], list):
                                         raise ValueError("unsupported calendar response")
-                                    calendar_ref = store._write_source_result(str(uuid4()), str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
+                                    with self.maintenance:
+                                        check_workspace()
+                                        calendar_ref = store._write_source_result(str(uuid4()), str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
                                     scenario_calendar = (response["data"], calendar_ref)
                                 except Exception as error:
                                     raise ValueError(f"{symbol} {start}..{end} calendar.coverage: provider request failed ({type(error).__name__}: {error})") from error
@@ -3133,37 +3147,39 @@ class DeskService:
                         first_dates[recipient] = item["ex_date"]
                         pending.append(recipient)
             if missing_history or missing_actions:
-                job_ids = []
-                attempted = list(collection["attempted"])
-                history_dates = {}
-                for symbol, first in missing_history.items():
-                    history_dates.setdefault(first, []).append(symbol)
-                requests = [("history", symbols, first) for first, symbols in history_dates.items()]
-                if missing_actions:
-                    requests.append(("actions", missing_actions, start))
-                for kind, symbols, first in requests:
-                    keys = [kind + ":" + symbol for symbol in symbols]
-                    if any(key in attempted for key in keys):
-                        raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
-                    body = {"symbols": symbols, "start": first, "end": end}
-                    body.update({"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]} if kind == "actions"
-                        else {"action": "start", "asof": first if filed_holdings else end, "adjustment": "raw", "timeframe": "1Day"})
-                    jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
-                    active = next((job for job in jobs.values() if job["status"] in {"queued", "running"}
-                        and set(job["symbols"]) == set(symbols) and job["request"].get("start") == first
-                        and job["request"].get("end") == end
-                        and (job.get("kind") == "supplementary") == (kind == "actions")
-                        and (job["request"].get("scopes") == ["corporate_actions"] if kind == "actions"
-                             else job["request"].get("adjustment") == "raw" and job["request"].get("timeframe") == "1Day")), None)
-                    if active:
-                        job_ids.append(active["id"])
-                    else:
-                        allowed = set(first_dates) if filed_holdings else set(first_dates) - set(weights)
-                        updated = self.data_jobs.request(body, recipient_symbols=allowed)
-                        job_ids.extend(set(updated["data"]["jobs"]) - set(jobs))
-                        jobs = updated["data"]["jobs"]
-                    attempted.extend(keys)
-                return collecting_response({"job_ids": job_ids, "attempted": attempted}, jobs)
+                with self.maintenance:
+                    check_workspace()
+                    job_ids = []
+                    attempted = list(collection["attempted"])
+                    history_dates = {}
+                    for symbol, first in missing_history.items():
+                        history_dates.setdefault(first, []).append(symbol)
+                    requests = [("history", symbols, first) for first, symbols in history_dates.items()]
+                    if missing_actions:
+                        requests.append(("actions", missing_actions, start))
+                    for kind, symbols, first in requests:
+                        keys = [kind + ":" + symbol for symbol in symbols]
+                        if any(key in attempted for key in keys):
+                            raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
+                        body = {"symbols": symbols, "start": first, "end": end}
+                        body.update({"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]} if kind == "actions"
+                            else {"action": "start", "asof": first if filed_holdings else end, "adjustment": "raw", "timeframe": "1Day"})
+                        jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+                        active = next((job for job in jobs.values() if job["status"] in {"queued", "running"}
+                            and set(job["symbols"]) == set(symbols) and job["request"].get("start") == first
+                            and job["request"].get("end") == end
+                            and (job.get("kind") == "supplementary") == (kind == "actions")
+                            and (job["request"].get("scopes") == ["corporate_actions"] if kind == "actions"
+                                 else job["request"].get("adjustment") == "raw" and job["request"].get("timeframe") == "1Day")), None)
+                        if active:
+                            job_ids.append(active["id"])
+                        else:
+                            allowed = set(first_dates) if filed_holdings else set(first_dates) - set(weights)
+                            updated = data_jobs.request(body, recipient_symbols=allowed)
+                            job_ids.extend(set(updated["data"]["jobs"]) - set(jobs))
+                            jobs = updated["data"]["jobs"]
+                        attempted.extend(keys)
+                    return collecting_response({"job_ids": job_ids, "attempted": attempted}, jobs)
             if errors:
                 raise ValueError("; ".join(errors))
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
@@ -3177,11 +3193,13 @@ class DeskService:
             from .evaluation import digest
             spec["spec_sha256"] = digest(spec)
             identity = str(uuid4())
-            preview_ref = store._write_json_artifact(identity, "portfolio-scenario-preview", spec)
-            save({"id": identity, "kind": "portfolio_scenario", "status": "preview",
-                "created_at": datetime.now(UTC).isoformat(), "start": start, "end": end,
-                "spec_sha256": spec["spec_sha256"], "preview_artifact": preview_ref})
-            return self.evaluation_action({"action": "run", "id": identity, "spec_sha256": spec["spec_sha256"]})
+            with self.maintenance:
+                check_workspace()
+                preview_ref = store._write_json_artifact(identity, "portfolio-scenario-preview", spec)
+                save({"id": identity, "kind": "portfolio_scenario", "status": "preview",
+                    "created_at": datetime.now(UTC).isoformat(), "start": start, "end": end,
+                    "spec_sha256": spec["spec_sha256"], "preview_artifact": preview_ref})
+                return self.evaluation_action({"action": "run", "id": identity, "spec_sha256": spec["spec_sha256"]})
         if action == "preview":
             proposal = next((p for p in store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
                              if p["id"] == request.get("proposal_id")), None)

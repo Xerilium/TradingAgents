@@ -1603,14 +1603,15 @@ async function runPortfolioScenario(model=null,terms=null){
   if(!model&&!file)throw new Error('Select the original archived model JSON.');
   if(model)portfolioScenarioModel=model;
   else{portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());}
-  portfolioScenarioStatus='Running historical scenario…';render();
+  portfolioScenarioStatus='Preparing the simulation from saved daily prices…';render();
   const request={action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd};
-  let result=await api('/api/evaluations',request);
+  const options={timeoutMs:900000};
+  let result=await api('/api/evaluations',request,options);
   while(result.status==='collecting'){
    portfolioScenarioStatus=result.message;render();
    request.collection=result.collection;
    await new Promise(resolve=>setTimeout(resolve,2000));
-   result=await api('/api/evaluations',request);
+   result=await api('/api/evaluations',request,options);
   }
   portfolioScenarioStatus='Simulation '+result.id+' · '+simulationLabel(result.status);
   evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
