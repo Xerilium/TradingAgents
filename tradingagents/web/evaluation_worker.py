@@ -1258,44 +1258,30 @@ def simulate_portfolio(spec):
         engine.add_venue(venue, OmsType.NETTING, AccountType.CASH, [Money(capital, USD)], base_currency=USD,
             allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True) if fee else None, bar_execution=True)
         bar_types, quantities, native_bars = {}, {}, []
-        entry_counts = {}
         for symbol, weight in weights.items():
             rows = spec["bars"][symbol]
             precision = max(2, max(max(0, -Decimal(str(row[field])).as_tuple().exponent) for row in rows.values() for field in ("open", "high", "low", "close")))
             identity = InstrumentId.from_str(symbol + ".ALPACA")
             engine.add_instrument(Equity(identity, Symbol(symbol), USD, precision, Price.from_str(format(Decimal("0.01"), f".{precision}f")), Quantity.from_int(1), 0, 0))
             bar_types[symbol] = BarType.from_str(str(identity) + "-1-DAY-LAST-EXTERNAL")
-            first_day = min(rows)
-            quantities[symbol] = int((capital * weight / Decimal(rows[first_day]["close"])).to_integral_value(rounding=ROUND_FLOOR))
+            first = rows[min(rows)]
+            quantities[symbol] = int((capital * weight / Decimal(first["close"])).to_integral_value(rounding=ROUND_FLOOR))
             for day, row in rows.items():
                 timestamp = int(datetime.fromisoformat(day).replace(tzinfo=UTC).timestamp() * 1_000_000_000)
-                if day == first_day and quantities[symbol]:
-                    entry_counts[timestamp] = entry_counts.get(timestamp, 0) + 1
                 native_bars.append(Bar(bar_types[symbol], *(Price.from_str(format(Decimal(row[field]), f".{precision}f")) for field in ("open", "high", "low", "close")), Quantity.from_int(int(Decimal(row["volume"]))), timestamp, timestamp))
         class PortfolioEntry(Strategy):
             def __init__(self):
                 super().__init__(StrategyConfig())
                 self.seen = set()
-                self.pending_entries = {}
             def on_start(self):
                 for bar_type in bar_types.values():
                     self.subscribe_bars(bar_type)
             def on_bar(self, bar):
                 symbol = str(bar.bar_type.instrument_id.symbol)
-                quantity = quantities[symbol]
-                if symbol in self.seen or not quantity:
-                    return
-                self.seen.add(symbol)
-                orders = self.pending_entries.setdefault(bar.ts_event, [])
-                orders.append(self.order_factory.market(bar.bar_type.instrument_id, OrderSide.BUY,
-                    Quantity.from_int(quantity), time_in_force=TimeInForce.GTC))
-                # Submit after all entry bars for this close have reached the engine.
-                if len(orders) == entry_counts[bar.ts_event]:
-                    del self.pending_entries[bar.ts_event]
-                    if len(orders) == 1:
-                        self.submit_order(orders[0])
-                    else:
-                        self.submit_order_list(self.order_factory.create_list(orders))
+                if symbol not in self.seen:
+                    self.seen.add(symbol)
+                    if quantities[symbol]:
+                        self.submit_order(self.order_factory.market(bar.bar_type.instrument_id, OrderSide.BUY, Quantity.from_int(quantities[symbol]), time_in_force=TimeInForce.GTC))
         engine.add_data(sorted(native_bars, key=lambda row: row.ts_event))
         engine.add_strategy(PortfolioEntry())
         engine.run()
