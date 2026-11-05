@@ -230,11 +230,30 @@ Impeccable context, Operate guidance and craft floor were used. Its detector
 reported only an advisory for pre-existing `#4dabf7` at line 2371, outside the
 changed UI; no palette drift repair was added to this task.
 
-The browser cycle is authorized but has not started. The development Tauri host
-must restart its Python service to load backend changes; no alternate Python
-launcher, process kill, production start or package installation was used.
-No authored reserve amount, approval, submission, cancellation or transfer was
-made by this work. Inputs remain unknown until the operator supplies them.
+The browser cycle is authorized but has not started. On 5 November 2026, the
+user-specified `C:/Users/brett/OneDrive/Desktop/Start-TradingDesk-Dev.lnk` was
+launched once. Its PowerShell target and `D:/src/TradingAgents` working directory
+were observed. Cargo subsequently started the development desktop executable
+at `desktop/src-tauri/target/debug/tradingagents-desktop.exe` (PID 39988).
+Two consecutive 180-second readiness waits for that same launch timed out;
+port 8099 had no listener at the final check. The desktop process remained
+running and responsive, but no backend child was observed. This establishes a
+startup blocker, not its cause or successful loading of the new API contract.
+
+The two development virtual environments name Python 3.14.10. Their configured
+base interpreter, virtual-environment executables and site-packages directories
+exist; those file checks do not prove runtime health. Development log inspection
+and non-input startup-window inspection did not capture an actionable current
+startup error. No runtime was recreated or changed. No second shortcut copy,
+alternate Python server launcher, process kill, production start, package
+installation or PowerShell-policy change was used.
+
+The built-in browser could not navigate to dev8099. The app also reported this
+session was not open in a window, so visible visual verification was unavailable.
+No affected UI case is marked passed, and the authorized browser cycle remains
+unstarted. No authored reserve amount, approval, submission, cancellation or
+transfer was made by this work. Inputs remain unknown until the operator
+supplies them. Startup diagnosis and runtime acceptance remain unresolved.
 
 ### Verification matrix
 
@@ -249,7 +268,7 @@ made by this work. Inputs remain unknown until the operator supplies them.
 | Empty paper account | Real observed equity/cash and honest empty gain/loss state | Pending browser cycle |
 | Populated gain/loss and SELL preparation | Actual retained holdings and existing unsaved ticket route | Requires real holdings; no fabricated position permitted |
 | Benchmark | Existing qualified price-only comparison remains labeled | Source preserved; rendered comparison not verified |
-| Runtime integration | Restarted dev service loads new API contract | Pending dev restart and one browser cycle; no production change |
+| Runtime integration | Restarted dev service loads new API contract | Shortcut launched; service unavailable after two readiness waits; new contract and browser cycle blocked; no production change |
 
 Use Impeccable in Operate mode for UI implementation and review. Preserve the
 established workstation and current workflows. No automated tests, mocks,
