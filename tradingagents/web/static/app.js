@@ -799,8 +799,10 @@ function renderPortfolioAllocations(){
  if(!draft.end&&state.portfolio_model?.as_of){draft.end=state.portfolio_model.as_of;draft.start=(Number(draft.end.slice(0,4))-1)+'-12-31';}
  const fields=[['capital','Capital / USD','number'],['start','Start date','date'],['end','End date','date'],['fee','Fee per order / USD','number']];
  const rows=allocationSymbols().filter(symbol=>symbol.includes(draft.query.trim().toUpperCase()));
- const source=draft.spy?'<p>Starting list from SPY’s '+esc(draft.spy.as_of)+' filing, with SGOV. The simulation buys fractional shares.</p>':'';
- const load='<button class="button" id="allocation-spy" '+(draft.loading||portfolioScenarioBusy?'disabled':'')+'>'+(draft.loading?'Loading SPY weights…':'Load year-start SPY weights')+'</button> ';
+ const source=draft.spy?'<p>'+esc(draft.spy.source)+' · '+esc(draft.spy.as_of)+' · 90% stocks and 10% SGOV, with fractional shares.</p>'+
+   (draft.spy.as_of>draft.start?'<p>This hindsight comparison uses weights published after the start date.</p>':''):'';
+ const load=[['spy_year_start','Load year-start SPY weights'],['spy_october','Load October SPY weights']].map(([snapshot,label])=>
+   '<button class="button" data-spy-snapshot="'+snapshot+'" '+(draft.loading||portfolioScenarioBusy?'disabled':'')+'>'+label+'</button> ').join('');
  return '<section class="panel"><h2>Portfolio allocations</h2><p>Set weights for your saved universe. Unallocated capital stays in cash. This draft runs directly in Strategy Lab.</p>'+source+'<div class="field-grid">'+fields.map(([key,label,type])=>'<div class="field"><label for="allocation-'+key+'">'+label+'</label><input class="form-control" id="allocation-'+key+'" data-allocation-field="'+key+'" type="'+type+'" value="'+esc(draft[key])+'" '+(type==='number'?'min="0" step="0.01"':'')+' ></div>').join('')+'</div><div class="form-actions"><button class="button button-primary" id="allocation-simulate" '+(portfolioScenarioBusy?'disabled':'')+'>Simulate in Strategy Lab</button>'+load+(draft.spy?'<button class="button" id="allocation-saved-list">Use saved list</button>':'<button class="button" id="allocation-equal">Equal weight</button> <button class="button" id="allocation-clear">Clear weights</button>')+'</div><p id="allocation-status" role="status">'+esc(draft.error||allocationStatus())+'</p><label for="allocation-search">Find symbol<input id="allocation-search" data-allocation-field="query" value="'+esc(draft.query)+'"></label><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Allocation %</th></tr></thead><tbody>'+rows.map(symbol=>'<tr><th scope="row">'+esc(symbol)+'</th><td><input id="allocation-weight-'+esc(symbol)+'" data-allocation-symbol="'+esc(symbol)+'" aria-label="'+esc(symbol)+' allocation percent" type="number" min="0" max="100" step="0.00000001" '+(draft.spy?'readonly ':' ')+'value="'+esc(draft.weights[symbol]||'0')+'"></td></tr>').join('')+'</tbody></table></div></section>';
 }
 document.addEventListener('input',event=>{
@@ -809,12 +811,13 @@ document.addEventListener('input',event=>{
  if(symbol){portfolioAllocations.weights[symbol]=event.target.value;const status=document.getElementById('allocation-status');if(status)status.textContent=allocationStatus();}
 });
 document.addEventListener('click',async event=>{
- if(event.target.closest('#allocation-spy')){
+ const snapshot=event.target.closest('[data-spy-snapshot]')?.dataset.spySnapshot;
+ if(snapshot){
   const draft=portfolioAllocations;
   draft.loading=true;draft.error='';render();
   try{
-   draft.spy=await api('/api/evaluations',{action:'spy_year_start'});
-   draft.weights={...draft.spy.weights};draft.start=draft.spy.as_of;draft.end='2026-11-04';draft.query='';
+   draft.spy=await api('/api/evaluations',{action:snapshot});
+   draft.weights={...draft.spy.weights};draft.start='2025-12-31';draft.end='2026-11-04';draft.query='';
   }catch(error){draft.error=error.message;}
   finally{draft.loading=false;render();}
   return;
@@ -832,7 +835,7 @@ document.addEventListener('click',async event=>{
   if(!draft.start||!draft.end||draft.start>=draft.end)throw Error('Choose a start date before the end date.');
   const allocations=allocationSymbols().map(symbol=>({symbol,weight:(allocationUnits(draft.weights[symbol]||'0')/allocationTotalUnits).toFixed(10)}));
   const model={id:crypto.randomUUID(),name:draft.spy?'SPY holdings and SGOV':'Portfolio allocations',inputs:allocationSymbols().map(symbol=>({symbol})),result:{capital:draft.capital,allocations,target_cash_weight:((allocationTotalUnits-total)/allocationTotalUnits).toFixed(10)}};
-  if(draft.spy)model.holdings_source='spy_year_start';
+  if(draft.spy)model.holdings_source=draft.spy.action;
   Object.assign(portfolioScenarioDraft,{start:draft.start,end:draft.end,fee_usd:draft.fee});
   strategyTab='simulations';strategyView='setup';location.hash='#strategy';runPortfolioScenario(model,{...portfolioScenarioDraft});
  }catch(error){document.getElementById('allocation-status').textContent=error.message;}
@@ -1577,7 +1580,8 @@ function portfolioScenarioMarkup(result){
  const last=ledger.equity_curve.at(-1),ending=Number(last.equity_usd),capital=Number(result.starting_cash),entries=ledger.events.filter(row=>row.kind==='entry');
  const weights=Object.entries(result.target_weights||{}).map(([symbol,weight])=>symbol+' '+(Number(weight)*100).toFixed(2)+'%').concat(result.target_cash_weight!=null?['cash '+(Number(result.target_cash_weight)*100).toFixed(2)+'%']:[]).join(', ');
  const change=Number.isFinite(capital)&&capital>0?money(ending-capital)+' ('+((ending/capital-1)*100).toFixed(2)+'%)':'Unavailable: starting capital was not retained';
- const holdingsSource=result.holdings_as_of?'<p>Stock list and starting weights from SPY’s '+esc(result.holdings_as_of)+' SEC filing. This model includes SGOV and buys '+(result.fractional_shares?'fractional':'whole')+' shares.</p>':'';
+ const holdingsSource=result.holdings_as_of?'<p>'+esc(result.holdings_source_name||'SPY SEC filing')+' · '+esc(result.holdings_as_of)+'. This model includes SGOV and buys '+(result.fractional_shares?'fractional':'whole')+' shares.</p>'+
+   (result.holdings_as_of>result.start?'<p>This hindsight comparison uses weights published after the start date.</p>':''):'';
  const rights=ledger.unpriced_rights||[];
  const maximum=rights.reduce((sum,right)=>sum+Number(right.maximum_payment_usd),0);
  const rightsNote=rights.length?'<p>Priced equity includes confirmed merger cash. Separate contingent rights could pay up to '+esc(money(maximum))+' and have no modeled market price.</p><details><summary>Contingent rights</summary>'+experimentTable(rights)+'</details>':'';

@@ -2937,9 +2937,14 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
-        def spy_year_start():
+        spy_snapshots = {
+            "spy_year_start": "spy_year_start_2026.json",
+            "spy_october": "spy_october_2026.json",
+        }
+        def spy_allocations(snapshot):
             from decimal import ROUND_FLOOR
-            filed = json.loads(Path(__file__).with_name("static").joinpath("spy_year_start_2026.json").read_text(encoding="utf-8"))
+            filed = json.loads(Path(__file__).with_name("static").joinpath(
+                spy_snapshots[snapshot]).read_text(encoding="utf-8"))
             rows = filed["holdings"]
             total = sum(Decimal(row["fund_percent"]) for row in rows)
             weights = {row["symbol"]: (Decimal(row["fund_percent"]) * 90 / total).quantize(
@@ -2948,9 +2953,10 @@ class DeskService:
             weights[largest] += Decimal(90) - sum(weights.values())
             weights["SGOV"] = Decimal(10)
             return filed, weights
-        if action == "spy_year_start":
-            filed, weights = spy_year_start()
-            return {"as_of": filed["as_of"], "weights": {symbol: str(percent) for symbol, percent in weights.items()}}
+        if isinstance(action, str) and action in spy_snapshots:
+            filed, weights = spy_allocations(action)
+            return {"action": action, "as_of": filed["as_of"], "source": filed["source"],
+                    "weights": {symbol: str(percent) for symbol, percent in weights.items()}}
         if action == "delete_simulations":
             from uuid import UUID
             selected = request.get("ids")
@@ -3019,10 +3025,11 @@ class DeskService:
             histories, action_data, errors, source_references = {}, {}, [], {}
             weights = model_weights(model)
             filed_holdings = None
-            if model.get("holdings_source") == "spy_year_start":
-                filed_holdings, expected_weights = spy_year_start()
+            holdings_source = model.get("holdings_source")
+            if isinstance(holdings_source, str) and holdings_source in spy_snapshots:
+                filed_holdings, expected_weights = spy_allocations(holdings_source)
                 if weights != {symbol: percent / 100 for symbol, percent in expected_weights.items()}:
-                    raise ValueError("Reload the year-start weights to run the full SPY stock list with 10% SGOV.")
+                    raise ValueError("Reload the SPY weights to run the full stock list with 10% SGOV.")
             from .portfolio_scenario import entry_quantity
             fractional = filed_holdings is not None
             capital = Decimal(str(model["result"]["capital"]))
@@ -3215,6 +3222,7 @@ class DeskService:
                     fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"])
                 if spec.get("holdings_source"):
                     result["holdings_as_of"] = spec["holdings_source"]["as_of"]
+                    result["holdings_source_name"] = spec["holdings_source"].get("source")
                     result["fractional_shares"] = spec.get("fractional_shares", False)
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
