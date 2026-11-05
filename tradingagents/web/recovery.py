@@ -12,12 +12,14 @@ import stat
 import zipfile
 from contextlib import closing
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
 from .app_database import ApplicationDatabase
 from .config import DeskConfig
+from .history_storage import artifact_path
 
 MAX_ARCHIVE = 64 * 1024 * 1024
 MAX_EXPANDED = 512 * 1024 * 1024
@@ -88,7 +90,7 @@ def references(value, *, native_reconstruction=False):
             yield from references(item, native_reconstruction=native_reconstruction)
 
 
-def artifacts(root, value):
+def artifacts(root, value, *, allow_shared=False):
     root = root.resolve()
     queue, seen, total = list(references(value)), {}, 0
     while queue:
@@ -97,8 +99,8 @@ def artifacts(root, value):
             if seen[relative] != expected:
                 raise ValueError("Artifact identity has conflicting hashes")
             continue
-        path = root / relative
-        if path.is_symlink() or not path.resolve().is_relative_to(root) or not path.is_file():
+        path = artifact_path(root, relative, allow_shared=allow_shared)
+        if path.is_symlink() or not path.is_file():
             raise ValueError("Referenced immutable artifact is missing or escapes its backup boundary: " + relative)
         payload = path.read_bytes()
         total += len(payload)
@@ -144,7 +146,7 @@ def records(database, resolve_artifact=None):
         rows = connection.execute("SELECT name,revision,payload FROM app_records").fetchall()
     result = {}
     for name, revision, payload in rows:
-        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery"} or type(revision) is not int or revision < 1:
+        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery", "manual_portfolios", "portfolio_weight_snapshots", "spy_paper_rebalance"} or type(revision) is not int or revision < 1:
             raise ValueError("Unsupported application record scope or revision")
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
@@ -165,6 +167,9 @@ def records(database, resolve_artifact=None):
                 symbols.add(item["symbol"])
     from .record_integrity import validate
     validate(result, resolve_artifact)
+    if "spy_paper_rebalance" in result:
+        validate_spy_rebalance(result["spy_paper_rebalance"])
+    validate_portfolio_records(result)
     if "discovery" in result:
         from .market_discovery import validate as validate_discovery
         validate_discovery(result["discovery"], result.get("workspace"), resolve_artifact)
@@ -184,6 +189,68 @@ def records(database, resolve_artifact=None):
     if reporting and (not isinstance(reporting.get("entries"), dict) or not isinstance(reporting.get("collections"), list)):
         raise ValueError("Invalid saved journal/reporting records")
     return result
+
+
+def validate_portfolio_records(records):
+    """Validate saved human portfolios and retained source snapshot indexes."""
+    snapshots = records.get("portfolio_weight_snapshots")
+    if snapshots is not None:
+        if not isinstance(snapshots, dict) or not isinstance(snapshots.get("snapshots"), list) or snapshots.get("error") is not None and not isinstance(snapshots["error"], str):
+            raise ValueError("Invalid portfolio weight snapshot index")
+        seen = set()
+        for item in snapshots["snapshots"]:
+            if not isinstance(item, dict):
+                raise ValueError("Invalid portfolio weight snapshot")
+            try:
+                identifier = str(UUID(item["id"]))
+                datetime.strptime(item["as_of"], "%Y-%m-%d")
+                if (identifier != item["id"] or identifier in seen or not all(isinstance(item.get(key), str) and item[key] for key in ("provider", "source_url"))
+                        or not re.fullmatch(r"[0-9a-f]{64}", item["source_sha256"]) or not isinstance(item.get("artifact"), dict)
+                        or len(list(references(item["artifact"]))) != 1):
+                    raise ValueError("Invalid portfolio weight snapshot")
+            except (KeyError, TypeError, AttributeError) as error:
+                raise ValueError("Invalid portfolio weight snapshot") from error
+            seen.add(identifier)
+    saved = records.get("manual_portfolios")
+    if saved is None:
+        return
+    if not isinstance(saved, dict) or not isinstance(saved.get("portfolios"), list):
+        raise ValueError("Invalid saved portfolio index")
+    seen = set()
+    for item in saved["portfolios"]:
+        try:
+            if (not isinstance(item, dict) or not isinstance(item["id"], str) or not item["id"].strip() or item["id"] in seen
+                    or not isinstance(item["name"], str) or not item["name"].strip()
+                    or type(item.get("revision", 1)) is not int or item.get("revision", 1) < 1
+                    or not isinstance(item["allocations"], list) or not 1 <= len(item["allocations"]) <= 1000):
+                raise ValueError("Invalid saved portfolio")
+            capital, cash = Decimal(str(item["capital_usd"])), Decimal(str(item["cash_weight"]))
+            symbols, total = set(), cash
+            for allocation in item["allocations"]:
+                symbol, weight = allocation["symbol"], Decimal(str(allocation["weight"]))
+                if (not isinstance(symbol, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,19}", symbol)
+                        or symbol in symbols or not weight.is_finite() or not 0 <= weight <= 1):
+                    raise ValueError("Invalid saved portfolio allocation")
+                symbols.add(symbol)
+                total += weight
+            if not capital.is_finite() or capital <= 0 or not cash.is_finite() or not 0 <= cash <= 1 or total != 1:
+                raise ValueError("Invalid saved portfolio weights")
+            if item.get("weight_source") is not None and not isinstance(item["weight_source"], dict):
+                raise ValueError("Invalid saved portfolio weight source")
+            seen.add(item["id"])
+        except (KeyError, TypeError, AttributeError, InvalidOperation) as error:
+            raise ValueError("Invalid saved portfolio") from error
+
+
+def validate_spy_rebalance(value):
+    if not isinstance(value, dict) or set(value) != {"enabled", "account_id", "managed_symbols", "run"}:
+        raise ValueError("Invalid saved SPY rebalance")
+    enabled, account_id, symbols, run = (value[key] for key in ("enabled", "account_id", "managed_symbols", "run"))
+    if (type(enabled) is not bool or (enabled or account_id is not None) and not (isinstance(account_id, str) and account_id)
+            or not isinstance(symbols, list) or any(not isinstance(symbol, str) or not symbol for symbol in symbols)
+            or run is not None and (not isinstance(run, dict) or not isinstance(run.get("session"), str)
+                                    or run.get("status") not in ("waiting", "ready", "dispatching", "waiting_fill", "completed", "blocked"))):
+        raise ValueError("Invalid saved SPY rebalance")
 
 
 def validate_journal(journal):
@@ -235,7 +302,7 @@ def backup(service):
                     scopes.append(("history", service.history_directory, history))
                 application_directory = service.store.directory
             for scope, root, value in scopes:
-                for relative, payload in artifacts(root, value):
+                for relative, payload in artifacts(root, value, allow_shared=scope == "application"):
                     files[scope + "/" + relative] = payload
         for name in ("constituents.csv", "sp500-constituents.csv"):
             path = application_directory / name
@@ -348,6 +415,9 @@ def invalidate_authority(database, *, retained_commands=()):
                 collections = ("proposals", "drafts")
             elif name == "investor":
                 collections = ("proposals", "baskets")
+            elif name == "spy_paper_rebalance":
+                value["enabled"] = False
+                collections = ()
             elif name == "commands":
                 value.setdefault("new_orders_blocked", False)
                 value.update(recovery_required=True, recovery_reason="Restored authority requires fresh identity reconciliation")

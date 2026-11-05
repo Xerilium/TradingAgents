@@ -157,6 +157,14 @@ def _path(value):
     return value
 
 
+MISSION_FILE = 'prompts/investment_mission.txt'
+MISSION_ROLES = frozenset({'market_analyst', 'news_analyst', 'fundamentals_analyst',
+    'fundamentals_analyst_etf', 'sentiment_analyst', 'bull_researcher', 'bear_researcher',
+    'research_manager', 'research_manager_desk', 'trader_system', 'trader_system_desk',
+    'aggressive_debator', 'conservative_debator', 'neutral_debator',
+    'portfolio_manager', 'portfolio_manager_desk', 'joint_portfolio'})
+
+
 class WorkflowBundle:
     """Immutable snapshot of a validated workflow and every referenced prompt."""
 
@@ -378,7 +386,9 @@ class WorkflowBundle:
     def render(self, key, **variables):
         ref = self._definition["prompts"][key]
         try:
-            return self._files[ref].format(**variables)
+            rendered = self._files[ref].format(**variables)
+            mission = self._files.get(MISSION_FILE, '').strip()
+            return f"Shared investment mission:\n{mission}\n\nRole instructions:\n{rendered}" if key in MISSION_ROLES and mission else rendered
         except (KeyError, ValueError) as exc:
             raise ValueError(f"{ref}: cannot render prompt: {exc}") from exc
 

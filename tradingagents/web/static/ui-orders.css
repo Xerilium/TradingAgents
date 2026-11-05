@@ -54,6 +54,7 @@
 .command-confirmation{padding:var(--space-3);border:1px solid var(--warning);background:var(--paper)}
 [data-basket-pane][hidden]{display:none!important}
 #allocation-workspace{min-width:0;padding:var(--space-2)}
+#universe-review .orders-review-pane>#allocation-workspace{margin:0;padding:0;border:0;background:transparent}
 #allocation-workspace .basket-actions{padding-block:var(--space-3);border-top:1px solid var(--line)}
 @media(min-width:1500px){body.ticket-is-open #main{margin-right:380px}}
 @media(max-width:1499px){.orders-direct-grid{grid-template-columns:minmax(0,1fr)}.orders-preparation,.orders-review-pane{overflow:visible}.docked-ticket-drawer{box-shadow:0 8px 28px #0005}}

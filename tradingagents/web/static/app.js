@@ -89,7 +89,7 @@ function quoteStatus(q,styled=false){
 const workspaceLabels={overview:'Dashboard',portfolio:'Portfolio',markets:'Markets',research:'Research',orders:'Orders',strategy:'Strategy lab',journal:'Journal',alerts:'Alerts',workflows:'Workflows',settings:'Settings'};
 let activePage = Object.hasOwn(workspaceLabels,location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
 let navigationIntent=0;
-function canNavigatePage(next,resume){return !(activePage==='workflows'&&next!=='workflows'&&!workflowCanLeave(resume)) && !(activePage==='settings'&&next!=='settings'&&!discardCredentialDraft());}
+function canNavigatePage(next,resume){if(activePage==='settings'&&next!=='settings')portfolioPromptChecked=false;return !(activePage==='workflows'&&next!=='workflows'&&!workflowCanLeave(resume)) && !(activePage==='settings'&&next!=='settings'&&!discardCredentialDraft());}
 function navigatePage(next,complete=null,intent=++navigationIntent){
  if(intent!==navigationIntent)return false;
  if(!canNavigatePage(next,()=>navigatePage(next,complete||(()=>render({force:true})),intent)))return false;
@@ -539,6 +539,7 @@ function renderConnectionIdentity(){
 async function api(path, body, {timeoutMs=path.startsWith('/api/instruments/')||['/api/refresh','/api/runs','/api/proposals'].includes(path)?550000:body===undefined?15000:120000,signal}={}){
   if(coolingDown(path,body))throw new Error(rateLimitMessage(path,body));
   const diagnostic=path==='/api/quotes/refresh'?{request_id:crypto.randomUUID().replaceAll('-',''),method:body===undefined?'GET':'POST',path}:null;
+  const startedAt=Date.now(),method=body===undefined?'GET':'POST',route=path.split('?')[0];
   let responseStatus=null,responseStage='fetch';
   const logQuote=(event,category)=>{if(diagnostic)console.info('Quote request',JSON.stringify({time:new Date().toISOString(),...diagnostic,event,category,status:responseStatus,stage:responseStage}));};
   logQuote('started','pending');
@@ -572,11 +573,15 @@ async function api(path, body, {timeoutMs=path.startsWith('/api/instruments/')||
     logQuote('failed',signal?.aborted?'canceled':timedOut?'deadline':error.name==='AbortError'?'aborted':responseStatus!==null?(responseStatus>=400?'http_error':'response_error'):error.name==='TypeError'?'network_rejection':'client_error');
     if(signal?.aborted)throw new Error('Request canceled.');
     if(timedOut||error.name==='AbortError'){
-      const message=body===undefined?'The local service did not respond in time. Your last snapshot is still shown; try refreshing.':
-        path==='/api/orders'?'The submission request timed out. Refresh broker status before taking another action; its outcome may be unknown.':
-        path==='/api/orders/cancel'?'The cancellation request timed out; its outcome may be unknown. Refresh to reconcile broker status. Do not resend cancellation.':
-        'The request timed out. Refresh the workspace to check its status before trying again.';
-      throw new Error(message);
+      const outcome=timedOut?`exceeded its ${timeoutMs} ms deadline`:'was aborted before its deadline';
+      const response=responseStatus===null?'no HTTP response headers were received':`HTTP ${responseStatus}, ${responseStage==='body'?'reading response body':responseStage}`;
+      const recovery=body===undefined?(route==='/api/state'&&state?' The last workspace snapshot is still shown.':''):
+        path==='/api/orders'?' Refresh broker status before taking another action; submission outcome may be unknown.':
+        path==='/api/orders/cancel'?' Refresh to reconcile broker status. Do not resend cancellation; its outcome may be unknown.':
+        ' Refresh the workspace to check its status before trying again.';
+      const failure=new Error(`${method} ${route} ${outcome} after ${Date.now()-startedAt} ms (${response}). ${error.name}: ${error.message}${recovery}`,{cause:error});
+      if(responseStatus!==null)failure.status=responseStatus;
+      throw failure;
     }
     throw error;
   }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
@@ -756,9 +761,9 @@ function renderWorkspace(){
  if(activePage==='overview')return renderOverview();
  if(activePage==='markets')return (UniverseReview.renderMarkets||UniverseReview.render)(state);
  if(activePage==='portfolio'){
-  const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
+  const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['allocations','Allocations'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
   const portfolioActions=portfolioTab==='proposed'?portfolioModelActions():portfolioTab==='performance'?performanceExportActions():'';
-  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+accountLedger()+(portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
+  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+accountLedger()+(portfolioTab==='allocations'?renderPortfolioAllocations():portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
  }
  if(activePage==='research')return renderResearch();
  if(activePage==='orders')return renderOrders();
@@ -769,10 +774,101 @@ function renderWorkspace(){
  return renderSettings();
 }
 let portfolioTab='holdings';
-let portfolioModelCapital='10000';
+const portfolioAllocations={weights:{},capital:'100000',start:'',end:'',fee:'0',query:'',spy:null,loading:false,error:''};
+const allocationPercentScale=100000000,allocationTotalUnits=100*allocationPercentScale;
+function allocationSymbols(){return portfolioAllocations.spy?Object.keys(portfolioAllocations.spy.weights):universe();}
+function allocationUnits(value){
+ const match=/^(\d+)(?:\.(\d{0,8}))?$/.exec(String(value).trim());
+ if(!match)throw Error('Enter allocation percentages with up to eight decimal places.');
+ const units=Number(match[1])*allocationPercentScale+Number((match[2]||'').padEnd(8,'0'));
+ if(!Number.isSafeInteger(units)||units>allocationTotalUnits)throw Error('Each allocation must be between 0% and 100%.');
+ return units;
+}
+function allocationTotals(){
+ const values=allocationSymbols().map(symbol=>allocationUnits(portfolioAllocations.weights[symbol]||'0'));
+ const total=values.reduce((sum,value)=>sum+value,0);
+ if(total>allocationTotalUnits)throw Error('Allocations exceed 100%.');
+ return {total,positions:values.filter(value=>value>0).length};
+}
+function allocationStatus(){
+ try{const {total,positions}=allocationTotals();return positions+' of '+allocationSymbols().length+' positions allocated · '+(total/allocationPercentScale).toFixed(4)+'% invested · '+((allocationTotalUnits-total)/allocationPercentScale).toFixed(4)+'% cash target';}
+ catch(error){return error.message;}
+}
+function renderPortfolioAllocations(){
+ const draft=portfolioAllocations;
+ if(!draft.end&&state.portfolio_model?.as_of){draft.end=state.portfolio_model.as_of;draft.start=(Number(draft.end.slice(0,4))-1)+'-12-31';}
+ const fields=[['capital','Capital / USD','number'],['start','Start date','date'],['end','End date','date'],['fee','Fee per order / USD','number']];
+ const rows=allocationSymbols().filter(symbol=>symbol.includes(draft.query.trim().toUpperCase()));
+ const source=draft.spy?'<p>'+esc(draft.spy.source)+' · '+esc(draft.spy.as_of)+' · '+(draft.spy.weights.SGOV?'90% stocks and 10% SGOV':'100% stocks')+', with fractional shares.</p>'+
+   (draft.spy.as_of>draft.start?'<p>This hindsight comparison uses weights published after the start date.</p>':''):'';
+ const load=[['spy_year_start_stocks','Load year-start SPY weights (100% stocks)'],['spy_year_start','Load year-start SPY weights (90% stocks)'],['spy_october','Load October SPY weights']].map(([snapshot,label])=>
+   '<button class="button" data-spy-snapshot="'+snapshot+'" '+(draft.loading||portfolioScenarioBusy?'disabled':'')+'>'+label+'</button> ').join('');
+ return '<section class="panel"><h2>Portfolio allocations</h2><p>Set weights for your saved universe. Unallocated capital stays in cash. This draft runs directly in Strategy Lab.</p>'+source+'<div class="field-grid">'+fields.map(([key,label,type])=>'<div class="field"><label for="allocation-'+key+'">'+label+'</label><input class="form-control" id="allocation-'+key+'" data-allocation-field="'+key+'" type="'+type+'" value="'+esc(draft[key])+'" '+(type==='number'?'min="0" step="0.01"':'')+' ></div>').join('')+'</div><div class="form-actions"><button class="button button-primary" id="allocation-simulate" '+(portfolioScenarioBusy?'disabled':'')+'>Simulate in Strategy Lab</button>'+load+(draft.spy?'<button class="button" id="allocation-saved-list">Use saved list</button>':'<button class="button" id="allocation-equal">Equal weight</button> <button class="button" id="allocation-clear">Clear weights</button>')+'</div><p id="allocation-status" role="status">'+esc(draft.error||allocationStatus())+'</p><label for="allocation-search">Find symbol<input id="allocation-search" data-allocation-field="query" value="'+esc(draft.query)+'"></label><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Allocation %</th></tr></thead><tbody>'+rows.map(symbol=>'<tr><th scope="row">'+esc(symbol)+'</th><td><input id="allocation-weight-'+esc(symbol)+'" data-allocation-symbol="'+esc(symbol)+'" aria-label="'+esc(symbol)+' allocation percent" type="number" min="0" max="100" step="0.00000001" '+(draft.spy?'readonly ':' ')+'value="'+esc(draft.weights[symbol]||'0')+'"></td></tr>').join('')+'</tbody></table></div></section>';
+}
+document.addEventListener('input',event=>{
+ const field=event.target.dataset.allocationField,symbol=event.target.dataset.allocationSymbol;
+ if(field){portfolioAllocations[field]=event.target.value;if(field==='query')render();}
+ if(symbol){portfolioAllocations.weights[symbol]=event.target.value;const status=document.getElementById('allocation-status');if(status)status.textContent=allocationStatus();}
+});
+document.addEventListener('click',async event=>{
+ const snapshot=event.target.closest('[data-spy-snapshot]')?.dataset.spySnapshot;
+ if(snapshot){
+  const draft=portfolioAllocations;
+  draft.loading=true;draft.error='';render();
+  try{
+   draft.spy=await api('/api/evaluations',{action:snapshot});
+   draft.weights={...draft.spy.weights};draft.start='2025-12-31';draft.end='2026-11-04';draft.query='';
+  }catch(error){draft.error=error.message;}
+  finally{draft.loading=false;render();}
+  return;
+ }
+ if(event.target.closest('#allocation-saved-list')){portfolioAllocations.spy=null;portfolioAllocations.weights={};render();return;}
+ if(event.target.closest('#allocation-equal')){
+  const symbols=allocationSymbols(),each=Math.floor(1000000/symbols.length),remainder=1000000%symbols.length;
+  symbols.forEach((symbol,index)=>{portfolioAllocations.weights[symbol]=((each+(index<remainder?1:0))/10000).toFixed(4);});render();
+ }
+ if(event.target.closest('#allocation-clear')){portfolioAllocations.weights={};render();}
+ if(!event.target.closest('#allocation-simulate'))return;
+ try{
+  const draft=portfolioAllocations,{total,positions}=allocationTotals();
+  if(!positions)throw Error('Allocate at least one stock before simulating.');
+  if(!draft.start||!draft.end||draft.start>=draft.end)throw Error('Choose a start date before the end date.');
+  const allocations=allocationSymbols().map(symbol=>({symbol,weight:(allocationUnits(draft.weights[symbol]||'0')/allocationTotalUnits).toFixed(10)}));
+  const model={id:crypto.randomUUID(),name:draft.spy?(draft.spy.weights.SGOV?'SPY holdings and SGOV':'SPY holdings'):'Portfolio allocations',inputs:allocationSymbols().map(symbol=>({symbol})),result:{capital:draft.capital,allocations,target_cash_weight:((allocationTotalUnits-total)/allocationTotalUnits).toFixed(10)}};
+  if(draft.spy)model.holdings_source=draft.spy.action;
+  Object.assign(portfolioScenarioDraft,{start:draft.start,end:draft.end,fee_usd:draft.fee});
+  strategyTab='simulations';strategyView='setup';location.hash='#strategy';runPortfolioScenario(model,{...portfolioScenarioDraft});
+ }catch(error){document.getElementById('allocation-status').textContent=error.message;}
+});
+const portfolioPrompt={bundle:null,draft:'',loading:false,message:'',error:false,storageError:''};
+let portfolioPromptChecked=false;
+try{const saved=JSON.parse(sessionStorage.getItem('portfolioPromptDraft')||'null');if(saved?.bundle&&typeof saved.draft==='string')Object.assign(portfolioPrompt,saved);}catch{portfolioPrompt.storageError='Draft storage is unavailable. A refresh may lose unsaved changes.';}
+function persistPortfolioPrompt(){try{if(portfolioPromptDirty())sessionStorage.setItem('portfolioPromptDraft',JSON.stringify({bundle:portfolioPrompt.bundle,draft:portfolioPrompt.draft}));else sessionStorage.removeItem('portfolioPromptDraft');portfolioPrompt.storageError='';}catch{portfolioPrompt.storageError='Draft storage is unavailable. A refresh may lose unsaved changes.';}const notice=$('#portfolio-prompt-storage-error');if(notice)notice.textContent=portfolioPrompt.storageError;}
+const portfolioPromptDirty=()=>!!portfolioPrompt.bundle&&portfolioPrompt.draft!==portfolioPrompt.bundle.files[portfolioPrompt.bundle.joint_portfolio_file];
+window.addEventListener('beforeunload',event=>{if(portfolioPromptDirty()){event.preventDefault();event.returnValue='';}});
+async function loadPortfolioPrompt(){
+ if(portfolioPrompt.loading)return;
+ portfolioPrompt.loading=true;portfolioPromptChecked=true;
+ try{const catalog=await api('/api/workflows');if(portfolioPrompt.bundle&&portfolioPromptDirty()){if(catalog.active!==portfolioPrompt.bundle.name){portfolioPrompt.message='The active workflow changed. Your draft is retained for '+portfolioPrompt.bundle.name+'. Discard it to load the current workflow.';portfolioPrompt.error=true;}return;}const bundle=await api('/api/workflows?name='+encodeURIComponent(catalog.active));if(!bundle.joint_portfolio_file||!Object.hasOwn(bundle.files,bundle.joint_portfolio_file))throw Error('Portfolio prompt mapping is unavailable.');portfolioPrompt.bundle=bundle;portfolioPrompt.draft=bundle.files[bundle.joint_portfolio_file];portfolioPrompt.message='';portfolioPrompt.error=false;}
+ catch(error){portfolioPrompt.message=error.message;portfolioPrompt.error=true;}
+ finally{portfolioPrompt.loading=false;if(activePage==='settings'&&settingsTab==='Research')render({force:true});}
+}
+async function savePortfolioPrompt(){
+ if(!portfolioPrompt.bundle||portfolioPrompt.loading)return;
+ const bundle=portfolioPrompt.bundle,draft=portfolioPrompt.draft;
+ portfolioPrompt.loading=true;
+ try{const catalog=await api('/api/workflows');if(catalog.active!==bundle.name)throw Error('The active workflow changed. Your draft is retained; discard it to load the current workflow.');const result=await api('/api/workflows',{action:'save',name:bundle.name,expected_active:bundle.name,revision:bundle.revision,files:{...bundle.files,[bundle.joint_portfolio_file]:draft}});portfolioPrompt.bundle={...result,joint_portfolio_file:bundle.joint_portfolio_file};if(portfolioPrompt.draft===draft)portfolioPrompt.draft=result.files[bundle.joint_portfolio_file];portfolioPrompt.message='Portfolio prompt saved.'+(result.warning?' '+result.warning:'');portfolioPrompt.error=false;}
+ catch(error){portfolioPrompt.message=error.status===409?'This workflow changed elsewhere. Your draft is retained. Discard it to load the latest version. '+error.message:error.message;portfolioPrompt.error=true;}
+ finally{portfolioPrompt.loading=false;persistPortfolioPrompt();if(activePage==='settings'&&settingsTab==='Research')render({force:true});}
+}
+function portfolioPromptMarkup(){
+ const p=portfolioPrompt,b=p.bundle;
+ return '<section class="settings-section"><h2>Portfolio modeling prompt</h2><p>Edits the active workflow’s saved prompt for future portfolio models. Existing custom workflows are not replaced by shipped defaults.</p>'+(b?'<p>Workflow: '+esc(b.name)+'</p><label class="field" for="portfolio-prompt">Joint portfolio prompt</label><textarea id="portfolio-prompt" class="form-control" rows="12" '+(p.loading||state.browse_only?'disabled':'')+'>'+esc(p.draft)+'</textarea><div class="form-actions"><button type="button" class="button" id="portfolio-prompt-discard" '+(p.loading?'disabled':'')+'>Discard changes</button><button type="button" class="button button-primary" id="portfolio-prompt-save" '+(p.loading||state.browse_only||!portfolioPromptDirty()?'disabled':'')+'>Save prompt</button></div>':'<button type="button" class="button" id="portfolio-prompt-retry" '+(p.loading?'disabled':'')+'>'+(p.loading?'Loading…':'Load prompt')+'</button>')+'<p role="'+(p.error?'alert':'status')+'">'+esc(p.message)+'</p><p id="portfolio-prompt-storage-error" role="alert">'+esc(p.storageError)+'</p></section>';
+}
+let portfolioModelCapital='10000',portfolioModelAsOf='';
 function portfolioModelActions(){
  const job=state.portfolio_model||{status:'idle'},running=['queued','running'].includes(job.status);
- return '<label for="portfolio-model-capital">Model capital (USD)<input id="portfolio-model-capital" type="number" min="0.01" step="0.01" value="'+esc(portfolioModelCapital)+'" '+(running?'disabled':'')+'></label><button class="button button-primary" data-action="model-portfolio" '+(running||busy.has('portfolio-model')?'disabled':'')+'>'+(running?'Modeling…':'Model portfolio')+'</button>';
+ return '<label for="portfolio-model-capital">Model capital (USD)<input id="portfolio-model-capital" type="number" min="0.01" step="0.01" value="'+esc(portfolioModelCapital)+'" '+(running?'disabled':'')+'></label><label for="portfolio-model-as-of">Prices and research as of<input id="portfolio-model-as-of" type="date" value="'+esc(portfolioModelAsOf)+'" '+(running?'disabled':'')+'></label><button class="button button-primary" data-action="model-portfolio" '+(running||busy.has('portfolio-model')?'disabled':'')+'>'+(running?'Modeling…':'Model portfolio')+'</button>';
 }
 function renderProposedPortfolio(){
  const job=state.portfolio_model||{status:'idle'},running=['queued','running'].includes(job.status),result=job.result;
@@ -780,16 +876,18 @@ function renderProposedPortfolio(){
  const pct=value=>number(value)===null?'Unavailable':percent(Number(value)*100);
  const bindings=(job.inputs||[]).map(row=>`<tr><td>${esc(row.symbol)}</td><td>${esc(row.run_id)} · revision ${esc(row.revision??'unreported')}</td><td>${esc(row.trade_date||'Unreported')}</td><td>${esc(asText(row.source_coverage||'No additional coverage note reported'))}</td></tr>`).join('');
  return `<section class="workspace-reading proposed-portfolio" aria-label="Model proposal">
- <p class="muted">One joint allocation from the configured universe’s latest completed research and cached reference prices. Starts with cash and zero model holdings.</p>
+ <p class="muted">One joint allocation covering every stock in the configured universe. Saved research is used when available. Missing research does not exclude a stock.</p>
+ ${job.as_of?`<p>All reference prices use the ${esc(job.as_of)} close. Only research available by that date is included.</p>`:''}
  <p class="muted">This session-only result uses model capital separate from the broker account${state.account?.cash!=null?` (observed cash ${money(state.account.cash)})`:''} and starts with zero holdings. The next explicit model action replaces it. The allocation does not populate a basket or orders.</p><p><a href="#research">Review research</a> · <a href="#orders">Plan orders</a></p>
- <p role="status">${esc(job.status==='idle'?'No joint portfolio modeled in this app session.':`${job.status} · ${job.provider||'Provider unavailable'} / ${job.model||'Model unavailable'} · ${job.inputs?.length||0} eligible of ${job.configured_universe?.length||0} configured stocks${job.elapsed_seconds!=null?` · ${job.elapsed_seconds}s`:''}`)}</p>
+ <p role="status">${esc(job.status==='idle'?'No joint portfolio modeled in this app session.':`${job.status} · ${job.provider||'Provider unavailable'} / ${job.model||'Model unavailable'} · ${job.inputs?.length||0} included of ${job.configured_universe?.length||0} configured stocks${job.elapsed_seconds!=null?` · ${job.elapsed_seconds}s`:''}`)}</p>
  ${job.error?`<div class="notice error"><strong>Portfolio model failed</strong><pre>${esc(asText(job.error))}</pre></div>`:''}
- ${result?`<section class="panel"><div class="panel-header"><h2>Joint proposed allocation</h2><span>${esc(result.provider)} / ${esc(result.model)}</span></div><p>Model capital ${money(number(result.capital))} · reference stock value ${money(number(result.reference_value))} · residual cash ${money(number(result.cash))} · target cash ${pct(result.target_cash_weight)}</p><p>${esc(result.cash_rationale)}</p><p class="muted">Whole shares are rounded down from target weights. Residual cash includes rounding. Dated reference prices are not executable or live quotes; entry conditions still apply.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Target weight</th><th>Whole shares</th><th>Model reference · dated</th><th>Last now · IEX</th><th>Drift %</th><th>Your position</th><th>Reference value</th><th>Rationale and entry conditions</th></tr></thead><tbody>${result.allocations.map(row=>`<tr><td>${esc(row.symbol)}</td><td>${pct(row.weight)}</td><td>${esc(row.shares)}</td><td>${money(number(row.reference.price))}<small class="muted">${fullTime(row.reference.timestamp)} · ${esc(row.reference.basis)}${row.reference.stale?' · stale':''}</small></td><td>${money(state.quotes?.[row.symbol]?.price)}<small>${quoteStatus(state.quotes?.[row.symbol]||{},true)}</small></td><td>${number(state.quotes?.[row.symbol]?.price)>0&&number(row.reference.price)>0?percent((Number(state.quotes[row.symbol].price)/Number(row.reference.price)-1)*100):'Unavailable'}</td><td>${esc(exposureKnown()?(positions().find(position=>position.symbol===row.symbol)?.qty??'0'):'UNKNOWN')}</td><td>${money(number(row.reference_value))}</td><td><details id="portfolio-model-${esc(job.id)}-${esc(row.symbol)}-conditions"><summary>Allocation rationale and conditions</summary><p>${esc(row.rationale)}</p><h3>Entry conditions</h3><p>${esc(row.entry_conditions)}</p></details></td></tr>`).join('')}</tbody></table></div></section>`:''}
- ${(job.exclusions||[]).length?`<details open><summary>Excluded stocks (${job.exclusions.length})</summary><ul>${job.exclusions.map(row=>`<li><strong>${esc(row.symbol)}</strong> · ${esc(row.status)} · ${esc(asText(row.reason))}${row.run_id?` · run ${esc(row.run_id)} / revision ${esc(row.revision??'unreported')}`:''}</li>`).join('')}</ul></details>`:''}
- ${bindings?`<details id="portfolio-model-${esc(job.id)}-sources"><summary>Saved research bindings and source coverage</summary><table class="data-table"><thead><tr><th>Stock</th><th>Saved result</th><th>Research date</th><th>Source coverage</th></tr></thead><tbody>${bindings}</tbody></table><p>Inputs were captured ${fullTime(job.created_at)}. The next explicit model action replaces this session result.</p></details>`:''}</section>`;
+ ${result?`<section class="panel"><div class="panel-header"><h2>Joint proposed allocation</h2><span>${esc(result.provider)} / ${esc(result.model)}</span></div><p>Model capital ${money(number(result.capital))} · reference stock value ${money(number(result.reference_value))} · residual cash ${money(number(result.cash))} · target cash ${pct(result.target_cash_weight)}</p><p>${esc(result.cash_rationale)}</p><p class="muted">Whole shares are rounded down from target weights. Residual cash includes rounding. Dated reference prices are not executable or live quotes; entry conditions still apply.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Target weight</th><th>Whole shares</th><th>Model reference · dated</th><th>Last now · IEX</th><th>Drift %</th><th>Your position</th><th>Reference value</th><th>Rationale and entry conditions</th></tr></thead><tbody>${result.allocations.map(row=>`<tr><td>${esc(row.symbol)}</td><td>${pct(row.weight)}</td><td>${esc(row.shares)}</td><td>${money(number(row.reference.price))}<small class="muted">${row.reference.date?esc(row.reference.date):fullTime(row.reference.timestamp)} · ${esc(row.reference.basis)}${row.reference.stale?' · stale':''}</small></td><td>${money(state.quotes?.[row.symbol]?.price)}<small>${quoteStatus(state.quotes?.[row.symbol]||{},true)}</small></td><td>${number(state.quotes?.[row.symbol]?.price)>0&&number(row.reference.price)>0?percent((Number(state.quotes[row.symbol].price)/Number(row.reference.price)-1)*100):'Unavailable'}</td><td>${esc(exposureKnown()?(positions().find(position=>position.symbol===row.symbol)?.qty??'0'):'UNKNOWN')}</td><td>${money(number(row.reference_value))}</td><td><details id="portfolio-model-${esc(job.id)}-${esc(row.symbol)}-conditions"><summary>Allocation rationale and conditions</summary><p>${esc(row.rationale)}</p><h3>Entry conditions</h3><p>${esc(row.entry_conditions)}</p></details></td></tr>`).join('')}</tbody></table></div></section>`:''}
+ ${(job.exclusions||[]).length?`<details open><summary>Missing reference prices (${job.exclusions.length})</summary><ul>${job.exclusions.map(row=>`<li><strong>${esc(row.symbol)}</strong> · ${esc(row.status)} · ${esc(asText(row.reason))}${row.run_id?` · run ${esc(row.run_id)} / revision ${esc(row.revision??'unreported')}`:''}</li>`).join('')}</ul></details>`:''}
+ ${bindings?`<details id="portfolio-model-${esc(job.id)}-sources"><summary>Saved research bindings and source coverage</summary><table class="data-table"><thead><tr><th>Stock</th><th>Saved result</th><th>Research date</th><th>Source coverage</th></tr></thead><tbody>${bindings}</tbody></table><p>Inputs were captured ${fullTime(job.created_at)}. The next explicit model action replaces this session result.</p></details>`:''}
+ ${job.status!=='idle'?`<details id="portfolio-model-${esc(job.id)}-trace"><summary>Retained request and result trace</summary><p>This is one structured model call, not a tool-event trace or private reasoning. Raw model response is not retained.</p><h3>System prompt</h3><pre>${esc(result?.system_prompt??'Unavailable for this run.')}</pre><h3>Captured request inputs</h3><pre>${esc(asText({model_capital:job.capital,starting_model_holdings:[],eligible_research:job.inputs||[]}))}</pre><h3>Run details and exclusions</h3><pre>${esc(asText({provider:job.provider,model:job.model,created_at:job.created_at,started_at:job.started_at,completed_at:job.completed_at,elapsed_seconds:job.elapsed_seconds,exclusions:job.exclusions}))}</pre><h3>Parsed result</h3><pre>${esc(result?asText(result):'Unavailable for this run.')}</pre></details>`:''}</section>`;
 }
-document.addEventListener('input',event=>{if(event.target.id==='portfolio-model-capital')portfolioModelCapital=event.target.value;});
-document.addEventListener('click',async event=>{if(!event.target.closest('[data-action="model-portfolio"]'))return;try{await act('portfolio-model','/api/portfolio-model',{request_id:crypto.randomUUID(),capital:portfolioModelCapital},'Joint portfolio model queued.');}catch{}});
+document.addEventListener('input',event=>{if(event.target.id==='portfolio-model-capital')portfolioModelCapital=event.target.value;if(event.target.id==='portfolio-model-as-of')portfolioModelAsOf=event.target.value;});
+document.addEventListener('click',async event=>{if(!event.target.closest('[data-action="model-portfolio"]'))return;try{await act('portfolio-model','/api/portfolio-model',{request_id:crypto.randomUUID(),capital:portfolioModelCapital,as_of:portfolioModelAsOf||null},'Joint portfolio model queued.');}catch{}});
 let performanceView='equity';
 function performancePlot(){
  if(journalCollectionErrors.has(journalCollection))return '<div class="empty-chart"><h3>Saved interval unavailable</h3><p>'+esc(journalCollectionErrors.get(journalCollection))+'</p><button class="button" id="retry-history-source">Retry saved source</button></div>';
@@ -854,7 +952,7 @@ function dashboardAttentionSummary(){
 
 document.addEventListener('click',event=>{if(event.target.closest('[data-dashboard-held-research]')&&dashboardCoverage('positions')){selectedSymbols=new Set(positions().map(position=>position.symbol).filter(symbol=>universe().includes(symbol)&&!researchIsCurrent(symbol)));render();}});
 
-document.addEventListener('click',event=>{const alert=event.target.closest('[data-alert-tab]'),evidence=event.target.closest('[data-alert-evidence-tab]'),setting=event.target.closest('[data-settings-tab]'),occurrence=event.target.closest('[data-dashboard-occurrence]');if(alert){alertsTab=alert.dataset.alertTab;if(alertsTab!=='Inbox'){attentionEvidenceRequest=null;attentionEvidence=null;attentionEvidenceError='';}render();}if(evidence){alertEvidenceTab=evidence.dataset.alertEvidenceTab;render();}if(setting){settingsTab=setting.dataset.settingsTab;render({force:true});}if(occurrence)openAttentionEvidence(occurrence.dataset.dashboardOccurrence,occurrence);});
+document.addEventListener('click',event=>{const alert=event.target.closest('[data-alert-tab]'),evidence=event.target.closest('[data-alert-evidence-tab]'),setting=event.target.closest('[data-settings-tab]'),occurrence=event.target.closest('[data-dashboard-occurrence]');if(alert){alertsTab=alert.dataset.alertTab;if(alertsTab!=='Inbox'){attentionEvidenceRequest=null;attentionEvidence=null;attentionEvidenceError='';}render();}if(evidence){alertEvidenceTab=evidence.dataset.alertEvidenceTab;render();}if(setting){settingsTab=setting.dataset.settingsTab;portfolioPromptChecked=false;render({force:true});}if(occurrence)openAttentionEvidence(occurrence.dataset.dashboardOccurrence,occurrence);});
 const settingsLabels={Account:'Account & Engine',Research:'Research & Models',Integrations:'Universe & Keys','Trading rules':'Trading Rules & Native Cache',Diagnostics:'Diagnostics & Backup'};
 function accountStatusFlags(){
  const account=state.nautilus?.account||{},configuration=state.nautilus?.account_configuration||{};
@@ -878,7 +976,7 @@ function renderSettings(){
  const identity=state.connection?.identity||{};
  let content='';
  if(settingsTab==='Account')content='<section class="settings-section"><h2>Account &amp; Engine</h2><dl><dt>Observed mode / account</dt><dd>'+esc(stateErrorMessage?'Unconfirmed — last snapshot':identity.observed_mode||'Unverified')+' / '+esc(identity.observed_account_id||'Unavailable')+'</dd><dt>Configured mode</dt><dd>'+esc(identity.configured_mode||'Unavailable')+'</dd><dt>Market feed</dt><dd>'+esc(state.health?.feed||'Unavailable')+'</dd></dl>'+accountStatusFlags()+'<p>Review and approve each order, then submit separately from Orders.</p><a class="button" href="#orders">Orders: '+(paused()?'Paused':'Active')+' · Manage</a></section>'+credentialMarkup('alpaca')+'<div class="settings-runtime-slot"></div><details id="settings-funding"><summary>Alpaca funding and official documents</summary>'+brokerServices()+'</details>';
- if(settingsTab==='Research')content=settingsFormMarkup('Research');
+ if(settingsTab==='Research')content=settingsFormMarkup('Research')+portfolioPromptMarkup();
  if(settingsTab==='Integrations')content=settingsFormMarkup('Integrations')+credentialMarkup('service');
  if(settingsTab==='Trading rules')content=UniverseReview.renderPolicy(state)+nativeEnginePanel();
  if(settingsTab==='Diagnostics')content=renderSettingsDiagnostics();
@@ -920,7 +1018,14 @@ function bindSettings(){
  }
  const provider=$('#config-llm_provider');
  if(provider){const previous=provider.value;provider.onchange=()=>{const next=provider.value;if(previous!=='codex')providerFieldDrafts.set(previous,Object.fromEntries(['backend_url','quick_think_llm','deep_think_llm'].map(key=>[key,$('#config-'+key).value])));captureSettingsDraft();Object.assign(settingsDraft,next==='codex'?{backend_url:'',quick_think_llm:'gpt-6-luna',deep_think_llm:'gpt-6-sol'}:providerFieldDrafts.get(next)||{backend_url:'',quick_think_llm:'',deep_think_llm:''},{llm_provider:next});render({force:true});};}
- if(settingsTab==='Research'){updateModelLimits();fetchModelLimits();$('#refresh-model-limits')?.addEventListener('click',()=>fetchModelLimits(true));}
+ if(settingsTab==='Research'){
+  updateModelLimits();fetchModelLimits();$('#refresh-model-limits')?.addEventListener('click',()=>fetchModelLimits(true));
+  if(!portfolioPromptChecked&&!portfolioPrompt.loading)loadPortfolioPrompt();
+  $('#portfolio-prompt')?.addEventListener('input',event=>{portfolioPrompt.draft=event.target.value;persistPortfolioPrompt();const save=$('#portfolio-prompt-save');if(save)save.disabled=!portfolioPromptDirty();});
+  $('#portfolio-prompt-save')?.addEventListener('click',savePortfolioPrompt);
+  $('#portfolio-prompt-retry')?.addEventListener('click',loadPortfolioPrompt);
+  $('#portfolio-prompt-discard')?.addEventListener('click',()=>{portfolioPrompt.bundle=null;portfolioPrompt.draft='';portfolioPrompt.error=false;persistPortfolioPrompt();loadPortfolioPrompt();render({force:true});});
+ }
  if(settingsTab==='Trading rules'){
   const policy=document.querySelector('#universe-review.settings-policy'),save=policy?.querySelector('#save-policy'),discard=policy?.querySelector('#discard-policy');
   if(policy&&discard){const actions=document.createElement('div');actions.className='settings-policy-actions';if(save)actions.append(save);actions.append(discard);policy.append(actions);}
@@ -1073,14 +1178,6 @@ function researchDrift(symbol){
  const q=state?.quotes?.[symbol]||{},research=state?.research?.[symbol];
  const histories=[UniverseReview.loadedDailyHistory(symbol),chartEvidence.get(`${research?.run_id}:${symbol}`)].filter(Boolean);
  const bar=histories.filter(h=>(!h.symbol||h.symbol===symbol)&&(!h.run_id||h.run_id===research?.run_id)&&(!h.timeframe||h.timeframe==='1Day')&&(!h.adjustment||h.adjustment==='raw')).flatMap(h=>h.bars||[]).find(b=>String(b.t).slice(0,10)===research?.trade_date&&number(b.raw?.c)>0);
- const key=`${research?.run_id}:${symbol}`;
- if(research?.run_id&&research.trade_date&&!bar&&!chartEvidence.has(key)&&!chartRequests.has(key)&&!chartErrors.has(key)){
-  chartRequests.add(key);
-  api(`/api/instruments/${encodeURIComponent(symbol)}?run_id=${encodeURIComponent(research.run_id)}`).then(detail=>{
-   if(detail.symbol!==symbol||detail.run_id!==research.run_id||!Array.isArray(detail.bars))throw new Error('Market evidence does not match the research.');
-   chartEvidence.set(key,detail);chartLoadedAt.set(key,Date.now());
-  }).catch(error=>chartErrors.set(key,error.message)).finally(()=>{chartRequests.delete(key);if(['research','overview'].includes(activePage))render();});
- }
  const close=number(bar?.raw?.c),last=number(q.price);
  return close!==null&&close>0&&last!==null?percent((last/close-1)*100):'—';
 }
@@ -1143,7 +1240,7 @@ const researchRunKey=run=>JSON.stringify([state.server_instance_id,state.store_g
 const researchRunVersion=run=>JSON.stringify([run?.status,run?.event_count,run?.source_evidence?.attempt_count,run?.gateway_evidence,run?.jev_evidence,run?.results?.map(item=>[item.symbol,item.revision,item.status])]);
 async function loadResearchRun(run,force=false){
  if(!run?.id)return;const key=researchRunKey(run),previous=researchRunDetails.get(key),version=researchRunVersion(run);
- if(previous?.pending||!force&&(previous?.error||previous?.version===version&&(!['running','queued','cancelling','cancel_requested'].includes(run.status)||Date.now()-previous.at<10000)))return;
+ if(previous?.pending||!force&&previous?.version===version&&(previous?.error||!['running','queued','cancelling','cancel_requested'].includes(run.status)||Date.now()-previous.at<10000))return;
  const entry={...previous,pending:true,error:'',version,at:Date.now()};researchRunDetails.set(key,entry);
  try{const full=await api('/api/runs/'+encodeURIComponent(run.id));if(key!==researchRunKey(run)||researchRunDetails.get(key)!==entry)return;if(full.id!==run.id)throw new Error('Run detail identity differs from the selected source.');entry.data=full;}
  catch(error){if(key===researchRunKey(run))entry.error=error.message;}
@@ -1403,7 +1500,7 @@ function layaDeviceField(c){return `<div class="field"><label for="config-laya_d
 
 let evaluationSources=null,evaluationItem=null,evaluationBusy=false,evaluationError='',evaluationTimer=null;
 const evaluationDraft={proposal_id:'',history_key:'',starting_cash:'',start_at:'',end_at:'',decision_at:'',decision_basis:'',fee_usd:'',fee_per:'',limit_fill_probability:'',slippage_probability:'',random_seed:'',latency_ns:'',reviewed:false};
-function simulationDetails(label,value){return '<details><summary>'+esc(label)+'</summary><pre>'+esc(JSON.stringify(value??null,null,2))+'</pre></details>';}
+function simulationDetails(label,value,id=''){return '<details'+(id?' id="'+esc(id)+'"':'')+'><summary>'+esc(label)+'</summary><pre>'+esc(JSON.stringify(value??null,null,2))+'</pre></details>';}
 const simulationLabel=value=>({hindsight_scenario:'Historical scenario',recorded_decision:'Recorded decision availability'}[value]||String(value||'Unavailable').toLowerCase().replaceAll('_',' ').replace(/^./,character=>character.toUpperCase()));
 function simulationPreviewMarkup(preview){
  const terms=preview.terms||{},assumptions=preview.assumptions||{};
@@ -1434,10 +1531,105 @@ function strategyHeadlineMarkup(result){
   return '<div><dt>'+label+'</dt><dd>'+formatStatNumber(value??'Unavailable')+'</dd><small>'+esc(unit)+' · '+esc(basis)+'</small></div>';
  }).join('')+'</dl>';
 }
+let portfolioBenchmark=null;
+async function loadPortfolioBenchmark(item,collect=false){
+ if(item?.result?.kind!=='portfolio_scenario'||!item.result.ledger)return;
+ if(!collect&&portfolioBenchmark?.id===item.id&&portfolioBenchmark.generation===state.store_generation)return;
+ const curve=item.result.ledger.equity_curve;
+ const comparison={id:item.id,generation:state.store_generation,start:curve[0].date,end:curve.at(-1).date,busy:true,error:'',history:null};
+ portfolioBenchmark=comparison;
+ if(activePage==='strategy')render();
+ try{
+  let historyState=await api('/api/market-history');
+  const matches=()=>Object.values(historyState.data.entries).filter(entry=>entry.symbol==='SPY'&&entry.timeframe==='1Day'&&entry.adjustment==='all'&&entry.start<=comparison.start&&entry.end>=comparison.end&&entry.complete&&entry.pagination_complete&&!entry.error).sort((a,b)=>b.captured_at.localeCompare(a.captured_at));
+  if(collect){
+   const previousJobs=new Set(Object.keys(historyState.data.jobs));
+   historyState=await api('/api/market-history',{action:'start',symbols:['SPY'],start:comparison.start,end:comparison.end,asof:comparison.end,adjustment:'all',timeframe:'1Day',purpose:'simulation_benchmark'});
+   const job=Object.values(historyState.data.jobs).find(job=>!previousJobs.has(job.id)&&job.request?.purpose==='simulation_benchmark'&&job.request.start===comparison.start&&job.request.end===comparison.end);
+   if(!job)throw new Error('SPY collection could not be identified. Reopen this result to check retained data.');
+   while(['queued','running'].includes(historyState.data.jobs[job.id]?.status)){
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    if(portfolioBenchmark!==comparison||state.store_generation!==comparison.generation)return;
+    historyState=await api('/api/market-history');
+   }
+   if(historyState.data.jobs[job.id]?.status!=='completed')throw new Error(historyState.data.jobs[job.id]?.symbols?.SPY?.error||'SPY collection did not complete. Load the benchmark again to retry.');
+  }
+  const entry=matches()[0];
+  if(!entry)throw new Error('SPY prices have not been collected for this period.');
+  const history=await api('/api/market-history?symbol=SPY&key='+encodeURIComponent(entry.key));
+  const closes=new Map();
+  for(const bar of history.bars)closes.set(bar.t,closes.has(bar.t)?NaN:Number(bar.raw?.c));
+  const first=closes.get(comparison.start),last=closes.get(comparison.end);
+  const validClose=price=>Number.isFinite(price)&&price>0;
+  if(history.symbol!=='SPY'||history.timeframe!=='1Day'||history.adjustment!=='all'||history.currency!=='USD'||history.feed!=='iex'||!history.complete||!history.pagination_complete||history.error||![first,last].every(validClose))throw new Error('Benchmark unavailable. Complete dividend-adjusted SPY closing prices are required on both dates.');
+  comparison.history={start:comparison.start,end:comparison.end,start_close:first,end_close:last,return_pct:(last/first-1)*100,source:history.source,captured_at:history.captured_at};
+  const capital=Number(item.result.starting_cash);
+  if(validClose(capital)&&curve.length>1&&curve.every((point,index)=>validClose(closes.get(point.date))&&number(point.equity_usd)!==null&&(!index||point.date>curve[index-1].date))){
+   comparison.curves=[
+    {label:'Model portfolio',points:curve.map(point=>({at:point.date,equity:(Number(point.equity_usd)/capital-1)*100}))},
+    {label:'SPY',benchmark:true,points:curve.map(point=>({at:point.date,equity:(closes.get(point.date)/first-1)*100}))},
+   ];
+  }
+ }catch(error){comparison.error=error.message;}
+ finally{
+  comparison.busy=false;
+  if(portfolioBenchmark===comparison&&state.store_generation===comparison.generation&&activePage==='strategy')render();
+ }
+}
+function portfolioBenchmarkMarkup(result){
+ const comparison=portfolioBenchmark?.id===evaluationItem?.id&&portfolioBenchmark.generation===state.store_generation?portfolioBenchmark:null;
+ const prefix='<section aria-label="S&P 500 comparison"><h4>S&P 500 comparison · SPY</h4>';
+ if(!comparison?.history)return prefix+'<p role="status">'+esc(comparison?.busy?'Loading SPY comparison…':comparison?.error||'Load SPY prices for the same period.')+'</p><button class="button" id="portfolio-benchmark-load" '+(comparison?.busy?'disabled':'')+'>Load S&P 500 benchmark</button></section>';
+ const benchmark=comparison.history,capital=Number(result.starting_cash),ending=Number(result.ledger.equity_curve.at(-1).equity_usd),portfolioReturn=(ending/capital-1)*100,gap=portfolioReturn-benchmark.return_pct;
+ const signed=value=>(value>0?'+':'')+value.toFixed(2);
+ const chart=comparison.curves?experimentCurves(comparison.curves,'Cumulative return',true):'<p>Chart unavailable. Both series need values on the same dates.</p>';
+ return prefix+'<p>'+esc(benchmark.start)+' through '+esc(benchmark.end)+' · SPY dividend-adjusted closing prices.</p><div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">Portfolio / benchmark</th><th scope="col">Return</th><th scope="col">Ending value</th></tr></thead><tbody><tr><th scope="row">Model portfolio'+(result.ledger.unpriced_rights?.length?' · priced assets':' ')+'</th><td>'+signed(portfolioReturn)+'%</td><td>'+esc(money(ending))+'</td></tr><tr><th scope="row">S&P 500 proxy · SPY</th><td>'+signed(benchmark.return_pct)+'%</td><td>'+esc(money(capital*(1+benchmark.return_pct/100)))+'</td></tr></tbody></table></div><p>Portfolio minus SPY <strong>'+signed(gap)+' percentage points</strong>. Both start with '+esc(money(capital))+'.</p>'+chart+simulationDetails('Benchmark price evidence',benchmark,'portfolio-benchmark-evidence')+'</section>';
+}
+function portfolioScenarioMarkup(result){
+ const ledger=result.ledger;if(!ledger)return '<p class="negative">'+esc(result.error||'Portfolio calculation did not complete.')+'</p>';
+ const last=ledger.equity_curve.at(-1),ending=Number(last.equity_usd),capital=Number(result.starting_cash),entries=ledger.events.filter(row=>row.kind==='entry');
+ const weights=Object.entries(result.target_weights||{}).map(([symbol,weight])=>symbol+' '+(Number(weight)*100).toFixed(2)+'%').concat(result.target_cash_weight!=null?['cash '+(Number(result.target_cash_weight)*100).toFixed(2)+'%']:[]).join(', ');
+ const change=Number.isFinite(capital)&&capital>0?money(ending-capital)+' ('+((ending/capital-1)*100).toFixed(2)+'%)':'Unavailable: starting capital was not retained';
+ const holdingsSource=result.holdings_as_of?'<p>'+esc(result.holdings_source_name||'SPY SEC filing')+' · '+esc(result.holdings_as_of)+' · '+(result.target_weights?.SGOV?'90% stocks and 10% SGOV':'100% stocks')+', with '+(result.fractional_shares?'fractional':'whole')+' shares.</p>'+
+   (result.holdings_as_of>result.start?'<p>This hindsight comparison uses weights published after the start date.</p>':''):'';
+ const rights=ledger.unpriced_rights||[];
+ const maximum=rights.reduce((sum,right)=>sum+Number(right.maximum_payment_usd),0);
+ const rightsNote=rights.length?'<p>Priced equity includes confirmed merger cash. Separate contingent rights could pay up to '+esc(money(maximum))+' and have no modeled market price.</p><details id="portfolio-contingent-rights"><summary>Contingent rights</summary>'+experimentTable(rights)+'</details>':'';
+ return '<h3>Model portfolio · historical scenario</h3>'+holdingsSource+rightsNote+'<p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+''+(rights.length?'. Priced equity ':' . Ending equity ')+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p>'+portfolioBenchmarkMarkup(result)+'<h4>Historical '+(result.fractional_shares?'fractional-share':'whole-share')+' entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details id="portfolio-dated-actions"><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details id="portfolio-unpaid-dividends"><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details id="portfolio-daily-equity"><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result,'portfolio-native-accounting');
+}
 function simulationResultMarkup(result){
+ if(result.kind==='portfolio_scenario')return portfolioScenarioMarkup(result);
  const reports=result.reports||{},rows=name=>Array.isArray(reports[name]?.data)?reports[name].data.length:'Unavailable';
  return '<h3>Modeled simulation result · '+esc(simulationLabel(result.status))+'</h3><p>Native engine '+esc(result.engine_version||'Unavailable')+' · reported orders '+rows('orders')+' · fills '+rows('fills')+' · positions '+rows('positions')+'</p>'+(result.error?'<p class="negative">'+esc(result.error)+'</p>':'')+strategyHeadlineMarkup(result)+nativeAnalyzerMarkup(result.native_result)+(Array.isArray(result.equity_curve)?experimentCurves([{label:'Modeled equity',points:result.equity_curve},...(Array.isArray(result.benchmark_curve)?[{label:'Retained benchmark',points:result.benchmark_curve,benchmark:true}]:[])], 'Retained modeled equity / USD'):'<p>Dollar equity curve unavailable in this saved-plan result. '+esc(result.benchmark?.reason||'No matching benchmark supplied.')+'</p>')+(result.portfolio_returns?'<details><summary>Retained native return observations · source basis</summary>'+orderFacts(result.return_series_basis||'Basis not supplied')+experimentTable(Object.entries(result.portfolio_returns).map(([at,value])=>({at,return:value})))+'</details>':'')+'<p>Native simulation reports are separate from broker account performance. Report counts do not establish profit or loss.</p>'+['orders','fills','positions','account'].map(name=>simulationReportMarkup(name[0].toUpperCase()+name.slice(1),reports[name])).join('')+simulationDetails('Model limitations and assumptions',{limitations:result.limitations,assumptions:result.assumptions,return_series_basis:result.return_series_basis})+simulationDetails('Complete native result, events, and source references',result);
 }
+let portfolioScenarioModel=null,portfolioScenarioFile=null,portfolioScenarioStatus='',portfolioScenarioBusy=false;
+const portfolioScenarioDraft={start:'',end:'',fee_usd:'0'};
+async function runPortfolioScenario(model=null,terms=null){
+ if(portfolioScenarioBusy)return;
+ const file=document.getElementById('portfolio-scenario-model')?.files[0]||portfolioScenarioFile;
+ const start=terms?.start??document.getElementById('portfolio-scenario-start').value,end=terms?.end??document.getElementById('portfolio-scenario-end').value,fee_usd=terms?.fee_usd??document.getElementById('portfolio-scenario-fee').value;
+ portfolioScenarioBusy=true;
+ try {
+  if(!model&&!file)throw new Error('Select the original archived model JSON.');
+  if(model)portfolioScenarioModel=model;
+  else{portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());}
+  portfolioScenarioStatus='Preparing the simulation from saved daily prices…';render();
+  const request={action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd};
+  const options={timeoutMs:900000};
+  let result=await api('/api/evaluations',request,options);
+  while(result.status==='collecting'){
+   portfolioScenarioStatus=result.message;render();
+   request.collection=result.collection;
+   await new Promise(resolve=>setTimeout(resolve,2000));
+   result=await api('/api/evaluations',request,options);
+  }
+  portfolioScenarioStatus='Simulation '+result.id+' · '+simulationLabel(result.status);
+  evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
+ }catch(error){portfolioScenarioStatus=error.message;}
+ finally{portfolioScenarioBusy=false;render();}
+}
+document.addEventListener('change',event=>{if(event.target.id==='portfolio-scenario-model'){portfolioScenarioFile=event.target.files[0]||null;portfolioScenarioStatus='';}});
+document.addEventListener('input',event=>{const key={'portfolio-scenario-start':'start','portfolio-scenario-end':'end','portfolio-scenario-fee':'fee_usd'}[event.target.id];if(key)portfolioScenarioDraft[key]=event.target.value;});
 function evaluationMarkup(){
  const sources=evaluationSources,selected=evaluationItem,preview=selected?.preview,sims=(sources?.items||[]).filter(item=>!['experiment','experiment_comparison'].includes(item.kind));
  const input=(key,label)=>'<label>'+label+'<input data-evaluation-field="'+key+'" value="'+esc(evaluationDraft[key])+'"></label>';
@@ -1445,13 +1637,25 @@ function evaluationMarkup(){
  const step1=sources?select('proposal_id','Immutable saved plan revision',sources.proposals.map(p=>[p.id,p.terms.symbol+' · '+p.terms.side+' '+p.terms.quantity+' '+p.terms.order_type+' '+p.terms.time_in_force+' · revision '+p.revision]))+select('history_key','Saved raw daily history receipt',sources.histories.filter(h=>!evaluationDraft.proposal_id||sources.proposals.find(p=>p.id===evaluationDraft.proposal_id)?.terms.symbol===h.symbol).map(h=>[h.key,h.symbol+' · '+h.start+' to '+h.end+' · '+h.adjustment+' · captured '+h.captured_at]))+input('start_at','Window start / ISO timestamp with timezone')+input('end_at','Window end / ISO timestamp with timezone')+input('decision_at','Plan available at / ISO timestamp with timezone')+select('decision_basis','Plan availability basis',[['recorded_decision','On or after this revision was recorded'],['hindsight_scenario','Historical scenario; availability not established']])+'<p>Complete raw daily bars, sourced session calendar and instrument receipt are required. Split-adjusted data cannot be relabeled raw.</p>':'<p>Load saved plans and data to select an exact revision and raw daily history receipt.</p>';
  const step2=sources?input('starting_cash','Starting cash / USD')+input('fee_usd','Assumed fee / USD (enter zero explicitly)')+select('fee_per','Fee charged per',[['order','Order'],['fill','Fill']])+input('limit_fill_probability','Limit fill probability / 0 to 1')+input('slippage_probability','Slippage probability / 0 to 1')+input('random_seed','Integer random seed')+input('latency_ns','Assumed latency / integer nanoseconds (DAY requires 0)'):'<p>Capital, fees and fill assumptions become available after loading sources.</p>';
  const step3=(sources?'<label><input type="checkbox" data-evaluation-field="reviewed" '+(evaluationDraft.reviewed?'checked':'')+'> I reviewed USD assumptions and empty starting holdings. Submit after the first completed daily bar; use OHLC ordering, FULL bracket activation and open ending positions. Actual fees are unknown. DAY expiry follows the next sourced close; same-bar stop/target order is ambiguous. Broker fills and historical research availability are not established.</label><button class="button" id="evaluation-preview" '+(evaluationBusy?'disabled':'')+'>Save Immutable Preview</button>':'<p>Load sources and review explicit assumptions before saving a preview.</p>')+strategyRunButton(true)+'<p>Changing any setup field invalidates the selected preview. Run uses its saved ID and specification hash.</p>';
- return strategyPanels('<section id="strategy-simulations"><div data-strategy-panel="setup"><h2>Setup</h2><button class="button" id="evaluation-load" '+(evaluationBusy?'disabled':'')+'>Load Saved Plans &amp; Data</button><p role="status">'+esc(evaluationError||(evaluationBusy?'Working…':selected?.status?simulationLabel(selected.status):''))+'</p><details id="simulation-step-1" class="strategy-step" open><summary>1. Plan &amp; history receipt</summary>'+step1+'</details><details id="simulation-step-2" class="strategy-step"><summary>2. Capital, fees &amp; fill assumptions</summary>'+step2+'</details><details id="simulation-step-3" class="strategy-step" open><summary>3. Immutable preview &amp; Run</summary>'+step3+'</details><details id="simulation-profile"><summary>Supported simulation profile</summary><p>Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</p></details></div><div data-strategy-panel="results">'+(selected?.result?simulationResultMarkup(selected.result):'')+(preview?'<details id="simulation-saved-preview" '+(!selected?.result?'open':'')+'><summary>Saved immutable preview</summary>'+simulationPreviewMarkup(preview)+'</details>':!selected?.result?'<div class="empty-state"><h3>No simulation selected</h3><p>Save an immutable preview in Setup or open a retained simulation from Runs &amp; Compare.</p></div>':'')+'</div><div data-strategy-panel="runs">'+(sources?'<h3>Saved simulations</h3>'+sims.map(item=>'<button class="button" data-evaluation-open="'+esc(item.id)+'">'+esc(item.proposal.id+' revision '+item.proposal.revision+' · '+simulationLabel(item.status))+'</button>').join('')+(sims.length?'':'<p>No saved simulations.</p>'):'<p>Load saved plans and data in Setup to browse retained simulations.</p>')+'</div></section>');
+ return strategyPanels('<section id="strategy-simulations"><div data-strategy-panel="setup"><h2>Setup</h2><details id="portfolio-scenario-form" class="strategy-step"><summary>Model portfolio · historical scenario</summary><p>Apply the archived model weights to historical data. This is not historical research performance or a broker result.</p><label>Original model archive <input id="portfolio-scenario-model" type="file" accept="application/json"></label><label>Start date <input id="portfolio-scenario-start" type="date" value="'+esc(portfolioScenarioDraft.start)+'"></label><label>End date <input id="portfolio-scenario-end" type="date" value="'+esc(portfolioScenarioDraft.end)+'"></label><label>Fee per order / USD <input id="portfolio-scenario-fee" type="number" min="0" step="0.01" value="'+esc(portfolioScenarioDraft.fee_usd)+'"></label><button class="button" type="button" id="portfolio-scenario-run" '+(portfolioScenarioBusy?'disabled':'')+'>Run historical scenario</button><p>'+esc(portfolioScenarioFile?'Selected archive: '+portfolioScenarioFile.name:'No archive selected.')+'</p><pre id="portfolio-scenario-status" role="status">'+esc(portfolioScenarioStatus)+'</pre></details><button class="button" id="evaluation-load" '+(evaluationBusy?'disabled':'')+'>Load Saved Plans &amp; Data</button><p role="status">'+esc(evaluationError||(evaluationBusy?'Working…':selected?.status?simulationLabel(selected.status):''))+'</p><details id="simulation-step-1" class="strategy-step" open><summary>1. Plan &amp; history receipt</summary>'+step1+'</details><details id="simulation-step-2" class="strategy-step"><summary>2. Capital, fees &amp; fill assumptions</summary>'+step2+'</details><details id="simulation-step-3" class="strategy-step" open><summary>3. Immutable preview &amp; Run</summary>'+step3+'</details><details id="simulation-profile"><summary>Supported simulation profile</summary><p>Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</p></details></div><div data-strategy-panel="results">'+(selected?.result?simulationResultMarkup(selected.result):'')+(preview?'<details id="simulation-saved-preview" '+(!selected?.result?'open':'')+'><summary>Saved immutable preview</summary>'+(selected.kind==='portfolio_scenario'?simulationDetails('Historical inputs and accounting assumptions',preview,'portfolio-historical-inputs'):simulationPreviewMarkup(preview))+'</details>':!selected?.result?'<div class="empty-state"><h3>No simulation selected</h3><p>Save an immutable preview in Setup or open a retained simulation from Runs &amp; Compare.</p></div>':'')+'</div><div data-strategy-panel="runs">'+(sources?'<h3>Saved simulations</h3><p role="status">'+esc(evaluationError)+'</p>'+(sims.length?'<button class="button" id="evaluation-delete" '+(evaluationBusy?'disabled':'')+'>Delete all saved simulations</button>':'')+sims.map(item=>'<button class="button" data-evaluation-open="'+esc(item.id)+'">'+esc((item.kind==='portfolio_scenario'?'Fixed portfolio · '+item.start+' to '+item.end:item.proposal.id+' revision '+item.proposal.revision)+' · '+simulationLabel(item.status))+'</button>').join('')+(sims.length?'':'<p>No saved simulations.</p>'):'<p>Load saved plans and data in Setup to browse retained simulations.</p>')+'</div></section>');
 }
 async function evaluationAction(action,id){
- if(evaluationBusy)return;evaluationBusy=true;evaluationError='';render();
+ if(evaluationBusy)return;
+ if(action==='delete'){
+  const count=(evaluationSources?.items||[]).filter(item=>['simulation','portfolio_scenario'].includes(item.kind)).length;
+  if(!count||!window.confirm('Permanently delete all '+count+' saved simulations and their unshared result files?'))return;
+ }
+ evaluationBusy=true;evaluationError='';render();
  try{
   if(action==='load')evaluationSources=await api('/api/evaluations');
   else if(action==='open')evaluationItem=await api('/api/evaluations?id='+encodeURIComponent(id));
+  else if(action==='delete'){
+   const ids=evaluationSources.items.filter(item=>['simulation','portfolio_scenario'].includes(item.kind)).map(item=>item.id);
+   const result=await api('/api/evaluations',{action:'delete_simulations',ids,expected_revision:evaluationSources.revision});
+   if(ids.includes(evaluationItem?.id))evaluationItem=null;
+   portfolioBenchmark=null;clearTimeout(evaluationTimer);
+   evaluationError='Deleted '+result.deleted+' saved simulations.'+(result.warnings?.length?' '+result.warnings.join(' '):'');
+  }
   else if(action==='preview'){
    if(!evaluationDraft.reviewed)throw new Error('Review the scenario assumptions before saving a preview.');
    if(evaluationDraft.random_seed.trim()===''||evaluationDraft.latency_ns.trim()==='')throw new Error('Enter an explicit seed and latency.');
@@ -1465,6 +1669,7 @@ async function evaluationAction(action,id){
   if(evaluationSources&&action!=='load')evaluationSources=await api('/api/evaluations');
  }catch(error){evaluationError=error.message;}
  finally{evaluationBusy=false;if(activePage==='strategy')render();}
+ if(!evaluationError&&evaluationItem?.status==='completed')loadPortfolioBenchmark(evaluationItem);
  clearTimeout(evaluationTimer);
  if(!evaluationError&&['queued','running'].includes(evaluationItem?.status)){const identity=evaluationItem.id;evaluationTimer=setTimeout(()=>evaluationAction('open',identity),5000);}
 }
@@ -1475,6 +1680,9 @@ document.addEventListener('input',event=>{
 });
 document.addEventListener('change',event=>{if(event.target.dataset.evaluationField==='proposal_id'){evaluationDraft.history_key='';render();}});
 document.addEventListener('click',event=>{
+ if(event.target.closest('#portfolio-scenario-run')){runPortfolioScenario();return;}
+ if(event.target.closest('#portfolio-benchmark-load')){loadPortfolioBenchmark(evaluationItem,true);return;}
+ if(event.target.closest('#evaluation-delete')){evaluationAction('delete');return;}
  const button=event.target.closest('[data-evaluation-open],#evaluation-load,[data-evaluation-load],#evaluation-preview,#evaluation-run');if(!button)return;
  if(button.dataset.evaluationOpen){strategyView='results';evaluationAction('open',button.dataset.evaluationOpen);}else evaluationAction((button.id||'evaluation-load').replace('evaluation-',''));
 });
@@ -1515,11 +1723,18 @@ function experimentTable(rows){
  const fields=[...new Set(rows.flatMap(row=>Object.keys(row)))];return '<div class="table-scroll"><table class="data-table experiment-table"><thead><tr>'+fields.map(key=>'<th scope="col">'+esc(key.replaceAll('_',' '))+'</th>').join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+fields.map(key=>{const cell=row[key];if(cell&&typeof cell==='object'&&cell.html)return '<td>'+cell.html+'</td>';return '<td'+((typeof cell==='number'||typeof cell==='string')&&number(cell)!==null?' class="numeric"':'')+'>'+(cell!==null&&typeof cell==='object'?experimentDetail('Details',cell):formatStatNumber(cell))+'</td>';}).join('')+'</tr>').join('')+'</tbody></table></div>';
 }
 
-function experimentCurves(series,caption='Out-of-sample modeled equity / USD'){
+function experimentCurves(series,caption='Out-of-sample modeled equity / USD',showReturns=false){
  const curves=series.filter(series=>Array.isArray(series?.points)).map(series=>{let prior=null;const observations=[];const points=series.points.map(point=>{const at=Date.parse(point?.at),value=point?.equity;if(!point||typeof point.at!=='string'||!(typeof value==='number'||typeof value==='string'&&value.trim()!=='')||!Number.isFinite(at)||!Number.isFinite(Number(value))||prior!==null&&at<=prior){prior=null;return null;}prior=at;observations.push(point);return point;});return {...series,points,observations};}).filter(series=>series.observations.length),points=curves.flatMap(series=>series.observations);
  if(!points.length)return '<p>No retained dated OOS equity curve is available. No curve is fabricated.</p>';
  const times=points.map(p=>Date.parse(p.at)),values=points.map(p=>Number(p.equity)),xmin=times.reduce((a,b)=>Math.min(a,b),Infinity),xmax=times.reduce((a,b)=>Math.max(a,b),-Infinity),ymin=values.reduce((a,b)=>Math.min(a,b),Infinity),ymax=values.reduce((a,b)=>Math.max(a,b),-Infinity),x=t=>45+(t-xmin)/(xmax-xmin||1)*710,y=v=>235-(v-ymin)/(ymax-ymin||1)*210,colors=['#86d6ab','#e6c17d','#a5b3c0','#dc8995','#90b9e0'];
- return '<figure><figcaption>'+esc(caption)+' · common actual UTC time axis. Separate fold/scenario paths, no compounding or rebasing. Invalid or non-increasing points break the line and are excluded from the observations table; no values are filled. Exact eligible values remain below.</figcaption><div class="experiment-curve-scroll"><svg class="experiment-equity-curve" viewBox="0 0 800 275" role="img" aria-label="Aligned retained out-of-sample modeled equity curves"><line x1="45" x2="755" y1="235" y2="235" stroke="currentColor"/>'+curves.map((s,index)=>{let path='',prior=null;for(const point of s.points){if(!point){prior=null;continue;}const t=Date.parse(point.at),v=point.equity;path+=(prior===null?'M':'L')+x(t).toFixed(2)+','+y(Number(v)).toFixed(2)+' ';prior=t;}return '<path d="'+path+'" fill="none" stroke="'+colors[index%colors.length]+'" '+(s.benchmark?'stroke-dasharray="7 4"':index%3===1?'stroke-dasharray="2 3"':index%3===2?'stroke-dasharray="9 3 2 3"':'')+'><title>'+esc(s.label)+'</title></path>';}).join('')+'<text x="45" y="260" fill="currentColor" font-size="10">'+esc(new Date(xmin).toISOString())+'</text><text x="755" y="260" text-anchor="end" fill="currentColor" font-size="10">'+esc(new Date(xmax).toISOString())+'</text><text x="0" y="25" fill="currentColor" font-size="10">'+esc(ymax)+'</text><text x="0" y="235" fill="currentColor" font-size="10">'+esc(ymin)+'</text></svg></div><ul>'+curves.map((s,index)=>'<li><span style="color:'+colors[index%colors.length]+'">'+esc(s.label)+'</span> · '+(s.benchmark?'dashed benchmark':index%3===1?'dotted':index%3===2?'dash-dot':'solid')+' · '+s.observations.length+' retained eligible observations</li>').join('')+'</ul>'+'<details id="strategy-equity-observations"><summary>Exact dated modeled equity and benchmark observations</summary>'+experimentTable(curves.flatMap(curve=>curve.observations.map(point=>({Series:curve.label,Kind:curve.benchmark?'Benchmark':'Model',UTC:point.at,'Equity / USD':point.equity}))))+'</details>'+'</figure>';
+ const paths=curves.map((s,index)=>{let path='',prior=null;for(const point of s.points){if(!point){prior=null;continue;}const t=Date.parse(point.at),v=point.equity;path+=(prior===null?'M':'L')+x(t).toFixed(2)+','+y(Number(v)).toFixed(2)+' ';prior=t;}return '<path d="'+path+'" fill="none" stroke="'+colors[index%colors.length]+'" '+(s.benchmark?'stroke-dasharray="7 4"':index%3===1?'stroke-dasharray="2 3"':index%3===2?'stroke-dasharray="9 3 2 3"':'')+'><title>'+esc(s.label)+'</title></path>';}).join('');
+ const formatDate=time=>showReturns?new Date(time).toISOString().slice(0,10):new Date(time).toISOString();
+ const formatValue=value=>showReturns?value.toFixed(1)+'%':value;
+ const axis='<text x="45" y="260" fill="currentColor" font-size="10">'+esc(formatDate(xmin))+'</text><text x="755" y="260" text-anchor="end" fill="currentColor" font-size="10">'+esc(formatDate(xmax))+'</text><text x="0" y="25" fill="currentColor" font-size="10">'+esc(formatValue(ymax))+'</text><text x="0" y="235" fill="currentColor" font-size="10">'+esc(formatValue(ymin))+'</text>';
+ const zeroLine=showReturns&&ymin<0&&ymax>0?'<line x1="45" x2="755" y1="'+y(0)+'" y2="'+y(0)+'" stroke="currentColor" opacity="0.35"/><text x="0" y="'+(y(0)+4)+'" fill="currentColor">0%</text>':'';
+ const svg='<div class="experiment-curve-scroll"><svg class="experiment-equity-curve" viewBox="0 0 800 275" role="img" aria-label="'+(showReturns?'Cumulative return for the model portfolio and SPY':'Aligned retained out-of-sample modeled equity curves')+'"><line x1="45" x2="755" y1="235" y2="235" stroke="currentColor"/>'+zeroLine+paths+axis+'</svg></div>';
+ if(showReturns)return '<figure><figcaption>'+esc(caption)+'</figcaption>'+svg+'<p class="chart-legend"><span style="color:'+colors[0]+'">Model portfolio (solid)</span> · <span style="color:'+colors[1]+'">SPY (dashed)</span></p></figure>';
+ return '<figure><figcaption>'+esc(caption)+' · common actual UTC time axis. Separate fold/scenario paths, no compounding or rebasing. Invalid or non-increasing points break the line and are excluded from the observations table; no values are filled. Exact eligible values remain below.</figcaption>'+svg+'<ul>'+curves.map((s,index)=>'<li><span style="color:'+colors[index%colors.length]+'">'+esc(s.label)+'</span> · '+(s.benchmark?'dashed benchmark':index%3===1?'dotted':index%3===2?'dash-dot':'solid')+' · '+s.observations.length+' retained eligible observations</li>').join('')+'</ul>'+'<details id="strategy-equity-observations"><summary>Exact dated modeled equity and benchmark observations</summary>'+experimentTable(curves.flatMap(curve=>curve.observations.map(point=>({Series:curve.label,Kind:curve.benchmark?'Benchmark':'Model',UTC:point.at,'Equity / USD':point.equity}))))+'</details>'+'</figure>';
 }
 function experimentResultCurves(result,label=''){
  const curves=[];for(const fold of result?.folds||[])for(const scenario of fold.oos?.scenarios||[]){const r=scenario.result;if(!r)continue;const name=[label,String(fold.id||'Unknown period').replace(/^fold-/,'Period '),String(scenario.scenario_id??'Scenario unavailable').replace(/^scenario-/i,'Scenario ')].filter(Boolean).join(' · ');curves.push({label:name,points:r.equity_curve});if(Array.isArray(r.benchmark_curve))curves.push({label:name+' · retained benchmark',points:r.benchmark_curve,benchmark:true});}return curves;
@@ -1751,7 +1966,8 @@ function renderStrategy(){
  const selected=simulations?evaluationItem:experimentItem;
  const content=strategyView==='setup'?'<section class="strategy-setup-rail"><p class="strategy-isolation">Isolated model over retained bars.<br>Results never establish broker fills or account performance.</p>'+setup+'</section>':strategyView==='runs'?runs:results;
  const runAction=strategyView==='results'&&selected?.status==='preview'?'<div class="strategy-run-action">'+strategyRunButton(simulations)+'</div>':'';
- return '<div class="strategy-workspace">'+pageHeader('Strategy Lab','','',workspaceTabs('strategy',strategyTab,[['simulations','Saved-Plan Simulations'],['experiments','Walk-Forward Experiments']]))+'<fieldset id="strategy-engine-panel" class="strategy-grid" '+((simulations?evaluationBusy:experimentBusy)?'disabled':'')+'><section class="strategy-canvas">'+workspaceTabs('strategy-view',strategyView,[['setup','Setup'],['results','Preview & Results'],['runs','Runs & Compare']])+'<p class="strategy-status" role="status">'+esc((simulations?evaluationError:experimentError)||(simulations?evaluationBusy:experimentBusy)?(simulations?evaluationError:experimentError)||'Working…':selected?.status?simulationLabel(selected.status):'No evaluation selected')+'</p>'+runAction+'<div id="strategy-view-panel" class="strategy-result-reading">'+content+'</div></section></fieldset></div>';
+ const status=simulations&&strategyView==='setup'&&portfolioScenarioStatus?portfolioScenarioStatus:(simulations?evaluationError:experimentError)||(simulations?evaluationBusy:experimentBusy)?(simulations?evaluationError:experimentError)||'Working…':selected?.status?simulationLabel(selected.status):'No evaluation selected';
+ return '<div class="strategy-workspace">'+pageHeader('Strategy Lab','','',workspaceTabs('strategy',strategyTab,[['simulations','Saved-Plan Simulations'],['experiments','Walk-Forward Experiments']]))+'<fieldset id="strategy-engine-panel" class="strategy-grid" '+((simulations?evaluationBusy:experimentBusy)?'disabled':'')+'><section class="strategy-canvas">'+workspaceTabs('strategy-view',strategyView,[['setup','Setup'],['results','Preview & Results'],['runs','Runs & Compare']])+'<p class="strategy-status" role="status">'+esc(status)+'</p>'+runAction+'<div id="strategy-view-panel" class="strategy-result-reading">'+content+'</div></section></fieldset></div>';
 }
 function journalSettings(){return reportingSettingsDraft||{benchmark:journalRecord.data.benchmark?.symbol||'',currency:journalRecord.data.benchmark?.currency||'',treatment:journalRecord.data.benchmark?.treatment||'',horizon:journalRecord.data.horizon_days??'',reason:''};}
 function accountHistoryWorkspace(){
@@ -2980,6 +3196,45 @@ function policyPanel(){
  return '<details id="investor-policy" class="panel" '+(policyOpen?'open':'')+'><summary>Your risk checks · revision '+investorRecord.data.policy.revision+'</summary>'+investorStatus()+'<p>You can decide later and keep browsing. Only configured checks apply. Unset optional checks do not block orders; they are not treated as disabled or assigned defaults. Saving these choices does not approve or submit orders; exact-revision review and the account order block still apply.</p><div class="policy-rules">'+Object.entries(labels).map(([key,label])=>{const rule=rules[key]||{state:'unset',value:'',reason:''},copy=policyRuleCopy[key]||[label,label,''];return '<fieldset><legend>'+esc(copy[0])+'</legend><p>'+esc(copy[2])+'</p><label>Use this rule<select id="policy-state-'+key+'" data-policy-key="'+key+'" data-policy-field="state">'+['unset','enabled','disabled'].map(v=>'<option value="'+v+'" '+(rule.state===v?'selected':'')+'>'+esc(policyChoiceCopy[v])+'</option>').join('')+'</select></label><label>'+esc(copy[1])+'<input inputmode="decimal" id="policy-value-'+key+'" data-policy-key="'+key+'" data-policy-field="value" value="'+esc(rule.value||'')+'"></label><label>Optional note about this choice<input id="policy-rule-reason-'+key+'" data-policy-key="'+key+'" data-policy-field="reason" value="'+esc(rule.reason||'')+'"></label>'+policyParameterMarkup(key,rule)+'</fieldset>';}).join('')+'</div><label for="policy-reason">Optional note about these changes<textarea id="policy-reason" rows="2">'+esc(policyReason)+'</textarea></label><button id="save-policy">Save risk-check choices</button><p>Saving a policy revision invalidates dependent approval records. Missing source data can block an applied rule; a price-fall estimate is not a guaranteed loss cap.</p><details><summary>Policy history</summary><pre>'+esc(JSON.stringify(investorRecord.data.policy_history,null,2))+'</pre></details></details><details class="panel" id="investor-proposals" '+(proposalListOpen?'open':'')+'><summary>Saved human proposals · '+investorRecord.data.proposals.length+'</summary>'+investorRecord.data.proposals.map(p=>'<article><h3>'+esc(p.terms.side+' '+p.terms.quantity+' '+p.terms.symbol)+' · '+esc(p.status)+' · revision '+p.revision+'</h3><p>'+fullTime(p.updated_at)+(p.restored_requires_review?' · Restored records; impact review required':p.conditions_stale?' · Policy changed; impact review invalidated':'')+'</p><button data-open-proposal="'+esc(p.id)+'">Open exact terms / revise / review</button><details><summary>Revision history and source references</summary><pre>'+esc(JSON.stringify(p.history,null,2))+'</pre></details></article>').join('')+'</details>';
 }
 let basketOpen=false,basketForm={targets:[],reason:'',fee_per_leg:'',slippage_bps:'',assumed_filled:[]},basketPreview=null;
+let spyDedicatedAccount=null,spyRebalanceBusy=false,spyHoldingsMessage='';
+function spyRebalanceMarkup(){
+ const state=investorRecord.spy_rebalance;
+ if(!state)return '';
+ const {enabled,eligible_account_id:account,account_id:bound,run}=state;
+ const eligible=account&&(!bound||bound===account)&&investorRecord.broker_transport_enabled;
+ const status=enabled?(account===bound?'Enabled':'Waiting for the dedicated paper account'):'Off';
+ return '<section aria-label="Daily SPY paper rebalance"><h3>Daily SPY paper rebalance</h3>'+
+  '<p>Uses State Street’s holdings from the previous trading session. The desk must be open during regular market hours.</p>'+
+  '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
+  (enabled?'<button data-spy-rebalance="pause" '+(spyRebalanceBusy?'disabled':'')+'>Pause daily paper trades</button>':
+   eligible?'<label><input type="checkbox" id="spy-dedicated-account" '+(spyDedicatedAccount===account?'checked':'')+'> Paper account ending '+esc(account.slice(-8))+' is dedicated to SPY and may trade automatically</label> '+
+   '<button data-spy-rebalance="enable" '+(spyDedicatedAccount!==account||spyRebalanceBusy?'disabled':'')+'>Enable daily paper trades</button>':
+   '<p>Connect the dedicated Alpaca paper account to enable trading.</p>')+
+  ' <button data-spy-rebalance="check" '+(spyRebalanceBusy?'disabled':'')+'>Check latest SPY holdings</button>'+
+  ' <button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
+  '<p role="status">'+esc(spyRebalanceBusy?'Working…':spyHoldingsMessage)+'</p></section>';
+}
+async function spyRebalanceAction(action){
+ if(spyRebalanceBusy)return;
+ const generation=state.store_generation,config=investorRecord.spy_rebalance;
+ spyRebalanceBusy=true;spyHoldingsMessage='';render();
+ try{
+  const result=await api('/api/investor',{action:'spy_rebalance_'+action,rebalance_revision:config.revision,
+   account_id:config.eligible_account_id,dedicated:spyDedicatedAccount===config.eligible_account_id});
+  if(state.store_generation!==generation)return;
+  if(action==='check')spyHoldingsMessage='State Street holdings dated '+result.as_of+' · '+result.positions+' stocks';
+  else if(action==='preview'){
+   const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
+   spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
+    ' · Last price check '+fullTime(result.quote_at)+'.'+
+    (result.first_sell?' First sell: '+showOrder(result.first_sell)+'.':'')+
+    (result.first_buy?' First buy at current cash: '+showOrder(result.first_buy)+'.':
+     result.has_buy?' Current cash cannot fund the first buy before sales.':'');
+  }
+  else{investorRecord=result;state.investor=result;spyDedicatedAccount=null;}
+ }catch(error){if(state.store_generation===generation)spyHoldingsMessage=error.message;}
+ finally{spyRebalanceBusy=false;render();}
+}
 function loadBasket(basket){
  if(!basket)return;const p=basket.preview;
  basketForm={id:basket.id,targets:p.targets.map(t=>({symbol:t.symbol,mode:t.mode,value:t.value,order_type:t.order_type,limit_price:t.limit_price||''})),reason:p.reason,fee_per_leg:p.fee_per_leg??'',slippage_bps:p.slippage_bps??'',assumed_filled:p.partial_scenario.assumed_filled};
@@ -2996,7 +3251,7 @@ function basketScenario(value={},label,preview={}){
 }
 function basketEvidence(){
  const p=basketPreview;if(!p)return '<p>No allocation preview yet. Enter your own targets and preview.</p>';
- return '<h3>Hypothetical allocation · account '+esc(p.account_id||'Unavailable')+'</h3><p>Observed '+fullTime(p.account_at)+' · policy revision '+p.policy_revision+' · source SHA-256 '+esc(p.observation_sha256)+'</p><p>Weight targets use the entered percentage of observed equity, then floor the desired position to whole shares. Residuals remain explicit. Current and pending source observations are separate from proposed holdings.</p><div class="basket-scroll"><table><thead><tr><th>Symbol / source</th><th>Current qty</th><th>Before weight % · observed</th><th>Pending net qty</th><th>Qty if working orders fill</th><th>Target qty</th><th>Whole-share residual USD / weight %</th></tr></thead><tbody>'+p.targets.map(t=>'<tr><td>'+esc(t.symbol)+'<br>'+esc(t.valuation_price??'Price unavailable')+' · '+esc(t.valuation_basis)+'<br>Event ns '+esc(t.market_event_ns||'Unavailable')+'</td><td>'+esc(t.current_quantity??'Unavailable')+'</td><td>'+basketBeforeWeight(p,t.symbol)+'</td><td>'+esc(t.pending_net_quantity??'Unavailable')+'</td><td>'+esc(t.quantity_if_working_orders_fill??'Unavailable')+'</td><td>'+esc(t.desired_quantity??'Unavailable')+'</td><td>'+esc(t.residual_cash??'Not a weight target / unavailable')+' / '+esc(t.residual_weight_pct??'Unavailable')+'</td></tr>').join('')+'</tbody></table></div><h3>Individual proposed legs</h3>'+p.legs.map(leg=>'<details id="basket-leg-'+esc(leg.proposal_id||leg.symbol)+'"><summary>'+esc(leg.terms.side+' '+leg.terms.quantity+' '+leg.symbol+' · '+orderTypeLabel(leg.terms.order_type))+' · '+esc(leg.proposal_id||'Not saved')+'</summary>'+(leg.proposal_id?'<button data-open-proposal="'+esc(leg.proposal_id)+'">Review exact saved order</button>':'')+impactMarkup(leg)+'</details>').join('')+'<h3>Assume individual fills for a partial-completion preview</h3><p>A basket is not atomic. These selections do not execute anything or modify observed holdings.</p>'+p.legs.map(leg=>'<label><input type="checkbox" data-basket-fill="'+esc(leg.symbol)+'" '+(basketForm.assumed_filled.includes(leg.symbol)?'checked':'')+'> Assume '+esc(leg.symbol)+' filled</label>').join('')+'<button id="partial-basket">Recalculate assumed fills</button>'+basketScenario(p.complete_scenario,'All proposed legs assumed filled',p)+basketScenario(p.partial_scenario,'Selected individual legs assumed filled',p)+'<h3>Aggregate policy and adverse scenarios</h3><p>Complete and partial assumptions include current holdings and pending commitments. Configured rules still need their relevant source inputs. Unknown fees are excluded from estimates, not assumed zero.</p><details id="basket-policy-scenarios"><summary>Current / pending / proposed exposure, sector, correlation, liquidity and loss checks</summary>'+orderFacts(p.policy_scenarios||{unavailable:'This legacy preview predates source-bound aggregate policy calculations'})+'</details><h3>Conditions and conflicts</h3><ul>'+p.conditions.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul><details id="basket-working-orders"><summary>Working orders and conflicting proposals</summary><pre>'+esc(JSON.stringify({working_orders:p.working_orders,other_proposal_ids:p.conflicting_proposal_ids},null,2))+'</pre></details><p>Hypothetical sale proceeds are not approval to fund buys. No order is submitted.</p>';
+ return '<h3>Hypothetical allocation · account '+esc(p.account_id||'Unavailable')+'</h3><p>Observed '+fullTime(p.account_at)+' · policy revision '+p.policy_revision+' · source SHA-256 '+esc(p.observation_sha256)+'</p><p>Weight targets use a percentage of observed equity. The table shows the target shares and any cash left after rounding.</p><div class="basket-scroll"><table><thead><tr><th>Symbol / source</th><th>Current qty</th><th>Before weight % · observed</th><th>Pending net qty</th><th>Qty if working orders fill</th><th>Target qty</th><th>Residual USD / weight %</th></tr></thead><tbody>'+p.targets.map(t=>'<tr><td>'+esc(t.symbol)+'<br>'+esc(t.valuation_price??'Price unavailable')+' · '+esc(t.valuation_basis)+'<br>Event ns '+esc(t.market_event_ns||'Unavailable')+'</td><td>'+esc(t.current_quantity??'Unavailable')+'</td><td>'+basketBeforeWeight(p,t.symbol)+'</td><td>'+esc(t.pending_net_quantity??'Unavailable')+'</td><td>'+esc(t.quantity_if_working_orders_fill??'Unavailable')+'</td><td>'+esc(t.desired_quantity??'Unavailable')+'</td><td>'+esc(t.residual_cash??'Not a weight target / unavailable')+' / '+esc(t.residual_weight_pct??'Unavailable')+'</td></tr>').join('')+'</tbody></table></div><h3>Individual proposed legs</h3>'+p.legs.map(leg=>'<details id="basket-leg-'+esc(leg.proposal_id||leg.symbol)+'"><summary>'+esc(leg.terms.side+' '+leg.terms.quantity+' '+leg.symbol+' · '+orderTypeLabel(leg.terms.order_type))+' · '+esc(leg.proposal_id||'Not saved')+'</summary>'+(leg.proposal_id?'<button data-open-proposal="'+esc(leg.proposal_id)+'">Review exact saved order</button>':'')+impactMarkup(leg)+'</details>').join('')+'<h3>Assume individual fills for a partial-completion preview</h3><p>A basket is not atomic. These selections do not execute anything or modify observed holdings.</p>'+p.legs.map(leg=>'<label><input type="checkbox" data-basket-fill="'+esc(leg.symbol)+'" '+(basketForm.assumed_filled.includes(leg.symbol)?'checked':'')+'> Assume '+esc(leg.symbol)+' filled</label>').join('')+'<button id="partial-basket">Recalculate assumed fills</button>'+basketScenario(p.complete_scenario,'All proposed legs assumed filled',p)+basketScenario(p.partial_scenario,'Selected individual legs assumed filled',p)+'<h3>Aggregate policy and adverse scenarios</h3><p>Complete and partial assumptions include current holdings and pending commitments. Configured rules still need their relevant source inputs. Unknown fees are excluded from estimates, not assumed zero.</p><details id="basket-policy-scenarios"><summary>Current / pending / proposed exposure, sector, correlation, liquidity and loss checks</summary>'+orderFacts(p.policy_scenarios||{unavailable:'This legacy preview predates source-bound aggregate policy calculations'})+'</details><h3>Conditions and conflicts</h3><ul>'+p.conditions.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul><details id="basket-working-orders"><summary>Working orders and conflicting proposals</summary><pre>'+esc(JSON.stringify({working_orders:p.working_orders,other_proposal_ids:p.conflicting_proposal_ids},null,2))+'</pre></details><p>Hypothetical sale proceeds are not approval to fund buys. No order is submitted.</p>';
 }
 function basketSnapshot(preview){
  if(!preview)return '<p>No saved basket preview.</p>';
@@ -3004,9 +3259,9 @@ function basketSnapshot(preview){
 }
 function basketPanel(){
  if(!investorRecord)return '<p>Investor records unavailable.</p>';const instruments=Object.values(investorRecord.instruments||{}),baskets=investorRecord.data.baskets||[];
- const targets='<p>Human targets only; no quantities are preselected. Saving creates local linked proposals, never approval or submission.</p><label>Add target stock<select id="basket-add-symbol"><option value="">Choose a stock or holding</option>'+instruments.map(item=>'<option value="'+esc(item.symbol)+'" '+(!item.supported?'disabled':'')+'>'+esc(item.symbol+(item.holding?' · held':'')+(item.limitation?' · '+item.limitation:''))+'</option>').join('')+'</select></label><button id="basket-add-selected">Add checked universe stocks as empty targets</button><div class="table-scroll"><table class="data-table"><thead><tr><th>Symbol</th><th>Target type</th><th>Your target</th><th>Order type</th><th>Limit / USD</th><th>Action</th></tr></thead><tbody>'+basketForm.targets.map((target,index)=>'<tr><td>'+esc(target.symbol)+'</td><td><select id="basket-mode-'+index+'" data-target-index="'+index+'" data-target-field="mode"><option value="">Choose</option>'+['quantity','weight'].map(value=>'<option '+(target.mode===value?'selected':'')+'>'+value+'</option>').join('')+'</select></td><td><input id="basket-value-'+index+'" inputmode="decimal" data-target-index="'+index+'" data-target-field="value" value="'+esc(target.value)+'"></td><td><select id="basket-type-'+index+'" data-target-index="'+index+'" data-target-field="order_type"><option value="">Choose</option>'+['MARKET','LIMIT'].map(value=>'<option value="'+value+'" '+(target.order_type===value?'selected':'')+'>'+esc(orderTypeLabel(value))+'</option>').join('')+'</select></td><td><input id="basket-limit-'+index+'" inputmode="decimal" data-target-index="'+index+'" data-target-field="limit_price" value="'+esc(target.limit_price)+'"></td><td><button data-remove-target="'+index+'">Remove</button></td></tr>').join('')+'</tbody></table></div>'+(!basketForm.targets.length?'<p>Add stocks or holdings, then enter target quantities or weights.</p>':'')+'<details id="basket-assumptions"><summary>Rationale, fees and slippage assumptions</summary><label>Rationale<textarea id="basket-reason">'+esc(basketForm.reason)+'</textarea></label><label>Estimated fee per leg / USD · optional<input id="basket-fee" inputmode="decimal" value="'+esc(basketForm.fee_per_leg)+'"></label><label>Estimated slippage / basis points · optional<input id="basket-slippage" inputmode="decimal" value="'+esc(basketForm.slippage_bps)+'"></label></details>';
+ const targets='<p>You can enter fractional quantities for eligible stocks. Weight targets also use fractional shares when eligible. Saving creates local proposals for order review.</p><label>Add target stock<select id="basket-add-symbol"><option value="">Choose a stock or holding</option>'+instruments.map(item=>'<option value="'+esc(item.symbol)+'" '+(!item.supported?'disabled':'')+'>'+esc(item.symbol+(item.holding?' · held':'')+(item.limitation?' · '+item.limitation:''))+'</option>').join('')+'</select></label><button id="basket-add-selected">Add checked universe stocks as empty targets</button><div class="table-scroll"><table class="data-table"><thead><tr><th>Symbol</th><th>Target type</th><th>Your target</th><th>Order type</th><th>Limit / USD</th><th>Action</th></tr></thead><tbody>'+basketForm.targets.map((target,index)=>'<tr><td>'+esc(target.symbol)+'</td><td><select id="basket-mode-'+index+'" data-target-index="'+index+'" data-target-field="mode"><option value="">Choose</option>'+['quantity','weight'].map(value=>'<option '+(target.mode===value?'selected':'')+'>'+value+'</option>').join('')+'</select></td><td><input id="basket-value-'+index+'" inputmode="decimal" data-target-index="'+index+'" data-target-field="value" value="'+esc(target.value)+'"></td><td><select id="basket-type-'+index+'" data-target-index="'+index+'" data-target-field="order_type"><option value="">Choose</option>'+['MARKET','LIMIT'].map(value=>'<option value="'+value+'" '+(target.order_type===value?'selected':'')+'>'+esc(orderTypeLabel(value))+'</option>').join('')+'</select></td><td><input id="basket-limit-'+index+'" inputmode="decimal" data-target-index="'+index+'" data-target-field="limit_price" value="'+esc(target.limit_price)+'"></td><td><button data-remove-target="'+index+'">Remove</button></td></tr>').join('')+'</tbody></table></div>'+(!basketForm.targets.length?'<p>Add stocks or holdings, then enter target quantities or weights.</p>':'')+'<details id="basket-assumptions"><summary>Rationale, fees and slippage assumptions</summary><label>Rationale<textarea id="basket-reason">'+esc(basketForm.reason)+'</textarea></label><label>Estimated fee per leg / USD · optional<input id="basket-fee" inputmode="decimal" value="'+esc(basketForm.fee_per_leg)+'"></label><label>Estimated slippage / basis points · optional<input id="basket-slippage" inputmode="decimal" value="'+esc(basketForm.slippage_bps)+'"></label></details>';
  const drafts=baskets.map(basket=>'<article><h3>'+esc(basket.id)+' · revision '+basket.revision+' · '+esc(basket.status)+'</h3><p>'+fullTime(basket.updated_at)+' · '+esc(basket.impact_review_valid?'Saved impact preview; each leg still needs exact approval':'Preview needs review')+'</p><button data-open-basket="'+esc(basket.id)+'">Load basket revision</button><details><summary>Saved allocation and complete/partial scenarios</summary>'+basketSnapshot(basket.preview)+'</details><details><summary>Revision history</summary>'+orderFacts(basket.history)+'</details></article>').join('')||'<p>No saved human baskets.</p>';
- return '<section id="allocation-workspace" class="panel"><h2>Human baskets · '+baskets.length+' saved</h2>'+renderTablist('basket-tabs','Human basket views',['Targets','Impact','Drafts'].map(name=>[name,name]),basketTab,'basket-tab')+'<section data-basket-pane="Targets" '+(basketTab==='Targets'?'':'hidden')+'>'+targets+'</section><section data-basket-pane="Impact" '+(basketTab==='Impact'?'':'hidden')+'><div id="basket-preview">'+basketEvidence()+'</div></section><section data-basket-pane="Drafts" '+(basketTab==='Drafts'?'':'hidden')+'>'+drafts+'</section><div class="basket-actions"><button id="preview-basket" '+(investorBusy?'disabled':'')+'>Preview basket</button><button id="save-basket" '+(investorBusy?'disabled':'')+'>Save local basket '+(basketForm.id?'revision':'draft')+'</button>'+(basketForm.id?'<button id="reject-basket">Reject basket and linked proposals</button><button id="defer-basket">Defer basket and linked proposals</button>':'')+'<button id="new-basket">New empty basket</button></div><details><summary>Separate approved-leg broker actions</summary>'+basketCommandControls()+commandConfirmationMarkup()+'</details></section>';
+ return '<section id="allocation-workspace" class="panel"><h2>Human baskets · '+baskets.length+' saved</h2>'+spyRebalanceMarkup()+renderTablist('basket-tabs','Human basket views',['Targets','Impact','Drafts'].map(name=>[name,name]),basketTab,'basket-tab')+'<section data-basket-pane="Targets" '+(basketTab==='Targets'?'':'hidden')+'>'+targets+'</section><section data-basket-pane="Impact" '+(basketTab==='Impact'?'':'hidden')+'><div id="basket-preview">'+basketEvidence()+'</div></section><section data-basket-pane="Drafts" '+(basketTab==='Drafts'?'':'hidden')+'>'+drafts+'</section><div class="basket-actions"><button id="preview-basket" '+(investorBusy?'disabled':'')+'>Preview basket</button><button id="save-basket" '+(investorBusy?'disabled':'')+'>Save local basket '+(basketForm.id?'revision':'draft')+'</button>'+(basketForm.id?'<button id="reject-basket">Reject basket and linked proposals</button><button id="defer-basket">Defer basket and linked proposals</button>':'')+'<button id="new-basket">New empty basket</button></div><details><summary>Separate approved-leg broker actions</summary>'+basketCommandControls()+commandConfirmationMarkup()+'</details></section>';
 }
 
 function addBasketTarget(s){
@@ -3026,10 +3281,13 @@ function bindBaskets(root){
   if(index!==undefined||fields[e.target.id]){const preview=root.querySelector('#basket-preview');if(preview)preview.innerHTML=basketEvidence();const generated=root.querySelector('#basket-generated-legs');if(generated)generated.innerHTML='<p>Targets or assumptions changed. Preview the basket again to review proposed order terms.</p>';}
  });
  root.addEventListener('change',e=>{
+  if(e.target.id==='spy-dedicated-account'){spyDedicatedAccount=e.target.checked?investorRecord.spy_rebalance.eligible_account_id:null;render();}
   if(e.target.id==='basket-add-symbol'&&e.target.value){addBasketTarget(e.target.value);render();}
   if(e.target.dataset.basketFill){const s=e.target.dataset.basketFill;basketForm.assumed_filled=e.target.checked?[...new Set([...basketForm.assumed_filled,s])]:basketForm.assumed_filled.filter(v=>v!==s);investorDirty=true;}
  });
  root.addEventListener('click',e=>{
+  const spyAction=e.target.closest('[data-spy-rebalance]');
+  if(spyAction){spyRebalanceAction(spyAction.dataset.spyRebalance);return;}
   const open=e.target.closest('[data-open-basket]'),remove=e.target.closest('[data-remove-target]');
   if(open){loadBasket(investorRecord.data.baskets.find(b=>b.id===open.dataset.openBasket));basketTab='Targets';render();return;}
   if(remove){basketForm.targets.splice(Number(remove.dataset.removeTarget),1);basketForm.assumed_filled=[];basketPreview=null;investorDirty=true;render();return;}

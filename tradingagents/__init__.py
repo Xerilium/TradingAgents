@@ -11,9 +11,10 @@ from dotenv import find_dotenv, load_dotenv
 # usecwd=True walks from the working directory, so the installed console script
 # finds the project's .env rather than looking beside site-packages. Values the
 # caller has already exported are never overridden.
-if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE"):
-    from .credentials import CredentialStore
-    CredentialStore().load_environment()
-else:
-    load_dotenv(find_dotenv(usecwd=True))
-    load_dotenv(find_dotenv(".env.enterprise", usecwd=True), override=False)
+if os.getenv("TRADINGAGENTS_CREDENTIAL_FREE_TEST") != "1":
+    if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE"):
+        from .credentials import CredentialStore
+        CredentialStore().load_environment()
+    else:
+        load_dotenv(find_dotenv(usecwd=True))
+        load_dotenv(find_dotenv(".env.enterprise", usecwd=True), override=False)

@@ -1,4 +1,4 @@
-"""Hypothetical whole-share allocation previews; never a portfolio ledger."""
+"""Hypothetical allocation previews; never a portfolio ledger."""
 
 import copy
 import re
@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 from decimal import Decimal, ROUND_FLOOR
 from uuid import uuid4
 
-from .investor import decimal, digest, impact, instruments, price_evidence, working_commitments
+from .investor import decimal, digest, fractional_asset, impact, instruments, price_evidence, working_commitments
+from .linked_orders import equity_quantity, fractional_terms
 from .workspace import text
 
 
@@ -41,8 +42,11 @@ def preview(saved, request, runtime, universe, *, commands=None):
         mode, value = target.get("mode"), decimal(target.get("value"))
         if mode not in {"weight", "quantity"} or value is None or value < 0:
             raise ValueError("Choose a weight or quantity and enter a nonnegative target")
-        if mode == "quantity" and not re.fullmatch(r"0|[1-9]\d{0,17}", str(target["value"])):
-            raise ValueError("Quantity targets must be exact whole shares, including zero for closure")
+        precision = instrument["quantity_precision"]
+        if mode == "quantity":
+            value = equity_quantity(target["value"], zero=True)
+            if value % 1 and not precision:
+                raise ValueError(f"{symbol}: Enter a whole share target. Fractional trading eligibility is unavailable.")
         if mode == "weight":
             if value > 100:
                 raise ValueError("Target weight must be between 0 and 100%")
@@ -54,20 +58,22 @@ def preview(saved, request, runtime, universe, *, commands=None):
             raise ValueError("Each LIMIT target needs a positive price with at most two decimal places")
         position = next((p for p in runtime.get("positions", []) if p["symbol"] == symbol), None)
         current = decimal(position.get("qty")) if position and positions_known else Decimal(0) if positions_known else None
-        if current is not None and current % 1:
-            raise ValueError("Unsupported fractional holdings cannot be rounded into a basket")
+        if current is not None and current % 1 and not precision:
+            raise ValueError(f"{symbol}: Fractional trading eligibility is required to rebalance this fractional holding.")
         lower_target = current is not None and (value < current if mode == "quantity" else
             equity is not None and decimal((position or {}).get("market_value")) is not None and equity * value / 100 < decimal(position["market_value"]))
         selected_price = price_evidence({"symbol": symbol, "side": "SELL" if lower_target else "BUY",
             "order_type": target["order_type"], "limit_price": limit}, runtime)
         price, basis = selected_price["price"], selected_price["basis"]
-        desired = value if mode == "quantity" else ((equity * value / 100 / price).to_integral_value(rounding=ROUND_FLOOR)
-                   if equity is not None and equity > 0 and price is not None and price > 0 else None)
+        desired = value if mode == "quantity" else None
+        if mode == "weight" and equity is not None and equity > 0 and price is not None and price > 0:
+            share_increment = Decimal(1).scaleb(-precision)
+            desired = (equity * value / 100 / price).quantize(share_increment, rounding=ROUND_FLOOR)
         difference = desired - current if desired is not None and current is not None else None
         residual = equity * value / 100 - desired * price if mode == "weight" and desired is not None else None
         row = {"symbol": symbol, "mode": mode, "value": str(value), "order_type": target["order_type"],
                "limit_price": str(limit) if limit is not None else None, "current_quantity": str(current) if current is not None else None,
-               "desired_quantity": str(desired) if desired is not None else None,
+               "desired_quantity": format(desired.normalize(), "f") if desired is not None else None,
                "valuation_price": str(price) if price is not None else None, "valuation_basis": basis,
                "market_event_ns": selected_price["ts_event"], "residual_cash": str(residual) if residual is not None else None,
                "residual_weight_pct": str(residual / equity * 100) if residual is not None and equity else None,
@@ -82,10 +88,12 @@ def preview(saved, request, runtime, universe, *, commands=None):
             conditions.append(symbol + ": target quantity cannot be calculated from available observations")
         elif difference:
             terms = {"symbol": symbol, "instrument_id": instrument["instrument_id"],
-                     "side": "BUY" if difference > 0 else "SELL", "quantity": format(abs(difference), "f"),
+                     "side": "BUY" if difference > 0 else "SELL", "quantity": format(abs(difference).normalize(), "f"),
                      "order_type": target["order_type"], "limit_price": row["limit_price"], "rationale": reason,
                      "research": target.get("research"), "time_in_force": "DAY", "session": "regular",
                      "account_id": account.get("id")}
+            if fractional_terms(terms, fractionable=instrument["fractionable"]) % 1:
+                terms["fractional_asset"] = fractional_asset(runtime, symbol)
             estimate = impact(terms, runtime, saved["policy"]["rules"], commands=commands)
             legs.append({"symbol": symbol, "terms": terms, "impact": estimate})
     if weight_sum > 100:

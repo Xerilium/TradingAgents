@@ -1,1 +1,1 @@
-Exactly one allocation for every eligible symbol, including zero weights.
+Exactly one allocation for each eligible symbol, including zero-weight symbols; do not add symbols. Weigh the candidates jointly.

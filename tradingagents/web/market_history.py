@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 from decimal import Decimal
 from math import isfinite
 import threading
@@ -14,6 +15,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .alpaca_readonly import AlpacaREST
+from .history_storage import artifact_path, load_daily_bars
 from .investor import decimal, digest
 from .store import SourceEvidenceError
 
@@ -232,13 +234,13 @@ class MarketDataJobs:
                     "effective_dates": item.get("effective_dates"), "content_sha256": item.get("content_sha256")}
         return result
 
-    def evidence_request(self, body):
+    def evidence_request(self, body, *, recipient_symbols=()):
         from .stock_evidence import PROVIDERS
         provider, scopes, symbols = body.get("provider"), body.get("scopes"), body.get("symbols")
         if provider not in PROVIDERS or not isinstance(scopes, list) or not scopes or set(scopes) - PROVIDERS[provider]:
             raise ValueError("Choose an existing provider and its supported evidence scopes")
         known = self.service.investor()["instruments"]
-        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known for s in symbols):
+        if not isinstance(symbols, list) or not 1 <= len(symbols) <= 1000 or any(s not in known and s not in recipient_symbols for s in symbols):
             raise ValueError("Choose configured stocks or observed holdings")
         first, last = date.fromisoformat(body["start"]), date.fromisoformat(body["end"])
         if first > last or (last - first).days > 3660:
@@ -254,13 +256,13 @@ class MarketDataJobs:
         future.add_done_callback(self.futures.discard)
         return self.state()
 
-    def request(self, body):
+    def request(self, body, *, recipient_symbols=()):
         if str(body.get("action", "")).startswith("chart_"):
             return self.service.chart_analysis_action(body)
         today = datetime.now(ZoneInfo("America/New_York")).date()
         action = body.get("action", "start")
         if action == "evidence":
-            return self.evidence_request(body)
+            return self.evidence_request(body, recipient_symbols=recipient_symbols)
         if action == "baseline":
             body = {**body, "start": (today - timedelta(days=730)).isoformat(), "end": today.isoformat(),
                     "asof": body.get("asof") or today.isoformat(), "purpose": "required_baseline", "timeframe": "1Day"}
@@ -293,7 +295,9 @@ class MarketDataJobs:
         instruments = self.service.investor()["instruments"]
         benchmark = self.service.reporting(compact=True).get("benchmark")
         benchmark_symbol = benchmark["symbol"] if benchmark and body.get("purpose") == "benchmark" else None
-        if any(s not in instruments and s != benchmark_symbol for s in symbols):
+        if body.get("purpose") == "simulation_benchmark":
+            benchmark_symbol = "SPY"
+        if any(s not in instruments and s != benchmark_symbol and s not in recipient_symbols for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
         if adjustment not in {"raw", "split", "dividend", "all"}:
@@ -301,13 +305,13 @@ class MarketDataJobs:
         timeframe = body.get("timeframe", "1Day")
         if timeframe not in TIMEFRAMES:
             raise ValueError("Unsupported chart interval; choose " + ", ".join(TIMEFRAMES))
-        if body.get("purpose") in {"required_baseline", "benchmark"} and timeframe != "1Day":
+        if body.get("purpose") in {"required_baseline", "benchmark", "simulation_benchmark"} and timeframe != "1Day":
             raise ValueError("Required baselines and daily benchmarks require the recorded 1Day interval")
         identity = str(uuid4())
         request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment,
                    "timeframe": timeframe, "feed": "iex", "session": "provider_bar_aggregation", "currency": "USD"}
         job = {"id": identity, "status": "queued", "created_at": datetime.now(UTC).isoformat(), "request": request,
-            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or instruments.get(s, {}).get("supported") else "unsupported",
+            "resumes": body.get("resumes"), "symbols": {s: {"status": "queued" if s == benchmark_symbol or s in recipient_symbols or instruments.get(s, {}).get("supported") else "unsupported",
                 "error": instruments.get(s, {}).get("limitation")} for s in dict.fromkeys(symbols)}}
         job["request"]["purpose"] = body.get("purpose")
         self.update(lambda saved: saved["jobs"].update({identity: job}))
@@ -477,7 +481,17 @@ class MarketDataJobs:
             "source": {"vendor": "Alpaca IEX", "captured_at": captured},
             "missing_fields": [] if converted else ["daily_ohlcv" if timeframe == "1Day" else "intraday_ohlcv"], "supplementary_gaps": ["news", "earnings", "business_facts", "corporate_actions"]}
         self.derive(result)
-        result["artifact"] = self.service.store._write_json_artifact(identity, "iex-history-cache", result)
+        store = self.service.store
+        saved_result = result
+        if os.name == "nt" and timeframe == "1Day" and converted:
+            daily_context = {field: result[field] for field in ("symbol", "provider", "feed", "timeframe", "adjustment")}
+            receipts = [store._write_json_artifact(identity, "iex-history-bar", {**daily_context, "bar": bar},
+                daily_history_period=bar["t"]) for bar in converted]
+            saved_result = {key: value for key, value in result.items() if key != "bars"}
+            # The shared lake owns these files. Desk backups retain their identities,
+            # while the lake remains the source of the price data.
+            saved_result["daily_bar_artifacts"] = [(item["path"], item["sha256"]) for item in receipts]
+        result["artifact"] = store._write_json_artifact(identity, "iex-history-cache", saved_result)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
         def save(saved):
@@ -564,15 +578,13 @@ class MarketDataJobs:
             if not any(ref and all(ref.get(field) == artifact.get(field) for field in ("path", "sha256")) for ref in retained):
                 raise ValueError("Pinned history artifact is not retained for this exact cache")
             reference = artifact
-        path = (self.service.store.directory / reference["path"]).resolve()
-        if not path.is_relative_to(self.service.store.directory.resolve()):
-            raise ValueError("History cache reference escapes its boundary")
+        path = artifact_path(self.service.store.directory, reference["path"])
         import json
         payload = path.read_bytes()
         import hashlib
         if hashlib.sha256(payload).hexdigest() != reference["sha256"]:
             raise ValueError("History cache artifact hash differs")
-        result = json.loads(payload)
+        result = load_daily_bars(self.service.store.directory, json.loads(payload))
         if result.get("timeframe") not in TIMEFRAMES:
             raise ValueError("Retained history interval is missing or unsupported; no interval was inferred from its dates")
         if result.get("symbol") != symbol or result.get("key") != meta["key"] or meta.get("timeframe", result["timeframe"]) != result["timeframe"]:

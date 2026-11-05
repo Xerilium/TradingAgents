@@ -1,0 +1,20 @@
+{
+  "FDXF": {
+    "first_trading_session": "2026-06-01",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/2082247/000110465926060223/tm2520565d14_ex99-4.htm",
+    "basis": "Issuer announcement of regular-way trading after separation",
+    "verified_on": "2026-11-05"
+  },
+  "HONA": {
+    "first_trading_session": "2026-06-29",
+    "source_url": "https://www.honeywell.com/us/en/news/press-releases/2026/06/honeywell-technologies-launches-independent-pure-play-automation-company-following-honeywell-aerospace-spin-off",
+    "basis": "Issuer announcement of the completed separation and Nasdaq trading",
+    "verified_on": "2026-11-05"
+  },
+  "VYLR": {
+    "first_trading_session": "2026-10-01",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/2128626/000119312526414335/d92652d8k.htm",
+    "basis": "Issuer filing for the completed separation and regular-way trading",
+    "verified_on": "2026-11-05"
+  }
+}

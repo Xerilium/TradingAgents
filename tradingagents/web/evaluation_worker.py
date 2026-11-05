@@ -1225,6 +1225,94 @@ def simulate_strategy(spec):
         engine.dispose()
 
 
+def simulate_portfolio(spec):
+    """Run one synchronized native entry scenario before applying dated cash actions."""
+    from datetime import UTC, datetime
+    from nautilus_trader.backtest.config import BacktestEngineConfig
+    from nautilus_trader.backtest.engine import BacktestEngine
+    from nautilus_trader.backtest.models import FixedFeeModel
+    from nautilus_trader.config import LoggingConfig, StrategyConfig
+    from nautilus_trader.model.currencies import USD
+    from nautilus_trader.model.data import Bar, BarType
+    from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, TimeInForce
+    from nautilus_trader.model.identifiers import InstrumentId, Symbol, TraderId, Venue
+    from nautilus_trader.model.objects import Money, Price, Quantity
+    from nautilus_trader.risk.config import RiskEngineConfig
+    from nautilus_trader.trading.strategy import Strategy
+    from native_types import Equity
+    from portfolio_scenario import account_portfolio, entry_quantity, model_weights, validate_model
+
+    if digest({key: value for key, value in spec.items() if key != "spec_sha256"}) != spec.get("spec_sha256"):
+        raise ValueError("Portfolio scenario specification changed")
+    if importlib.metadata.version("nautilus_trader") != "1.231.0":
+        raise ValueError("Portfolio scenario requires Nautilus 1.231.0")
+    if spec.get("entry_basis") != "first_retained_daily_close":
+        raise ValueError("Portfolio scenario must declare entry at the first completed daily close")
+    model = validate_model(spec["model"])
+    capital = Decimal(str(model["result"]["capital"]))
+    weights = model_weights(model)
+    fractional = spec.get("fractional_shares", False)
+    venue = Venue("ALPACA")
+    fee = Decimal(spec["fee_usd"])
+    # The scenario can submit one entry per stock at the same simulated close.
+    engine = BacktestEngine(BacktestEngineConfig(trader_id=TraderId("PORTFOLIO-001"),
+        logging=LoggingConfig(bypass_logging=True),
+        risk_engine=RiskEngineConfig(max_order_submit_rate=f"{max(100, len(weights))}/00:00:01")))
+    try:
+        engine.add_venue(venue, OmsType.NETTING, AccountType.CASH, [Money(capital, USD)], base_currency=USD,
+            allow_cash_borrowing=False, fee_model=FixedFeeModel(Money(fee, USD), charge_commission_once=True) if fee else None, bar_execution=True)
+        bar_types, quantities, native_bars = {}, {}, []
+        for symbol, weight in weights.items():
+            rows = spec["bars"][symbol]
+            precision = max(2, max(max(0, -Decimal(str(row[field])).as_tuple().exponent) for row in rows.values() for field in ("open", "high", "low", "close")))
+            identity = InstrumentId.from_str(symbol + ".ALPACA")
+            engine.add_instrument(Equity(identity, Symbol(symbol), USD, precision,
+                Price.from_str(format(Decimal("0.01"), f".{precision}f")), 0, 0,
+                lot_size=Quantity.from_int(1), fractional_precision=fractional))
+            bar_types[symbol] = BarType.from_str(str(identity) + "-1-DAY-LAST-EXTERNAL")
+            first = rows[min(rows)]
+            quantities[symbol] = entry_quantity(capital, weight, Decimal(first["close"]), fractional)
+            for day, row in rows.items():
+                timestamp = int(datetime.fromisoformat(day).replace(tzinfo=UTC).timestamp() * 1_000_000_000)
+                volume = Quantity.from_str(f"{int(Decimal(row['volume']))}.000000000") if fractional else Quantity.from_int(int(Decimal(row["volume"])))
+                native_bars.append(Bar(bar_types[symbol], *(Price.from_str(format(Decimal(row[field]), f".{precision}f")) for field in ("open", "high", "low", "close")), volume, timestamp, timestamp))
+        class PortfolioEntry(Strategy):
+            def __init__(self):
+                super().__init__(StrategyConfig())
+                self.seen = set()
+            def on_start(self):
+                for bar_type in bar_types.values():
+                    self.subscribe_bars(bar_type)
+            def on_bar(self, bar):
+                symbol = str(bar.bar_type.instrument_id.symbol)
+                if symbol not in self.seen:
+                    self.seen.add(symbol)
+                    if quantities[symbol]:
+                        quantity = Quantity.from_str(format(quantities[symbol], "f"))
+                        self.submit_order(self.order_factory.market(bar.bar_type.instrument_id, OrderSide.BUY, quantity, time_in_force=TimeInForce.GTC))
+        engine.add_data(sorted(native_bars, key=lambda row: row.ts_event))
+        engine.add_strategy(PortfolioEntry())
+        engine.run()
+        report = engine.trader.generate_fills_report()
+        fills = {}
+        for _, row in report.iterrows():
+            symbol = str(InstrumentId.from_str(str(row["instrument_id"])).symbol)
+            if symbol in fills:
+                raise ValueError(f"{symbol} native_fill: multiple fills require explicit aggregation")
+            fills[symbol] = {"shares": str(row["last_qty"]), "price": str(row["last_px"]), "fee_usd": str(fee)}
+        for symbol, quantity in quantities.items():
+            if quantity == 0:
+                fills[symbol] = {"shares": "0", "price": spec["bars"][symbol][min(spec["bars"][symbol])]["close"], "fee_usd": "0"}
+        ledger = account_portfolio(spec["bars"], spec["actions"], spec["fee_usd"], fills, model, fractional)
+        return {"kind": "portfolio_scenario", "status": "completed", "spec_sha256": spec["spec_sha256"], "ledger": ledger,
+            "model_id": model["id"], "starting_cash": str(capital),
+            "target_weights": {symbol: str(weight) for symbol, weight in weights.items()},
+            "target_cash_weight": str(model["result"]["target_cash_weight"]),
+            "native_fills": clean(json.loads(report.to_json(orient="split", date_format="iso", default_handler=str)))}
+    finally:
+        engine.dispose()
+
+
 def simulate(spec):
     installed_engine_version = importlib.metadata.version("nautilus_trader")
     if (spec.get("version") != VERSION or spec.get("engine_version") != "1.231.0"
@@ -1332,7 +1420,7 @@ def simulate(spec):
 if __name__ == "__main__":
     specification = json.load(sys.stdin)
     try:
-        response = calculate_scan(specification) if specification.get("kind") == "scanner_calculation" else calculate_chart(specification) if specification.get("kind") == "chart_calculation" else simulate_strategy(specification) if specification.get("kind") == "strategy_trial" else simulate(specification)
+        response = calculate_scan(specification) if specification.get("kind") == "scanner_calculation" else calculate_chart(specification) if specification.get("kind") == "chart_calculation" else simulate_strategy(specification) if specification.get("kind") == "strategy_trial" else simulate_portfolio(specification) if specification.get("kind") == "portfolio_scenario" else simulate(specification)
     except Exception as error:
         response = {"kind": specification.get("kind", "simulation"), "status": "failed", "spec_sha256": specification.get("spec_sha256"),
                     "error": type(error).__name__ + ": " + str(error)}

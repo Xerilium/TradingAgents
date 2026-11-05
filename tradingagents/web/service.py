@@ -89,7 +89,7 @@ def build_research_note(run, result):
         f"# {symbol} research {trade_date}",
         "",
         *([f"Recommendation: {rating} for [[{symbol}]].", ""] if rating else []),
-        f"Symbol: {symbol}",
+        f"Symbol: [[{symbol}]]",
         f"Trade date: {trade_date}",
         f"Run ID: {run.get('id', '')}",
         "",
@@ -306,8 +306,10 @@ class DeskService:
         self.data_jobs = MarketDataJobs(self)
         from .attention import AttentionMonitor
         from .market_discovery import due_scans
+        from .spy_rebalance import SpyRebalance
+        self.spy_rebalance = SpyRebalance(self)
         self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
-            tick=lambda: (self._expire_charts(), due_scans(self.data_jobs)))
+            tick=lambda: (self._expire_charts(), due_scans(self.data_jobs), self.spy_rebalance.tick()))
         self.attention_monitor.start()
 
     def _observe_runtime(self, observation):
@@ -749,19 +751,37 @@ class DeskService:
         from tradingagents.integrations.laya import local_failure_details
         identity = str(UUID(request["request_id"]))
         capital = capital_amount(request.get("capital", "10000"))
+        as_of = request.get("as_of") or None
+        if as_of:
+            as_of = datetime.fromisoformat(as_of).date().isoformat()
         with self.lock:
             if self.portfolio_model_job.get("id") == identity:
                 return copy.deepcopy(self.portfolio_model_job)
             if self.portfolio_model_job["status"] in {"queued", "running"}:
                 raise ValueError("A joint portfolio model is already running")
             with self.store.lock:
+                store = self.store
                 config = copy.deepcopy(self.store.data["config"])
                 runs = copy.deepcopy(self.store.data["runs"])
             workflow = self.workflows.active_bundle()
-            quotes = self._runtime_market()["quotes"]
+            quotes = self._runtime_market()["quotes"] if not as_of else {}
+            history_entries = []
+            if as_of:
+                from .market_history import DEFAULT as HISTORY_DEFAULT
+                history_entries = list(store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"].values())
+                from .approval_review import read_artifact
             latest = {}
             for run in sorted(runs, key=lambda row: row.get("created_at") or "", reverse=True):
                 for result in run.get("results", []):
+                    if as_of:
+                        observed = result.get("completed_at") or run.get("completed_at")
+                        try:
+                            observed = datetime.fromisoformat(observed.replace("Z", "+00:00"))
+                        except (AttributeError, TypeError, ValueError):
+                            continue
+                        if (observed.tzinfo is None or observed.astimezone(ZoneInfo("America/New_York")).date().isoformat() > as_of
+                                or (result.get("trade_date") or run.get("trade_date") or "9999") > as_of):
+                            continue
                     latest.setdefault(result["symbol"], (run, result))
             inputs, exclusions = [], []
             for symbol in config["universe"]:
@@ -770,15 +790,34 @@ class DeskService:
                            "trade_date": result.get("trade_date"), "status": result.get("status", "missing")}
                 decision = result.get("reports", {}).get("final_trade_decision")
                 reference = quotes.get(symbol, {})
+                if as_of:
+                    candidates = sorted((entry for entry in history_entries if entry.get("symbol") == symbol
+                        and entry.get("timeframe") == "1Day" and entry.get("adjustment") == "raw"
+                        and entry.get("complete") is True and entry.get("pagination_complete") is True),
+                        key=lambda entry: entry.get("captured_at", ""), reverse=True)
+                    for entry in candidates:
+                        artifact = entry.get("last_usable_artifact") or entry.get("artifact")
+                        history = read_artifact(store.directory, artifact) if artifact else None
+                        if (not isinstance(history, dict) or history.get("symbol") != symbol
+                                or history.get("adjustment") != "raw" or history.get("currency", "USD") != "USD"):
+                            continue
+                        rows = [row for row in history.get("bars", []) if row.get("t") == as_of]
+                        if (len(rows) != 1 or not isinstance(rows[0].get("raw"), dict)
+                                or _number(rows[0]["raw"].get("c")) is None
+                                or not isinstance(rows[0].get("provider_timestamp"), str)):
+                            continue
+                        reference = {"price": rows[0]["raw"]["c"], "timestamp": rows[0]["provider_timestamp"],
+                            "date": as_of, "basis": "Retained raw daily close", "source": history.get("source"),
+                            "artifact": artifact}
+                        break
                 price = _number(reference.get("price"))
-                if result.get("status") != "completed" or not decision:
-                    exclusions.append({**binding, "reason": result.get("error") or "Completed research with a final decision is unavailable"})
-                elif price is None or price <= 0 or not reference.get("timestamp"):
+                if price is None or price <= 0 or not reference.get("timestamp"):
                     exclusions.append({**binding, "reason": "A positive dated cached reference price is unavailable"})
-                else:
-                    inputs.append({**binding, "rating": result.get("rating"), "reference": reference,
-                        "final_decision": decision, "source_coverage": result.get("reports", {}).get("source_coverage")})
+                inputs.append({**binding, "rating": result.get("rating"), "reference": reference,
+                    "final_decision": decision if result.get("status") == "completed" else None,
+                    "source_coverage": result.get("reports", {}).get("source_coverage")})
             job = {"id": identity, "status": "queued", "created_at": now(), "capital": str(capital),
+                   "as_of": as_of,
                    "configured_universe": config["universe"], "inputs": inputs, "exclusions": exclusions,
                    "provider": config["llm_provider"], "model": config["deep_think_llm"]}
             self.portfolio_model_job = job
@@ -789,8 +828,11 @@ class DeskService:
                     job.update(status="running", started_at=now())
                 try:
                     if not inputs:
-                        raise ValueError("No eligible completed research with dated reference prices; no model call made")
-                    output = model_portfolio(config, inputs, capital, workflow=workflow)
+                        raise ValueError("The configured universe is empty.")
+                    if exclusions:
+                        raise ValueError("Reference prices are missing for " + ", ".join(row["symbol"] for row in exclusions)
+                            + ". No stocks were removed. Load their prices before modeling the full universe.")
+                    output = model_portfolio(config, inputs, capital, workflow=workflow, as_of=as_of)
                     with self.lock:
                         job.update(status="completed", result=output)
                 except Exception as error:
@@ -1100,10 +1142,10 @@ class DeskService:
             store.database.transact({"discovery": DEFAULT}, lambda records: records["discovery"]["observations"].update({result["id"]: result}))
         return result
 
-    def configure_symbols(self):
+    def configure_symbols(self, *, additional_symbols=()):
         from .market_discovery import DEFAULT
         selections = self.store.database.read("discovery", DEFAULT)["data"].get("option_selections", {})
-        symbols = list(dict.fromkeys([*self.store.data["config"]["universe"], *selections]))
+        symbols = list(dict.fromkeys([*self.store.data["config"]["universe"], *selections, *additional_symbols]))
         feed = next(iter(selections.values()))["feed"] if selections else None
         self.runtime.configure(symbols, **({"option_feed": feed} if feed else {}))
         self.configuration_error = None
@@ -1254,6 +1296,7 @@ class DeskService:
         return {**record, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
                 "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
                 "current_checks": checks, "broker_order_actions": broker_actions,
+                "spy_rebalance": self.spy_rebalance.status(runtime),
                 "instruments": available_instruments, "option_package_profiles": copy.deepcopy(PACKAGE_PROFILES),
                 "option_execution_profiles": copy.deepcopy(EXECUTION_PROFILES)}
 
@@ -1568,6 +1611,13 @@ class DeskService:
     def save_investor(self, request):
         from .investor import DEFAULT, save
         from .admission import DEFAULT as COMMAND_DEFAULT, invalidate
+        if request.get("action") in {"spy_rebalance_enable", "spy_rebalance_pause"}:
+            self.spy_rebalance.configure(request)
+            return self.investor()
+        if request.get("action") == "spy_rebalance_check":
+            return self.spy_rebalance.check_weights()
+        if request.get("action") == "spy_rebalance_preview":
+            return self.spy_rebalance.preview_plan()
         if request.get("action") == "chart_source":
             return {"chart_source": self.pinned_chart_source(request.get("pin"))}
         if request.get("action") == "chart_copy":
@@ -2897,6 +2947,278 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
+        spy_snapshots = {
+            "spy_year_start": ("spy_year_start_2026.json", 90),
+            "spy_year_start_stocks": ("spy_year_start_2026.json", 100),
+            "spy_october": ("spy_october_2026.json", 90),
+        }
+        def spy_allocations(snapshot):
+            from decimal import ROUND_FLOOR
+            filename, stock_percent = spy_snapshots[snapshot]
+            filed = json.loads(Path(__file__).with_name("static").joinpath(filename).read_text(encoding="utf-8"))
+            rows = filed["holdings"]
+            total = sum(Decimal(row["fund_percent"]) for row in rows)
+            weights = {row["symbol"]: (Decimal(row["fund_percent"]) * stock_percent / total).quantize(
+                Decimal("0.00000001"), rounding=ROUND_FLOOR) for row in rows}
+            largest = max(weights, key=weights.get)
+            weights[largest] += stock_percent - sum(weights.values())
+            if stock_percent < 100:
+                weights["SGOV"] = Decimal(100 - stock_percent)
+            return filed, weights
+        if isinstance(action, str) and action in spy_snapshots:
+            filed, weights = spy_allocations(action)
+            return {"action": action, "as_of": filed["as_of"], "source": filed["source"],
+                    "weights": {symbol: str(percent) for symbol, percent in weights.items()}}
+        if action == "delete_simulations":
+            from uuid import UUID
+            selected = request.get("ids")
+            if (not isinstance(selected, list) or not selected
+                    or any(not isinstance(identity, str) for identity in selected)
+                    or len(set(selected)) != len(selected)):
+                raise ValueError("Choose saved simulations to delete.")
+            for identity in selected:
+                if str(UUID(identity)) != identity:
+                    raise ValueError("Invalid saved simulation identity.")
+            removed = {}
+            def remove(records):
+                simulations = records["reporting"].setdefault("simulations", {})
+                for identity in selected:
+                    item = simulations.get(identity)
+                    if not item or item.get("kind") not in {"simulation", "portfolio_scenario"}:
+                        raise ValueError("Saved simulations changed. Reload the list before deleting.")
+                    if (item.get("status") in {"queued", "running", "cancelling"}
+                            and item.get("session_id") == self.simulation_session):
+                        raise ValueError("Wait for running simulations to finish before deleting.")
+                for identity in selected:
+                    removed[identity] = simulations.pop(identity)
+            with self.maintenance:
+                if self.store is not store:
+                    raise ValueError("Application records changed. Reload the list before deleting.")
+                store.database.transact({"reporting": REPORTING_DEFAULT}, remove,
+                    expected={"reporting": request.get("expected_revision")})
+                warnings = []
+                with store.database.transaction() as connection:
+                    files, warnings = store._research_cleanup_files(removed, {"runs": store.data["runs"]}, connection, set(selected))
+                    for relative, (expected_hash, expected_size) in files.items():
+                        path = store.directory / relative
+                        try:
+                            if (path.is_symlink() or not path.resolve().is_relative_to(store.directory.resolve())
+                                    or path.stat().st_size != expected_size
+                                    or hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash):
+                                raise ValueError("Saved simulation file changed")
+                            path.unlink()
+                        except (OSError, ValueError):
+                            warnings.append("Some shared or changed files were retained.")
+            return {"deleted": len(removed), "warnings": list(dict.fromkeys(warnings))}
+        if action == "portfolio_scenario":
+            from .portfolio_scenario import validate_model, model_weights, parse_actions, action_observation, listing_dates, resolve_recipients
+            from .market_history import chart_calendar_coverage
+            with self.maintenance:
+                store, session, data_jobs = self.store, self.simulation_session, self.data_jobs
+                if self.simulation_closed:
+                    raise ValueError("Simulation preparation is unavailable while the workspace is stopping")
+
+            def check_workspace():
+                if self.store is not store or self.simulation_closed or self.simulation_session != session:
+                    raise ValueError("The workspace changed during simulation preparation. Open Strategy Lab to start again.")
+
+            model = validate_model(request.get("model"))
+            start, end = request.get("start"), request.get("end")
+            from datetime import date
+            start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
+            if start_date >= end_date:
+                raise ValueError("scenario dates: start must precede end")
+            saved_history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
+            collection = request.get("collection") or {"job_ids": [], "attempted": []}
+
+            def collecting_response(collection, jobs):
+                stocks = {}
+                for job_id in collection["job_ids"]:
+                    job = jobs.get(job_id)
+                    if job is None:
+                        raise ValueError("Simulation data collection is no longer available")
+                    for symbol, item in job["symbols"].items():
+                        stocks[symbol] = stocks.get(symbol, True) and item["status"] == "completed"
+                return {"status": "collecting", "collection": collection,
+                        "message": f"Downloading missing simulation inputs from Alpaca… {sum(stocks.values())} of {len(stocks)} stocks downloaded."}
+
+            for job_id in collection["job_ids"]:
+                job = saved_history["jobs"].get(job_id)
+                if job is None:
+                    raise ValueError("Simulation data collection is no longer available")
+                if job["status"] in {"queued", "running"}:
+                    return collecting_response(collection, saved_history["jobs"])
+                if job["status"] != "completed":
+                    failures = [f"{symbol}: {item.get('error') or item['status']}" for symbol, item in job["symbols"].items() if item["status"] != "completed"]
+                    raise ValueError("Simulation input download failed. " + "; ".join(failures))
+            if collection["job_ids"] and not collection.get("preparing"):
+                return {"status": "collecting", "collection": {**collection, "preparing": True},
+                        "message": "Preparing the simulation from saved daily prices…"}
+            entries = saved_history["entries"]
+            from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
+            observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
+            histories, action_data, errors, source_references = {}, {}, [], {}
+            weights = model_weights(model)
+            filed_holdings = None
+            holdings_source = model.get("holdings_source")
+            if isinstance(holdings_source, str) and holdings_source in spy_snapshots:
+                filed_holdings, expected_weights = spy_allocations(holdings_source)
+                if weights != {symbol: percent / 100 for symbol, percent in expected_weights.items()}:
+                    raise ValueError("Reload the selected SPY weights before running the simulation.")
+            from .portfolio_scenario import entry_quantity
+            fractional = filed_holdings is not None
+            capital = Decimal(str(model["result"]["capital"]))
+            contingent_terms = json.loads(Path(__file__).with_name("static").joinpath(
+                "portfolio_contingent_rights.json").read_text(encoding="utf-8"))
+            listings = listing_dates()
+            first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
+            missing_history, missing_actions = {}, []
+            scenario_calendar = None
+
+            def mapping_date(symbol, first):
+                renamed = any(item["kind"] == "name_change" and item.get("new_symbol") == symbol
+                    and item.get("old_symbol") != symbol and item.get("old_cusip")
+                    and item["old_cusip"] == item.get("new_cusip")
+                    for item in action_data.get(symbol, []))
+                return first if filed_holdings and not renamed else end
+
+            pending = list(weights)
+            while pending:
+                for symbol in pending:
+                    try:
+                        meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
+                        action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
+                        observed = action_observation(symbol, read_artifact(store.directory, reference(action_ref)),
+                            lambda ref: read_artifact(store.directory, reference(ref))) if action_ref else None
+                        action_request = (observed or {}).get("request", {})
+                        if (not observed or not observed.get("complete") or observed.get("status") not in {"available", "missing"}
+                                or action_request.get("start", "9999") > start or action_request.get("end", "") < end):
+                            missing_actions.append(symbol)
+                        else:
+                            action_data[symbol] = parse_actions(symbol, start, end, observed, contingent_terms)
+                        first = first_dates[symbol]
+                        if first > end:
+                            raise ValueError(f"{symbol} listing date is after the simulation end")
+                        if symbol in listings and first > start and symbol in action_data and not any(
+                                item["kind"] == "issuer_distribution" and item["ex_date"] == first for item in action_data[symbol]):
+                            raise ValueError(f"{symbol} listing date is not confirmed by its provider receipt")
+                        termination = min((item["ex_date"] for item in action_data.get(symbol, [])
+                            if item["kind"] == "merger" and item["ex_date"] > first), default="9999-12-31")
+                        matches = sorted([entry for entry in entries.values() if entry.get("symbol") == symbol and data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= first and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")], key=lambda item: item.get("captured_at", ""), reverse=True)
+                        if not matches:
+                            missing_history[symbol] = first
+                            continue
+                        meta = matches[0]
+                        history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
+                        if not isinstance(history, dict):
+                            missing_history[symbol] = first
+                            continue
+                        coverage = chart_calendar_coverage(history)
+                        if coverage and coverage["start"] <= start and coverage["end"] >= end:
+                            calendar = read_artifact(store.directory, reference(coverage["reference"]))
+                        else:
+                            if scenario_calendar is None:
+                                from urllib.parse import urlencode
+                                try:
+                                    response = data_jobs.read("/v2/calendar?" + urlencode({"start": start, "end": end}), data=False, canceled=lambda: False)
+                                    if not isinstance(response["data"], list):
+                                        raise ValueError("unsupported calendar response")
+                                    with self.maintenance:
+                                        check_workspace()
+                                        calendar_ref = store._write_source_result(str(uuid4()), str(uuid4()), response["raw"].decode(), prefix="history-coverage-source")
+                                    scenario_calendar = (response["data"], calendar_ref)
+                                except Exception as error:
+                                    raise ValueError(f"{symbol} {start}..{end} calendar.coverage: provider request failed ({type(error).__name__}: {error})") from error
+                            calendar = scenario_calendar[0]
+                        if not isinstance(calendar, list) or not calendar:
+                            raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
+                        sessions = {row["date"] for row in calendar if first <= row["date"] <= end and row["date"] < termination}
+                        selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end and row["t"] < termination]
+                        by_day = {row["t"]: row for row in selected}
+                        missing = sorted(sessions - set(by_day))
+                        if missing:
+                            if f"history:{symbol}:{mapping_date(symbol, first)}" in collection["attempted"]:
+                                raise ValueError(f"{symbol} {missing[0]} daily_bar: provider history is missing {len(missing)} required sessions")
+                            missing_history[symbol] = first
+                            continue
+                        if not sessions or len(selected) != len(by_day) or set(by_day) != sessions:
+                            raise ValueError(f"{symbol} {start}..{end} daily_bar: duplicate or off-calendar mark")
+                        histories[symbol] = {day: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for day, row in sorted(by_day.items())}
+                        source_references[symbol] = {"history": meta.get("last_usable_artifact") or meta.get("artifact"),
+                            "corporate_actions": action_ref, "listing": listings.get(symbol)}
+                    except (ValueError, KeyError, TypeError, ArithmeticError) as error:
+                        errors.append(str(error))
+                resolve_recipients(action_data, weights)
+                pending = []
+                for symbol, items in list(action_data.items()):
+                    for item in items:
+                        recipient = item.get("new_symbol") if item["kind"] in {"stock_distribution", "merger"} else None
+                        if not recipient or item["ex_date"] <= first_dates[symbol]:
+                            continue
+                        if recipient in first_dates and first_dates[recipient] <= item["ex_date"]:
+                            continue
+                        if symbol in weights and symbol in histories:
+                            first_close = Decimal(histories[symbol][min(histories[symbol])]["close"])
+                            quantity = entry_quantity(capital, weights[symbol], first_close, fractional)
+                            if quantity == 0:
+                                continue
+                        first_dates[recipient] = item["ex_date"]
+                        pending.append(recipient)
+            if missing_history or missing_actions:
+                with self.maintenance:
+                    check_workspace()
+                    job_ids = []
+                    attempted = list(collection["attempted"])
+                    history_dates = {}
+                    for symbol, first in missing_history.items():
+                        history_dates.setdefault((first, mapping_date(symbol, first)), []).append(symbol)
+                    requests = [("history", symbols, first, asof) for (first, asof), symbols in history_dates.items()]
+                    if missing_actions:
+                        requests.append(("actions", missing_actions, start, None))
+                    for kind, symbols, first, asof in requests:
+                        keys = [f"history:{symbol}:{asof}" if kind == "history" else f"actions:{symbol}" for symbol in symbols]
+                        if any(key in attempted for key in keys):
+                            raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
+                        body = {"symbols": symbols, "start": first, "end": end}
+                        body.update({"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]} if kind == "actions"
+                            else {"action": "start", "asof": asof, "adjustment": "raw", "timeframe": "1Day"})
+                        jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+                        active = next((job for job in jobs.values() if job["status"] in {"queued", "running"}
+                            and set(job["symbols"]) == set(symbols) and job["request"].get("start") == first
+                            and job["request"].get("end") == end
+                            and (job.get("kind") == "supplementary") == (kind == "actions")
+                            and (job["request"].get("scopes") == ["corporate_actions"] if kind == "actions"
+                                 else job["request"].get("adjustment") == "raw" and job["request"].get("timeframe") == "1Day"
+                                 and job["request"].get("asof") == asof)), None)
+                        if active:
+                            job_ids.append(active["id"])
+                        else:
+                            allowed = set(first_dates) if filed_holdings else set(first_dates) - set(weights)
+                            updated = data_jobs.request(body, recipient_symbols=allowed)
+                            job_ids.extend(set(updated["data"]["jobs"]) - set(jobs))
+                            jobs = updated["data"]["jobs"]
+                        attempted.extend(keys)
+                    return collecting_response({"job_ids": job_ids, "attempted": attempted}, jobs)
+            if errors:
+                raise ValueError("; ".join(errors))
+            spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
+                    "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data,
+                    "source_references": source_references,
+                    "entry_basis": "first_retained_daily_close",
+                    "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
+            if filed_holdings:
+                spec["holdings_source"] = filed_holdings
+                spec["fractional_shares"] = True
+            from .evaluation import digest
+            spec["spec_sha256"] = digest(spec)
+            identity = str(uuid4())
+            with self.maintenance:
+                check_workspace()
+                preview_ref = store._write_json_artifact(identity, "portfolio-scenario-preview", spec)
+                save({"id": identity, "kind": "portfolio_scenario", "status": "preview",
+                    "created_at": datetime.now(UTC).isoformat(), "start": start, "end": end,
+                    "spec_sha256": spec["spec_sha256"], "preview_artifact": preview_ref})
+                return self.evaluation_action({"action": "run", "id": identity, "spec_sha256": spec["spec_sha256"]})
         if action == "preview":
             proposal = next((p for p in store.database.read("investor", INVESTOR_DEFAULT)["data"]["proposals"]
                              if p["id"] == request.get("proposal_id")), None)
@@ -2945,6 +3267,13 @@ class DeskService:
             except Exception as error:
                 result = {"kind": "simulation", "status": "failed", "spec_sha256": spec["spec_sha256"],
                           "error": type(error).__name__ + ": " + str(error)}
+            if spec.get("kind") == "portfolio_scenario":
+                result.update(kind="portfolio_scenario", start=spec["start"], end=spec["end"],
+                    fee_usd=spec["fee_usd"], basis=spec["basis"], engine_version=spec["engine_version"])
+                if spec.get("holdings_source"):
+                    result["holdings_as_of"] = spec["holdings_source"]["as_of"]
+                    result["holdings_source_name"] = spec["holdings_source"].get("source")
+                    result["fractional_shares"] = spec.get("fractional_shares", False)
             with self.maintenance:
                 if self.store is not store or self.simulation_closed or session != self.simulation_session:
                     return
@@ -3209,6 +3538,7 @@ class DeskService:
                     stop_calculation_process(process)
 
     def close(self):
+        self.spy_rebalance.stopped = True
         with self.store.lock:
             self.cancelled.update(
                 r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running", "cancelling"}

@@ -6,6 +6,24 @@ import socket
 import pytest
 
 
+_CREDENTIAL_FREE_TEST = os.environ.get("TRADINGAGENTS_CREDENTIAL_FREE_TEST") == "1"
+
+
+def pytest_sessionstart(session):
+    if _CREDENTIAL_FREE_TEST:
+        from pathlib import Path
+
+        allowed = Path(__file__).with_name("test_social_ui_projection.py").resolve()
+        if not session.config.args or any(
+            Path(str(arg).split("::", 1)[0]).resolve() != allowed
+            for arg in session.config.args
+        ):
+            raise pytest.UsageError(
+                "Credential-free mode supports only tests/test_social_ui_projection.py; "
+                "CLI, configuration and credential fixtures are unavailable."
+            )
+
+
 def _blank_settings_overlay():
     """Blank every TRADINGAGENTS_* setting before the package is imported.
 
@@ -24,7 +42,8 @@ def _blank_settings_overlay():
             os.environ[name] = ""
 
 
-_blank_settings_overlay()
+if not _CREDENTIAL_FREE_TEST:
+    _blank_settings_overlay()
 
 
 def _own_file_locations():
@@ -47,6 +66,8 @@ _own_file_locations()
 def pytest_configure(config):
     for marker in ("unit", "integration", "smoke"):
         config.addinivalue_line("markers", f"{marker}: {marker}-level tests")
+    if _CREDENTIAL_FREE_TEST:
+        return  # Pure projection tests do not load provider configuration or cookie caches.
     # yfinance caches each symbol's time zone on disk, in the home directory
     # by default; the suite keeps it in a directory of its own.
     import tempfile
@@ -68,6 +89,8 @@ def _no_network(request, monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", refuse)
     monkeypatch.setattr(socket.socket, "connect_ex", refuse)
     monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: refuse(None, *a))
+    if _CREDENTIAL_FREE_TEST:
+        return  # The allowlisted projection module does not import a libcurl client.
     # yfinance's HTTP client is libcurl, which never touches Python's sockets.
     from curl_cffi import requests as curl_requests
 
@@ -87,6 +110,8 @@ def _at_a_terminal(monkeypatch):
 @pytest.fixture(autouse=True)
 def _own_cli_prefs(tmp_path, monkeypatch):
     """The CLI keeps the last run's selections in the user's home; tests keep theirs apart."""
+    if _CREDENTIAL_FREE_TEST:
+        return
     monkeypatch.setattr("cli.prefs._PREFS_PATH", tmp_path / "cli_prefs.json")
 
 
@@ -110,6 +135,8 @@ _API_KEY_ENV_VARS = (
 
 @pytest.fixture(autouse=True)
 def _dummy_api_keys(monkeypatch):
+    if _CREDENTIAL_FREE_TEST:
+        return
     for env_var in _API_KEY_ENV_VARS:
         # `or` not a .get default: an env var present but empty (e.g. a key left
         # blank in a .env copied from .env.example) must still get the placeholder.
@@ -125,6 +152,9 @@ def _isolate_config():
     and make routing behavior order-dependent. Replace the global outright so
     every test starts from a clean DEFAULT_CONFIG.
     """
+    if _CREDENTIAL_FREE_TEST:
+        yield
+        return
     import copy
 
     import tradingagents.dataflows.config as config_module

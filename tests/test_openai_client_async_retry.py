@@ -19,7 +19,7 @@ import httpx
 import openai
 from langchain_core.messages import HumanMessage
 
-from tradingagents.llm_clients.openai_client import LocalCompatibleChatOpenAI
+from tradingagents.llm_clients.openai_client import LocalCompatibleChatOpenAI, _is_rate_limit
 
 
 def _completion_body(text: str) -> dict:
@@ -134,6 +134,17 @@ class AsyncRateLimitRetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 2, "the 429 must still be retried once")
         self.assertIn("retry 1/2 in 0.01s", "\n".join(logs.output),
                       "the configured wait must be used, not the server hint")
+
+    def test_http_408_is_transient_but_permanent_4xx_are_not(self):
+        for status in (408, 400, 401, 403, 404, 422):
+            with self.subTest(status=status):
+                response = httpx.Response(
+                    status, request=httpx.Request("POST", "http://127.0.0.1:9/v1/responses"),
+                )
+                body = {"error": {"message": "stream disconnected before completion",
+                                  "type": "server_error", "code": "request_timeout"}}
+                error = openai.APIStatusError("Request failed", response=response, body=body)
+                self.assertEqual(_is_rate_limit(error), status == 408)
 
     def test_retry_after_hints_never_change_the_wait(self):
         """A server hint is ignored whichever way it points."""

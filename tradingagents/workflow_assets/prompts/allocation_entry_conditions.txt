@@ -1,1 +1,1 @@
-Preserve the research's entry restrictions; explain when no initiation is supported.
+Nonempty entry conditions grounded in the research. Preserve restrictions and explain when initiation is not supported; do not assume conditions are met.

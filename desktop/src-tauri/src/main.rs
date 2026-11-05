@@ -74,7 +74,7 @@ fn supervisor(app: tauri::AppHandle, rx: mpsc::Receiver<Action>, item: MenuItem<
                     readiness = None;
                     running = true;
                     status(&item, "Running");
-                    open(&app, port);
+                    if !development { open(&app, port); }
                 } else if Instant::now() >= *deadline {
                     failure = Some("The desk did not become ready in time. Open logs for details.".into());
                 }
@@ -187,7 +187,9 @@ fn check_updates(app: tauri::AppHandle) {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(host) = app.try_state::<Host>() { let _ = host.tx.send(Action::Open); }
+            if app.config().identifier != "com.tradingagents.desktop.dev" {
+                if let Some(host) = app.try_state::<Host>() { let _ = host.tx.send(Action::Open); }
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

@@ -1,0 +1,6719 @@
+{
+  "entries": [
+    {
+      "name": "Aflac, Inc.",
+      "symbol": "AFL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/07783c59cd95e5089206f32f32fb0219a86659b9fc6a7b83942847803b2904bb.json"
+      ],
+      "cusip": "001055102",
+      "weight": "0.00088837728585",
+      "isin": "US0010551028",
+      "provider_aliases": [
+        "AFL"
+      ]
+    },
+    {
+      "name": "AES Corp. (The)",
+      "symbol": "AES",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0dccea3a23807f9f06bc60e38c19a5059a2d83aaee8133be59d026a1de96da1e.json"
+      ],
+      "cusip": "00130H105",
+      "weight": "0.00017429402715",
+      "isin": "US00130H1059",
+      "provider_aliases": [
+        "AES"
+      ]
+    },
+    {
+      "name": "AT&T, Inc.",
+      "symbol": "T",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0fc3c983729183ed7affef05d28d413d17d8cbaf1f7e8e8f7f748a764d9a9902.json"
+      ],
+      "cusip": "00206R102",
+      "weight": "0.00300770678702",
+      "isin": "US00206R1023",
+      "provider_aliases": [
+        "T"
+      ]
+    },
+    {
+      "name": "Abbott Laboratories",
+      "symbol": "ABT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/704a264ac4982b0589b7343f5f04e01c4416f102758ad2e29b150b9975db2abd.json",
+        "sources/704a264ac4982b0589b7343f5f04e01c4416f102758ad2e29b150b9975db2abd.json"
+      ],
+      "cusip": "002824100",
+      "weight": "0.00372096433221",
+      "isin": "US0028241000",
+      "provider_aliases": [
+        "ABT"
+      ]
+    },
+    {
+      "name": "AbbVie, Inc.",
+      "symbol": "ABBV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/45ab80232c1092972861c7260ef774a1fcd39b893b585c928e8cd8f34d140715.json"
+      ],
+      "cusip": "00287Y109",
+      "weight": "0.00689715653615",
+      "isin": "US00287Y1091",
+      "provider_aliases": [
+        "ABBV"
+      ]
+    },
+    {
+      "name": "Adobe, Inc.",
+      "symbol": "ADBE",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "00724F101",
+      "weight": "0.00250222798214",
+      "isin": "US00724F1012",
+      "provider_aliases": [
+        "ADBE"
+      ]
+    },
+    {
+      "name": "Advanced Micro Devices, Inc.",
+      "symbol": "AMD",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "007903107",
+      "weight": "0.00595491138005",
+      "isin": "US0079031078",
+      "provider_aliases": [
+        "AMD"
+      ]
+    },
+    {
+      "name": "Agilent Technologies, Inc.",
+      "symbol": "A",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9fa6f0f11c713c4a58494f683957613bd9399c2b5b4176210a2e21cabeb4fb02.json"
+      ],
+      "cusip": "00846U101",
+      "weight": "0.00065885191854",
+      "isin": "US00846U1016",
+      "provider_aliases": [
+        "A"
+      ]
+    },
+    {
+      "name": "Airbnb, Inc.",
+      "symbol": "ABNB",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "009066101",
+      "weight": "0.00098583761974",
+      "isin": "US0090661010",
+      "provider_aliases": [
+        "ABNB"
+      ]
+    },
+    {
+      "name": "Air Products & Chemicals, Inc.",
+      "symbol": "APD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c5c8fb4295c370af455d7cb47055dbf3472bf0a6da0f525e8c45d1a8fb502401.json"
+      ],
+      "cusip": "009158106",
+      "weight": "0.00093876456333",
+      "isin": "US0091581068",
+      "provider_aliases": [
+        "APD"
+      ]
+    },
+    {
+      "name": "Akamai Technologies, Inc.",
+      "symbol": "AKAM",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "00971T101",
+      "weight": "0.00021438320326",
+      "isin": "US00971T1016",
+      "provider_aliases": [
+        "AKAM"
+      ]
+    },
+    {
+      "name": "Albemarle Corp.",
+      "symbol": "ALB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e63a4c482bbcfb025bbd8268999c7783f3b6e4ba508fdfb2a4b2ac2a205dcebf.json"
+      ],
+      "cusip": "012653101",
+      "weight": "0.00028436184673",
+      "isin": "US0126531013",
+      "provider_aliases": [
+        "ALB"
+      ]
+    },
+    {
+      "name": "Alexandria Real Estate Equities, Inc.",
+      "symbol": "ARE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0ea2884d9a8718c5c0527f834d0da9b311018b729cf090c1262a390ac39ab5d4.json"
+      ],
+      "cusip": "015271109",
+      "weight": "0.00013030381375",
+      "isin": "US0152711091",
+      "provider_aliases": [
+        "ARE"
+      ]
+    },
+    {
+      "name": "Align Technology, Inc.",
+      "symbol": "ALGN",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "016255101",
+      "weight": "0.00017795816016",
+      "isin": "US0162551016",
+      "provider_aliases": [
+        "ALGN"
+      ]
+    },
+    {
+      "name": "Alliant Energy Corp.",
+      "symbol": "LNT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/320fe128c9c42c4a0c55ff10bbcf474dce8ae01edb8c5516259555e8396a4682.json"
+      ],
+      "cusip": "018802108",
+      "weight": "0.00028524531413",
+      "isin": "US0188021085",
+      "provider_aliases": [
+        "LNT"
+      ]
+    },
+    {
+      "name": "Allstate Corp. (The)",
+      "symbol": "ALL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/73ea54e0a9859513c390af4f9f9105441ba4b6b4ff91020f720c21e4e6d9b371.json"
+      ],
+      "cusip": "020002101",
+      "weight": "0.00093029684799",
+      "isin": "US0200021014",
+      "provider_aliases": [
+        "ALL"
+      ]
+    },
+    {
+      "name": "Alphabet, Inc.",
+      "symbol": "GOOG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/598f8528f7de0abcf3f0c09ff4197252fb5fb003e9330de33c70bcaf79da557d.json"
+      ],
+      "cusip": "02079K107",
+      "weight": "0.0249217810248",
+      "isin": "US02079K1079",
+      "provider_aliases": [
+        "GOOG"
+      ]
+    },
+    {
+      "name": "Alphabet, Inc.",
+      "symbol": "GOOGL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/17469752160d79f48375e3e5fca7139270321429db96bb1230e389e04ba4c166.json"
+      ],
+      "cusip": "02079K305",
+      "weight": "0.03110207612996",
+      "isin": "US02079K3059",
+      "provider_aliases": [
+        "GOOGL"
+      ]
+    },
+    {
+      "name": "Altria Group, Inc.",
+      "symbol": "MO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/052622b514e70714f3085662f5fd6e2d381899fee7a82403b352e7ce8cd223f8.json"
+      ],
+      "cusip": "02209S103",
+      "weight": "0.00165314951161",
+      "isin": "US02209S1033",
+      "provider_aliases": [
+        "MO"
+      ]
+    },
+    {
+      "name": "Amazon.com, Inc.",
+      "symbol": "AMZN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0f8b007d5a051c458b0ba81ab94aad44fb76162abb434b6bb25b1fe42c2c5e30.json",
+        "sources/0f8b007d5a051c458b0ba81ab94aad44fb76162abb434b6bb25b1fe42c2c5e30.json"
+      ],
+      "cusip": "023135106",
+      "weight": "0.03835064868824",
+      "isin": "US0231351067",
+      "provider_aliases": [
+        "AMZN"
+      ]
+    },
+    {
+      "name": "Ameren Corp.",
+      "symbol": "AEE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6c0a3661d7dccc15faec591e19fbd15de39d896dfb6ce720595730e448f28c26.json"
+      ],
+      "cusip": "023608102",
+      "weight": "0.00046112633663",
+      "isin": "US0236081024",
+      "provider_aliases": [
+        "AEE"
+      ]
+    },
+    {
+      "name": "American Electric Power Co., Inc.",
+      "symbol": "AEP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e411b15ffc65bd8b95ed5bcd5f1454bae42a8f4ccb7fef8b14be63643aed7a61.json"
+      ],
+      "cusip": "025537101",
+      "weight": "0.0010541634381",
+      "isin": "US0255371017",
+      "provider_aliases": [
+        "AEP"
+      ]
+    },
+    {
+      "name": "American Express Co.",
+      "symbol": "AXP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c73de09f42e114aef3b1d4c291c2df57ed5c41e1e52b1c64b05b84eb8cb317cf.json"
+      ],
+      "cusip": "025816109",
+      "weight": "0.00339495834946",
+      "isin": "US0258161092",
+      "provider_aliases": [
+        "AXP"
+      ]
+    },
+    {
+      "name": "American International Group, Inc.",
+      "symbol": "AIG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a24843acc4e3619c442a997ebf27a7f371090dda6925277afb36aceb7053b392.json"
+      ],
+      "cusip": "026874784",
+      "weight": "0.00078839730561",
+      "isin": "US0268747849",
+      "provider_aliases": [
+        "AIG"
+      ]
+    },
+    {
+      "name": "American Tower Corp.",
+      "symbol": "AMT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8b9e3d7f2e8c768ad1386e7e126438fa68d314bb9d8fcc13c32d8430f4cb1f26.json"
+      ],
+      "cusip": "03027X100",
+      "weight": "0.00140414147022",
+      "isin": "US03027X1000",
+      "provider_aliases": [
+        "AMT"
+      ]
+    },
+    {
+      "name": "American Water Works Co., Inc.",
+      "symbol": "AWK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/405769aeb70180e8ef25bf949891d8b33f8ce7ac7bec285372a9161c0844f9ec.json"
+      ],
+      "cusip": "030420103",
+      "weight": "0.00043479455952",
+      "isin": "US0304201033",
+      "provider_aliases": [
+        "AWK"
+      ]
+    },
+    {
+      "name": "Cencora, Inc.",
+      "symbol": "COR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f9fcde29234d5923300ce847ae5275b0a5f60623807718ba4f708d64dd30a1e7.json"
+      ],
+      "cusip": "03073E105",
+      "weight": "0.00111838876214",
+      "isin": "US03073E1055",
+      "provider_aliases": [
+        "COR"
+      ]
+    },
+    {
+      "name": "Ameriprise Financial, Inc.",
+      "symbol": "AMP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/40128bd0ec188c9d7d965ce858c91a5c3546c96fb2e065ba5031d492ee7f8906.json"
+      ],
+      "cusip": "03076C106",
+      "weight": "0.00077597302933",
+      "isin": "US03076C1062",
+      "provider_aliases": [
+        "AMP"
+      ]
+    },
+    {
+      "name": "AMETEK, Inc.",
+      "symbol": "AME",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d4aa9f47946b593333928d39686670196beede237cdc26ba773a8489f107e7e8.json"
+      ],
+      "cusip": "031100100",
+      "weight": "0.00080722853424",
+      "isin": "US0311001004",
+      "provider_aliases": [
+        "AME"
+      ]
+    },
+    {
+      "name": "Amgen, Inc.",
+      "symbol": "AMGN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6228733472ea20f0db88f567e1556ea1b38cf84fcd17f1b61cbe32344bda39ec.json"
+      ],
+      "cusip": "031162100",
+      "weight": "0.00301024116996",
+      "isin": "US0311621009",
+      "provider_aliases": [
+        "AMGN"
+      ]
+    },
+    {
+      "name": "Amphenol Corp.",
+      "symbol": "APH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/86b6315ae48f667371bc11290d9da2266b553f7a03c0e5978fbc1600a5190c96.json"
+      ],
+      "cusip": "032095101",
+      "weight": "0.00282524929984",
+      "isin": "US0320951017",
+      "provider_aliases": [
+        "APH"
+      ]
+    },
+    {
+      "name": "Analog Devices, Inc.",
+      "symbol": "ADI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0f74644a2f4111978ccb0c2975342380194b338a547cb43fada64a261f0a8436.json"
+      ],
+      "cusip": "032654105",
+      "weight": "0.00227870046301",
+      "isin": "US0326541051",
+      "provider_aliases": [
+        "ADI"
+      ]
+    },
+    {
+      "name": "Elevance Health, Inc.",
+      "symbol": "ELV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7c9e71543fb5f3e2ed8b7a03e3ac80cffa8beaea45c4ea90670b2a11a721cbd1.json"
+      ],
+      "cusip": "036752103",
+      "weight": "0.00133058281361",
+      "isin": "US0367521038",
+      "provider_aliases": [
+        "ELV"
+      ]
+    },
+    {
+      "name": "APA Corp.",
+      "symbol": "APA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0e0d18d36a09269d61ed769538997c43f5d0f1400b5a92447c0df64f3a400953.json"
+      ],
+      "cusip": "03743Q108",
+      "weight": "0.00014816635247",
+      "isin": "US03743Q1085",
+      "provider_aliases": [
+        "APA"
+      ]
+    },
+    {
+      "name": "Apollo Global Management, Inc.",
+      "symbol": "APO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/28b4761addd968c2d8b6c2ded7235c0590ec4c9cefe8efa24fc1808243d51f9f.json",
+        "sources/28b4761addd968c2d8b6c2ded7235c0590ec4c9cefe8efa24fc1808243d51f9f.json"
+      ],
+      "cusip": "03769M106",
+      "weight": "0.00114803691152",
+      "isin": "US03769M1062",
+      "provider_aliases": [
+        "APO"
+      ]
+    },
+    {
+      "name": "Apple, Inc.",
+      "symbol": "AAPL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e1097d481a04e7a308c3e32efd0d8ff8c0b51dc8f12b0e109bac9f1a9eec22b1.json"
+      ],
+      "cusip": "037833100",
+      "weight": "0.06860945286837",
+      "isin": "US0378331005",
+      "provider_aliases": [
+        "AAPL"
+      ]
+    },
+    {
+      "name": "Applied Materials, Inc.",
+      "symbol": "AMAT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8bcddf6489cca0d636583acbd6e08aed6dbad905c4ef7ad1e611dfb3c625257d.json"
+      ],
+      "cusip": "038222105",
+      "weight": "0.00349664091371",
+      "isin": "US0382221051",
+      "provider_aliases": [
+        "AMAT"
+      ]
+    },
+    {
+      "name": "AppLovin Corp.",
+      "symbol": "APP",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "03831W108",
+      "weight": "0.00311514793375",
+      "isin": "US03831W1080",
+      "provider_aliases": [
+        "APP"
+      ]
+    },
+    {
+      "name": "Archer-Daniels-Midland Co.",
+      "symbol": "ADM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/aeac83568590aa6d1a87b48cdd2a6d75175ba96e2d78801075be1f3b225a1d78.json"
+      ],
+      "cusip": "039483102",
+      "weight": "0.00047174769113",
+      "isin": "US0394831020",
+      "provider_aliases": [
+        "ADM"
+      ]
+    },
+    {
+      "name": "Ares Management Corp.",
+      "symbol": "ARES",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1d39d7a4498ddde7be9b5005ad3f6f747d9b9a1dac2c1adcffda0a5bd4446ebb.json"
+      ],
+      "cusip": "03990B101",
+      "weight": "0.0005686924706",
+      "isin": "US03990B1017",
+      "provider_aliases": [
+        "ARES"
+      ]
+    },
+    {
+      "name": "Arista Networks, Inc.",
+      "symbol": "ANET",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "040413205",
+      "weight": "0.00231089481187",
+      "isin": "US0404132054",
+      "provider_aliases": [
+        "ANET"
+      ]
+    },
+    {
+      "name": "Assurant, Inc.",
+      "symbol": "AIZ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ead128d87f02ec2cf02c676c371768c620497f4ac1ea80fb1673272df6263df1.json"
+      ],
+      "cusip": "04621X108",
+      "weight": "0.00020600795703",
+      "isin": "US04621X1081",
+      "provider_aliases": [
+        "AIZ"
+      ]
+    },
+    {
+      "name": "Atmos Energy Corp.",
+      "symbol": "ATO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8a7e853155c8d80592c218ecc0172967c4dd67a3cf6e58c04dd3064257e72913.json"
+      ],
+      "cusip": "049560105",
+      "weight": "0.00045963747608",
+      "isin": "US0495601058",
+      "provider_aliases": [
+        "ATO"
+      ]
+    },
+    {
+      "name": "Autodesk, Inc.",
+      "symbol": "ADSK",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "052769106",
+      "weight": "0.00107686172903",
+      "isin": "US0527691069",
+      "provider_aliases": [
+        "ADSK"
+      ]
+    },
+    {
+      "name": "Automatic Data Processing, Inc.",
+      "symbol": "ADP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/986c995bc0c5765924cedbd65de9fbc2d723432e3deffc08268f01db4338aa3b.json"
+      ],
+      "cusip": "053015103",
+      "weight": "0.00177688066436",
+      "isin": "US0530151036",
+      "provider_aliases": [
+        "ADP"
+      ]
+    },
+    {
+      "name": "AutoZone, Inc.",
+      "symbol": "AZO",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "053332102",
+      "weight": "0.00096350604138",
+      "isin": "US0533321024",
+      "provider_aliases": [
+        "AZO"
+      ]
+    },
+    {
+      "name": "AvalonBay Communities, Inc.",
+      "symbol": "AVB",
+      "mapping_evidence": "https://investors.avalonbay.com/sec-filings/all-sec-filings/content/0000915912-25-000005/0000915912-25-000005.pdf",
+      "cusip": "053484101",
+      "weight": "0.00043794445248",
+      "isin": "US0534841012",
+      "provider_aliases": []
+    },
+    {
+      "name": "Avery Dennison Corp.",
+      "symbol": "AVY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ee780aa416a6afddb1c4a94e99115ac0d975bc4b58bd474bcb2d86f0fb49e754.json"
+      ],
+      "cusip": "053611109",
+      "weight": "0.0002401067761",
+      "isin": "US0536111091",
+      "provider_aliases": [
+        "AVY"
+      ]
+    },
+    {
+      "name": "Axon Enterprise, Inc.",
+      "symbol": "AXON",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "05464C101",
+      "weight": "0.00076541344852",
+      "isin": "US05464C1018",
+      "provider_aliases": [
+        "AXON"
+      ]
+    },
+    {
+      "name": "Baker Hughes Co.",
+      "symbol": "BKR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f9ee1a6f8a83fea10fe54448a1ec858d43fee2f1432d0741cc50993c5b49470d.json",
+        "sources/f9ee1a6f8a83fea10fe54448a1ec858d43fee2f1432d0741cc50993c5b49470d.json"
+      ],
+      "cusip": "05722G100",
+      "weight": "0.00076750647357",
+      "isin": "US05722G1004",
+      "provider_aliases": [
+        "BKR"
+      ]
+    },
+    {
+      "name": "Ball Corp.",
+      "symbol": "BALL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6729be62acff167b798a4f38fc84c7184d799391fa1cf197eeb927fcf23b3834.json"
+      ],
+      "cusip": "058498106",
+      "weight": "0.00024244681243",
+      "isin": "US0584981064",
+      "provider_aliases": [
+        "BALL"
+      ]
+    },
+    {
+      "name": "Bank of America Corp.",
+      "symbol": "BAC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9cf2ee1876004ce8cfaa41077ebd1de224c49edd961394afe036742e7b873bf7.json"
+      ],
+      "cusip": "060505104",
+      "weight": "0.00631092873873",
+      "isin": "US0605051046",
+      "provider_aliases": [
+        "BAC"
+      ]
+    },
+    {
+      "name": "Bank of New York Mellon Corp. (The)",
+      "symbol": "BNY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8ccfe9dca0fff082c26571e6cda146f85fd650280614a16e089b0c234fa143c4.json",
+        "sources/8ccfe9dca0fff082c26571e6cda146f85fd650280614a16e089b0c234fa143c4.json",
+        "sources/8ccfe9dca0fff082c26571e6cda146f85fd650280614a16e089b0c234fa143c4.json"
+      ],
+      "cusip": "064058100",
+      "weight": "0.00138266423504",
+      "isin": "US0640581007",
+      "provider_aliases": [
+        "BNY",
+        "BK"
+      ],
+      "historical_symbol": "BK"
+    },
+    {
+      "name": "Baxter International, Inc.",
+      "symbol": "BAX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d069e4617a60450bd53c4007033140158e7ffd398e09c3cdbcd6fb991e882b39.json"
+      ],
+      "cusip": "071813109",
+      "weight": "0.0001675372738",
+      "isin": "US0718131099",
+      "provider_aliases": [
+        "BAX"
+      ]
+    },
+    {
+      "name": "Becton Dickinson & Co.",
+      "symbol": "BDX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/461ab01982e9dfe943f829517759ce60d47c7e4e1ef51c84088c60e4e6dde272.json",
+        "sources/876ecf6bd3fb09ff1ae7289f795266ec98f95e64656ade87aca1a0060d99d424.json"
+      ],
+      "cusip": "075887109",
+      "weight": "0.0009502648931",
+      "isin": "US0758871091",
+      "provider_aliases": [
+        "BDX"
+      ]
+    },
+    {
+      "name": "WR Berkley Corp.",
+      "symbol": "WRB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/17adee9e17b74cc0866603a0c127d23af7e6fe8f73bb3930fa0221d9ea6af4ec.json"
+      ],
+      "cusip": "084423102",
+      "weight": "0.00035878015082",
+      "isin": "US0844231029",
+      "provider_aliases": [
+        "WRB"
+      ]
+    },
+    {
+      "name": "Berkshire Hathaway, Inc.",
+      "symbol": "BRK.B",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "084670702",
+      "weight": "0.01574248752223",
+      "isin": "US0846707026",
+      "provider_aliases": [
+        "BRK.B"
+      ]
+    },
+    {
+      "name": "Best Buy Co., Inc.",
+      "symbol": "BBY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f552a8eaed85e1552a74650aa3e15a022557c62f487a55df868553146a754fd9.json"
+      ],
+      "cusip": "086516101",
+      "weight": "0.00022335804832",
+      "isin": "US0865161014",
+      "provider_aliases": [
+        "BBY"
+      ]
+    },
+    {
+      "name": "Biogen, Inc.",
+      "symbol": "BIIB",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "09062X103",
+      "weight": "0.00044083130729",
+      "isin": "US09062X1037",
+      "provider_aliases": [
+        "BIIB"
+      ]
+    },
+    {
+      "name": "Bio-Techne Corp.",
+      "symbol": "TECH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6954927c18041a52622a4aad09d29d3ed0b999efd6b606ff02f621106796558f.json"
+      ],
+      "cusip": "09073M104",
+      "weight": "0.00015743015496",
+      "isin": "US09073M1045",
+      "provider_aliases": [
+        "TECH"
+      ]
+    },
+    {
+      "name": "Blackstone, Inc.",
+      "symbol": "BX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ac06008b56e4ccdf80c82bb80625a055cefb42336b801dde78aab7fc5da09f8b.json"
+      ],
+      "cusip": "09260D107",
+      "weight": "0.00194405578936",
+      "isin": "US09260D1072",
+      "provider_aliases": [
+        "BX"
+      ]
+    },
+    {
+      "name": "BlackRock, Inc.",
+      "symbol": "BLK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/effb86112f7eae03fad3c9127dbf41c52a4c2ba1ee3ea94375b31a3b74ed18c9.json"
+      ],
+      "cusip": "09290D101",
+      "weight": "0.00263771093064",
+      "isin": "US09290D1019",
+      "provider_aliases": [
+        "BLK"
+      ]
+    },
+    {
+      "name": "Boeing Co. (The)",
+      "symbol": "BA",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "097023105",
+      "weight": "0.00290376096377",
+      "isin": "US0970231058",
+      "provider_aliases": [
+        "BA"
+      ]
+    },
+    {
+      "name": "Booking Holdings, Inc.",
+      "symbol": "BKNG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fa79be47055324d98cc091f6424ed712cc506b50ff7a2d79958ad1470889a353.json"
+      ],
+      "cusip": "09857L108",
+      "weight": "0.00294833780578",
+      "isin": "US09857L1089",
+      "provider_aliases": [
+        "BKNG"
+      ]
+    },
+    {
+      "name": "BXP, Inc.",
+      "symbol": "BXP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c0cf25e3d5a94d9f9afd347c6930b5656b6855eb098d3fb1814bc352a9afd2cd.json"
+      ],
+      "cusip": "101121101",
+      "weight": "0.00016971863875",
+      "isin": "US1011211018",
+      "provider_aliases": [
+        "BXP"
+      ]
+    },
+    {
+      "name": "Boston Scientific Corp.",
+      "symbol": "BSX",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "101137107",
+      "weight": "0.00241418122984",
+      "isin": "US1011371077",
+      "provider_aliases": [
+        "BSX"
+      ]
+    },
+    {
+      "name": "Bristol-Myers Squibb Co.",
+      "symbol": "BMY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/08288fdf8e0e756f8bee08f14df632ee6bad078e5fa44383b7a2ad38f594a80c.json"
+      ],
+      "cusip": "110122108",
+      "weight": "0.00187540477584",
+      "isin": "US1101221083",
+      "provider_aliases": [
+        "BMY"
+      ]
+    },
+    {
+      "name": "Broadridge Financial Solutions, Inc.",
+      "symbol": "BR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/81a002245f214b18ea087a56f100d1d45cfbc6b384b394b69eb274e0cc207b5c.json"
+      ],
+      "cusip": "11133T103",
+      "weight": "0.00044491727005",
+      "isin": "US11133T1034",
+      "provider_aliases": [
+        "BR"
+      ]
+    },
+    {
+      "name": "Broadcom, Inc.",
+      "symbol": "AVGO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/bd77532de519c06990e193aef5ce2685a1c603254dccc705bc2510ef98071763.json"
+      ],
+      "cusip": "11135F101",
+      "weight": "0.02791467968693",
+      "isin": "US11135F1012",
+      "provider_aliases": [
+        "AVGO"
+      ]
+    },
+    {
+      "name": "Brown & Brown, Inc.",
+      "symbol": "BRO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/817bcb80dc21c18a0e3cd6520493d7c59414a97ac46619496c199ec78ee87605.json"
+      ],
+      "cusip": "115236101",
+      "weight": "0.00039968664731",
+      "isin": "US1152361010",
+      "provider_aliases": [
+        "BRO"
+      ]
+    },
+    {
+      "name": "Brown-Forman Corp.",
+      "symbol": "BF.B",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ef3b596fa53784abfa448adb5940b4fca2926289736f1f47ff20d7c3787fc5f0.json"
+      ],
+      "cusip": "115637209",
+      "weight": "0.00007849657221",
+      "isin": "US1156372096",
+      "provider_aliases": [
+        "BF.B"
+      ]
+    },
+    {
+      "name": "Builders FirstSource, Inc.",
+      "symbol": "BLDR",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/714364/000071436425000003/xslForm13F_X02/Ogorek_Holdings_13F_2025Q1.xml",
+      "cusip": "12008R107",
+      "weight": "0.00019436072724",
+      "isin": "US12008R1077",
+      "provider_aliases": []
+    },
+    {
+      "name": "CBOE Global Markets, Inc.",
+      "symbol": "CBOE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2d651684361255f8c812b95e7d75170b18d46b8923654d15d161eaf4b40c9509.json"
+      ],
+      "cusip": "12503M108",
+      "weight": "0.00044822049357",
+      "isin": "US12503M1080",
+      "provider_aliases": [
+        "CBOE"
+      ]
+    },
+    {
+      "name": "CBRE Group, Inc.",
+      "symbol": "CBRE",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "12504L109",
+      "weight": "0.00080500355218",
+      "isin": "US12504L1098",
+      "provider_aliases": [
+        "CBRE"
+      ]
+    },
+    {
+      "name": "CDW Corp.",
+      "symbol": "CDW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b00bc1dc534c45ff92dc1bea5eccd1f6a9e1f237d499afc91c9cec92db6f1407.json"
+      ],
+      "cusip": "12514G108",
+      "weight": "0.00030285743885",
+      "isin": "US12514G1085",
+      "provider_aliases": [
+        "CDW"
+      ]
+    },
+    {
+      "name": "CF Industries Holdings, Inc.",
+      "symbol": "CF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b47069511c882aa3865079df31b13426382365bcdbe5d25888b8e5def0ee9f95.json"
+      ],
+      "cusip": "125269100",
+      "weight": "0.0002060292451",
+      "isin": "US1252691001",
+      "provider_aliases": [
+        "CF"
+      ]
+    },
+    {
+      "name": "CH Robinson Worldwide, Inc.",
+      "symbol": "CHRW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9c52b7b0aa0b2039981d1c5d7f8e43a6defdc7aceabf9bbf2abf6ef99b532c45.json"
+      ],
+      "cusip": "12541W209",
+      "weight": "0.00032419867444",
+      "isin": "US12541W2098",
+      "provider_aliases": [
+        "CHRW"
+      ]
+    },
+    {
+      "name": "Cigna Group (The)",
+      "symbol": "CI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/962ef99b51bf95b31f2f4525a87cc3ed4e81fbcb57f4b1f1af6e000381d8a225.json"
+      ],
+      "cusip": "125523100",
+      "weight": "0.0012556897932",
+      "isin": "US1255231003",
+      "provider_aliases": [
+        "CI"
+      ]
+    },
+    {
+      "name": "CME Group, Inc.",
+      "symbol": "CME",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0bfb3d2589f1b838eed28052483c704c8d38e81e5c8f0911673f1169f69fa92a.json"
+      ],
+      "cusip": "12572Q105",
+      "weight": "0.00168183675805",
+      "isin": "US12572Q1058",
+      "provider_aliases": [
+        "CME"
+      ]
+    },
+    {
+      "name": "CMS Energy Corp.",
+      "symbol": "CMS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e74d838bbd3f10014584acfd59ffdf92d43ca905a533e428d51dd03e54fa1eb1.json"
+      ],
+      "cusip": "125896100",
+      "weight": "0.00036346748459",
+      "isin": "US1258961002",
+      "provider_aliases": [
+        "CMS"
+      ]
+    },
+    {
+      "name": "CSX Corp.",
+      "symbol": "CSX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4dfe232d0054ec4579cec29f30bbcd15633979f31cb1ef0eae4889a415384031.json"
+      ],
+      "cusip": "126408103",
+      "weight": "0.00115289845534",
+      "isin": "US1264081035",
+      "provider_aliases": [
+        "CSX"
+      ]
+    },
+    {
+      "name": "CVS Health Corp.",
+      "symbol": "CVS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/abca656878baf2ed5d5a464d86de285aff170c5ad6aee9c93b1ca78bc0fef947.json"
+      ],
+      "cusip": "126650100",
+      "weight": "0.00172060880393",
+      "isin": "US1266501006",
+      "provider_aliases": [
+        "CVS"
+      ]
+    },
+    {
+      "name": "Coterra Energy, Inc.",
+      "symbol": "CTRA",
+      "mapping_evidence": "sources/d6d04cdf2ee3d098b3df27c0b7600a9c4059d03c378c7bc3938e57480e526a7b.json",
+      "cusip": "127097103",
+      "weight": "0.00034301236847",
+      "isin": "US1270971039",
+      "provider_aliases": [
+        "CTRA"
+      ]
+    },
+    {
+      "name": "Cadence Design Systems, Inc.",
+      "symbol": "CDNS",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "127387108",
+      "weight": "0.00145318684743",
+      "isin": "US1273871087",
+      "provider_aliases": [
+        "CDNS"
+      ]
+    },
+    {
+      "name": "Camden Property Trust",
+      "symbol": "CPT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/32e01a008f86dd0de032f5ae7c1fc6a7fa6c0193fa275d76732075696bb4c544.json"
+      ],
+      "cusip": "133131102",
+      "weight": "0.00020065693943",
+      "isin": "US1331311027",
+      "provider_aliases": [
+        "CPT"
+      ]
+    },
+    {
+      "name": "Campbell's Co. (The)",
+      "symbol": "CPB",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1479026/000094040025011091/primary_doc.xml",
+      "cusip": "134429109",
+      "weight": "0.00009379552658",
+      "isin": "US1344291091",
+      "provider_aliases": []
+    },
+    {
+      "name": "Capital One Financial Corp.",
+      "symbol": "COF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/873a629341fb3ec064e1b1adfde35b9ef56d2be479959337f63f59754116af6a.json"
+      ],
+      "cusip": "14040H105",
+      "weight": "0.00263152937352",
+      "isin": "US14040H1059",
+      "provider_aliases": [
+        "COF"
+      ]
+    },
+    {
+      "name": "Cardinal Health, Inc.",
+      "symbol": "CAH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/de56dc080567efbdc10b226693ba0364d60011824d83e0534f789c2a8acfb4a2.json"
+      ],
+      "cusip": "14149Y108",
+      "weight": "0.00083391324686",
+      "isin": "US14149Y1082",
+      "provider_aliases": [
+        "CAH"
+      ]
+    },
+    {
+      "name": "Carnival Corp.",
+      "symbol": "CCL",
+      "mapping_evidence": [
+        "sources/4ea9010a35c978575121472b978bd25153053e6bbe32beaa06e56ca46e0c43b6.json",
+        "sources/4ea9010a35c978575121472b978bd25153053e6bbe32beaa06e56ca46e0c43b6.json"
+      ],
+      "cusip": "143658300",
+      "weight": "0.00056628257024",
+      "isin": "PA1436583006",
+      "provider_aliases": [
+        "CCL"
+      ]
+    },
+    {
+      "name": "Carrier Global Corp.",
+      "symbol": "CARR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9c6f26cd1ed63811b6b90cbd86f7fa979acd8d828eea459349ae51da127edb40.json"
+      ],
+      "cusip": "14448C104",
+      "weight": "0.00071446753217",
+      "isin": "US14448C1045",
+      "provider_aliases": [
+        "CARR"
+      ]
+    },
+    {
+      "name": "Carvana Co.",
+      "symbol": "CVNA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0fd77b2b5a93796bf1014d488edaf07e81f2090c68245b53c08c4bd0f6dc17ef.json"
+      ],
+      "cusip": "146869102",
+      "weight": "0.00101935916428",
+      "isin": "US1468691027",
+      "provider_aliases": [
+        "CVNA"
+      ]
+    },
+    {
+      "name": "Caterpillar, Inc.",
+      "symbol": "CAT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7b2269e7889eb0e7052090bdade6696d487aaaa77852e0ad2dcc3bca4f096f2e.json"
+      ],
+      "cusip": "149123101",
+      "weight": "0.00457884233388",
+      "isin": "US1491231015",
+      "provider_aliases": [
+        "CAT"
+      ]
+    },
+    {
+      "name": "Centene Corp.",
+      "symbol": "CNC",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "15135B101",
+      "weight": "0.00032792219373",
+      "isin": "US15135B1017",
+      "provider_aliases": [
+        "CNC"
+      ]
+    },
+    {
+      "name": "CenterPoint Energy, Inc.",
+      "symbol": "CNP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/59f172468a280a08d9972d345a5c7f450caa328d6a4ff4752a9fcc8fc703dbc8.json"
+      ],
+      "cusip": "15189T107",
+      "weight": "0.00042751913253",
+      "isin": "US15189T1079",
+      "provider_aliases": [
+        "CNP"
+      ]
+    },
+    {
+      "name": "Dayforce, Inc.",
+      "symbol": "DAY",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1331971/000119312525255297/primary_doc.xml",
+      "cusip": "15677J108",
+      "weight": "0.00018848768943",
+      "isin": "US15677J1088",
+      "provider_aliases": []
+    },
+    {
+      "name": "Charles River Laboratories International, Inc.",
+      "symbol": "CRL",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "159864107",
+      "weight": "0.00016771814717",
+      "isin": "US1598641074",
+      "provider_aliases": [
+        "CRL"
+      ]
+    },
+    {
+      "name": "Charter Communications, Inc.",
+      "symbol": "CHTR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a933b26114452553ce8a823b114eb84a97cabaa53513030054f3d3b39737dd4e.json"
+      ],
+      "cusip": "16119P108",
+      "weight": "0.00031373618022",
+      "isin": "US16119P1084",
+      "provider_aliases": [
+        "CHTR"
+      ]
+    },
+    {
+      "name": "Expand Energy Corp.",
+      "symbol": "EXE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8f683b125ea3c016e7492a6c030fe29e9b09eba03695a0b35efee22b86ff705f.json"
+      ],
+      "cusip": "165167735",
+      "weight": "0.0004487528818",
+      "isin": "US1651677353",
+      "provider_aliases": [
+        "EXE"
+      ]
+    },
+    {
+      "name": "Chevron Corp.",
+      "symbol": "CVX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/919f1b7d8da80a6ed4b7d4bb9e0d3c44e398084f845cc3e522def681e88031ba.json"
+      ],
+      "cusip": "166764100",
+      "weight": "0.00492685521001",
+      "isin": "US1667641005",
+      "provider_aliases": [
+        "CVX"
+      ]
+    },
+    {
+      "name": "Chipotle Mexican Grill, Inc.",
+      "symbol": "CMG",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "169656105",
+      "weight": "0.00083559462355",
+      "isin": "US1696561059",
+      "provider_aliases": [
+        "CMG"
+      ]
+    },
+    {
+      "name": "Church & Dwight Co., Inc.",
+      "symbol": "CHD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/612c56aeaa5d95eb207ff4d28d6e206e71f7c7d5631727e3a8d834bb687b79da.json"
+      ],
+      "cusip": "171340102",
+      "weight": "0.00034388923007",
+      "isin": "US1713401024",
+      "provider_aliases": [
+        "CHD"
+      ]
+    },
+    {
+      "name": "Cincinnati Financial Corp.",
+      "symbol": "CINF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e6b697f8e56e183c1aaf34c267be5c218c235335f69af2c89b00d62b243e769d.json"
+      ],
+      "cusip": "172062101",
+      "weight": "0.00043592308364",
+      "isin": "US1720621010",
+      "provider_aliases": [
+        "CINF"
+      ]
+    },
+    {
+      "name": "Cisco Systems, Inc.",
+      "symbol": "CSCO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/41a263127bc10c2b00a701322a0a0f5813a80ca3b055ca9a4d25b54fb2793247.json"
+      ],
+      "cusip": "17275R102",
+      "weight": "0.00518450840181",
+      "isin": "US17275R1023",
+      "provider_aliases": [
+        "CSCO"
+      ]
+    },
+    {
+      "name": "Cintas Corp.",
+      "symbol": "CTAS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/dad94593d55a4d67cc9c4059fe2db03e948717cf2c0bece32b9a41cd9b440d66.json"
+      ],
+      "cusip": "172908105",
+      "weight": "0.00109721853784",
+      "isin": "US1729081059",
+      "provider_aliases": [
+        "CTAS"
+      ]
+    },
+    {
+      "name": "Citigroup, Inc.",
+      "symbol": "C",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c8af590b58b01306a0b231d2f7aa25d499aa822ff7fe5d525c72e322e3805671.json"
+      ],
+      "cusip": "172967424",
+      "weight": "0.00356605419186",
+      "isin": "US1729674242",
+      "provider_aliases": [
+        "C"
+      ]
+    },
+    {
+      "name": "Citizens Financial Group, Inc.",
+      "symbol": "CFG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0fde632f9439d71e978c9969a625d4ff3daa98e7ca5971b36d43ca596edfb1ca.json"
+      ],
+      "cusip": "174610105",
+      "weight": "0.00042845691474",
+      "isin": "US1746101054",
+      "provider_aliases": [
+        "CFG"
+      ]
+    },
+    {
+      "name": "Clorox Co. (The)",
+      "symbol": "CLX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9f8380a633378736b6166ab11225ad0be68a4e5b821ff62e28e4654f75277f85.json"
+      ],
+      "cusip": "189054109",
+      "weight": "0.00021077987552",
+      "isin": "US1890541097",
+      "provider_aliases": [
+        "CLX"
+      ]
+    },
+    {
+      "name": "Coca-Cola Co. (The)",
+      "symbol": "KO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c330a9d78c9d29be5a12d10b9af72242a4e187d2c32c6b87571cad3f9cb69f89.json"
+      ],
+      "cusip": "191216100",
+      "weight": "0.0046225768147",
+      "isin": "US1912161007",
+      "provider_aliases": [
+        "KO"
+      ]
+    },
+    {
+      "name": "Cognizant Technology Solutions Corp.",
+      "symbol": "CTSH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b69b188ba4a9131f42fc2f68eec4d03c3da67aef166c00809c39ced92231552d.json"
+      ],
+      "cusip": "192446102",
+      "weight": "0.00068419127816",
+      "isin": "US1924461023",
+      "provider_aliases": [
+        "CTSH"
+      ]
+    },
+    {
+      "name": "Coinbase Global, Inc.",
+      "symbol": "COIN",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "19260Q107",
+      "weight": "0.00088123076541",
+      "isin": "US19260Q1076",
+      "provider_aliases": [
+        "COIN"
+      ]
+    },
+    {
+      "name": "Colgate-Palmolive Co.",
+      "symbol": "CL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/63fd5857f608ae169437139bce05e11c79238365697b8a2ea0d0e705a0d9673b.json"
+      ],
+      "cusip": "194162103",
+      "weight": "0.00108787218855",
+      "isin": "US1941621039",
+      "provider_aliases": [
+        "CL"
+      ]
+    },
+    {
+      "name": "Comfort Systems USA, Inc.",
+      "symbol": "FIX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f0bf59a59b8158b6b13266247f427efd8fbdf3412e4762fbc00ff1cb3a16780c.json"
+      ],
+      "cusip": "199908104",
+      "weight": "0.00056099558637",
+      "isin": "US1999081045",
+      "provider_aliases": [
+        "FIX"
+      ]
+    },
+    {
+      "name": "Comcast Corp.",
+      "symbol": "CMCSA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/38ec77bbc616dc303dec285d00636ad70ba35930f5355a6cc230c42cbc33347e.json"
+      ],
+      "cusip": "20030N101",
+      "weight": "0.00185539281333",
+      "isin": "US20030N1019",
+      "provider_aliases": [
+        "CMCSA"
+      ]
+    },
+    {
+      "name": "Conagra Brands, Inc.",
+      "symbol": "CAG",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/23217/000002321725000058/cag-20250525xars.pdf",
+      "cusip": "205887102",
+      "weight": "0.00014161342518",
+      "isin": "US2058871029",
+      "provider_aliases": []
+    },
+    {
+      "name": "ConocoPhillips",
+      "symbol": "COP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/42f1f363bc67cf40ab887a1c5ca2145f2d249c4c853862c821abb61bf13496db.json"
+      ],
+      "cusip": "20825C104",
+      "weight": "0.0019756653806",
+      "isin": "US20825C1045",
+      "provider_aliases": [
+        "COP"
+      ]
+    },
+    {
+      "name": "Consolidated Edison, Inc.",
+      "symbol": "ED",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b7db05b61f87e2b2782ca5b14407d3c0cf9fb7c30c57c60ff6c3fd66f45b14ce.json"
+      ],
+      "cusip": "209115104",
+      "weight": "0.00061178142906",
+      "isin": "US2091151041",
+      "provider_aliases": [
+        "ED"
+      ]
+    },
+    {
+      "name": "Constellation Brands, Inc.",
+      "symbol": "STZ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e95432d441f13e756342ea6bcb630125a94ee7bbfa93b5802d186b8b93d21291.json"
+      ],
+      "cusip": "21036P108",
+      "weight": "0.00033216566344",
+      "isin": "US21036P1084",
+      "provider_aliases": [
+        "STZ"
+      ]
+    },
+    {
+      "name": "Constellation Energy Corp.",
+      "symbol": "CEG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f2de82a36a603a35f68274aa2b6fcaeceb4b465645d30d1e30eec8f3bcb49455.json"
+      ],
+      "cusip": "21037T109",
+      "weight": "0.00188523737932",
+      "isin": "US21037T1097",
+      "provider_aliases": [
+        "CEG"
+      ]
+    },
+    {
+      "name": "Cooper Cos., Inc. (The)",
+      "symbol": "COO",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "216648501",
+      "weight": "0.00027829648623",
+      "isin": "US2166485019",
+      "provider_aliases": [
+        "COO"
+      ]
+    },
+    {
+      "name": "Copart, Inc.",
+      "symbol": "CPRT",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "217204106",
+      "weight": "0.00059537733794",
+      "isin": "US2172041061",
+      "provider_aliases": [
+        "CPRT"
+      ]
+    },
+    {
+      "name": "Corning, Inc.",
+      "symbol": "GLW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/60f034830199513b1ae7e68cf07e92acaa1078be0da8c54a7066df342e3a8839.json"
+      ],
+      "cusip": "219350105",
+      "weight": "0.0011667595471",
+      "isin": "US2193501051",
+      "provider_aliases": [
+        "GLW"
+      ]
+    },
+    {
+      "name": "Corpay, Inc.",
+      "symbol": "CPAY",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "219948106",
+      "weight": "0.00035956359277",
+      "isin": "US2199481068",
+      "provider_aliases": [
+        "CPAY"
+      ]
+    },
+    {
+      "name": "Corteva, Inc.",
+      "symbol": "CTVA",
+      "mapping_evidence": "sources/c9186e35176b39218ab916587a2269c4688682c781b70724c06b7c5aa330428e.json",
+      "cusip": "22052L104",
+      "weight": "0.0007735970304",
+      "isin": "US22052L1044",
+      "provider_aliases": [
+        "CTVA"
+      ]
+    },
+    {
+      "name": "Costco Wholesale Corp.",
+      "symbol": "COST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4dc4c26dbb39a1f9dd4bd6ae0e562eb4cf2bc4dbfe14a5478051f2ce5e079744.json"
+      ],
+      "cusip": "22160K105",
+      "weight": "0.00652722577423",
+      "isin": "US22160K1051",
+      "provider_aliases": [
+        "COST"
+      ]
+    },
+    {
+      "name": "CoStar Group, Inc.",
+      "symbol": "CSGP",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "22160N109",
+      "weight": "0.00048656689957",
+      "isin": "US22160N1090",
+      "provider_aliases": [
+        "CSGP"
+      ]
+    },
+    {
+      "name": "Crowdstrike Holdings, Inc.",
+      "symbol": "CRWD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9a508e56165df98dbc367e58391afb03abf32000780a616bd6541ad3e2b52ce3.json"
+      ],
+      "cusip": "22788C105",
+      "weight": "0.00200918081035",
+      "isin": "US22788C1053",
+      "provider_aliases": [
+        "CRWD"
+      ]
+    },
+    {
+      "name": "Crown Castle, Inc.",
+      "symbol": "CCI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fd77d2efb2832ad3a8de0f2df5f3beafca652e7d7a387001b5fa6e6f6a3d4506.json"
+      ],
+      "cusip": "22822V101",
+      "weight": "0.0006610533246",
+      "isin": "US22822V1017",
+      "provider_aliases": [
+        "CCI"
+      ]
+    },
+    {
+      "name": "Cummins, Inc.",
+      "symbol": "CMI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8e68276f762f95350859eb0ab7712171545cdb8f9dfa67935ced62e0b139d25c.json"
+      ],
+      "cusip": "231021106",
+      "weight": "0.00120342604706",
+      "isin": "US2310211063",
+      "provider_aliases": [
+        "CMI"
+      ]
+    },
+    {
+      "name": "DR Horton, Inc.",
+      "symbol": "DHI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7f6fb4e22bd5d3e6e9b5971c67c3d42ab29bff8b34083c3a5f95252e1e172e70.json"
+      ],
+      "cusip": "23331A109",
+      "weight": "0.00067368216978",
+      "isin": "US23331A1097",
+      "provider_aliases": [
+        "DHI"
+      ]
+    },
+    {
+      "name": "DTE Energy Co.",
+      "symbol": "DTE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/af22dd86a3f206026d812f9de6a2cc3aa42e0d1520febfb2e969a59e7b2ca03e.json"
+      ],
+      "cusip": "233331107",
+      "weight": "0.00045709790553",
+      "isin": "US2333311072",
+      "provider_aliases": [
+        "DTE"
+      ]
+    },
+    {
+      "name": "Danaher Corp.",
+      "symbol": "DHR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/cbb7b6bcd505cec632fdddbaa6f948923d034a6ae1cf8a5a4509f0ade538a75f.json",
+        "sources/cbb7b6bcd505cec632fdddbaa6f948923d034a6ae1cf8a5a4509f0ade538a75f.json"
+      ],
+      "cusip": "235851102",
+      "weight": "0.00245790917686",
+      "isin": "US2358511028",
+      "provider_aliases": [
+        "DHR"
+      ]
+    },
+    {
+      "name": "Darden Restaurants, Inc.",
+      "symbol": "DRI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/27568e2c8d4f106e294a2f6a537bf55e17b798b45acc26f7095c82cd38ab4199.json"
+      ],
+      "cusip": "237194105",
+      "weight": "0.00036556791711",
+      "isin": "US2371941053",
+      "provider_aliases": [
+        "DRI"
+      ]
+    },
+    {
+      "name": "Datadog, Inc.",
+      "symbol": "DDOG",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "23804L103",
+      "weight": "0.00075587866657",
+      "isin": "US23804L1035",
+      "provider_aliases": [
+        "DDOG"
+      ]
+    },
+    {
+      "name": "DaVita, Inc.",
+      "symbol": "DVA",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "23918K108",
+      "weight": "0.00006849767588",
+      "isin": "US23918K1088",
+      "provider_aliases": [
+        "DVA"
+      ]
+    },
+    {
+      "name": "Deckers Outdoor Corp.",
+      "symbol": "DECK",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "243537107",
+      "weight": "0.00025805736434",
+      "isin": "US2435371073",
+      "provider_aliases": [
+        "DECK"
+      ]
+    },
+    {
+      "name": "Deere & Co.",
+      "symbol": "DE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b81950b701569b5335632647b0f862641513d74f200c022a982ac496c40c23b6.json"
+      ],
+      "cusip": "244199105",
+      "weight": "0.00199908806854",
+      "isin": "US2441991054",
+      "provider_aliases": [
+        "DE"
+      ]
+    },
+    {
+      "name": "Dell Technologies, Inc.",
+      "symbol": "DELL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/bab69a4e98b07939b490a389aefebbde9d1c9a9644f0610fcb54105eaa2e1452.json"
+      ],
+      "cusip": "24703L202",
+      "weight": "0.00064798398697",
+      "isin": "US24703L2025",
+      "provider_aliases": [
+        "DELL"
+      ]
+    },
+    {
+      "name": "Delta Air Lines, Inc.",
+      "symbol": "DAL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4e7ecb7fe4ee0d50eb165dc2b79e6d932834895c6434f10e9ab71f5ba794b026.json"
+      ],
+      "cusip": "247361702",
+      "weight": "0.00076871502927",
+      "isin": "US2473617023",
+      "provider_aliases": [
+        "DAL"
+      ]
+    },
+    {
+      "name": "Devon Energy Corp.",
+      "symbol": "DVN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d6d04cdf2ee3d098b3df27c0b7600a9c4059d03c378c7bc3938e57480e526a7b.json",
+        "sources/d6d04cdf2ee3d098b3df27c0b7600a9c4059d03c378c7bc3938e57480e526a7b.json"
+      ],
+      "cusip": "25179M103",
+      "weight": "0.00039244963961",
+      "isin": "US25179M1036",
+      "provider_aliases": [
+        "DVN"
+      ]
+    },
+    {
+      "name": "Dexcom, Inc.",
+      "symbol": "DXCM",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "252131107",
+      "weight": "0.00044210491232",
+      "isin": "US2521311074",
+      "provider_aliases": [
+        "DXCM"
+      ]
+    },
+    {
+      "name": "Diamondback Energy, Inc.",
+      "symbol": "FANG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/257aebd96cf385819855f5c85dbff7a4a08f6eb2edc7dbe55c8792d343effc05.json"
+      ],
+      "cusip": "25278X109",
+      "weight": "0.00047818391399",
+      "isin": "US25278X1090",
+      "provider_aliases": [
+        "FANG"
+      ]
+    },
+    {
+      "name": "Digital Realty Trust, Inc.",
+      "symbol": "DLR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/472953e5b8d54d096ff37c16c598e4a35c57caeb1bdd153c3672195d52cc1cf1.json"
+      ],
+      "cusip": "253868103",
+      "weight": "0.0008531936149",
+      "isin": "US2538681030",
+      "provider_aliases": [
+        "DLR"
+      ]
+    },
+    {
+      "name": "Walt Disney Co. (The)",
+      "symbol": "DIS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/74ae7b013443d176dbe40dd8fe3f23e34bf964903bc5d761c6a16d18f5ac4ab0.json"
+      ],
+      "cusip": "254687106",
+      "weight": "0.00346902686002",
+      "isin": "US2546871060",
+      "provider_aliases": [
+        "DIS"
+      ]
+    },
+    {
+      "name": "Dollar General Corp.",
+      "symbol": "DG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0ccd43a0d69fc81812d1e26703d36901704bed169aaa1cb2a60cc9526c0ea3d6.json"
+      ],
+      "cusip": "256677105",
+      "weight": "0.00049915544408",
+      "isin": "US2566771059",
+      "provider_aliases": [
+        "DG"
+      ]
+    },
+    {
+      "name": "Dollar Tree, Inc.",
+      "symbol": "DLTR",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "256746108",
+      "weight": "0.00039852655001",
+      "isin": "US2567461080",
+      "provider_aliases": [
+        "DLTR"
+      ]
+    },
+    {
+      "name": "Dominion Energy, Inc.",
+      "symbol": "D",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4491f0e8643b5416a688f82dc629e5579a017048b1c89390349780050da90874.json"
+      ],
+      "cusip": "25746U109",
+      "weight": "0.00085449198244",
+      "isin": "US25746U1097",
+      "provider_aliases": [
+        "D"
+      ]
+    },
+    {
+      "name": "Domino's Pizza, Inc.",
+      "symbol": "DPZ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3647619c73e4aa0e58827f5f4ee2234159d6231b27c249b92c2f6fbe44fa1991.json"
+      ],
+      "cusip": "25754A201",
+      "weight": "0.00022198060109",
+      "isin": "US25754A2015",
+      "provider_aliases": [
+        "DPZ"
+      ]
+    },
+    {
+      "name": "DoorDash, Inc.",
+      "symbol": "DASH",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "25809K105",
+      "weight": "0.00144602108463",
+      "isin": "US25809K1051",
+      "provider_aliases": [
+        "DASH"
+      ]
+    },
+    {
+      "name": "Dover Corp.",
+      "symbol": "DOV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/18aa8cf831e963a45f74446b448ed4fc1a241439c07f8c7561016cef536d7e9d.json"
+      ],
+      "cusip": "260003108",
+      "weight": "0.00045714440953",
+      "isin": "US2600031080",
+      "provider_aliases": [
+        "DOV"
+      ]
+    },
+    {
+      "name": "Dow, Inc.",
+      "symbol": "DOW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/41fb5e0e3460cfe6965009390b50a983fbd92d88a858f0f46f639cfd37293f6e.json"
+      ],
+      "cusip": "260557103",
+      "weight": "0.0002838205155",
+      "isin": "US2605571031",
+      "provider_aliases": [
+        "DOW"
+      ]
+    },
+    {
+      "name": "Duke Energy Corp.",
+      "symbol": "DUK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/890f853e5e877de0fc45d67ed9a24bcbec1590f15619f4d57e23c3cc31aa58a9.json"
+      ],
+      "cusip": "26441C204",
+      "weight": "0.0015567372524",
+      "isin": "US26441C2044",
+      "provider_aliases": [
+        "DUK"
+      ]
+    },
+    {
+      "name": "DuPont de Nemours, Inc.",
+      "symbol": "DD",
+      "mapping_evidence": [
+        "sources/8d79e63ca40b3e498b1a8c89593056a2e6d2282037f6bb815e128eb5c4e32dd7.json",
+        "sources/8d79e63ca40b3e498b1a8c89593056a2e6d2282037f6bb815e128eb5c4e32dd7.json"
+      ],
+      "cusip": "26614N102",
+      "weight": "0.00028749607579",
+      "isin": "US26614N1028",
+      "provider_aliases": [
+        "DD"
+      ]
+    },
+    {
+      "name": "EOG Resources, Inc.",
+      "symbol": "EOG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1ae1381bb5f8e0f0a61bdb88b4187d64e807d6582a99c79f4c2ce84daa51287b.json"
+      ],
+      "cusip": "26875P101",
+      "weight": "0.00097314936693",
+      "isin": "US26875P1012",
+      "provider_aliases": [
+        "EOG"
+      ]
+    },
+    {
+      "name": "EQT Corp.",
+      "symbol": "EQT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6db7cbfd310da8fa764446bd81b55c28b0dd20d689cb068ea9f7f949c07d7c0e.json"
+      ],
+      "cusip": "26884L109",
+      "weight": "0.00057128085993",
+      "isin": "US26884L1098",
+      "provider_aliases": [
+        "EQT"
+      ]
+    },
+    {
+      "name": "eBay, Inc.",
+      "symbol": "EBAY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/35b25e6c7f03790a325906984f14f11f835ae680ec627ab8c8dd71c5b4917c4c.json"
+      ],
+      "cusip": "278642103",
+      "weight": "0.00067239900589",
+      "isin": "US2786421030",
+      "provider_aliases": [
+        "EBAY"
+      ]
+    },
+    {
+      "name": "Ecolab, Inc.",
+      "symbol": "ECL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/04b6b77fec2523a79a77ef6310298ec4cb53dfa463804291283f867851850baf.json"
+      ],
+      "cusip": "278865100",
+      "weight": "0.00114294270535",
+      "isin": "US2788651006",
+      "provider_aliases": [
+        "ECL"
+      ]
+    },
+    {
+      "name": "Edison International",
+      "symbol": "EIX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/139a165de95c38965a5d0f3767744283a95a572457fb56c61e283f8d4413a2bb.json"
+      ],
+      "cusip": "281020107",
+      "weight": "0.00039446563621",
+      "isin": "US2810201077",
+      "provider_aliases": [
+        "EIX"
+      ]
+    },
+    {
+      "name": "Edwards Lifesciences Corp.",
+      "symbol": "EW",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "28176E108",
+      "weight": "0.0008449238779",
+      "isin": "US28176E1082",
+      "provider_aliases": [
+        "EW"
+      ]
+    },
+    {
+      "name": "Electronic Arts, Inc.",
+      "symbol": "EA",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/712515/000130817926000382/ea2026-10ka_htm.xml",
+      "cusip": "285512109",
+      "weight": "0.00078333902768",
+      "isin": "US2855121099",
+      "provider_aliases": []
+    },
+    {
+      "name": "EMCOR Group, Inc.",
+      "symbol": "EME",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1fcfb0d3825bfb9afe30dc7965cd3015c0127b24f888a3c98f3208e0ee253c6e.json"
+      ],
+      "cusip": "29084Q100",
+      "weight": "0.00046736754053",
+      "isin": "US29084Q1004",
+      "provider_aliases": [
+        "EME"
+      ]
+    },
+    {
+      "name": "Emerson Electric Co.",
+      "symbol": "EMR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4a5c09fc30dcea14df5f54be9f14e9c27ff630f2746a1be074dc8cbca686fe1a.json"
+      ],
+      "cusip": "291011104",
+      "weight": "0.00127347535464",
+      "isin": "US2910111044",
+      "provider_aliases": [
+        "EMR"
+      ]
+    },
+    {
+      "name": "Entergy Corp.",
+      "symbol": "ETR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c0338a1e8eff8e5352bb8e035a0e9eac6d689523276e4ec756ba82eccade4d90.json"
+      ],
+      "cusip": "29364G103",
+      "weight": "0.00070467130417",
+      "isin": "US29364G1031",
+      "provider_aliases": [
+        "ETR"
+      ]
+    },
+    {
+      "name": "EPAM Systems, Inc.",
+      "symbol": "EPAM",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1352010/000135201026000015/epam-20251231.htm",
+      "cusip": "29414B104",
+      "weight": "0.00019330407319",
+      "isin": "US29414B1044",
+      "provider_aliases": []
+    },
+    {
+      "name": "Equifax, Inc.",
+      "symbol": "EFX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/79a6c802c0fae925eddd16d7dd6a457b0c6a8738e57007e39248d5ba70418a7a.json"
+      ],
+      "cusip": "294429105",
+      "weight": "0.0004535817065",
+      "isin": "US2944291051",
+      "provider_aliases": [
+        "EFX"
+      ]
+    },
+    {
+      "name": "Equinix, Inc.",
+      "symbol": "EQIX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/41c3ff648a5bfd84d2c4551b93fad4a7663a152b76713c6d525af0d0d495e6fb.json"
+      ],
+      "cusip": "29444U700",
+      "weight": "0.00128479845498",
+      "isin": "US29444U7000",
+      "provider_aliases": [
+        "EQIX"
+      ]
+    },
+    {
+      "name": "Equity Residential",
+      "symbol": "VMRK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4d95b4d6fbba6e6e98f89cc4e5cdf41260ff09ca8a72e74d60d5a03a8fbe8965.json",
+        "sources/4d95b4d6fbba6e6e98f89cc4e5cdf41260ff09ca8a72e74d60d5a03a8fbe8965.json",
+        "sources/4d95b4d6fbba6e6e98f89cc4e5cdf41260ff09ca8a72e74d60d5a03a8fbe8965.json"
+      ],
+      "cusip": "29476L107",
+      "weight": "0.00037278064395",
+      "isin": "US29476L1070",
+      "provider_aliases": [
+        "VMRK",
+        "EQR"
+      ],
+      "historical_symbol": "EQR"
+    },
+    {
+      "name": "Erie Indemnity Co.",
+      "symbol": "ERIE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c1f1369ac94555ee7c5bbae49ed9c12513f309f894f66f611a30eb0d69691630.json"
+      ],
+      "cusip": "29530P102",
+      "weight": "0.00012469258004",
+      "isin": "US29530P1021",
+      "provider_aliases": [
+        "ERIE"
+      ]
+    },
+    {
+      "name": "Essex Property Trust, Inc.",
+      "symbol": "ESS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/56f3d86908812283d61ea115587823ece23e17ff279cf0d0c67ee55d88b2d023.json"
+      ],
+      "cusip": "297178105",
+      "weight": "0.00028812239143",
+      "isin": "US2971781057",
+      "provider_aliases": [
+        "ESS"
+      ]
+    },
+    {
+      "name": "Evergy, Inc.",
+      "symbol": "EVRG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/68bbcba4938520a4c90dd0e586575de7093d6c00a7d754e0cea071e98678ebc8.json"
+      ],
+      "cusip": "30034W106",
+      "weight": "0.0002850386219",
+      "isin": "US30034W1062",
+      "provider_aliases": [
+        "EVRG"
+      ]
+    },
+    {
+      "name": "Eversource Energy",
+      "symbol": "ES",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/966e185d9c4e7125cf728dd1e80ba3b882197af72023abf63489d32e83596a07.json"
+      ],
+      "cusip": "30040W108",
+      "weight": "0.00043144827179",
+      "isin": "US30040W1080",
+      "provider_aliases": [
+        "ES"
+      ]
+    },
+    {
+      "name": "Exelon Corp.",
+      "symbol": "EXC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f56d7a7c0e2758ba82702b20c7c7efbc81a2156d1c439bf6c5256154d1479e16.json"
+      ],
+      "cusip": "30161N101",
+      "weight": "0.00075194816335",
+      "isin": "US30161N1019",
+      "provider_aliases": [
+        "EXC"
+      ]
+    },
+    {
+      "name": "Expedia Group, Inc.",
+      "symbol": "EXPE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7e8f62b29305ea3acd39b97ad4a17f52517a6df3b6879c8c1368427d09d22a63.json"
+      ],
+      "cusip": "30212P303",
+      "weight": "0.00056617152676",
+      "isin": "US30212P3038",
+      "provider_aliases": [
+        "EXPE"
+      ]
+    },
+    {
+      "name": "Expeditors International of Washington, Inc.",
+      "symbol": "EXPD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/962190565a0a783ded4e80d6059cd26e74629bef7df99e2391954cf66404cfe5.json"
+      ],
+      "cusip": "302130109",
+      "weight": "0.00034107989477",
+      "isin": "US3021301094",
+      "provider_aliases": [
+        "EXPD"
+      ]
+    },
+    {
+      "name": "Extra Space Storage, Inc.",
+      "symbol": "EXR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e6dd672b55f71afdeddbd58bb3810a5edfcb6000a1ff3df38d7681d24b88150f.json"
+      ],
+      "cusip": "30225T102",
+      "weight": "0.00047200074634",
+      "isin": "US30225T1025",
+      "provider_aliases": [
+        "EXR"
+      ]
+    },
+    {
+      "name": "Exxon Mobil Corp.",
+      "symbol": "XOM",
+      "mapping_evidence": [
+        "sources/8646669e367207877b1d59797dddaff999577927c7190f04f0f9c6893f3a0ba6.json",
+        "sources/8646669e367207877b1d59797dddaff999577927c7190f04f0f9c6893f3a0ba6.json"
+      ],
+      "cusip": "30231G102",
+      "weight": "0.00866766357526",
+      "isin": "US30231G1022",
+      "provider_aliases": [
+        "XOM"
+      ]
+    },
+    {
+      "name": "Meta Platforms, Inc.",
+      "symbol": "META",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4b3402e1245a550a17eae5a98a63249f925549f372519da1e16e881c8128aa21.json"
+      ],
+      "cusip": "30303M102",
+      "weight": "0.02455333660512",
+      "isin": "US30303M1027",
+      "provider_aliases": [
+        "META"
+      ]
+    },
+    {
+      "name": "FactSet Research Systems, Inc.",
+      "symbol": "FDS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6a4a273ed9b54097e1271a4375b581149d4d588841747f2882002641603827e2.json"
+      ],
+      "cusip": "303075105",
+      "weight": "0.00018564286426",
+      "isin": "US3030751057",
+      "provider_aliases": [
+        "FDS"
+      ]
+    },
+    {
+      "name": "Fair Isaac Corp.",
+      "symbol": "FICO",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "303250104",
+      "weight": "0.00068460167929",
+      "isin": "US3032501047",
+      "provider_aliases": [
+        "FICO"
+      ]
+    },
+    {
+      "name": "Fastenal Co.",
+      "symbol": "FAST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/150e76cd75336f595336bd7e8c1fbee9588808c5cc3936fa471d364d2fd3dbf0.json"
+      ],
+      "cusip": "311900104",
+      "weight": "0.00078685670033",
+      "isin": "US3119001044",
+      "provider_aliases": [
+        "FAST"
+      ]
+    },
+    {
+      "name": "Federal Realty Investment Trust",
+      "symbol": "FRT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/59c62b9970c2a48c3fe7775423d4cc765957540ad871e223d46b175d15c0dcf7.json"
+      ],
+      "cusip": "313745101",
+      "weight": "0.0001351754746",
+      "isin": "US3137451015",
+      "provider_aliases": [
+        "FRT"
+      ]
+    },
+    {
+      "name": "FedEx Corp.",
+      "symbol": "FDX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/114b8e2c6a1a67c133c0372be6449ea244a1fffbd203fc20003f68c6bc64cd6a.json",
+        "sources/32c2a366f9674ec09fbd959016a482fa752d9b308b32e1d5265f3fe037880cd0.json"
+      ],
+      "cusip": "31428X106",
+      "weight": "0.00107075872843",
+      "isin": "US31428X1063",
+      "provider_aliases": [
+        "FDX"
+      ]
+    },
+    {
+      "name": "F5, Inc.",
+      "symbol": "FFIV",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "315616102",
+      "weight": "0.0002514869209",
+      "isin": "US3156161024",
+      "provider_aliases": [
+        "FFIV"
+      ]
+    },
+    {
+      "name": "Fidelity National Information Services, Inc.",
+      "symbol": "FIS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c243c0688b372fcf1e5c119b78ffa6012aa1aa440f2486a51aa17f3420ef3c9e.json"
+      ],
+      "cusip": "31620M106",
+      "weight": "0.00058780999685",
+      "isin": "US31620M1062",
+      "provider_aliases": [
+        "FIS"
+      ]
+    },
+    {
+      "name": "Fifth Third Bancorp",
+      "symbol": "FITB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/32ebfae72b7078db83dbd47919f45d5312939804ef446d1bab10c237b66b1866.json",
+        "sources/32ebfae72b7078db83dbd47919f45d5312939804ef446d1bab10c237b66b1866.json"
+      ],
+      "cusip": "316773100",
+      "weight": "0.00052913630251",
+      "isin": "US3167731005",
+      "provider_aliases": [
+        "FITB"
+      ]
+    },
+    {
+      "name": "First Solar, Inc.",
+      "symbol": "FSLR",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "336433107",
+      "weight": "0.00047872852209",
+      "isin": "US3364331070",
+      "provider_aliases": [
+        "FSLR"
+      ]
+    },
+    {
+      "name": "Fiserv, Inc.",
+      "symbol": "FISV",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "337738108",
+      "weight": "0.0006170362221",
+      "isin": "US3377381088",
+      "provider_aliases": [
+        "FISV"
+      ]
+    },
+    {
+      "name": "FirstEnergy Corp.",
+      "symbol": "FE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b0f186574f57cc5c573e4e57dc4bcde341ff51d885ec074dba6f2c0db8eb9184.json"
+      ],
+      "cusip": "337932107",
+      "weight": "0.00039735469084",
+      "isin": "US3379321074",
+      "provider_aliases": [
+        "FE"
+      ]
+    },
+    {
+      "name": "Ford Motor Co.",
+      "symbol": "F",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/dda4c7364d8f0ba5c41a4edfeda3d3632e71cb1a34718a120f91a4aba211b8e2.json"
+      ],
+      "cusip": "345370860",
+      "weight": "0.00087697431748",
+      "isin": "US3453708600",
+      "provider_aliases": [
+        "F"
+      ]
+    },
+    {
+      "name": "Fortinet, Inc.",
+      "symbol": "FTNT",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "34959E109",
+      "weight": "0.0008573015928",
+      "isin": "US34959E1091",
+      "provider_aliases": [
+        "FTNT"
+      ]
+    },
+    {
+      "name": "Fortive Corp.",
+      "symbol": "FTV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/774a4db4bc2bf9d822c6ee2ade410615869a650b5666c481eae4889937523115.json"
+      ],
+      "cusip": "34959J108",
+      "weight": "0.00029949332104",
+      "isin": "US34959J1088",
+      "provider_aliases": [
+        "FTV"
+      ]
+    },
+    {
+      "name": "Fox Corp.",
+      "symbol": "FOXA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d398220e6739ab1aad6da2ab65c7640389fbe98b62fec5c1883fe974851b19c4.json"
+      ],
+      "cusip": "35137L105",
+      "weight": "0.00026003385178",
+      "isin": "US35137L1052",
+      "provider_aliases": [
+        "FOXA"
+      ]
+    },
+    {
+      "name": "Fox Corp.",
+      "symbol": "FOX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/18f9e7eb02798c59005c5cbd48f9d67570152f1081a05a969f6d60cc1a4c4ca6.json"
+      ],
+      "cusip": "35137L204",
+      "weight": "0.00016480917585",
+      "isin": "US35137L2043",
+      "provider_aliases": [
+        "FOX"
+      ]
+    },
+    {
+      "name": "Franklin Resources, Inc.",
+      "symbol": "BEN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6f43f6d9789c4ad35ca9d00bcea72fb65f739690f108bb6c913093064eef3594.json"
+      ],
+      "cusip": "354613101",
+      "weight": "0.00012516579481",
+      "isin": "US3546131018",
+      "provider_aliases": [
+        "BEN"
+      ]
+    },
+    {
+      "name": "Freeport-McMoRan, Inc.",
+      "symbol": "FCX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9b24a6c7b573ec8530a10f26de7f01eff219f6ffbd0d7db5810282fc0325c3e2.json"
+      ],
+      "cusip": "35671D857",
+      "weight": "0.00124548798204",
+      "isin": "US35671D8570",
+      "provider_aliases": [
+        "FCX"
+      ]
+    },
+    {
+      "name": "GE HealthCare Technologies, Inc.",
+      "symbol": "GEHC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fb794a1bdc2544a43f665eda77902a75274f166a554b0cd68636e79eea2b0d39.json"
+      ],
+      "cusip": "36266G107",
+      "weight": "0.00063811571688",
+      "isin": "US36266G1076",
+      "provider_aliases": [
+        "GEHC"
+      ]
+    },
+    {
+      "name": "Arthur J Gallagher & Co.",
+      "symbol": "AJG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/aadb4aabcf1d43c4c17648f2d5aa28a173f7774cee8b483cbad80859f0c88231.json"
+      ],
+      "cusip": "363576109",
+      "weight": "0.00113506689825",
+      "isin": "US3635761097",
+      "provider_aliases": [
+        "AJG"
+      ]
+    },
+    {
+      "name": "Gartner, Inc.",
+      "symbol": "IT",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "366651107",
+      "weight": "0.00031056192875",
+      "isin": "US3666511072",
+      "provider_aliases": [
+        "IT"
+      ]
+    },
+    {
+      "name": "GE Vernova, Inc.",
+      "symbol": "GEV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3c46a1c2ad418bbd0ef18373ff570982c15c41d3b4f5de1c4190272b1151959f.json"
+      ],
+      "cusip": "36828A101",
+      "weight": "0.00302863415781",
+      "isin": "US36828A1016",
+      "provider_aliases": [
+        "GEV"
+      ]
+    },
+    {
+      "name": "Generac Holdings, Inc.",
+      "symbol": "GNRC",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "368736104",
+      "weight": "0.00013651880369",
+      "isin": "US3687361044",
+      "provider_aliases": [
+        "GNRC"
+      ]
+    },
+    {
+      "name": "General Dynamics Corp.",
+      "symbol": "GD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ac07946abc88e660ad589f39f6dc3c0e4d341b7c5486becc94322e4aa5e988f9.json"
+      ],
+      "cusip": "369550108",
+      "weight": "0.00145779399861",
+      "isin": "US3695501086",
+      "provider_aliases": [
+        "GD"
+      ]
+    },
+    {
+      "name": "GE Aerospace",
+      "symbol": "GE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/426b6ec86d8bee0f7283cab783828b05ffb8ddf8c45ce73c199a6aafa672e7cc.json"
+      ],
+      "cusip": "369604301",
+      "weight": "0.00554932899291",
+      "isin": "US3696043013",
+      "provider_aliases": [
+        "GE"
+      ]
+    },
+    {
+      "name": "General Mills, Inc.",
+      "symbol": "GIS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ef3360db3c1dbc7a22a4f9104af42314ebfc7e0cf831b6d6060d37a8affd9313.json"
+      ],
+      "cusip": "370334104",
+      "weight": "0.00042363371498",
+      "isin": "US3703341046",
+      "provider_aliases": [
+        "GIS"
+      ]
+    },
+    {
+      "name": "General Motors Co.",
+      "symbol": "GM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/339564c447f1938076538dae767c91919669e71394618e922e0c15890c2c0a0e.json"
+      ],
+      "cusip": "37045V100",
+      "weight": "0.00129564594452",
+      "isin": "US37045V1008",
+      "provider_aliases": [
+        "GM"
+      ]
+    },
+    {
+      "name": "Genuine Parts Co.",
+      "symbol": "GPC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a84e271314fc79e9d4c4c2766936785da8d6201c892edb8cdfb5fd883f7774c4.json"
+      ],
+      "cusip": "372460105",
+      "weight": "0.00029194350396",
+      "isin": "US3724601055",
+      "provider_aliases": [
+        "GPC"
+      ]
+    },
+    {
+      "name": "Gilead Sciences, Inc.",
+      "symbol": "GILD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3f9df213173d63f8de05c212dae91d51e9a9ea2494d985936ecc3b7e22540e64.json"
+      ],
+      "cusip": "375558103",
+      "weight": "0.00260117363779",
+      "isin": "US3755581036",
+      "provider_aliases": [
+        "GILD"
+      ]
+    },
+    {
+      "name": "Global Payments, Inc.",
+      "symbol": "GPN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0e6325fbde1156ad9a7da1881d7d5fefaa9e7d034039e5070d9bf42190bf5397.json"
+      ],
+      "cusip": "37940X102",
+      "weight": "0.00031296005715",
+      "isin": "US37940X1028",
+      "provider_aliases": [
+        "GPN"
+      ]
+    },
+    {
+      "name": "Globe Life, Inc.",
+      "symbol": "GL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7c7918965c622f07be5b045142749778e72e7c6ecda176e52edc94f8df91a813.json"
+      ],
+      "cusip": "37959E102",
+      "weight": "0.00019015946192",
+      "isin": "US37959E1029",
+      "provider_aliases": [
+        "GL"
+      ]
+    },
+    {
+      "name": "GoDaddy, Inc.",
+      "symbol": "GDDY",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "380237107",
+      "weight": "0.00028639356463",
+      "isin": "US3802371076",
+      "provider_aliases": [
+        "GDDY"
+      ]
+    },
+    {
+      "name": "Goldman Sachs Group, Inc. (The)",
+      "symbol": "GS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a3bf71c70e05863a711681b0f26b6af3a4e86982f9cd0e71f773261a9277d087.json"
+      ],
+      "cusip": "38141G104",
+      "weight": "0.00450274155763",
+      "isin": "US38141G1040",
+      "provider_aliases": [
+        "GS"
+      ]
+    },
+    {
+      "name": "WW Grainger, Inc.",
+      "symbol": "GWW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/33d105c12646342e2e2bddfc9ea50cf0046428c1b46cfa69d9a1995ead08a89a.json"
+      ],
+      "cusip": "384802104",
+      "weight": "0.0007539206748",
+      "isin": "US3848021040",
+      "provider_aliases": [
+        "GWW"
+      ]
+    },
+    {
+      "name": "HCA Healthcare, Inc.",
+      "symbol": "HCA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fb901df056eefc7a22f31ea3e8f51695c93077cda38a5bbe78b88e71abe63630.json"
+      ],
+      "cusip": "40412C101",
+      "weight": "0.00127367059404",
+      "isin": "US40412C1018",
+      "provider_aliases": [
+        "HCA"
+      ]
+    },
+    {
+      "name": "HP, Inc.",
+      "symbol": "HPQ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/28b691c3dff76845f0dd29f1e103579a018d42deb591f2a5657614198cf9cbf2.json"
+      ],
+      "cusip": "40434L105",
+      "weight": "0.00035568067523",
+      "isin": "US40434L1052",
+      "provider_aliases": [
+        "HPQ"
+      ]
+    },
+    {
+      "name": "Halliburton Co.",
+      "symbol": "HAL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d8fc98c44858ebae24b0abff2022690a2d1451f8a75858ecf916cdbc1f88c78c.json"
+      ],
+      "cusip": "406216101",
+      "weight": "0.0004062215476",
+      "isin": "US4062161017",
+      "provider_aliases": [
+        "HAL"
+      ]
+    },
+    {
+      "name": "Hartford Insurance Group, Inc. (The)",
+      "symbol": "HIG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d113870bc4abd02fd11100adc0b47af3040a1ffdc84fcb964668ad11eb26eb25.json"
+      ],
+      "cusip": "416515104",
+      "weight": "0.00065581271255",
+      "isin": "US4165151048",
+      "provider_aliases": [
+        "HIG"
+      ]
+    },
+    {
+      "name": "Hasbro, Inc.",
+      "symbol": "HAS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fc641a0fbc652d1167e325af0a28b69d60c1e2ad1fbd4c4c2f6fb4caa91832d3.json"
+      ],
+      "cusip": "418056107",
+      "weight": "0.00018655186964",
+      "isin": "US4180561072",
+      "provider_aliases": [
+        "HAS"
+      ]
+    },
+    {
+      "name": "Healthpeak Properties, Inc.",
+      "symbol": "DOC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2671b30848457be7c5663e7392767573adc2fe397d9c16cdf82ae838add848f2.json",
+        "sources/2671b30848457be7c5663e7392767573adc2fe397d9c16cdf82ae838add848f2.json"
+      ],
+      "cusip": "42250P103",
+      "weight": "0.00019082084613",
+      "isin": "US42250P1030",
+      "provider_aliases": [
+        "DOC"
+      ]
+    },
+    {
+      "name": "Jack Henry & Associates, Inc.",
+      "symbol": "JKHY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/905a12b17088aeb04e50d154ea039a20ff7f054f1f6076b7e21d68f0a4e989de.json"
+      ],
+      "cusip": "426281101",
+      "weight": "0.00022557015965",
+      "isin": "US4262811015",
+      "provider_aliases": [
+        "JKHY"
+      ]
+    },
+    {
+      "name": "Hershey Co. (The)",
+      "symbol": "HSY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8a19ab14923faa65ecbc9a40c83bb826c40689519afe7f37ac4430b9a9cb59a7.json"
+      ],
+      "cusip": "427866108",
+      "weight": "0.00046055946206",
+      "isin": "US4278661081",
+      "provider_aliases": [
+        "HSY"
+      ]
+    },
+    {
+      "name": "Hewlett Packard Enterprise Co.",
+      "symbol": "HPE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/45a727ab3cf01d3615d85550a8a47c83b3000f9fd6c8a84b12fae3875086dfd1.json"
+      ],
+      "cusip": "42824C109",
+      "weight": "0.00054129962407",
+      "isin": "US42824C1099",
+      "provider_aliases": [
+        "HPE"
+      ]
+    },
+    {
+      "name": "Hilton Worldwide Holdings, Inc.",
+      "symbol": "HLT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/222894d7d3e26532d7f82244eafa646be7f67fcd741ea970beb9f597cdc3c2fd.json"
+      ],
+      "cusip": "43300A203",
+      "weight": "0.00114033741607",
+      "isin": "US43300A2033",
+      "provider_aliases": [
+        "HLT"
+      ]
+    },
+    {
+      "name": "Hologic, Inc.",
+      "symbol": "HOLX",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1424958/000119312520153029/filename16.htm",
+      "cusip": "436440101",
+      "weight": "0.0002829449414",
+      "isin": "US4364401012",
+      "provider_aliases": []
+    },
+    {
+      "name": "Home Depot, Inc. (The)",
+      "symbol": "HD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5609dfc55941fd0a914e21ca128adffc3f09c906621a23e89f403079c9c723b5.json"
+      ],
+      "cusip": "437076102",
+      "weight": "0.00584989297746",
+      "isin": "US4370761029",
+      "provider_aliases": [
+        "HD"
+      ]
+    },
+    {
+      "name": "Honeywell International, Inc.",
+      "symbol": "HON",
+      "mapping_evidence": [
+        "sources/aa1cae17a4bb9c926c2b569742b89328aa138a989b2b3b8d7b1311a9e93ac007.json",
+        "sources/aa1cae17a4bb9c926c2b569742b89328aa138a989b2b3b8d7b1311a9e93ac007.json",
+        "sources/196446e0cb71a5c9354b5ade318ad4d5f61b76dc9daf27023859cf53ec542e4a.json"
+      ],
+      "cusip": "438516106",
+      "weight": "0.00211521433776",
+      "isin": "US4385161066",
+      "provider_aliases": [
+        "HON"
+      ]
+    },
+    {
+      "name": "Hormel Foods Corp.",
+      "symbol": "HRL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/30db7c8d228477e448b2c1c69c85219afa0b6bfdc9778a11257d626257a1687f.json"
+      ],
+      "cusip": "440452100",
+      "weight": "0.00011819149451",
+      "isin": "US4404521001",
+      "provider_aliases": [
+        "HRL"
+      ]
+    },
+    {
+      "name": "Host Hotels & Resorts, Inc.",
+      "symbol": "HST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/db0f9413c50fa8420b0802c01f2db475830e1b3200c1d1ee19ef8fab55c8493d.json"
+      ],
+      "cusip": "44107P104",
+      "weight": "0.00019360044963",
+      "isin": "US44107P1049",
+      "provider_aliases": [
+        "HST"
+      ]
+    },
+    {
+      "name": "Howmet Aerospace, Inc.",
+      "symbol": "HWM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/38f9b66ad66808a482a47c1a730bd7fb158ce06e2bfa35d489f3328ed957e5c7.json"
+      ],
+      "cusip": "443201108",
+      "weight": "0.00140786258769",
+      "isin": "US4432011082",
+      "provider_aliases": [
+        "HWM"
+      ]
+    },
+    {
+      "name": "Hubbell, Inc.",
+      "symbol": "HUBB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/032aed8ba767a9ef6f685ac07b5efacb5497571ae69a429dbfb264f5629d8c5e.json"
+      ],
+      "cusip": "443510607",
+      "weight": "0.00040295024104",
+      "isin": "US4435106079",
+      "provider_aliases": [
+        "HUBB"
+      ]
+    },
+    {
+      "name": "Humana, Inc.",
+      "symbol": "HUM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d99927b7c8a93b3e7be0536055d7ee33e9ed0f9a9387e3f1b3b1c323ace6e989.json"
+      ],
+      "cusip": "444859102",
+      "weight": "0.00052583754222",
+      "isin": "US4448591028",
+      "provider_aliases": [
+        "HUM"
+      ]
+    },
+    {
+      "name": "JB Hunt Transport Services, Inc.",
+      "symbol": "JBHT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1f4fc491f9c62e4a4702ca06298ecf7be7f8da245d0ebe1bd412e647ce793864.json"
+      ],
+      "cusip": "445658107",
+      "weight": "0.00024967787646",
+      "isin": "US4456581077",
+      "provider_aliases": [
+        "JBHT"
+      ]
+    },
+    {
+      "name": "Huntington Bancshares, Inc.",
+      "symbol": "HBAN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9a55cc8cc10dc58a32a1ae64c394a53d17c303f4a22f4a8868ad26096c93194a.json",
+        "sources/9a55cc8cc10dc58a32a1ae64c394a53d17c303f4a22f4a8868ad26096c93194a.json"
+      ],
+      "cusip": "446150104",
+      "weight": "0.00046601533583",
+      "isin": "US4461501045",
+      "provider_aliases": [
+        "HBAN"
+      ]
+    },
+    {
+      "name": "Huntington Ingalls Industries, Inc.",
+      "symbol": "HII",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ba5f0d639293ca65610de0c5ec4712be64d4ddf9755ac7c59a06c1bdd91fc29b.json"
+      ],
+      "cusip": "446413106",
+      "weight": "0.00022796980737",
+      "isin": "US4464131063",
+      "provider_aliases": [
+        "HII"
+      ]
+    },
+    {
+      "name": "IDEX Corp.",
+      "symbol": "IEX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/787c0a3096c6e8ca8a56ae2eb39d5128734123d72993f9b17242d6b022333171.json"
+      ],
+      "cusip": "45167R104",
+      "weight": "0.00022747551237",
+      "isin": "US45167R1041",
+      "provider_aliases": [
+        "IEX"
+      ]
+    },
+    {
+      "name": "IDEXX Laboratories, Inc.",
+      "symbol": "IDXX",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "45168D104",
+      "weight": "0.00092266402564",
+      "isin": "US45168D1046",
+      "provider_aliases": [
+        "IDXX"
+      ]
+    },
+    {
+      "name": "Illinois Tool Works, Inc.",
+      "symbol": "ITW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/49595fc891b3efb2331e55ee8d187327c1ab91a05876d2e1f87c6f8944e7775d.json"
+      ],
+      "cusip": "452308109",
+      "weight": "0.00111051173933",
+      "isin": "US4523081093",
+      "provider_aliases": [
+        "ITW"
+      ]
+    },
+    {
+      "name": "Incyte Corp.",
+      "symbol": "INCY",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "45337C102",
+      "weight": "0.00027819134494",
+      "isin": "US45337C1027",
+      "provider_aliases": [
+        "INCY"
+      ]
+    },
+    {
+      "name": "Ingersoll Rand, Inc.",
+      "symbol": "IR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/672490990b0fdfb039451d9728cc80b54215b2fca375c903d987d1dff108a049.json"
+      ],
+      "cusip": "45687V106",
+      "weight": "0.00048647969456",
+      "isin": "US45687V1061",
+      "provider_aliases": [
+        "IR"
+      ]
+    },
+    {
+      "name": "Insulet Corp.",
+      "symbol": "PODD",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "45784P101",
+      "weight": "0.00034156788546",
+      "isin": "US45784P1012",
+      "provider_aliases": [
+        "PODD"
+      ]
+    },
+    {
+      "name": "Intel Corp.",
+      "symbol": "INTC",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "458140100",
+      "weight": "0.00282581656113",
+      "isin": "US4581401001",
+      "provider_aliases": [
+        "INTC"
+      ]
+    },
+    {
+      "name": "Interactive Brokers Group, Inc.",
+      "symbol": "IBKR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9dcbb0db6956c7df4a81026f7565e964f0bfcc23783d3fda169d2dc44c15cc60.json"
+      ],
+      "cusip": "45841N107",
+      "weight": "0.00048894517064",
+      "isin": "US45841N1072",
+      "provider_aliases": [
+        "IBKR"
+      ]
+    },
+    {
+      "name": "Intercontinental Exchange, Inc.",
+      "symbol": "ICE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/33b5ede4ea8068291cad73056896b7ff5060eb9987ae1e546b0feb60e3e26d7a.json"
+      ],
+      "cusip": "45866F104",
+      "weight": "0.0015772095436",
+      "isin": "US45866F1049",
+      "provider_aliases": [
+        "ICE"
+      ]
+    },
+    {
+      "name": "International Business Machines Corp.",
+      "symbol": "IBM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d9adeda153fe2da47ee142e4869b222dd11f8d17f25a9740846a0acdf16cb05a.json",
+        "sources/d9adeda153fe2da47ee142e4869b222dd11f8d17f25a9740846a0acdf16cb05a.json"
+      ],
+      "cusip": "459200101",
+      "weight": "0.00472889974662",
+      "isin": "US4592001014",
+      "provider_aliases": [
+        "IBM"
+      ]
+    },
+    {
+      "name": "International Flavors & Fragrances, Inc.",
+      "symbol": "IFF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0ebc1bc347716ecf3ebaa1e538c1a5a2fbd6b559b165d06a75bdd3ad3e1ddf3d.json"
+      ],
+      "cusip": "459506101",
+      "weight": "0.00029499913402",
+      "isin": "US4595061015",
+      "provider_aliases": [
+        "IFF"
+      ]
+    },
+    {
+      "name": "International Paper Co.",
+      "symbol": "IP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/97f1d3862c165bf777edc056674ba7a32e7dd7880687440003ffc8d966b787ae.json"
+      ],
+      "cusip": "460146103",
+      "weight": "0.00035521821942",
+      "isin": "US4601461035",
+      "provider_aliases": [
+        "IP"
+      ]
+    },
+    {
+      "name": "Intuit, Inc.",
+      "symbol": "INTU",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0c016079909896fa864a9152b32be42d814428b590d8db4e2808d2dcd3b207b5.json"
+      ],
+      "cusip": "461202103",
+      "weight": "0.00315431636053",
+      "isin": "US4612021034",
+      "provider_aliases": [
+        "INTU"
+      ]
+    },
+    {
+      "name": "Intuitive Surgical, Inc.",
+      "symbol": "ISRG",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "46120E602",
+      "weight": "0.00342905330601",
+      "isin": "US46120E6023",
+      "provider_aliases": [
+        "ISRG"
+      ]
+    },
+    {
+      "name": "Invitation Homes, Inc.",
+      "symbol": "INVH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b919f4945427514e600b3e21f265ae24e9fbdf4a0cd86da6c39a6fc6da772d02.json"
+      ],
+      "cusip": "46187W107",
+      "weight": "0.00026768505874",
+      "isin": "US46187W1071",
+      "provider_aliases": [
+        "INVH"
+      ]
+    },
+    {
+      "name": "IQVIA Holdings, Inc.",
+      "symbol": "IQV",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "46266C105",
+      "weight": "0.0006556352193",
+      "isin": "US46266C1053",
+      "provider_aliases": [
+        "IQV"
+      ]
+    },
+    {
+      "name": "Iron Mountain, Inc.",
+      "symbol": "IRM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/75330027c9b5dec315396e9791faa727f6dc75e40cdc26461622700544479b79.json"
+      ],
+      "cusip": "46284V101",
+      "weight": "0.00041849286954",
+      "isin": "US46284V1017",
+      "provider_aliases": [
+        "IRM"
+      ]
+    },
+    {
+      "name": "JPMorgan Chase & Co.",
+      "symbol": "JPM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c39bcb3a83d32781d2c0c8db24a92ecef7f6a17ee9ab1845633616423f6e8d72.json"
+      ],
+      "cusip": "46625H100",
+      "weight": "0.0149814494278",
+      "isin": "US46625H1005",
+      "provider_aliases": [
+        "JPM"
+      ]
+    },
+    {
+      "name": "Jabil, Inc.",
+      "symbol": "JBL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8e0d0477552198748843ccdfb7106c41418de104b7595609cb5d34b907ccad02.json"
+      ],
+      "cusip": "466313103",
+      "weight": "0.00041606429914",
+      "isin": "US4663131039",
+      "provider_aliases": [
+        "JBL"
+      ]
+    },
+    {
+      "name": "Jacobs Solutions, Inc.",
+      "symbol": "J",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/17210a01c8f08ed18a5637f11c7e5fa36ee35ae6262ed8d4c29b47fe45189e59.json"
+      ],
+      "cusip": "46982L108",
+      "weight": "0.00027046342211",
+      "isin": "US46982L1089",
+      "provider_aliases": [
+        "J"
+      ]
+    },
+    {
+      "name": "Johnson & Johnson",
+      "symbol": "JNJ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c72d6ac12e1912432a1c9c253c7d80c793d5ac31974426a9c8ceb7959c6d32ee.json"
+      ],
+      "cusip": "478160104",
+      "weight": "0.00851582717461",
+      "isin": "US4781601046",
+      "provider_aliases": [
+        "JNJ"
+      ]
+    },
+    {
+      "name": "KLA Corp.",
+      "symbol": "KLAC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/995a5ad0268a209db4a466627d8f7b2dd7ea17d7d6e8a84c8ed57d4b1bb0ef1a.json"
+      ],
+      "cusip": "482480100",
+      "weight": "0.00272675883155",
+      "isin": "US4824801009",
+      "provider_aliases": [
+        "KLAC"
+      ]
+    },
+    {
+      "name": "KKR & Co., Inc.",
+      "symbol": "KKR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d69d72aaae691a181774d5e746da8930586085c26b6b88ad32366fffc62e5ac1.json"
+      ],
+      "cusip": "48251W104",
+      "weight": "0.00149435310385",
+      "isin": "US48251W1045",
+      "provider_aliases": [
+        "KKR"
+      ]
+    },
+    {
+      "name": "Kenvue, Inc.",
+      "symbol": "KVUE",
+      "mapping_evidence": [
+        "sources/9ca0f6f1acd053e1eb5763ed2601b8386c665befdbf92cff8fb910041e98bef9.json",
+        "sources/e59ba942d7e9a34c996a008f77f08a68be9efe840707ea16ec18e4c2243c899c.json",
+        "sources/e59ba942d7e9a34c996a008f77f08a68be9efe840707ea16ec18e4c2243c899c.json"
+      ],
+      "cusip": "49177J102",
+      "weight": "0.0005653559722",
+      "isin": "US49177J1025",
+      "provider_aliases": [
+        "KVUE"
+      ]
+    },
+    {
+      "name": "Keurig Dr Pepper, Inc.",
+      "symbol": "KDP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1eaa2dede14b77c45f9c692685a318c494a256c31f1e58d552ae09f387728179.json"
+      ],
+      "cusip": "49271V100",
+      "weight": "0.00064979836458",
+      "isin": "US49271V1008",
+      "provider_aliases": [
+        "KDP"
+      ]
+    },
+    {
+      "name": "KeyCorp",
+      "symbol": "KEY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/61532ae53f428f072c6c4a4f912435bac3fcbac369bd9d67f6f8e6fe6fb9555f.json"
+      ],
+      "cusip": "493267108",
+      "weight": "0.00032748244082",
+      "isin": "US4932671088",
+      "provider_aliases": [
+        "KEY"
+      ]
+    },
+    {
+      "name": "Keysight Technologies, Inc.",
+      "symbol": "KEYS",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "49338L103",
+      "weight": "0.00059640605585",
+      "isin": "US49338L1035",
+      "provider_aliases": [
+        "KEYS"
+      ]
+    },
+    {
+      "name": "Kimberly-Clark Corp.",
+      "symbol": "KMB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9ca0f6f1acd053e1eb5763ed2601b8386c665befdbf92cff8fb910041e98bef9.json",
+        "sources/9ca0f6f1acd053e1eb5763ed2601b8386c665befdbf92cff8fb910041e98bef9.json",
+        "sources/e59ba942d7e9a34c996a008f77f08a68be9efe840707ea16ec18e4c2243c899c.json"
+      ],
+      "cusip": "494368103",
+      "weight": "0.0005716649273",
+      "isin": "US4943681035",
+      "provider_aliases": [
+        "KMB"
+      ]
+    },
+    {
+      "name": "Kimco Realty Corp.",
+      "symbol": "KIM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/cb0ba9e10ed04682cdee346cb4fdc01b2fd68d9419e4f57a55ec5af901413a49.json"
+      ],
+      "cusip": "49446R109",
+      "weight": "0.00023443451943",
+      "isin": "US49446R1095",
+      "provider_aliases": [
+        "KIM"
+      ]
+    },
+    {
+      "name": "Kinder Morgan, Inc.",
+      "symbol": "KMI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0b1f1a47af1e275e32beb1fde2a3455b848dd51cbd2685d3e71fd4d0e7b52c52.json"
+      ],
+      "cusip": "49456B101",
+      "weight": "0.00091920428967",
+      "isin": "US49456B1017",
+      "provider_aliases": [
+        "KMI"
+      ]
+    },
+    {
+      "name": "Kraft Heinz Co. (The)",
+      "symbol": "KHC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/26c0e320de9c66a61c7e6fd646ba0659dba4a04d913a7e0aa52e150c14050f68.json"
+      ],
+      "cusip": "500754106",
+      "weight": "0.00035291087364",
+      "isin": "US5007541064",
+      "provider_aliases": [
+        "KHC"
+      ]
+    },
+    {
+      "name": "Kroger Co. (The)",
+      "symbol": "KR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a44426abab12d1ad36236b1bf09a90dbc2c15169273641842f932c0793f39faf.json"
+      ],
+      "cusip": "501044101",
+      "weight": "0.0006505846099",
+      "isin": "US5010441013",
+      "provider_aliases": [
+        "KR"
+      ]
+    },
+    {
+      "name": "L3Harris Technologies, Inc.",
+      "symbol": "LHX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0fe19cb8fcf617ecd749c99e962139b5e8d1f22cde56a4726e1789bf115a2033.json"
+      ],
+      "cusip": "502431109",
+      "weight": "0.00093763203652",
+      "isin": "US5024311095",
+      "provider_aliases": [
+        "LHX"
+      ]
+    },
+    {
+      "name": "Labcorp Holdings, Inc.",
+      "symbol": "LH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/44f9af5558dbcc64fefcea518aaef7056b1c30ecc7e21a4e638e11dcb4f6f1e3.json"
+      ],
+      "cusip": "504922105",
+      "weight": "0.00035520959381",
+      "isin": "US5049221055",
+      "provider_aliases": [
+        "LH"
+      ]
+    },
+    {
+      "name": "Lam Research Corp.",
+      "symbol": "LRCX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/24a84e9fd06c48bc1f28a21a6d1f68da4a933f998f756809a3f7cf7b88a1f7a0.json"
+      ],
+      "cusip": "512807306",
+      "weight": "0.00367218811061",
+      "isin": "US5128073062",
+      "provider_aliases": [
+        "LRCX"
+      ]
+    },
+    {
+      "name": "Lamb Weston Holdings, Inc.",
+      "symbol": "LW",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1015965/000175272424116075/primary_doc.xml",
+      "cusip": "513272104",
+      "weight": "0.00009954728951",
+      "isin": "US5132721045",
+      "provider_aliases": []
+    },
+    {
+      "name": "Las Vegas Sands Corp.",
+      "symbol": "LVS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/49faaacb9a278bb40c8ac7ed6db9cc446cc6643c106dc7432caa0541e3af8392.json"
+      ],
+      "cusip": "517834107",
+      "weight": "0.00033823438759",
+      "isin": "US5178341070",
+      "provider_aliases": [
+        "LVS"
+      ]
+    },
+    {
+      "name": "Estee Lauder Cos., Inc. (The)",
+      "symbol": "EL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0e2684168a92d85973f76fe23127d50c307686c89f01540118946aa110f2961c.json"
+      ],
+      "cusip": "518439104",
+      "weight": "0.0004397846375",
+      "isin": "US5184391044",
+      "provider_aliases": [
+        "EL"
+      ]
+    },
+    {
+      "name": "Leidos Holdings, Inc.",
+      "symbol": "LDOS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e208f0aaa02cec47ef920de65f98bfeeadae029678baad9c5eff8de35f253d5e.json"
+      ],
+      "cusip": "525327102",
+      "weight": "0.00039393813194",
+      "isin": "US5253271028",
+      "provider_aliases": [
+        "LDOS"
+      ]
+    },
+    {
+      "name": "Lennar Corp.",
+      "symbol": "LEN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/23080e0ffbd2079b9dda2482b70f444f277529f1d3ccf5499a71785d3a1693a5.json"
+      ],
+      "cusip": "526057104",
+      "weight": "0.00037881076491",
+      "isin": "US5260571048",
+      "provider_aliases": [
+        "LEN"
+      ]
+    },
+    {
+      "name": "Lennox International, Inc.",
+      "symbol": "LII",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ebbfbb69eb4fcdd32ecbcb3014153e797d7d6c178d890e9b300f6a3143112604.json"
+      ],
+      "cusip": "526107107",
+      "weight": "0.00026556224685",
+      "isin": "US5261071071",
+      "provider_aliases": [
+        "LII"
+      ]
+    },
+    {
+      "name": "Eli Lilly & Co.",
+      "symbol": "LLY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a56e7690ed8980ad78579a742c25aa7e1a69a7c623d4dd8207598202f2ee23c1.json",
+        "sources/a56e7690ed8980ad78579a742c25aa7e1a69a7c623d4dd8207598202f2ee23c1.json"
+      ],
+      "cusip": "532457108",
+      "weight": "0.01457597010274",
+      "isin": "US5324571083",
+      "provider_aliases": [
+        "LLY"
+      ]
+    },
+    {
+      "name": "Live Nation Entertainment, Inc.",
+      "symbol": "LYV",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "538034109",
+      "weight": "0.000383752219",
+      "isin": "US5380341090",
+      "provider_aliases": [
+        "LYV"
+      ]
+    },
+    {
+      "name": "Lockheed Martin Corp.",
+      "symbol": "LMT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fd723f2657cfbb51dacf62e9d255715140ba61021a75ea43ecd6f74990fc7095.json"
+      ],
+      "cusip": "539830109",
+      "weight": "0.00168214044273",
+      "isin": "US5398301094",
+      "provider_aliases": [
+        "LMT"
+      ]
+    },
+    {
+      "name": "Loews Corp.",
+      "symbol": "L",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/4f1c4b9428cbbdcd1e9bd96dd3c331069e2f19c33a1cd0dd3e373d8fd9288e9c.json"
+      ],
+      "cusip": "540424108",
+      "weight": "0.00030574420636",
+      "isin": "US5404241086",
+      "provider_aliases": [
+        "L"
+      ]
+    },
+    {
+      "name": "Lowe's Cos., Inc.",
+      "symbol": "LOW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/05bb9282cfbf378e114ecf9c25744a59f80cd11d4b559f148312e568c2a82452.json"
+      ],
+      "cusip": "548661107",
+      "weight": "0.00230995828082",
+      "isin": "US5486611073",
+      "provider_aliases": [
+        "LOW"
+      ]
+    },
+    {
+      "name": "Lululemon Athletica, Inc.",
+      "symbol": "LULU",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "550021109",
+      "weight": "0.00038300473696",
+      "isin": "US5500211090",
+      "provider_aliases": [
+        "LULU"
+      ]
+    },
+    {
+      "name": "M&T Bank Corp.",
+      "symbol": "MTB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5ad744384ce63a985bb9fb7fcf28af5f8e86d03d613ccac2bad1654b2bc72795.json"
+      ],
+      "cusip": "55261F104",
+      "weight": "0.00052887465185",
+      "isin": "US55261F1049",
+      "provider_aliases": [
+        "MTB"
+      ]
+    },
+    {
+      "name": "MGM Resorts International",
+      "symbol": "MGM",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "552953101",
+      "weight": "0.00012749119814",
+      "isin": "US5529531015",
+      "provider_aliases": [
+        "MGM"
+      ]
+    },
+    {
+      "name": "MSCI, Inc.",
+      "symbol": "MSCI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/86f2df1c1a6474ca9d32a51d3dd7ecd0a9cb6edeeb247ce55d0a0727cfa4025c.json"
+      ],
+      "cusip": "55354G100",
+      "weight": "0.00073629349696",
+      "isin": "US55354G1004",
+      "provider_aliases": [
+        "MSCI"
+      ]
+    },
+    {
+      "name": "Marathon Petroleum Corp.",
+      "symbol": "MPC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/11c57ab97d09ea8e5734821a20d16ae139279a438341cff611a29549aede8c09.json"
+      ],
+      "cusip": "56585A102",
+      "weight": "0.00083495829647",
+      "isin": "US56585A1025",
+      "provider_aliases": [
+        "MPC"
+      ]
+    },
+    {
+      "name": "Marsh & McLennan Cos., Inc.",
+      "symbol": "MRSH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/29ae3dc07a19aeb60b6c5df0214f1d44c4e34d07760e2efa71844a194a1ecea9.json",
+        "sources/29ae3dc07a19aeb60b6c5df0214f1d44c4e34d07760e2efa71844a194a1ecea9.json",
+        "sources/29ae3dc07a19aeb60b6c5df0214f1d44c4e34d07760e2efa71844a194a1ecea9.json"
+      ],
+      "cusip": "571748102",
+      "weight": "0.00155231456783",
+      "isin": "US5717481023",
+      "provider_aliases": [
+        "MRSH",
+        "MMC"
+      ],
+      "historical_symbol": "MMC"
+    },
+    {
+      "name": "Marriott International, Inc.",
+      "symbol": "MAR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5dd5c60b9fa6dbffc9617b4af332187cab6007ea34a3dc4484b87b2b53e6d17c.json"
+      ],
+      "cusip": "571903202",
+      "weight": "0.00118018649069",
+      "isin": "US5719032022",
+      "provider_aliases": [
+        "MAR"
+      ]
+    },
+    {
+      "name": "Martin Marietta Materials, Inc.",
+      "symbol": "MLM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/08586bcf5a0231c035862896bf6ec295969fa82ea01335d77644e794d82a09d9.json"
+      ],
+      "cusip": "573284106",
+      "weight": "0.00064076861307",
+      "isin": "US5732841060",
+      "provider_aliases": [
+        "MLM"
+      ]
+    },
+    {
+      "name": "Masco Corp.",
+      "symbol": "MAS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/30ebf7362afd37c0ccdc33d3bdb3bc08cefc6d8d253050620835ed1841f7616e.json"
+      ],
+      "cusip": "574599106",
+      "weight": "0.00022511102353",
+      "isin": "US5745991068",
+      "provider_aliases": [
+        "MAS"
+      ]
+    },
+    {
+      "name": "Mastercard, Inc.",
+      "symbol": "MA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/51c5d569b90ace122498843499ae2617eac4541dcc28505fbe362b8eb69ed3e8.json"
+      ],
+      "cusip": "57636Q104",
+      "weight": "0.00799481228399",
+      "isin": "US57636Q1040",
+      "provider_aliases": [
+        "MA"
+      ]
+    },
+    {
+      "name": "Match Group, Inc.",
+      "symbol": "MTCH",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/891103/000089110326000025/mtch-20251231.htm",
+      "cusip": "57667L107",
+      "weight": "0.00013019068747",
+      "isin": "US57667L1070",
+      "provider_aliases": []
+    },
+    {
+      "name": "McCormick & Co., Inc.",
+      "symbol": "MKC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/797d70e4233cce9a8e38063769b7a25c58f201ade4c7ca971973f008334ff2a1.json"
+      ],
+      "cusip": "579780206",
+      "weight": "0.00029435234363",
+      "isin": "US5797802064",
+      "provider_aliases": [
+        "MKC"
+      ]
+    },
+    {
+      "name": "McDonald's Corp.",
+      "symbol": "MCD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d4864f8e52de2f668ccbafd9432c2586573d9e19dc2b83583c9f1bd927974927.json"
+      ],
+      "cusip": "580135101",
+      "weight": "0.00371741022957",
+      "isin": "US5801351017",
+      "provider_aliases": [
+        "MCD"
+      ]
+    },
+    {
+      "name": "McKesson Corp.",
+      "symbol": "MCK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/68a144cf7ebcb3e56a16c51fe5dc7892e08641e1a3394af9d5f34f7364b5c181.json"
+      ],
+      "cusip": "58155Q103",
+      "weight": "0.00172920750704",
+      "isin": "US58155Q1031",
+      "provider_aliases": [
+        "MCK"
+      ]
+    },
+    {
+      "name": "Merck & Co., Inc.",
+      "symbol": "MRK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/af567b73c7418fb44c0076b725a77f0d0acb61ecb025ecfce7e048c0950e061d.json",
+        "sources/af567b73c7418fb44c0076b725a77f0d0acb61ecb025ecfce7e048c0950e061d.json"
+      ],
+      "cusip": "58933Y105",
+      "weight": "0.00446211581612",
+      "isin": "US58933Y1055",
+      "provider_aliases": [
+        "MRK"
+      ]
+    },
+    {
+      "name": "MetLife, Inc.",
+      "symbol": "MET",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7cc9ed31acc5f39bc6b79f3b15fee3a7ffa9dec12004b370a234c70cf4e54a0a.json"
+      ],
+      "cusip": "59156R108",
+      "weight": "0.00074621297962",
+      "isin": "US59156R1086",
+      "provider_aliases": [
+        "MET"
+      ]
+    },
+    {
+      "name": "Mettler-Toledo International, Inc.",
+      "symbol": "MTD",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "592688105",
+      "weight": "0.00048643156688",
+      "isin": "US5926881054",
+      "provider_aliases": [
+        "MTD"
+      ]
+    },
+    {
+      "name": "Microsoft Corp.",
+      "symbol": "MSFT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6a88d7da99759427492f4791a0175c0842d3778d9b2b10041e29e1558de08286.json",
+        "sources/6a88d7da99759427492f4791a0175c0842d3778d9b2b10041e29e1558de08286.json"
+      ],
+      "cusip": "594918104",
+      "weight": "0.06139083485776",
+      "isin": "US5949181045",
+      "provider_aliases": [
+        "MSFT"
+      ]
+    },
+    {
+      "name": "Microchip Technology, Inc.",
+      "symbol": "MCHP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0340272b89ec555da6dccad0f6d1fe9eeeecfd994783627c2ffde5ff8901d820.json"
+      ],
+      "cusip": "595017104",
+      "weight": "0.00058816636553",
+      "isin": "US5950171042",
+      "provider_aliases": [
+        "MCHP"
+      ]
+    },
+    {
+      "name": "Micron Technology, Inc.",
+      "symbol": "MU",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/311b306af174823041e2dbe6bc67494521d741ad6493bcc3bf37a6d6901d38b5.json"
+      ],
+      "cusip": "595112103",
+      "weight": "0.00547158715994",
+      "isin": "US5951121038",
+      "provider_aliases": [
+        "MU"
+      ]
+    },
+    {
+      "name": "Mid-America Apartment Communities, Inc.",
+      "symbol": "MAA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/af7ff7321477240ca05e34f87a3d7a780303d2b066e7d0de01b478775acfb307.json"
+      ],
+      "cusip": "59522J103",
+      "weight": "0.00027751482214",
+      "isin": "US59522J1034",
+      "provider_aliases": [
+        "MAA"
+      ]
+    },
+    {
+      "name": "Moderna, Inc.",
+      "symbol": "MRNA",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "60770K107",
+      "weight": "0.00017512823477",
+      "isin": "US60770K1079",
+      "provider_aliases": [
+        "MRNA"
+      ]
+    },
+    {
+      "name": "Molina Healthcare, Inc.",
+      "symbol": "MOH",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/44201/000114554920062844/primary_doc.xml",
+      "cusip": "60855R100",
+      "weight": "0.00015234646945",
+      "isin": "US60855R1005",
+      "provider_aliases": []
+    },
+    {
+      "name": "Molson Coors Beverage Co.",
+      "symbol": "TAP",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/24545/000002454526000006/tap-20251231.htm",
+      "cusip": "60871R209",
+      "weight": "0.00013491622015",
+      "isin": "US60871R2094",
+      "provider_aliases": []
+    },
+    {
+      "name": "Mondelez International, Inc.",
+      "symbol": "MDLZ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/89156dbe09af176338b3a437e2e2feab4538ecde468d632858b2c6443685bc0b.json"
+      ],
+      "cusip": "609207105",
+      "weight": "0.001186332414",
+      "isin": "US6092071058",
+      "provider_aliases": [
+        "MDLZ"
+      ]
+    },
+    {
+      "name": "Monolithic Power Systems, Inc.",
+      "symbol": "MPWR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9b345e27c1170f7895bcd79b88742ee538b4910abca473b9d739138e0eb45649.json"
+      ],
+      "cusip": "609839105",
+      "weight": "0.00074132686983",
+      "isin": "US6098391054",
+      "provider_aliases": [
+        "MPWR"
+      ]
+    },
+    {
+      "name": "Monster Beverage Corp.",
+      "symbol": "MNST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1f578321468cb29810a53d75687942a262a4b3d8a0cd3931140123bb6078193b.json"
+      ],
+      "cusip": "61174X109",
+      "weight": "0.00093394960112",
+      "isin": "US61174X1090",
+      "provider_aliases": [
+        "MNST"
+      ]
+    },
+    {
+      "name": "Moody's Corp.",
+      "symbol": "MCO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/dcce57a3adf79ddb6d883bc5d4de3f8346d42f84979b06dc7cf2ec95b96171a2.json"
+      ],
+      "cusip": "615369105",
+      "weight": "0.00133862986537",
+      "isin": "US6153691059",
+      "provider_aliases": [
+        "MCO"
+      ]
+    },
+    {
+      "name": "Morgan Stanley",
+      "symbol": "MS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2bc9c0de06c8e6da0143bd4dc3858366ee5d77ab8eb2ed9008efda3d11a60e8a.json"
+      ],
+      "cusip": "617446448",
+      "weight": "0.00366239100215",
+      "isin": "US6174464486",
+      "provider_aliases": [
+        "MS"
+      ]
+    },
+    {
+      "name": "Mosaic Co. (The)",
+      "symbol": "MOS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/75a680411de5a007e0dc42c538a27d75c497ace3ad49f1eb849ed944b13da50d.json"
+      ],
+      "cusip": "61945C103",
+      "weight": "0.00013042590543",
+      "isin": "US61945C1036",
+      "provider_aliases": [
+        "MOS"
+      ]
+    },
+    {
+      "name": "Motorola Solutions, Inc.",
+      "symbol": "MSI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8b7fcc9685579326eee0e4d8738b90b1c2fe8d910a4794f5996a44c11999b4ea.json"
+      ],
+      "cusip": "620076307",
+      "weight": "0.00109011534946",
+      "isin": "US6200763075",
+      "provider_aliases": [
+        "MSI"
+      ]
+    },
+    {
+      "name": "NRG Energy, Inc.",
+      "symbol": "NRG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c834977b1738982b8c5ca39c3c3777ce46a605d8c2d588ec07d2e6a01be1d2b9.json"
+      ],
+      "cusip": "629377508",
+      "weight": "0.00052120310611",
+      "isin": "US6293775085",
+      "provider_aliases": [
+        "NRG"
+      ]
+    },
+    {
+      "name": "NVR, Inc.",
+      "symbol": "NVR",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "62944T105",
+      "weight": "0.00035373515359",
+      "isin": "US62944T1051",
+      "provider_aliases": [
+        "NVR"
+      ]
+    },
+    {
+      "name": "Nasdaq, Inc.",
+      "symbol": "NDAQ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6941d70b424d73d8d5091d5fe56523e6c504f461a31109cde30bbb63165e422e.json"
+      ],
+      "cusip": "631103108",
+      "weight": "0.00074831550775",
+      "isin": "US6311031081",
+      "provider_aliases": [
+        "NDAQ"
+      ]
+    },
+    {
+      "name": "NetApp, Inc.",
+      "symbol": "NTAP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e025fbadb4629bd35601bd98a5f608aec4b9b86168d33ebb18c917097b1ea2b1.json"
+      ],
+      "cusip": "64110D104",
+      "weight": "0.00036596957103",
+      "isin": "US64110D1046",
+      "provider_aliases": [
+        "NTAP"
+      ]
+    },
+    {
+      "name": "Netflix, Inc.",
+      "symbol": "NFLX",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "64110L106",
+      "weight": "0.00678548001963",
+      "isin": "US64110L1061",
+      "provider_aliases": [
+        "NFLX"
+      ]
+    },
+    {
+      "name": "Newmont Corp.",
+      "symbol": "NEM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/597040a5f6bc18146376886bd271f07612530176e1f195dfc5e5fc913eea9a18.json"
+      ],
+      "cusip": "651639106",
+      "weight": "0.00186100999969",
+      "isin": "US6516391066",
+      "provider_aliases": [
+        "NEM"
+      ]
+    },
+    {
+      "name": "News Corp.",
+      "symbol": "NWSA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0d2afab1d6bbae91624352e12dd109879e808d736809f3f6ad1e61e691e3173c.json"
+      ],
+      "cusip": "65249B109",
+      "weight": "0.0001678445793",
+      "isin": "US65249B1098",
+      "provider_aliases": [
+        "NWSA"
+      ]
+    },
+    {
+      "name": "News Corp.",
+      "symbol": "NWS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2e53e3dfbc0dc061c23a09d23c6da7b7e84260fda63a72ca75b9c4d310f915ff.json"
+      ],
+      "cusip": "65249B208",
+      "weight": "0.00006305844717",
+      "isin": "US65249B2088",
+      "provider_aliases": [
+        "NWS"
+      ]
+    },
+    {
+      "name": "NextEra Energy, Inc.",
+      "symbol": "NEE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1d25b268798704c382429c5e4a8728d098e3ef9c8af06e46082ce136947a15ce.json"
+      ],
+      "cusip": "65339F101",
+      "weight": "0.00285553030323",
+      "isin": "US65339F1012",
+      "provider_aliases": [
+        "NEE"
+      ]
+    },
+    {
+      "name": "NIKE, Inc.",
+      "symbol": "NKE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/dbdd4b79f6dbeff7f28cbc26077179d1f9f987ed7926db1c026dccc36a1ba8de.json"
+      ],
+      "cusip": "654106103",
+      "weight": "0.00129412449271",
+      "isin": "US6541061031",
+      "provider_aliases": [
+        "NKE"
+      ]
+    },
+    {
+      "name": "NiSource, Inc.",
+      "symbol": "NI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/89f943e9d0e6062187c41acf917556dbe4c7c2f39088d8197398198a4fe62259.json"
+      ],
+      "cusip": "65473P105",
+      "weight": "0.00034035219112",
+      "isin": "US65473P1057",
+      "provider_aliases": [
+        "NI"
+      ]
+    },
+    {
+      "name": "Nordson Corp.",
+      "symbol": "NDSN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e3a4f41e5d86eab371d34d36d63107a3a11428c07e15666efcc36644e3243984.json"
+      ],
+      "cusip": "655663102",
+      "weight": "0.0002201002957",
+      "isin": "US6556631025",
+      "provider_aliases": [
+        "NDSN"
+      ]
+    },
+    {
+      "name": "Norfolk Southern Corp.",
+      "symbol": "NSC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5901bb13fe59b8126c873781f28866d67390d1d846e2172ac483df71467a3d26.json"
+      ],
+      "cusip": "655844108",
+      "weight": "0.00110648274116",
+      "isin": "US6558441084",
+      "provider_aliases": [
+        "NSC"
+      ]
+    },
+    {
+      "name": "Northern Trust Corp.",
+      "symbol": "NTRS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e8d8a2d6fadd537239f857c0b1b67878f0a4f32bfa164cac579eca11bf25b2c0.json"
+      ],
+      "cusip": "665859104",
+      "weight": "0.00044118792649",
+      "isin": "US6658591044",
+      "provider_aliases": [
+        "NTRS"
+      ]
+    },
+    {
+      "name": "Northrop Grumman Corp.",
+      "symbol": "NOC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f5e802f131932de295a97e08815d98627de0c3492fc2c2a9e8879b6995687aef.json"
+      ],
+      "cusip": "666807102",
+      "weight": "0.00130651555429",
+      "isin": "US6668071029",
+      "provider_aliases": [
+        "NOC"
+      ]
+    },
+    {
+      "name": "Gen Digital, Inc.",
+      "symbol": "GEN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/bf0349d8f9c3e004bea52ac39eacde77cfc96c5796dd7abf971ed97e6a5e6642.json"
+      ],
+      "cusip": "668771108",
+      "weight": "0.00026027350528",
+      "isin": "US6687711084",
+      "provider_aliases": [
+        "GEN"
+      ]
+    },
+    {
+      "name": "Nucor Corp.",
+      "symbol": "NUE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/45c9896994b49facbd6998561edf9ab758f60e4c29ebbddee43c1592b8fcf478.json"
+      ],
+      "cusip": "670346105",
+      "weight": "0.00063755982403",
+      "isin": "US6703461052",
+      "provider_aliases": [
+        "NUE"
+      ]
+    },
+    {
+      "name": "NVIDIA Corp.",
+      "symbol": "NVDA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/441a5d4f8690afb0f4d4498df31ec243066c0afb4bee299026f1efb270add8c9.json"
+      ],
+      "cusip": "67066G104",
+      "weight": "0.07740277522412",
+      "isin": "US67066G1040",
+      "provider_aliases": [
+        "NVDA"
+      ]
+    },
+    {
+      "name": "O'Reilly Automotive, Inc.",
+      "symbol": "ORLY",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "67103H107",
+      "weight": "0.0013149533965",
+      "isin": "US67103H1077",
+      "provider_aliases": [
+        "ORLY"
+      ]
+    },
+    {
+      "name": "Occidental Petroleum Corp.",
+      "symbol": "OXY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/aa9433ce17b8d5c811fa3b8fb555b524d962b46d192566952d043bcea235dedd.json"
+      ],
+      "cusip": "674599105",
+      "weight": "0.00050464891131",
+      "isin": "US6745991058",
+      "provider_aliases": [
+        "OXY"
+      ]
+    },
+    {
+      "name": "Old Dominion Freight Line, Inc.",
+      "symbol": "ODFL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1e8b82139e116a4659d9feff10d1107a7089486cc5ba215a5fa26917bee16911.json"
+      ],
+      "cusip": "679580100",
+      "weight": "0.00049277966351",
+      "isin": "US6795801009",
+      "provider_aliases": [
+        "ODFL"
+      ]
+    },
+    {
+      "name": "Omnicom Group, Inc.",
+      "symbol": "OMC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/75997d1bef980626a6ed1d4849ef7c0d0e87795559882fedd17033791dcfc637.json"
+      ],
+      "cusip": "681919106",
+      "weight": "0.00043992560833",
+      "isin": "US6819191064",
+      "provider_aliases": [
+        "OMC"
+      ]
+    },
+    {
+      "name": "ON Semiconductor Corp.",
+      "symbol": "ON",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "682189105",
+      "weight": "0.00037213721717",
+      "isin": "US6821891057",
+      "provider_aliases": [
+        "ON"
+      ]
+    },
+    {
+      "name": "ONEOK, Inc.",
+      "symbol": "OKE",
+      "mapping_evidence": [
+        "sources/5e996ad6cbf5a5e89b3a690caac7e0fe879467d09ef1e5b0fd2d5821acd63d8b.json",
+        "sources/5e996ad6cbf5a5e89b3a690caac7e0fe879467d09ef1e5b0fd2d5821acd63d8b.json"
+      ],
+      "cusip": "682680103",
+      "weight": "0.00079045342321",
+      "isin": "US6826801036",
+      "provider_aliases": [
+        "OKE"
+      ]
+    },
+    {
+      "name": "Oracle Corp.",
+      "symbol": "ORCL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7402027b442994351115393e2c8e8b74d65fcaa0b0370cc86664e04bcc05eac2.json"
+      ],
+      "cusip": "68389X105",
+      "weight": "0.0055991681997",
+      "isin": "US68389X1054",
+      "provider_aliases": [
+        "ORCL"
+      ]
+    },
+    {
+      "name": "Otis Worldwide Corp.",
+      "symbol": "OTIS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b1fe4086d6ef70b64941c7753bfa4db230260c74bb9bc9e76d9fa1109f54eefe.json"
+      ],
+      "cusip": "68902V107",
+      "weight": "0.00058141049874",
+      "isin": "US68902V1070",
+      "provider_aliases": [
+        "OTIS"
+      ]
+    },
+    {
+      "name": "PG&E Corp.",
+      "symbol": "PCG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b1667cd63044b505ae454d46222e39c4dfb047781b67a50ff86ff172337a0c1b.json"
+      ],
+      "cusip": "69331C108",
+      "weight": "0.0006031888278",
+      "isin": "US69331C1080",
+      "provider_aliases": [
+        "PCG"
+      ]
+    },
+    {
+      "name": "PNC Financial Services Group, Inc. (The)",
+      "symbol": "PNC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f0cb9cd917bd70e34947b689150df8c7e1cce64802f2eb92d6ecc6bf9b788544.json"
+      ],
+      "cusip": "693475105",
+      "weight": "0.00139802943509",
+      "isin": "US6934751057",
+      "provider_aliases": [
+        "PNC"
+      ]
+    },
+    {
+      "name": "PPG Industries, Inc.",
+      "symbol": "PPG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e8216b9c9273f2c37c66420e22358301f2e3fbb953ba6852a540ce7c70ec61a5.json"
+      ],
+      "cusip": "693506107",
+      "weight": "0.00039268770581",
+      "isin": "US6935061076",
+      "provider_aliases": [
+        "PPG"
+      ]
+    },
+    {
+      "name": "PPL Corp.",
+      "symbol": "PPL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d34b652f4b51afc54566cc55f27fe77a376bdc2b3cd497eb987c6c8d8975bba5.json"
+      ],
+      "cusip": "69351T106",
+      "weight": "0.00044224286445",
+      "isin": "US69351T1060",
+      "provider_aliases": [
+        "PPL"
+      ]
+    },
+    {
+      "name": "PTC, Inc.",
+      "symbol": "PTC",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "69370C100",
+      "weight": "0.00035638951211",
+      "isin": "US69370C1009",
+      "provider_aliases": [
+        "PTC"
+      ]
+    },
+    {
+      "name": "PACCAR, Inc.",
+      "symbol": "PCAR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9dd27a060fdcf17e034d4edd9b244d6ada7992b93d8a09fbbf48fe86ecd65c29.json"
+      ],
+      "cusip": "693718108",
+      "weight": "0.00098206087934",
+      "isin": "US6937181088",
+      "provider_aliases": [
+        "PCAR"
+      ]
+    },
+    {
+      "name": "Packaging Corp. of America",
+      "symbol": "PKG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/938eb66fc5f552951af89a93e4064dfbf78c9d3f3ebd7580854828ee98aaac28.json"
+      ],
+      "cusip": "695156109",
+      "weight": "0.00031459221973",
+      "isin": "US6951561090",
+      "provider_aliases": [
+        "PKG"
+      ]
+    },
+    {
+      "name": "Palantir Technologies, Inc.",
+      "symbol": "PLTR",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "69608A108",
+      "weight": "0.00693490775698",
+      "isin": "US69608A1088",
+      "provider_aliases": [
+        "PLTR"
+      ]
+    },
+    {
+      "name": "Palo Alto Networks, Inc.",
+      "symbol": "PANW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/cc4a36295cc34eea36869751458c47416abaaf23c16750d9308551ad425b6f8e.json"
+      ],
+      "cusip": "697435105",
+      "weight": "0.00215182201163",
+      "isin": "US6974351057",
+      "provider_aliases": [
+        "PANW"
+      ]
+    },
+    {
+      "name": "Paramount Skydance Corp.",
+      "symbol": "SKYD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e6a980c0c7d87aa6614a82c1332fcae95198cc3a89ded48a902a0fc631fba60f.json",
+        "sources/e6a980c0c7d87aa6614a82c1332fcae95198cc3a89ded48a902a0fc631fba60f.json",
+        "sources/86df7b1c8a4d1103ab14dee5d6af56dbea34bc64e3388f6425570899048c118a.json"
+      ],
+      "cusip": "69932A204",
+      "weight": "0.00007067720032",
+      "isin": "US69932A2042",
+      "provider_aliases": [
+        "SKYD",
+        "PSKY"
+      ],
+      "historical_symbol": "PSKY"
+    },
+    {
+      "name": "Parker-Hannifin Corp.",
+      "symbol": "PH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/46f86584609b5dbf28054a0b28d5b646e616753214c3507e65f5a426d33e21d2.json"
+      ],
+      "cusip": "701094104",
+      "weight": "0.00189433701974",
+      "isin": "US7010941042",
+      "provider_aliases": [
+        "PH"
+      ]
+    },
+    {
+      "name": "Paychex, Inc.",
+      "symbol": "PAYX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/bc76d720e97b0c98260f2fe260cdfd29ffad73e7e3fafb8c9432149cdf65155c.json"
+      ],
+      "cusip": "704326107",
+      "weight": "0.00062131967222",
+      "isin": "US7043261079",
+      "provider_aliases": [
+        "PAYX"
+      ]
+    },
+    {
+      "name": "Paycom Software, Inc.",
+      "symbol": "PAYC",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1590955/000119312526059372/payc-20251231.htm",
+      "cusip": "70432V102",
+      "weight": "0.00013300608575",
+      "isin": "US70432V1026",
+      "provider_aliases": []
+    },
+    {
+      "name": "PayPal Holdings, Inc.",
+      "symbol": "PYPL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1e61e66c1e08734fe92d7d214d9825d6e49b15775b417e029f2b74ec41d1bfe5.json"
+      ],
+      "cusip": "70450Y103",
+      "weight": "0.00093293121036",
+      "isin": "US70450Y1038",
+      "provider_aliases": [
+        "PYPL"
+      ]
+    },
+    {
+      "name": "PepsiCo, Inc.",
+      "symbol": "PEP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/dac6fbe1b64332368522e5b275941068480f8b45bfc8ef28cd942a9442910ee4.json"
+      ],
+      "cusip": "713448108",
+      "weight": "0.00335166579569",
+      "isin": "US7134481081",
+      "provider_aliases": [
+        "PEP"
+      ]
+    },
+    {
+      "name": "Revvity, Inc.",
+      "symbol": "RVTY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9ceaeb14a7e3f118476218ec8a669f12f614a59b9f13e033260f839470fb9952.json"
+      ],
+      "cusip": "714046109",
+      "weight": "0.00018734410994",
+      "isin": "US7140461093",
+      "provider_aliases": [
+        "RVTY"
+      ]
+    },
+    {
+      "name": "Pfizer, Inc.",
+      "symbol": "PFE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3136b4bae434bb7584108aeef50e99599175fc7b85df469c19789085c95a2249.json"
+      ],
+      "cusip": "717081103",
+      "weight": "0.00241783714525",
+      "isin": "US7170811035",
+      "provider_aliases": [
+        "PFE"
+      ]
+    },
+    {
+      "name": "Philip Morris International, Inc.",
+      "symbol": "PM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e100b4cf2263d1713618e50cc1d0ed1771688d956da364d1bb58a6aead210e86.json"
+      ],
+      "cusip": "718172109",
+      "weight": "0.00426445379759",
+      "isin": "US7181721090",
+      "provider_aliases": [
+        "PM"
+      ]
+    },
+    {
+      "name": "Phillips 66",
+      "symbol": "PSX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/aff6c457c6f0b621876815ba066f4f70635b8b6a17d6ac63913eb3888b74617d.json"
+      ],
+      "cusip": "718546104",
+      "weight": "0.00088800789155",
+      "isin": "US7185461040",
+      "provider_aliases": [
+        "PSX"
+      ]
+    },
+    {
+      "name": "Pinnacle West Capital Corp.",
+      "symbol": "PNW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0a7c0248f883af3c44e48fce29b8da1c5a5801b40efe4286b10341cd0d2a1a81.json"
+      ],
+      "cusip": "723484101",
+      "weight": "0.00018090998225",
+      "isin": "US7234841010",
+      "provider_aliases": [
+        "PNW"
+      ]
+    },
+    {
+      "name": "Pool Corp.",
+      "symbol": "POOL",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/945841/000119312526074833/pool-20251231.htm",
+      "cusip": "73278L105",
+      "weight": "0.00012814497441",
+      "isin": "US73278L1052",
+      "provider_aliases": []
+    },
+    {
+      "name": "T. Rowe Price Group, Inc.",
+      "symbol": "TROW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2d4e6d782cb508a6e812437c8a9ebe182f39ea3ca96e230438a19b84a6ae0a76.json"
+      ],
+      "cusip": "74144T108",
+      "weight": "0.00038722780228",
+      "isin": "US74144T1088",
+      "provider_aliases": [
+        "TROW"
+      ]
+    },
+    {
+      "name": "Principal Financial Group, Inc.",
+      "symbol": "PFG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c0098a91cb86125c3d36d1bd9ae48422f33430fd76f110c2717974bb77db9528.json"
+      ],
+      "cusip": "74251V102",
+      "weight": "0.00030119620704",
+      "isin": "US74251V1026",
+      "provider_aliases": [
+        "PFG"
+      ]
+    },
+    {
+      "name": "Procter & Gamble Co. (The)",
+      "symbol": "PG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/590b9b3e7747d7e6b72ce3a4c22add7f020ef339af6bcd65e3e79bfbc5379153.json"
+      ],
+      "cusip": "742718109",
+      "weight": "0.00571949176646",
+      "isin": "US7427181091",
+      "provider_aliases": [
+        "PG"
+      ]
+    },
+    {
+      "name": "Progressive Corp. (The)",
+      "symbol": "PGR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6eb6cce51f1a6737372e962587970b6b04ee5dc0c3817f117286039b6095cd43.json"
+      ],
+      "cusip": "743315103",
+      "weight": "0.00227998900227",
+      "isin": "US7433151039",
+      "provider_aliases": [
+        "PGR"
+      ]
+    },
+    {
+      "name": "Prologis, Inc.",
+      "symbol": "PLD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ba608298eb82b1f94980528c5610cd7eee38d67ca891a83fe203997b20ec1e0f.json"
+      ],
+      "cusip": "74340W103",
+      "weight": "0.00202525403942",
+      "isin": "US74340W1036",
+      "provider_aliases": [
+        "PLD"
+      ]
+    },
+    {
+      "name": "Prudential Financial, Inc.",
+      "symbol": "PRU",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/98b870577665cff66b4bde9dc57a3f0404cf7ff09bd595bc107dfd45bba1cde2.json"
+      ],
+      "cusip": "744320102",
+      "weight": "0.00067477298096",
+      "isin": "US7443201022",
+      "provider_aliases": [
+        "PRU"
+      ]
+    },
+    {
+      "name": "Public Service Enterprise Group, Inc.",
+      "symbol": "PEG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/557107158b4b5b39817e3c7ac6fa7d1ef597a65f3a07eec8718c475efa0bfa6d.json"
+      ],
+      "cusip": "744573106",
+      "weight": "0.00068448087485",
+      "isin": "US7445731067",
+      "provider_aliases": [
+        "PEG"
+      ]
+    },
+    {
+      "name": "Public Storage",
+      "symbol": "PSA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/05de3f6bc7a69528cc77d5822a946918fa56b0d4a561371782d09141c6777a30.json",
+        "sources/05de3f6bc7a69528cc77d5822a946918fa56b0d4a561371782d09141c6777a30.json"
+      ],
+      "cusip": "74460D109",
+      "weight": "0.00069989674775",
+      "isin": "US74460D1090",
+      "provider_aliases": [
+        "PSA"
+      ]
+    },
+    {
+      "name": "PulteGroup, Inc.",
+      "symbol": "PHM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/96ccec62edb3aab4561a28da8edfac748b70f3454a9d194cd00694dd553ce1b3.json"
+      ],
+      "cusip": "745867101",
+      "weight": "0.0003903652646",
+      "isin": "US7458671010",
+      "provider_aliases": [
+        "PHM"
+      ]
+    },
+    {
+      "name": "Qnity Electronics, Inc.",
+      "symbol": "Q",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5c4d2a112583639516265c1ef2e840b80a9f6b7e854923c6f06f263b7e8794b0.json"
+      ],
+      "cusip": "74743L100",
+      "weight": "0.00029182254608",
+      "isin": "US74743L1008",
+      "provider_aliases": [
+        "Q"
+      ]
+    },
+    {
+      "name": "QUALCOMM, Inc.",
+      "symbol": "QCOM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/645fdecd16c48918f70d402075c0d720a751d86d9e314edd6f78defcd338d365.json"
+      ],
+      "cusip": "747525103",
+      "weight": "0.00312884150218",
+      "isin": "US7475251036",
+      "provider_aliases": [
+        "QCOM"
+      ]
+    },
+    {
+      "name": "Quanta Services, Inc.",
+      "symbol": "PWR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7f7ccaaf45a06c2bce3300660defdba2e568593606a8d51f24f66e77820d58d3.json"
+      ],
+      "cusip": "74762E102",
+      "weight": "0.00107490004009",
+      "isin": "US74762E1029",
+      "provider_aliases": [
+        "PWR"
+      ]
+    },
+    {
+      "name": "Quest Diagnostics, Inc.",
+      "symbol": "DGX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e4e1cfe3dc4d1b6ae2dce0fa18ee922a64b036e80cdfc9c32cb36ca4a3ba2efd.json"
+      ],
+      "cusip": "74834L100",
+      "weight": "0.00032969635767",
+      "isin": "US74834L1008",
+      "provider_aliases": [
+        "DGX"
+      ]
+    },
+    {
+      "name": "Ralph Lauren Corp.",
+      "symbol": "RL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1283feddef8323df7ce242f084feca939b82c4addd89c149954530bebe71551b.json"
+      ],
+      "cusip": "751212101",
+      "weight": "0.00023410790222",
+      "isin": "US7512121010",
+      "provider_aliases": [
+        "RL"
+      ]
+    },
+    {
+      "name": "Raymond James Financial, Inc.",
+      "symbol": "RJF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d2c132b6b50167dd1f4c6dea7776d445e883e3c554eecc7f86a72bbad8e014d2.json"
+      ],
+      "cusip": "754730109",
+      "weight": "0.00048357471709",
+      "isin": "US7547301090",
+      "provider_aliases": [
+        "RJF"
+      ]
+    },
+    {
+      "name": "RTX Corp.",
+      "symbol": "RTX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b1aa5fba94d9198a3b18b995ed59251534a63204adea28743bb69bb88efdc882.json"
+      ],
+      "cusip": "75513E101",
+      "weight": "0.00419977074372",
+      "isin": "US75513E1010",
+      "provider_aliases": [
+        "RTX"
+      ]
+    },
+    {
+      "name": "Realty Income Corp.",
+      "symbol": "O",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/efcd49ceef55bdb3370bb8d35811e69a10da22cbb870051632f4d1873af2f029.json"
+      ],
+      "cusip": "756109104",
+      "weight": "0.00088565166917",
+      "isin": "US7561091049",
+      "provider_aliases": [
+        "O"
+      ]
+    },
+    {
+      "name": "Regency Centers Corp.",
+      "symbol": "REG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9c6b2bd95627e270f5df4c705ae872375623fb6d8d867c6423fabe4eb851c867.json"
+      ],
+      "cusip": "758849103",
+      "weight": "0.00019407335747",
+      "isin": "US7588491032",
+      "provider_aliases": [
+        "REG"
+      ]
+    },
+    {
+      "name": "Regeneron Pharmaceuticals, Inc.",
+      "symbol": "REGN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/c17bb795f2552679297c9ab1125d6ea8d53b58e8c8544986645ae5526327c2d9.json"
+      ],
+      "cusip": "75886F107",
+      "weight": "0.00132861563529",
+      "isin": "US75886F1075",
+      "provider_aliases": [
+        "REGN"
+      ]
+    },
+    {
+      "name": "Regions Financial Corp.",
+      "symbol": "RF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a89b71da7aa0e15f9a3c93bd7dab94332f56832e0c0d5d1cd6264ac77613d3ca.json"
+      ],
+      "cusip": "7591EP100",
+      "weight": "0.00040586273266",
+      "isin": "US7591EP1005",
+      "provider_aliases": [
+        "RF"
+      ]
+    },
+    {
+      "name": "Republic Services, Inc.",
+      "symbol": "RSG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/506059ca4e1947c440f30c04de3daeb0be9f317030cefc89f16a371e37d35a71.json"
+      ],
+      "cusip": "760759100",
+      "weight": "0.00072833242304",
+      "isin": "US7607591002",
+      "provider_aliases": [
+        "RSG"
+      ]
+    },
+    {
+      "name": "ResMed, Inc.",
+      "symbol": "RMD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5a204b70ca4e18129d84fc5d91333991ea3861f840ada171da5a429e43aa2342.json"
+      ],
+      "cusip": "761152107",
+      "weight": "0.0006004858399",
+      "isin": "US7611521078",
+      "provider_aliases": [
+        "RMD"
+      ]
+    },
+    {
+      "name": "Robinhood Markets, Inc.",
+      "symbol": "HOOD",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "770700102",
+      "weight": "0.00151898479619",
+      "isin": "US7707001027",
+      "provider_aliases": [
+        "HOOD"
+      ]
+    },
+    {
+      "name": "Rockwell Automation, Inc.",
+      "symbol": "ROK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1c9fcc28ae4f461c2c54ecbf3f92db31d7ca935e785793999e2e2340c7d15c00.json"
+      ],
+      "cusip": "773903109",
+      "weight": "0.00074607468272",
+      "isin": "US7739031091",
+      "provider_aliases": [
+        "ROK"
+      ]
+    },
+    {
+      "name": "Rollins, Inc.",
+      "symbol": "ROL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/55f07d4c279b074431963cfb7692bbea18f3203362f4e685a7235e65b3510a6c.json"
+      ],
+      "cusip": "775711104",
+      "weight": "0.00030093168979",
+      "isin": "US7757111049",
+      "provider_aliases": [
+        "ROL"
+      ]
+    },
+    {
+      "name": "Roper Technologies, Inc.",
+      "symbol": "ROP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6af71045203aef5dfd7e523f4f399c5b3a226d6c53013adb451cf9b0be20a17f.json"
+      ],
+      "cusip": "776696106",
+      "weight": "0.00081821275303",
+      "isin": "US7766961061",
+      "provider_aliases": [
+        "ROP"
+      ]
+    },
+    {
+      "name": "Ross Stores, Inc.",
+      "symbol": "ROST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d74659175c1119543de10e8bb5bb0c7459895170b601514a4fba784f9cf72c2b.json"
+      ],
+      "cusip": "778296103",
+      "weight": "0.00100061293596",
+      "isin": "US7782961038",
+      "provider_aliases": [
+        "ROST"
+      ]
+    },
+    {
+      "name": "S&P Global, Inc.",
+      "symbol": "SPGI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f1f71093cb024bf2578d07a64d7e92c8b4b9e16d4717e0c8c2e063be05334585.json"
+      ],
+      "cusip": "78409V104",
+      "weight": "0.0027668967942",
+      "isin": "US78409V1044",
+      "provider_aliases": [
+        "SPGI"
+      ]
+    },
+    {
+      "name": "SBA Communications Corp.",
+      "symbol": "SBAC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ac6a7903915b59bb113c42f8ac2ac31c8ca16da3ba679115a7f1d01c654b3d86.json"
+      ],
+      "cusip": "78410G104",
+      "weight": "0.00035199206314",
+      "isin": "US78410G1040",
+      "provider_aliases": [
+        "SBAC"
+      ]
+    },
+    {
+      "name": "Salesforce, Inc.",
+      "symbol": "CRM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/798e39072cae76f20d252a988fa792c45962dd527bdbd1ac94fcba479bdaa10e.json"
+      ],
+      "cusip": "79466L302",
+      "weight": "0.00430731935169",
+      "isin": "US79466L3024",
+      "provider_aliases": [
+        "CRM"
+      ]
+    },
+    {
+      "name": "Sandisk Corp.",
+      "symbol": "SNDK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3e42385634b9c10b2a91be867933f4460e28cee24ba8b1ecccdfa10706259d80.json"
+      ],
+      "cusip": "80004C200",
+      "weight": "0.00056445595597",
+      "isin": "US80004C2008",
+      "provider_aliases": [
+        "SNDK"
+      ]
+    },
+    {
+      "name": "Henry Schein, Inc.",
+      "symbol": "HSIC",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "806407102",
+      "weight": "0.00012917312998",
+      "isin": "US8064071025",
+      "provider_aliases": [
+        "HSIC"
+      ]
+    },
+    {
+      "name": "SLB Ltd.",
+      "symbol": "SLB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/dc7fe059b3ff4c226cd62f27336b4dd366ee133b8758cbee014dfec7211496c8.json"
+      ],
+      "cusip": "806857108",
+      "weight": "0.00097927614477",
+      "isin": "AN8068571086",
+      "provider_aliases": [
+        "SLB"
+      ]
+    },
+    {
+      "name": "Charles Schwab Corp. (The)",
+      "symbol": "SCHW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2219dde91478b4d8dbb71acb1926480cae095c4396228e0eedae0900ba9dd076.json"
+      ],
+      "cusip": "808513105",
+      "weight": "0.00285023324304",
+      "isin": "US8085131055",
+      "provider_aliases": [
+        "SCHW"
+      ]
+    },
+    {
+      "name": "Sempra",
+      "symbol": "SRE",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/78386381eb415c64228815f4875f1e44f2cb2e177c3829e2ed93e778d3758621.json"
+      ],
+      "cusip": "816851109",
+      "weight": "0.00098430652695",
+      "isin": "US8168511090",
+      "provider_aliases": [
+        "SRE"
+      ]
+    },
+    {
+      "name": "ServiceNow, Inc.",
+      "symbol": "NOW",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "81762P102",
+      "weight": "0.00271426745133",
+      "isin": "US81762P1021",
+      "provider_aliases": [
+        "NOW"
+      ]
+    },
+    {
+      "name": "Sherwin-Williams Co. (The)",
+      "symbol": "SHW",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fe0314f6e7587f512fc402539a8fa76dd225cc1bf1dc3cec11a1ae98c36c8dc7.json"
+      ],
+      "cusip": "824348106",
+      "weight": "0.00127587063876",
+      "isin": "US8243481061",
+      "provider_aliases": [
+        "SHW"
+      ]
+    },
+    {
+      "name": "Simon Property Group, Inc.",
+      "symbol": "SPG",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a217d0ae6e734f334bf15c0693ec17cd01476322d086408c8d16f9c3bc9365fa.json"
+      ],
+      "cusip": "828806109",
+      "weight": "0.00103221459483",
+      "isin": "US8288061091",
+      "provider_aliases": [
+        "SPG"
+      ]
+    },
+    {
+      "name": "Skyworks Solutions, Inc.",
+      "symbol": "SWKS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1c38333286413e8fda6b9170046e0088e2db9af7b0e25d2b0f6177a01332b16a.json",
+        "sources/1c38333286413e8fda6b9170046e0088e2db9af7b0e25d2b0f6177a01332b16a.json"
+      ],
+      "cusip": "83088M102",
+      "weight": "0.00016071901482",
+      "isin": "US83088M1027",
+      "provider_aliases": [
+        "SWKS"
+      ]
+    },
+    {
+      "name": "A O Smith Corp.",
+      "symbol": "AOS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2f59523fca7a99cb9962b7f2ae5699aaaa9719bd7b502167d64af2d5fc14640f.json"
+      ],
+      "cusip": "831865209",
+      "weight": "0.00012950006933",
+      "isin": "US8318652091",
+      "provider_aliases": [
+        "AOS"
+      ]
+    },
+    {
+      "name": "J M Smucker Co. (The)",
+      "symbol": "SJM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/69954cd0e3b1ddd27fc0474f02bee51a283b3a4777412ae3745fcf513b3295a5.json"
+      ],
+      "cusip": "832696405",
+      "weight": "0.000178077631",
+      "isin": "US8326964058",
+      "provider_aliases": [
+        "SJM"
+      ]
+    },
+    {
+      "name": "Snap-on, Inc.",
+      "symbol": "SNA",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a7758ef200fda155a0bceaadee2ca8e7a248d019f1aa3fc46ac6744baddb39b0.json"
+      ],
+      "cusip": "833034101",
+      "weight": "0.00030608810014",
+      "isin": "US8330341012",
+      "provider_aliases": [
+        "SNA"
+      ]
+    },
+    {
+      "name": "Solventum Corp.",
+      "symbol": "SOLV",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "83444M101",
+      "weight": "0.00019940450558",
+      "isin": "US83444M1018",
+      "provider_aliases": [
+        "SOLV"
+      ]
+    },
+    {
+      "name": "Southern Co. (The)",
+      "symbol": "SO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9671a44eba9c2445617fe8faaa6eb4c33a3168a3a52d390c342f1549bab1807c.json"
+      ],
+      "cusip": "842587107",
+      "weight": "0.00163989748243",
+      "isin": "US8425871071",
+      "provider_aliases": [
+        "SO"
+      ]
+    },
+    {
+      "name": "Southwest Airlines Co.",
+      "symbol": "LUV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/88396eff904ed865f820b7b68c1909d2c6b5d56c76bc90c57f9aed59ff49f083.json"
+      ],
+      "cusip": "844741108",
+      "weight": "0.00036505348991",
+      "isin": "US8447411088",
+      "provider_aliases": [
+        "LUV"
+      ]
+    },
+    {
+      "name": "Block, Inc.",
+      "symbol": "XYZ",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "852234103",
+      "weight": "0.00060883781451",
+      "isin": "US8522341036",
+      "provider_aliases": [
+        "XYZ"
+      ]
+    },
+    {
+      "name": "Stanley Black & Decker, Inc.",
+      "symbol": "SWK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/eb32b34a36b18507f7a1924359e56d6c5d7c1431e7d37d89d4546024aab10e22.json"
+      ],
+      "cusip": "854502101",
+      "weight": "0.00019646458955",
+      "isin": "US8545021011",
+      "provider_aliases": [
+        "SWK"
+      ]
+    },
+    {
+      "name": "Starbucks Corp.",
+      "symbol": "SBUX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/eefaca304ff9d4e21316db4926531ce9e78b8ea63fe1dcb486a081e31f802323.json"
+      ],
+      "cusip": "855244109",
+      "weight": "0.00163486436266",
+      "isin": "US8552441094",
+      "provider_aliases": [
+        "SBUX"
+      ]
+    },
+    {
+      "name": "State Street Corp.",
+      "symbol": "STT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/da9dc8a9113b0514780a18f2b2cafb1c7026e56d61479d248c5ddc572ed48cbe.json"
+      ],
+      "cusip": "857477103",
+      "weight": "0.00061543594429",
+      "isin": "US8574771031",
+      "provider_aliases": [
+        "STT"
+      ]
+    },
+    {
+      "name": "Steel Dynamics, Inc.",
+      "symbol": "STLD",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/b2a95a1a9e848810628f0d6e19e97cb31fe4c7a62ec7f851313f1d732b43d9d6.json"
+      ],
+      "cusip": "858119100",
+      "weight": "0.00039727863785",
+      "isin": "US8581191009",
+      "provider_aliases": [
+        "STLD"
+      ]
+    },
+    {
+      "name": "Stryker Corp.",
+      "symbol": "SYK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1f61da9969f2f032eddc3190a3f285399487ccd5cfd52a402ee57a4335550705.json"
+      ],
+      "cusip": "863667101",
+      "weight": "0.00206607604047",
+      "isin": "US8636671013",
+      "provider_aliases": [
+        "SYK"
+      ]
+    },
+    {
+      "name": "Super Micro Computer, Inc.",
+      "symbol": "SMCI",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "86800U302",
+      "weight": "0.00025059204218",
+      "isin": "US86800U3023",
+      "provider_aliases": [
+        "SMCI"
+      ]
+    },
+    {
+      "name": "Synopsys, Inc.",
+      "symbol": "SNPS",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "871607107",
+      "weight": "0.00149018255012",
+      "isin": "US8716071076",
+      "provider_aliases": [
+        "SNPS"
+      ]
+    },
+    {
+      "name": "Synchrony Financial",
+      "symbol": "SYF",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fec8b8993180a4656f73c810972face3728ae9d9bd617ecaa5483d86eb1cea5b.json"
+      ],
+      "cusip": "87165B103",
+      "weight": "0.00051322011763",
+      "isin": "US87165B1035",
+      "provider_aliases": [
+        "SYF"
+      ]
+    },
+    {
+      "name": "Sysco Corp.",
+      "symbol": "SYY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/be3076ae5d280b2947eebc3362e61757a7442bad38ef9eb9159bda99797bf12e.json"
+      ],
+      "cusip": "871829107",
+      "weight": "0.00060268348969",
+      "isin": "US8718291078",
+      "provider_aliases": [
+        "SYY"
+      ]
+    },
+    {
+      "name": "TJX Cos., Inc. (The)",
+      "symbol": "TJX",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/337d690c5ecf40eeb08be18a82ea198c7c958793cfd9c8c20ab5c0c823f67d29.json"
+      ],
+      "cusip": "872540109",
+      "weight": "0.0029198626086",
+      "isin": "US8725401090",
+      "provider_aliases": [
+        "TJX"
+      ]
+    },
+    {
+      "name": "TKO Group Holdings, Inc.",
+      "symbol": "TKO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7f0636047d7c0c15c0818c94b06c47a057735b95c92def9a10327947f0236685.json"
+      ],
+      "cusip": "87256C101",
+      "weight": "0.00023664614321",
+      "isin": "US87256C1018",
+      "provider_aliases": [
+        "TKO"
+      ]
+    },
+    {
+      "name": "T-Mobile US, Inc.",
+      "symbol": "TMUS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/20abe89136e2847f1c1a9320695fae832d41df56543ff450d9f968467b7e0943.json"
+      ],
+      "cusip": "872590104",
+      "weight": "0.0016678595192",
+      "isin": "US8725901040",
+      "provider_aliases": [
+        "TMUS"
+      ]
+    },
+    {
+      "name": "Take-Two Interactive Software, Inc.",
+      "symbol": "TTWO",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "874054109",
+      "weight": "0.00075953145081",
+      "isin": "US8740541094",
+      "provider_aliases": [
+        "TTWO"
+      ]
+    },
+    {
+      "name": "Tapestry, Inc.",
+      "symbol": "TPR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/84ae2d9e7d92d3bf6ddfd975176b18fb9c0c0b5b96e92ef5b017fd323c22fb93.json"
+      ],
+      "cusip": "876030107",
+      "weight": "0.00044659512683",
+      "isin": "US8760301072",
+      "provider_aliases": [
+        "TPR"
+      ]
+    },
+    {
+      "name": "Target Corp.",
+      "symbol": "TGT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/abba852f8961b39ee39355361e8c139e7eb848f7c79bea776afabbd41bf504cb.json"
+      ],
+      "cusip": "87612E106",
+      "weight": "0.00075863645721",
+      "isin": "US87612E1064",
+      "provider_aliases": [
+        "TGT"
+      ]
+    },
+    {
+      "name": "Targa Resources Corp.",
+      "symbol": "TRGP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9d752810838279ce3a33cdd950e8cef262fda41f7dfff0d5c524d2bb2a5b833b.json"
+      ],
+      "cusip": "87612G101",
+      "weight": "0.00067642510616",
+      "isin": "US87612G1013",
+      "provider_aliases": [
+        "TRGP"
+      ]
+    },
+    {
+      "name": "Teledyne Technologies, Inc.",
+      "symbol": "TDY",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "879360105",
+      "weight": "0.00040953867089",
+      "isin": "US8793601050",
+      "provider_aliases": [
+        "TDY"
+      ]
+    },
+    {
+      "name": "Teradyne, Inc.",
+      "symbol": "TER",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d23e4e1752ec983ab8ffad46bcd3a607db024d0346384fb92ae69512c937928f.json"
+      ],
+      "cusip": "880770102",
+      "weight": "0.000517731198",
+      "isin": "US8807701029",
+      "provider_aliases": [
+        "TER"
+      ]
+    },
+    {
+      "name": "Tesla, Inc.",
+      "symbol": "TSLA",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "88160R101",
+      "weight": "0.02158295619899",
+      "isin": "US88160R1014",
+      "provider_aliases": [
+        "TSLA"
+      ]
+    },
+    {
+      "name": "Texas Instruments, Inc.",
+      "symbol": "TXN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/af7645ea98eec3b350163206a6632c4fdd86deb0526d941c546c978f4f998177.json"
+      ],
+      "cusip": "882508104",
+      "weight": "0.00269233491565",
+      "isin": "US8825081040",
+      "provider_aliases": [
+        "TXN"
+      ]
+    },
+    {
+      "name": "Texas Pacific Land Corp.",
+      "symbol": "TPL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e079b32a5a616e2bf7de0887ebbfa6af5cdb434266f30568504345c0d84e5918.json"
+      ],
+      "cusip": "88262P102",
+      "weight": "0.00028407486845",
+      "isin": "US88262P1021",
+      "provider_aliases": [
+        "TPL"
+      ]
+    },
+    {
+      "name": "Textron, Inc.",
+      "symbol": "TXT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/77a58008e8ba96e3b598b1e4af3da55bcc089ddb038575a2a2f553f11712d4fd.json"
+      ],
+      "cusip": "883203101",
+      "weight": "0.00026236332727",
+      "isin": "US8832031012",
+      "provider_aliases": [
+        "TXT"
+      ]
+    },
+    {
+      "name": "Trade Desk, Inc. (The)",
+      "symbol": "TTD",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1671933/000167193326000014/ttd-20251231.htm",
+      "cusip": "88339J105",
+      "weight": "0.00028547393887",
+      "isin": "US88339J1051",
+      "provider_aliases": []
+    },
+    {
+      "name": "Thermo Fisher Scientific, Inc.",
+      "symbol": "TMO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/1830d33fcd8adbb40f10f976862923db712fd8ea3ca6f0e1f54b4554b9c83e9a.json"
+      ],
+      "cusip": "883556102",
+      "weight": "0.00371825190206",
+      "isin": "US8835561023",
+      "provider_aliases": [
+        "TMO"
+      ]
+    },
+    {
+      "name": "3M Co.",
+      "symbol": "MMM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3890772800097978e7d245fae6b8f614361a3054d4be3192a146e44c14814e25.json"
+      ],
+      "cusip": "88579Y101",
+      "weight": "0.00145258671471",
+      "isin": "US88579Y1010",
+      "provider_aliases": [
+        "MMM"
+      ]
+    },
+    {
+      "name": "Tractor Supply Co.",
+      "symbol": "TSCO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/906b09234b190f418b31d1105d35dd2ce1a1a2883f811bb03005f4da244bdb89.json"
+      ],
+      "cusip": "892356106",
+      "weight": "0.00045133013605",
+      "isin": "US8923561067",
+      "provider_aliases": [
+        "TSCO"
+      ]
+    },
+    {
+      "name": "TransDigm Group, Inc.",
+      "symbol": "TDG",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "893641100",
+      "weight": "0.00128004072642",
+      "isin": "US8936411003",
+      "provider_aliases": [
+        "TDG"
+      ]
+    },
+    {
+      "name": "Travelers Cos., Inc. (The)",
+      "symbol": "TRV",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/15f5c3a92153dea374236e21878ea8c523eb2b7f3a1cfb398b0edcf5b65ff350.json"
+      ],
+      "cusip": "89417E109",
+      "weight": "0.00110505594008",
+      "isin": "US89417E1091",
+      "provider_aliases": [
+        "TRV"
+      ]
+    },
+    {
+      "name": "Trimble, Inc.",
+      "symbol": "TRMB",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "896239100",
+      "weight": "0.00031838153664",
+      "isin": "US8962391004",
+      "provider_aliases": [
+        "TRMB"
+      ]
+    },
+    {
+      "name": "Truist Financial Corp.",
+      "symbol": "TFC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2164cd1b032f13126aa0d84cb982fab6058ba9c946a29dff8b640500edfc6f8f.json"
+      ],
+      "cusip": "89832Q109",
+      "weight": "0.00107517393571",
+      "isin": "US89832Q1094",
+      "provider_aliases": [
+        "TFC"
+      ]
+    },
+    {
+      "name": "Tyler Technologies, Inc.",
+      "symbol": "TYL",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "902252105",
+      "weight": "0.00033359974066",
+      "isin": "US9022521051",
+      "provider_aliases": [
+        "TYL"
+      ]
+    },
+    {
+      "name": "Tyson Foods, Inc.",
+      "symbol": "TSN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/df3d83c6084992c22a0c129d831dc37780109bd746234c706fda1d2a020c0e47.json"
+      ],
+      "cusip": "902494103",
+      "weight": "0.00028338368152",
+      "isin": "US9024941034",
+      "provider_aliases": [
+        "TSN"
+      ]
+    },
+    {
+      "name": "UDR, Inc.",
+      "symbol": "UDR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fa124639696a972afe5acb94bf75152d6f3597af526f0aa62e3d378e52d5b3d5.json"
+      ],
+      "cusip": "902653104",
+      "weight": "0.00018879625875",
+      "isin": "US9026531049",
+      "provider_aliases": [
+        "UDR"
+      ]
+    },
+    {
+      "name": "US Bancorp",
+      "symbol": "USB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e67fdd75d04205a08130eb1ebbf87aeff2732a30b8b41c4e2de6add7cb052b03.json"
+      ],
+      "cusip": "902973304",
+      "weight": "0.00141663996085",
+      "isin": "US9029733048",
+      "provider_aliases": [
+        "USB"
+      ]
+    },
+    {
+      "name": "Uber Technologies, Inc.",
+      "symbol": "UBER",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "90353T100",
+      "weight": "0.00289972325468",
+      "isin": "US90353T1007",
+      "provider_aliases": [
+        "UBER"
+      ]
+    },
+    {
+      "name": "Ulta Beauty, Inc.",
+      "symbol": "ULTA",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "90384S303",
+      "weight": "0.00046385763527",
+      "isin": "US90384S3031",
+      "provider_aliases": [
+        "ULTA"
+      ]
+    },
+    {
+      "name": "Union Pacific Corp.",
+      "symbol": "UNP",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/35ff01db68a88fb889a83c6469024d9364808b5fa7e96821b3a7ba525c3df0b2.json"
+      ],
+      "cusip": "907818108",
+      "weight": "0.00234302758266",
+      "isin": "US9078181081",
+      "provider_aliases": [
+        "UNP"
+      ]
+    },
+    {
+      "name": "United Airlines Holdings, Inc.",
+      "symbol": "UAL",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "910047109",
+      "weight": "0.00061811955355",
+      "isin": "US9100471096",
+      "provider_aliases": [
+        "UAL"
+      ]
+    },
+    {
+      "name": "United Parcel Service, Inc.",
+      "symbol": "UPS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9d9ed7d43d5a5026f977ac7d4b53341bb60cbfa826fc3adb6719b2cf6fe9c4d0.json"
+      ],
+      "cusip": "911312106",
+      "weight": "0.00125192291614",
+      "isin": "US9113121068",
+      "provider_aliases": [
+        "UPS"
+      ]
+    },
+    {
+      "name": "United Rentals, Inc.",
+      "symbol": "URI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3a90939eab78ed45f8e8032ae3b4afa09c59b8349a691a930d4c2dcfd9780559.json"
+      ],
+      "cusip": "911363109",
+      "weight": "0.00087952727639",
+      "isin": "US9113631090",
+      "provider_aliases": [
+        "URI"
+      ]
+    },
+    {
+      "name": "UnitedHealth Group, Inc.",
+      "symbol": "UNH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/8f318cb4a1ecd71fcf45f2e5805b97ed8d20271a0f2978453373c231076ea131.json"
+      ],
+      "cusip": "91324P102",
+      "weight": "0.00510718376234",
+      "isin": "US91324P1021",
+      "provider_aliases": [
+        "UNH"
+      ]
+    },
+    {
+      "name": "Universal Health Services, Inc.",
+      "symbol": "UHS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/f46e10e6b51f27dd40f8121aa3a126602dd299ebf5ccba113d6a80ccc69297af.json",
+        "sources/f46e10e6b51f27dd40f8121aa3a126602dd299ebf5ccba113d6a80ccc69297af.json"
+      ],
+      "cusip": "913903100",
+      "weight": "0.00020566840049",
+      "isin": "US9139031002",
+      "provider_aliases": [
+        "UHS"
+      ]
+    },
+    {
+      "name": "Valero Energy Corp.",
+      "symbol": "VLO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/e8749a8be19adcb2d97b3a446c2347dbd715d8c0f35dbad455d85464331e4537.json"
+      ],
+      "cusip": "91913Y100",
+      "weight": "0.00084803077871",
+      "isin": "US91913Y1001",
+      "provider_aliases": [
+        "VLO"
+      ]
+    },
+    {
+      "name": "Ventas, Inc.",
+      "symbol": "VTR",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a201556a893fed1af37917ea758d190db950fd7eb9c3187d57785a18d2fed6cc.json"
+      ],
+      "cusip": "92276F100",
+      "weight": "0.00062080045622",
+      "isin": "US92276F1003",
+      "provider_aliases": [
+        "VTR"
+      ]
+    },
+    {
+      "name": "Veralto Corp.",
+      "symbol": "VLTO",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7de552c0ac19b370b7a889b96e0115503e5a8dd29754440c6377dc2bfd65c0cf.json"
+      ],
+      "cusip": "92338C103",
+      "weight": "0.00042285732664",
+      "isin": "US92338C1036",
+      "provider_aliases": [
+        "VLTO"
+      ]
+    },
+    {
+      "name": "VeriSign, Inc.",
+      "symbol": "VRSN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/588c4a7dd30ce338e44808445325d447011d4063cdb3a71bfa2948a2cd32fe36.json"
+      ],
+      "cusip": "92343E102",
+      "weight": "0.00034618930125",
+      "isin": "US92343E1029",
+      "provider_aliases": [
+        "VRSN"
+      ]
+    },
+    {
+      "name": "Verizon Communications, Inc.",
+      "symbol": "VZ",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/ef591c9ff3367c685fd46d0d735cdbb1db6f80bbc22edf9b401627f40572a108.json",
+        "sources/ef591c9ff3367c685fd46d0d735cdbb1db6f80bbc22edf9b401627f40572a108.json"
+      ],
+      "cusip": "92343V104",
+      "weight": "0.00293297650735",
+      "isin": "US92343V1044",
+      "provider_aliases": [
+        "VZ"
+      ]
+    },
+    {
+      "name": "Verisk Analytics, Inc.",
+      "symbol": "VRSK",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/0be5d3dbcc84ea6a78ac2bbcd43f09414ea1eb028dc040e1df7d5552c849cac0.json"
+      ],
+      "cusip": "92345Y106",
+      "weight": "0.00053247743141",
+      "isin": "US92345Y1064",
+      "provider_aliases": [
+        "VRSK"
+      ]
+    },
+    {
+      "name": "Vertex Pharmaceuticals, Inc.",
+      "symbol": "VRTX",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "92532F100",
+      "weight": "0.00196456212038",
+      "isin": "US92532F1003",
+      "provider_aliases": [
+        "VRTX"
+      ]
+    },
+    {
+      "name": "Viatris, Inc.",
+      "symbol": "VTRS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/22f6d25d79919366ef2ebbbb8c13dda5446240f310ca99d37a9acb617c332368.json"
+      ],
+      "cusip": "92556V106",
+      "weight": "0.0002449102812",
+      "isin": "US92556V1061",
+      "provider_aliases": [
+        "VTRS"
+      ]
+    },
+    {
+      "name": "VICI Properties, Inc.",
+      "symbol": "VICI",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/9f2a95949c96e5e6b8168cf5ea2464a66752af04f9e67bb87406e9820f9eaeba.json",
+        "sources/9f2a95949c96e5e6b8168cf5ea2464a66752af04f9e67bb87406e9820f9eaeba.json"
+      ],
+      "cusip": "925652109",
+      "weight": "0.00051331930281",
+      "isin": "US9256521090",
+      "provider_aliases": [
+        "VICI"
+      ]
+    },
+    {
+      "name": "Visa, Inc.",
+      "symbol": "V",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/630b509e2c2aac9dab4631778b70cfdd09ab33ccf879b4a29cd5b22c95031116.json"
+      ],
+      "cusip": "92826C839",
+      "weight": "0.01010873598209",
+      "isin": "US92826C8394",
+      "provider_aliases": [
+        "V"
+      ]
+    },
+    {
+      "name": "Vistra Corp.",
+      "symbol": "VST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/5c06cd8f3a15630123d13249c117bb46de040e7f0076bb51eab9af980c51afca.json"
+      ],
+      "cusip": "92840M102",
+      "weight": "0.00087739452829",
+      "isin": "US92840M1027",
+      "provider_aliases": [
+        "VST"
+      ]
+    },
+    {
+      "name": "Vulcan Materials Co.",
+      "symbol": "VMC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a0fb31c3602b53756fa10b2197035fc443637fc3dd1ab37be006056c93b26f63.json"
+      ],
+      "cusip": "929160109",
+      "weight": "0.00064335777452",
+      "isin": "US9291601097",
+      "provider_aliases": [
+        "VMC"
+      ]
+    },
+    {
+      "name": "WEC Energy Group, Inc.",
+      "symbol": "WEC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/7ce8a6dd0d1cc00a7c15a435df33dafc8a0f6d616eed1b4ff92798ef6acc1ccb.json"
+      ],
+      "cusip": "92939U106",
+      "weight": "0.000585914535",
+      "isin": "US92939U1060",
+      "provider_aliases": [
+        "WEC"
+      ]
+    },
+    {
+      "name": "Westinghouse Air Brake Technologies Corp.",
+      "symbol": "WAB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/443b885e1d20fd28271372bd7b5fa0cb6084c343081ab025c1c0f5e348984808.json"
+      ],
+      "cusip": "929740108",
+      "weight": "0.00062322456692",
+      "isin": "US9297401088",
+      "provider_aliases": [
+        "WAB"
+      ]
+    },
+    {
+      "name": "Walmart, Inc.",
+      "symbol": "WMT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fcb7e83c304b7c4538d5c76ecf2d7e9d0bdd76217bf0fba13917358df8a80142.json"
+      ],
+      "cusip": "931142103",
+      "weight": "0.00834395214888",
+      "isin": "US9311421039",
+      "provider_aliases": [
+        "WMT"
+      ]
+    },
+    {
+      "name": "Warner Bros Discovery, Inc.",
+      "symbol": "WBD",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1655589/000094040025011721/primary_doc.xml",
+      "cusip": "934423104",
+      "weight": "0.00121972587526",
+      "isin": "US9344231041",
+      "provider_aliases": []
+    },
+    {
+      "name": "Waste Management, Inc.",
+      "symbol": "WM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/2c3e51b509672ef2c3d899bad0e8afdbe85e840415d4349698f41c71071d530a.json"
+      ],
+      "cusip": "94106L109",
+      "weight": "0.00139084573412",
+      "isin": "US94106L1098",
+      "provider_aliases": [
+        "WM"
+      ]
+    },
+    {
+      "name": "Waters Corp.",
+      "symbol": "WAT",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/876ecf6bd3fb09ff1ae7289f795266ec98f95e64656ade87aca1a0060d99d424.json"
+      ],
+      "cusip": "941848103",
+      "weight": "0.00038637268459",
+      "isin": "US9418481035",
+      "provider_aliases": [
+        "WAT"
+      ]
+    },
+    {
+      "name": "Wells Fargo & Co.",
+      "symbol": "WFC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d48b1f2fb2bad666331d107dff2a07c9997950ea664cca4014a97625495c8b31.json"
+      ],
+      "cusip": "949746101",
+      "weight": "0.00499678307979",
+      "isin": "US9497461015",
+      "provider_aliases": [
+        "WFC"
+      ]
+    },
+    {
+      "name": "Welltower, Inc.",
+      "symbol": "WELL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/bb493cef170877dd836b94b205a164253f9d30c3b378f915586a939bc66cee5e.json"
+      ],
+      "cusip": "95040Q104",
+      "weight": "0.00217572412345",
+      "isin": "US95040Q1040",
+      "provider_aliases": [
+        "WELL"
+      ]
+    },
+    {
+      "name": "West Pharmaceutical Services, Inc.",
+      "symbol": "WST",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/a07dc50be29d332b75731c547cde580c02369222f17cbbb09cd8309464384db0.json"
+      ],
+      "cusip": "955306105",
+      "weight": "0.00033785010665",
+      "isin": "US9553061055",
+      "provider_aliases": [
+        "WST"
+      ]
+    },
+    {
+      "name": "Western Digital Corp.",
+      "symbol": "WDC",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/876600939eaf73a68c4f4e2176a4e41acb265749c989e2514b492294db219105.json"
+      ],
+      "cusip": "958102105",
+      "weight": "0.00100595617105",
+      "isin": "US9581021055",
+      "provider_aliases": [
+        "WDC"
+      ]
+    },
+    {
+      "name": "Weyerhaeuser Co.",
+      "symbol": "WY",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/635daa6b923e9ca280816a1dc41d02d7f5b65faead9c8e0d522fa4667f611f9f.json"
+      ],
+      "cusip": "962166104",
+      "weight": "0.00029192374531",
+      "isin": "US9621661043",
+      "provider_aliases": [
+        "WY"
+      ]
+    },
+    {
+      "name": "Williams Cos., Inc. (The)",
+      "symbol": "WMB",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/99a31b00913a1df78f3ec2a9be6cb364807a3f8ee0582d54ccea18e9fc76c49c.json"
+      ],
+      "cusip": "969457100",
+      "weight": "0.00125362937156",
+      "isin": "US9694571004",
+      "provider_aliases": [
+        "WMB"
+      ]
+    },
+    {
+      "name": "Williams-Sonoma, Inc.",
+      "symbol": "WSM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/18abff33918167d8a51e44be861476839b1d7b506b43f125326c395a6f8ee828.json"
+      ],
+      "cusip": "969904101",
+      "weight": "0.0003714819985",
+      "isin": "US9699041011",
+      "provider_aliases": [
+        "WSM"
+      ]
+    },
+    {
+      "name": "Workday, Inc.",
+      "symbol": "WDAY",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "98138H101",
+      "weight": "0.00079602278587",
+      "isin": "US98138H1014",
+      "provider_aliases": [
+        "WDAY"
+      ]
+    },
+    {
+      "name": "Wynn Resorts Ltd.",
+      "symbol": "WYNN",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/96cbe5e652475bf4edad3854f8aae4e08f13d60a6a789be607875f55fcd4bce0.json"
+      ],
+      "cusip": "983134107",
+      "weight": "0.00017335610358",
+      "isin": "US9831341071",
+      "provider_aliases": [
+        "WYNN"
+      ]
+    },
+    {
+      "name": "Xcel Energy, Inc.",
+      "symbol": "XEL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/fd1e2ab37eb47c741db04ba9f5690eaa620e57705a81b6763dc4263fa2bbdc52.json"
+      ],
+      "cusip": "98389B100",
+      "weight": "0.00074607430152",
+      "isin": "US98389B1008",
+      "provider_aliases": [
+        "XEL"
+      ]
+    },
+    {
+      "name": "Xylem, Inc.",
+      "symbol": "XYL",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/6fc97073666791b8aff903a596e3e57eb69081b645c437eb3cf2c355833c55d4.json"
+      ],
+      "cusip": "98419M100",
+      "weight": "0.00056595182513",
+      "isin": "US98419M1009",
+      "provider_aliases": [
+        "XYL"
+      ]
+    },
+    {
+      "name": "Yum! Brands, Inc.",
+      "symbol": "YUM",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/3216b1ff3393c76832165f408f9ccd92aac4ab849e7ef1b65cf26e7ed45d318e.json"
+      ],
+      "cusip": "988498101",
+      "weight": "0.0007173872369",
+      "isin": "US9884981013",
+      "provider_aliases": [
+        "YUM"
+      ]
+    },
+    {
+      "name": "Zebra Technologies Corp.",
+      "symbol": "ZBRA",
+      "mapping_evidence": "SPY holdings 2026-11-03",
+      "cusip": "989207105",
+      "weight": "0.00021010225952",
+      "isin": "US9892071054",
+      "provider_aliases": [
+        "ZBRA"
+      ]
+    },
+    {
+      "name": "Zimmer Biomet Holdings, Inc.",
+      "symbol": "ZBH",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/d5be32b38f4d0dfe0f9ebe2320b0d0105a52ee62891dace5a5a134e1a9a680bc.json"
+      ],
+      "cusip": "98956P102",
+      "weight": "0.00030426720841",
+      "isin": "US98956P1021",
+      "provider_aliases": [
+        "ZBH"
+      ]
+    },
+    {
+      "name": "Zoetis, Inc.",
+      "symbol": "ZTS",
+      "mapping_evidence": [
+        "SPY holdings 2026-11-03",
+        "sources/543cc280591237d1544b3c80d7b8c18ee43bbadd6e17e13f15f4e5e500797f1c.json"
+      ],
+      "cusip": "98978V103",
+      "weight": "0.00094701752416",
+      "isin": "US98978V1035",
+      "provider_aliases": [
+        "ZTS"
+      ]
+    },
+    {
+      "name": "Allegion plc",
+      "symbol": "ALLE",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00023333722212",
+      "isin": "IE00BFRT3W74",
+      "provider_aliases": [
+        "ALLE"
+      ]
+    },
+    {
+      "name": "Amcor plc",
+      "symbol": "AMCR",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00032835907963",
+      "isin": "JE00BJ1F3079",
+      "provider_aliases": [
+        "AMCR"
+      ]
+    },
+    {
+      "name": "Aon plc",
+      "symbol": "AON",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/315293/000162828026008116/aon-20251231.htm",
+      "cusip": "N/A",
+      "weight": "0.0012954105121",
+      "isin": "IE00BLP1HW54",
+      "provider_aliases": []
+    },
+    {
+      "name": "Arch Capital Group Ltd.",
+      "symbol": "ACGL",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00059156684213",
+      "isin": "BMG0450A1053",
+      "provider_aliases": [
+        "ACGL"
+      ]
+    },
+    {
+      "name": "Accenture plc",
+      "symbol": "ACN",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/0001467373/000130817925000653/acn014223-ars.pdf",
+      "cusip": "N/A",
+      "weight": "0.00284172366082",
+      "isin": "IE00B4BNMY34",
+      "provider_aliases": []
+    },
+    {
+      "name": "CRH plc",
+      "symbol": "CRH",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00142868499442",
+      "isin": "IE0001827041",
+      "provider_aliases": [
+        "CRH"
+      ]
+    },
+    {
+      "name": "Eaton Corp. plc",
+      "symbol": "ETN",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.0021128723188",
+      "isin": "IE00B8KQN827",
+      "provider_aliases": [
+        "ETN"
+      ]
+    },
+    {
+      "name": "Everest Group Ltd.",
+      "symbol": "EG",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00024361357058",
+      "isin": "BMG3223R1088",
+      "provider_aliases": [
+        "EG"
+      ]
+    },
+    {
+      "name": "Aptiv plc",
+      "symbol": "APTV",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.0002808079477",
+      "isin": "JE00BTDN8H13",
+      "provider_aliases": [
+        "APTV"
+      ]
+    },
+    {
+      "name": "Invesco Ltd.",
+      "symbol": "IVZ",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00020010093164",
+      "isin": "BMG491BT1088",
+      "provider_aliases": [
+        "IVZ"
+      ]
+    },
+    {
+      "name": "Johnson Controls International plc",
+      "symbol": "JCI",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/833444/000083344425000097/jci-20250930.htm",
+      "cusip": "N/A",
+      "weight": "0.00124992506219",
+      "isin": "IE00BY7QL619",
+      "provider_aliases": []
+    },
+    {
+      "name": "Linde plc",
+      "symbol": "LIN",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.0034005383942",
+      "isin": "IE000S9YS762",
+      "provider_aliases": [
+        "LIN"
+      ]
+    },
+    {
+      "name": "Medtronic plc",
+      "symbol": "MDT",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00210431411585",
+      "isin": "IE00BTN1Y115",
+      "provider_aliases": [
+        "MDT"
+      ]
+    },
+    {
+      "name": "Norwegian Cruise Line Holdings Ltd.",
+      "symbol": "NCLH",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1513761/000110465926022067/nclh-20251231x10k.htm",
+      "cusip": "N/A",
+      "weight": "0.00017354877535",
+      "isin": "BMG667211046",
+      "provider_aliases": []
+    },
+    {
+      "name": "Seagate Technology Holdings plc",
+      "symbol": "STX",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00102475153486",
+      "isin": "IE00BKVD2N49",
+      "provider_aliases": [
+        "STX"
+      ]
+    },
+    {
+      "name": "Pentair plc",
+      "symbol": "PNR",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00029161167855",
+      "isin": "IE00BLS09M33",
+      "provider_aliases": [
+        "PNR"
+      ]
+    },
+    {
+      "name": "Smurfit WestRock plc",
+      "symbol": "SW",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00034478427171",
+      "isin": "IE00028FXN24",
+      "provider_aliases": [
+        "SW"
+      ]
+    },
+    {
+      "name": "STERIS plc",
+      "symbol": "STE",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00042496722555",
+      "isin": "IE00BFY8C754",
+      "provider_aliases": [
+        "STE"
+      ]
+    },
+    {
+      "name": "TE Connectivity plc",
+      "symbol": "TEL",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.0011431367327",
+      "isin": "IE000IVNQZ81",
+      "provider_aliases": [
+        "TEL"
+      ]
+    },
+    {
+      "name": "Trane Technologies plc",
+      "symbol": "TT",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00147396836026",
+      "isin": "IE00BK9ZQ967",
+      "provider_aliases": [
+        "TT"
+      ]
+    },
+    {
+      "name": "Willis Towers Watson plc",
+      "symbol": "WTW",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00053736974597",
+      "isin": "IE00BDB6Q211",
+      "provider_aliases": [
+        "WTW"
+      ]
+    },
+    {
+      "name": "Bunge Global SA",
+      "symbol": "BG",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00020592874704",
+      "isin": "CH1300646267",
+      "provider_aliases": [
+        "BG"
+      ]
+    },
+    {
+      "name": "Chubb Ltd.",
+      "symbol": "CB",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00195108806153",
+      "isin": "CH0044328745",
+      "provider_aliases": [
+        "CB"
+      ]
+    },
+    {
+      "name": "Garmin Ltd.",
+      "symbol": "GRMN",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.0005670614512",
+      "isin": "CH0114405324",
+      "provider_aliases": [
+        "GRMN"
+      ]
+    },
+    {
+      "name": "LyondellBasell Industries NV",
+      "symbol": "LYB",
+      "mapping_evidence": "https://www.sec.gov/Archives/edgar/data/1489393/000148939326000012/0001489393-26-000012-index.htm",
+      "cusip": "N/A",
+      "weight": "0.00019018744926",
+      "isin": "NL0009434992",
+      "provider_aliases": []
+    },
+    {
+      "name": "NXP Semiconductors NV",
+      "symbol": "NXPI",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00093301518149",
+      "isin": "NL0009538784",
+      "provider_aliases": [
+        "NXPI"
+      ]
+    },
+    {
+      "name": "Royal Caribbean Cruises Ltd.",
+      "symbol": "RCL",
+      "mapping_evidence": "SPY holdings 2026-11-03 exact normalized issuer name",
+      "cusip": "N/A",
+      "weight": "0.00120819846441",
+      "isin": "LR0008862868",
+      "provider_aliases": [
+        "RCL"
+      ]
+    }
+  ],
+  "source_sha256": "2bc104ade3fe43d879b4f08f90f0b4854c15764153fea9cbc66012de51c1d1e8",
+  "unresolved": [],
+  "provider": "iShares IVV SEC N-PORT",
+  "source_url": "https://www.sec.gov/Archives/edgar/data/1100663/000207169126004238/xslFormNPORT-P_X01/primary_doc.xml",
+  "cash_weight": "0.00191380589433",
+  "source_sha256_scope": "retained identifier and weight extraction JSON, not the original SEC filing",
+  "excluded": [
+    {
+      "isin": "US0669224778",
+      "name": "BlackRock Funds III",
+      "cusip": "066922477",
+      "reason": "fund",
+      "weight": "0.0013275384284"
+    },
+    {
+      "isin": "US0669225197",
+      "name": "BlackRock Funds III",
+      "cusip": "066922519",
+      "reason": "fund",
+      "weight": "0.00000000000262"
+    },
+    {
+      "isin": "US0669225197",
+      "name": "BlackRock Funds III",
+      "cusip": "066922519",
+      "reason": "fund",
+      "weight": "0.00225280359808"
+    },
+    {
+      "isin": null,
+      "name": "N/A",
+      "cusip": "N/A",
+      "reason": "derivative",
+      "weight": null
+    }
+  ],
+  "as_of": "2025-12-31",
+  "source_file": "sources/ivv-20251231-identifiers.json"
+}

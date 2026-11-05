@@ -6,14 +6,14 @@ const vm = require('node:vm');
 const path = require('node:path');
 const root = path.join(__dirname, '..', 'tradingagents', 'web', 'static');
 
-function fixture() {
+function fixture(storage = new Map()) {
   const handlers = {document:{},window:{}};
   const fields = new Map(), nodes = new Map();
   const register = scope => (name, fn) => (handlers[scope][name] ||= []).push(fn);
   function node(id='') {
     return {id, dataset:{}, tagName:'DIV', value:'', scrollTop:0, scrollLeft:0,
-      addEventListener(){}, querySelectorAll(){return [];}, querySelector(s){return query(s);},
-      classList:{contains(){return false;},toggle(){}}, focus(){}, setAttribute(){},
+      listeners:{}, addEventListener(name,fn){this.listeners[name]=fn;}, append(){}, after(){}, querySelectorAll(){return [];}, querySelector(s){return query(s);},
+      classList:{contains(){return false;},toggle(){},add(){}}, focus(){}, setAttribute(){},
       getAttribute(){return null;}, insertAdjacentHTML(){}, closest(){return null;}};
   }
   const main = node('main');
@@ -29,14 +29,15 @@ function fixture() {
   }});
   nodes.set('#main',main);
   function query(s){if(fields.has(s.slice(1)))return fields.get(s.slice(1));if(!nodes.has(s))nodes.set(s,node(s.slice(1)));return nodes.get(s);}
-  const context=vm.createContext({console,Intl,URL,AbortController,Date,
-    location:{hash:'#overview'},localStorage:{getItem(){return null;},setItem(){}},
+  const context=vm.createContext({console,Intl,URL,URLSearchParams,AbortController,Date,
+    location:{hash:'#overview'},localStorage:{getItem(){return null;},setItem(){}},sessionStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     document:{hidden:false,activeElement:null,addEventListener:register('document'),querySelector:query,querySelectorAll(){return [];},getElementById:id=>fields.get(id)||null},
     window:{addEventListener:register('window'),scrollTo(){}},setInterval(){},setTimeout(){},clearTimeout(){},
     fetch(){throw Error('Network forbidden in UI regression fixture');},
     FormData:class {constructor(){this.values=[...fields.values()].map(e=>[e.name,e.value]);} [Symbol.iterator](){return this.values[Symbol.iterator]();}},
     confirm(){return false;}});
   vm.runInContext(fs.readFileSync(path.join(root,'lists.js'),'utf8'),context);
+  vm.runInContext(fs.readFileSync(path.join(root,'report-format.js'),'utf8'),context);
   const source=fs.readFileSync(path.join(root,'app.js'),'utf8').replace(/^readState\(\);\r?$/m,'');
   vm.runInContext(source,context);
   const run=code=>vm.runInContext(code,context);
@@ -44,6 +45,139 @@ function fixture() {
     renderChrome=()=>{};renderNotice=()=>{};observeChartSize=()=>{};ensureChart=()=>{};ensureResultDetail=()=>{};`);
   return {run,main,fields,context, async event(scope,name,target={}){for(const fn of handlers[scope][name]||[])await fn({target,preventDefault(){}});}};
 }
+test('portfolio prompt uses the server mapping and preserves a complete bundle and conflicting draft',async()=>{
+  const f=fixture();
+  f.run(`globalThis.sent=null;api=async (path,body)=>{if(body){sent=body;throw Object.assign(Error('conflict'),{status:409});}return path==='/api/workflows'?{active:'Default'}:{name:'Default',revision:'r1',joint_portfolio_file:'prompts/custom.txt',files:{'workflow.yaml':'unchanged','prompts/custom.txt':'original','other.txt':'keep'}};};`);
+  await f.run('loadPortfolioPrompt()');
+  f.run(`portfolioPrompt.draft='<new prompt>';`);
+  await f.run('savePortfolioPrompt()');
+  assert.equal(f.run(`sent.files['prompts/custom.txt']`),'<new prompt>');
+  assert.equal(f.run(`sent.files['other.txt']`),'keep');
+  assert.equal(f.run('sent.revision'),'r1');
+  assert.equal(f.run('portfolioPrompt.draft'),'<new prompt>');
+  assert.match(f.run('portfolioPrompt.message'),/draft is retained/i);
+  assert.match(f.run('portfolioPromptMarkup()'),/&lt;new prompt&gt;/);
+});
+test('portfolio prompt retains mapping after save and reloads a changed active workflow',async()=>{
+  const f=fixture();f.run(`globalThis.active='One';api=async (path,body)=>body?{name:body.name,revision:'r2',files:body.files}:path==='/api/workflows'?{active}:{name:active,revision:'r1',joint_portfolio_file:'custom.txt',files:{'custom.txt':active,'workflow.yaml':'keep'}};`);
+  await f.run('loadPortfolioPrompt()');f.run(`portfolioPrompt.draft='edited'`);await f.run('savePortfolioPrompt()');
+  assert.equal(f.run('portfolioPrompt.draft'),'edited');assert.equal(f.run('portfolioPrompt.bundle.joint_portfolio_file'),'custom.txt');
+  f.run(`active='Two'`);await f.run('loadPortfolioPrompt()');assert.equal(f.run('portfolioPrompt.draft'),'Two');
+  f.run(`portfolioPrompt.draft='unsaved';active='Three'`);await f.run('loadPortfolioPrompt()');
+  assert.equal(f.run('portfolioPrompt.draft'),'unsaved');assert.match(f.run('portfolioPrompt.message'),/active workflow changed/i);
+});
+test('portfolio prompt input handler recovers a refresh and reports storage failure',async()=>{
+  const storage=new Map(), f=fixture(storage);
+  f.run(`portfolioPrompt.bundle={name:'Default',revision:'r1',joint_portfolio_file:'prompt.txt',files:{'prompt.txt':'original'}};portfolioPrompt.draft='original';portfolioPromptChecked=true;settingsTab='Research';updateModelLimits=()=>{};fetchModelLimits=()=>{};bindSettings();`);
+  const input=f.context.document.querySelector('#portfolio-prompt');
+  input.listeners.input({target:{value:'edited'}});
+  const refreshed=fixture(storage);
+  assert.equal(refreshed.run('portfolioPrompt.draft'),'edited');
+  f.context.sessionStorage.setItem=()=>{throw Error('storage unavailable');};
+  input.listeners.input({target:{value:'still here'}});
+  assert.equal(f.run('portfolioPrompt.draft'),'still here');
+  assert.match(f.run('portfolioPromptMarkup()'),/refresh.*lose|lost.*refresh/i);
+  assert.match(f.run('portfolioPrompt.storageError'),/refresh/i);
+});
+test('portfolio prompt save rejects an active workflow switch and retains draft',async()=>{
+  const f=fixture();
+  f.run(`portfolioPrompt.bundle={name:'One',revision:'r1',joint_portfolio_file:'prompt.txt',files:{'prompt.txt':'original'}};portfolioPrompt.draft='edited';portfolioPromptChecked=true;settingsTab='Research';updateModelLimits=()=>{};fetchModelLimits=()=>{};api=async(path,body)=>{if(!body)return {active:'One'};if(body.expected_active!=='One')throw Error('missing active precondition');throw Object.assign(Error('Active workflow changed.'),{status:409});};bindSettings();`);
+  await f.context.document.querySelector('#portfolio-prompt-save').listeners.click();
+  assert.equal(f.run('portfolioPrompt.draft'),'edited');
+  assert.match(f.run('portfolioPrompt.message'),/active workflow changed/i);
+});
+test('portfolio trace displays escaped completed prompt, metadata and explanations',()=>{
+  const f=fixture();
+  f.run(`state.portfolio_model={id:'run',status:'completed',capital:'100',provider:'provider',model:'model',created_at:'2026-11-04T00:00:00Z',elapsed_seconds:3,inputs:[],exclusions:[],result:{provider:'provider',model:'model',capital:'100',reference_value:'0',cash:'100',target_cash_weight:'1',cash_rationale:'<cash>',system_prompt:'<actual prompt>',response_metadata:{marker:'<meta>'},allocations:[{symbol:'X',weight:'0',shares:0,reference_value:'0',reference:{price:'10',timestamp:'2026-11-04T00:00:00Z',basis:'close'},rationale:'<why zero>',entry_conditions:'<entry>'}]}};`);
+  const html=f.run('renderProposedPortfolio()');
+  for(const text of ['&lt;actual prompt&gt;','&lt;meta&gt;','&lt;cash&gt;','&lt;why zero&gt;','&lt;entry&gt;'])assert.ok(html.includes(text),text);
+  assert.match(html,/provider \/ model/);assert.match(html,/3s/);
+});
+test('portfolio trace escapes retained content and labels unavailable history',()=>{
+  const f=fixture();f.run(`state.portfolio_model={id:'run',status:'completed',capital:'100',inputs:[{symbol:'X',final_decision:'<script>bad</script>'}],exclusions:[],result:null};`);
+  const html=f.run('renderProposedPortfolio()');
+  assert.match(html,/Unavailable for this run/);
+  assert.match(html,/Raw model response is not retained/);
+  assert.match(html,/&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.doesNotMatch(html,/<script>bad/);
+});
+test('compact research retains coverage gaps for row warnings without changing completion status',()=>{
+  const storeSource=fs.readFileSync(path.join(root,'..','store.py'),'utf8');
+  const projection=/data\["research"\]\[result\["symbol"\]\]\s*=\s*\{\s*\*\*\{key: status\.get\(key\) for key in\s*\(([^)]+)\)/.exec(storeSource);
+  assert.ok(projection,'shared compact per-symbol projection must be found');
+  assert.match(projection[1],/"coverage_gaps"/,'compact projection must retain the detail coverage warnings');
+  assert.match(projection[1],/"completion_gaps"/,'completion evidence remains separate');
+  const f=fixture();f.run(`state.research={AAPL:{run_id:'saved',status:'completed',coverage_gaps:['News unavailable','Memory write rejected']}};`);
+  assert.match(f.run('researchCollection(null)'),/2 coverage gaps/);
+  assert.equal(f.run('state.research.AAPL.status'),'completed');
+});
+test('research collection reads loaded drift evidence without starting instrument requests',()=>{
+  const f=fixture();f.run(`globalThis.calls=[];api=async path=>{calls.push(path);return {};};
+    state.research={AAPL:{run_id:'saved',trade_date:'2026-11-03',status:'completed'},META:{run_id:'saved',trade_date:'2026-11-03',status:'completed'}};
+    state.quotes={AAPL:{price:110}};
+    chartEvidence.set('saved:AAPL',{symbol:'AAPL',run_id:'saved',bars:[{t:'2026-11-03',raw:{c:100}}]});`);
+  assert.match(f.run('researchCollection(null)'),/research-picker-row/);
+  assert.equal(f.run('calls.length'),0,'rendering missing drift must not queue full instrument histories');
+  assert.equal(f.run('researchDrift("AAPL")'),f.run('percent(10)'));
+  assert.equal(f.run('researchDrift("META")'),'—');
+});
+test('request errors preserve deadline phase, route, cause and HTTP details',async()=>{
+  const f=fixture();let deadline;
+  f.context.setTimeout=callback=>{deadline=callback;return 1;};
+  f.context.fetch=()=>new Promise(()=>{});
+  const pending=f.run('api("/api/state?compact=1",undefined,{timeoutMs:15})');
+  deadline();
+  await assert.rejects(pending,error=>{
+    assert.match(error.message,/GET \/api\/state/);assert.match(error.message,/15\s*ms/);
+    assert.match(error.message,/no HTTP response/i);assert.match(error.message,/deadline/i);
+    assert.equal(error.cause.message,'Request deadline exceeded.');return true;
+  });
+  f.context.fetch=async()=>{const error=new Error('Transport canceled by browser');error.name='AbortError';throw error;};
+  await assert.rejects(f.run('api("/api/runs/saved")'),error=>{
+    assert.match(error.message,/GET \/api\/runs\/saved/);assert.match(error.message,/Transport canceled by browser/);
+    assert.doesNotMatch(error.message,/timed out|exceeded.*deadline/i);assert.equal(error.cause.name,'AbortError');return true;
+  });
+  f.context.fetch=async()=>({status:503,ok:false,json:async()=>({error:'Saved evidence is unavailable'})});
+  await assert.rejects(f.run('api("/api/runs/saved")'),error=>error.status===503&&error.message.includes('Saved evidence is unavailable'));
+  f.context.fetch=async()=>({status:200,ok:true,json:()=>new Promise(()=>{})});
+  const bodyPending=f.run('api("/api/runs/saved",undefined,{timeoutMs:15})');
+  await Promise.resolve();deadline();
+  await assert.rejects(bodyPending,error=>{
+    assert.match(error.message,/HTTP 200/);assert.match(error.message,/body|reading.*response/i);return true;
+  });
+});
+test('research Activity retries a cached error only after the run version changes or explicit refresh',async()=>{
+  const f=fixture();
+  f.run(`globalThis.run={id:'activity-run',status:'running',event_count:1};
+    globalThis.calls=0;globalThis.paths=[];
+    api=async path=>{calls++;paths.push(path);throw Error('The local service did not respond in time.');};`);
+  await f.run('loadResearchRun(run)');
+  assert.equal(f.run('calls'),1);
+  assert.match(f.run('researchReadNotice(researchRunDetails.get(researchRunKey(run)))'),/class="negative"/);
+  f.run('researchRunDetails.get(researchRunKey(run)).at=0;');
+  await f.run('loadResearchRun(run)');
+  assert.equal(f.run('calls'),1,'unchanged failed version must not automatically retry even after the polling interval');
+  f.run(`run.event_count++;globalThis.finishRead=null;
+    api=path=>{calls++;paths.push(path);return new Promise(resolve=>finishRead=resolve);};
+    globalThis.reload=loadResearchRun(run);`);
+  assert.equal(f.run('calls'),2,'changed version must permit a normal detail read');
+  await f.run('loadResearchRun(run)');
+  await f.run('loadResearchRun(run,true)');
+  assert.equal(f.run('calls'),2,'automatic and forced reads must deduplicate the in-flight read');
+  f.run(`finishRead({id:run.id,events:[{message:'Saved activity recovered'}]});`);
+  await f.run('reload');
+  assert.equal(f.run('researchRunDetails.get(researchRunKey(run)).error'),'');
+  assert.equal(f.run('researchRunDetails.get(researchRunKey(run)).data.events[0].message'),'Saved activity recovered');
+  assert.doesNotMatch(f.run('researchReadNotice(researchRunDetails.get(researchRunKey(run)))'),/class="negative"/);
+  f.run(`run.event_count++;api=async path=>{calls++;paths.push(path);throw Error('Another timeout');};`);
+  await f.run('loadResearchRun(run)');
+  assert.equal(f.run('calls'),3);
+  f.run(`api=async path=>{calls++;paths.push(path);return {id:run.id,events:[]};};`);
+  await f.run('loadResearchRun(run,true)');
+  assert.equal(f.run('calls'),4,'explicit refresh must bypass an unchanged failed version');
+  assert.equal(f.run('researchRunDetails.get(researchRunKey(run)).error'),'');
+  assert.equal(f.run(`paths.every(path=>path==='/api/runs/activity-run')`),true);
+});
 const opened = html => [...html.matchAll(/<details\b([^>]*)>/g)].filter(m=>/class="report-section"/.test(m[1])&&/\sopen(?:\s|$|=)/.test(m[1])).map(m=>/data-report="([^"]+)"/.exec(m[1])[1]);
 // Frozen prefix shape from completed META run 3f948cc2 (2026-10-16).
 // Narrative is shortened; repeated labels and their line boundaries are exact.

@@ -1,1 +1,1 @@
-Explain the unallocated cash jointly with the stock choices.
+Concise evidence-backed explanation of why the resulting cash balance is preferred to additional allocation, or why no cash is held, relative to the eligible instruments and their uncertainties. Explain the portfolio trade-off even when all capital remains in cash; do not invent unsupported precision.

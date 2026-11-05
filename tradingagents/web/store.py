@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 
 from .app_database import ApplicationDatabase, StoreConflict
 from .evidence_requirements import research_gaps
+from .history_storage import shared_history_path
 
 
 class SourceEvidenceError(ValueError):
@@ -357,7 +358,7 @@ class DeskStore:
                             status = self.result_summary(result)
                             data["research"][result["symbol"]] = {
                                 **{key: status.get(key) for key in
-                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision", "completion_gaps")},
+                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision", "completion_gaps", "coverage_gaps")},
                                 "run_id": run["id"],
                                 "social_sentiment": status.get("social_sentiment"),
                                 "laya": {key: status["laya"].get(key) for key in
@@ -417,11 +418,17 @@ class DeskStore:
                 evidence.update(status="cache_only", reason="Portfolio artifact could not be written; context remains in the latest research cache.")
             run["portfolio_evidence"] = evidence
 
-    def _write_json_artifact(self, run_id, kind, content):
+    def _write_json_artifact(self, run_id, kind, content, *, daily_history_period=None):
         if str(UUID(run_id)) != run_id:
             raise ValueError("Invalid run ID for evidence export.")
         relative = Path("reports") / run_id / f"{kind}-{uuid4()}.json"
         destination = self.directory / relative
+        if daily_history_period is not None and os.name == "nt":
+            filename = f"shared-iex-history-{content['symbol']}-{daily_history_period}-{uuid4()}.json"
+            relative = Path("reports") / run_id / filename
+            destination = shared_history_path(relative.as_posix())
+            if destination is None:
+                raise ValueError("Invalid ticker or period for the shared daily price folder")
         destination.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(content, sort_keys=True, ensure_ascii=False,
                              indent=2, allow_nan=False).encode("utf-8")
@@ -429,7 +436,7 @@ class DeskStore:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        return self._artifact_reference(destination, payload)
+        return self._artifact_reference(self.directory / relative, payload)
 
     def record_source_attempt(self, run_id, receipt, output=None):
         """Persist router receipts without exposing output or exception text in the journal."""

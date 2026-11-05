@@ -370,7 +370,7 @@ class DeskHandler(BaseHTTPRequestHandler):
         try:
             request_path = urlsplit(self.path).path
             length = int(self.headers.get("Content-Length", "0"))
-            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else (2 * 1024 * 1024 if request_path == "/api/workflows" else 65536)
+            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else (2 * 1024 * 1024 if request_path in {"/api/workflows", "/api/evaluations"} else 65536)
             if not 0 < length <= maximum or self.headers.get("Transfer-Encoding"):
                 raise ValueError("Request body exceeds the supported endpoint size boundary.")
             if self.headers.get_content_type() != "application/json":
@@ -389,7 +389,9 @@ class DeskHandler(BaseHTTPRequestHandler):
             service = self.server.service
             path = urlsplit(self.path).path
             if not (path in {"/api/credentials", "/api/discovery", "/api/quotes/refresh", "/api/commands/reconcile", "/api/native-report"} or path == "/api/reporting" and data.get("action") == "collect" or
+                    path == "/api/evaluations" and data.get("action") == "portfolio_scenario" or
                     path == "/api/recovery" and data.get("action") in {"preview", "backup"} or
+                    path == "/api/investor" and data.get("action") in {"spy_rebalance_check", "spy_rebalance_preview"} or
                     path == "/api/commands" and data.get("action") == "option_instruction" and data.get("operation") == "submit"):
                 service.maintenance.acquire()
                 maintenance_guard = service.maintenance

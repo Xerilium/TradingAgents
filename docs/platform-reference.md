@@ -4,6 +4,18 @@ Use the [root README](../README.md) for the component map and
 [local operating guide](local-desk-guide.md) for deployment and recovery.
 This reference describes the current source capability, not an acceptance log.
 
+## Fixed-portfolio hindsight evaluation
+
+The existing fixed-portfolio action uses the archived allocation, retained raw
+daily bars and dated corporate-action receipts. It runs through the existing
+native simulation executor and saves the immutable specification and returned
+result in the simulation index. Open it from saved simulations to read combined
+equity, cash, historical whole-share entries, ending shares and dated actions.
+Distributions remain cash; there is no reinvestment, cash interest or rebalancing.
+This is hindsight allocation testing, not historical research or broker performance.
+Missing required inputs stop calculation; this path does not fabricate a result.
+Source implementation does not establish that a saved native evaluation exists.
+
 ## Markets, charts and selection
 
 The configured universe, named watchlists, broker holdings, inspected instrument
