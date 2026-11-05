@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 from decimal import Decimal
 from math import isfinite
 import threading
@@ -482,12 +483,14 @@ class MarketDataJobs:
         self.derive(result)
         store = self.service.store
         saved_result = result
-        if timeframe == "1Day" and converted:
+        if os.name == "nt" and timeframe == "1Day" and converted:
             daily_context = {field: result[field] for field in ("symbol", "provider", "feed", "timeframe", "adjustment")}
             receipts = [store._write_json_artifact(identity, "iex-history-bar", {**daily_context, "bar": bar},
                 daily_history_period=bar["t"]) for bar in converted]
             saved_result = {key: value for key, value in result.items() if key != "bars"}
-            saved_result["daily_bar_artifacts"] = receipts
+            # The shared lake owns these files. Desk backups retain their identities,
+            # while the lake remains the source of the price data.
+            saved_result["daily_bar_artifacts"] = [(item["path"], item["sha256"]) for item in receipts]
         result["artifact"] = store._write_json_artifact(identity, "iex-history-cache", saved_result)
         meta = {k: result[k] for k in ("key", "symbol", "captured_at", "complete", "pagination_complete", "required_coverage", "calendar_through", "pages", "error", "error_kind", "diagnostic", "artifact", "missing_fields")}
         meta.update(request)
