@@ -249,3 +249,6 @@ tradingdesk.launch.json
 /.mcp.json
 
 .venv-build/
+
+# Local browser driver dependencies; screenshots and profiles use .local-workspace
+/.claude/skills/run-tradingagents/node_modules/
