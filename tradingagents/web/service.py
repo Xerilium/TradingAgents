@@ -3080,15 +3080,23 @@ class DeskService:
                         raise ValueError(f"{symbol} {first}..{end} distribution marks: no complete raw daily receipt")
                     meta = max(matches, key=lambda item: item.get("captured_at", ""))
                     history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
+                    if not isinstance(history, dict) or history.get("currency") != "USD":
+                        raise ValueError(f"{symbol} {first}..{end} distribution history: unavailable, changed or not USD")
                     sessions = {day for day in calendar_sessions if first <= day <= end}
-                    selected = [row for row in (history or {}).get("bars", []) if first <= row.get("t", "") <= end]
-                    if len(selected) != len(sessions) or {row["t"] for row in selected} != sessions:
-                        raise ValueError(f"{symbol} distribution marks: missing, duplicate or off-calendar daily bar")
-                    histories[symbol] = {row["t"]: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for row in selected}
+                    selected = [row for row in history.get("bars", []) if first <= row.get("t", "") <= end]
                     meta_action = observations.get(symbol, {}).get("corporate_actions") or {}
                     action_ref = reference(meta_action.get("last_usable_artifact") or meta_action.get("artifact"))
                     action_data[symbol] = parse_actions(symbol, first, end, read_artifact(store.directory, action_ref),
                         load_artifact=lambda ref: read_artifact(store.directory, reference(ref)))
+                    termination = min((item["ex_date"] for item in action_data[symbol] if item["kind"] == "merger"), default=None)
+                    required_sessions = {day for day in sessions if not termination or day < termination}
+                    marks = {row["t"] for row in selected}
+                    missing = sorted(required_sessions - marks)
+                    if missing:
+                        raise ValueError(f"{symbol} {missing[0]} distribution daily_bar: missing while held ({len(missing)} missing sessions)")
+                    if len(selected) != len(marks) or marks - sessions:
+                        raise ValueError(f"{symbol} distribution marks: duplicate or off-calendar daily bar")
+                    histories[symbol] = {row["t"]: {name: str(row["raw"][field]) for name, field in (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))} for row in selected}
                     action_sources[symbol] = action_ref
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
                     "share_sizing": sizing,
