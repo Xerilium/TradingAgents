@@ -159,6 +159,36 @@ be recorded with the exact revision. No push or production upgrade.
 
 ## Delivery and evidence
 
+### Integration coordination
+
+The first implementation workflow was stopped after a resumed worker reported
+concurrent edits in its backend paths. All partial changes were preserved; no
+partial backend commit or runtime action was reported. The replacement workflow
+has one backend integrator followed by one UI integrator, with exclusive file
+ownership. Final independent review must inspect the reconciled source, not
+assume the stopped worker's partial report proves correctness.
+
+A specific review concern is post-fill freshness: a timestamp assigned after
+broker reads does not prove the cash fetch began after the fill. The execution
+boundary needs the pre-fetch observation time or another conservative proof.
+Likewise, cash minus reserve alone is not free buying capacity when working
+commitments exist. Neither figure may be labeled withdrawable cash.
+
+### Verification matrix
+
+| Path | Required evidence | Current result |
+| --- | --- | --- |
+| Saved plan identity/revisions | Strict account and optimistic concurrency checks | Pending source review |
+| Blank versus explicit zero | Nullable contract; no invented values | Pending source and browser review |
+| Reserve overlap and weight units | Decimal max floor; fractional weights to percentage points | Pending source review |
+| Changed plan or policy | Old preview/run blocked; auto re-enable explicit | Pending source review |
+| Post-fill continuation | Observation begun after fill and expected holdings | Pending source review; no broker execution authorized |
+| Backup/restore | New record validation; standing and active authority invalidated | Pending source review; no restore authorized |
+| Empty paper account | Real observed equity/cash and honest empty gain/loss state | Pending browser cycle |
+| Populated gain/loss and SELL preparation | Actual retained holdings and existing unsaved ticket route | Requires real holdings; no fabricated position permitted |
+| Benchmark | Existing qualified price-only comparison remains labeled | Pending source/browser review |
+| Runtime integration | Restarted dev service loads new API contract | Pending; no production change |
+
 Use Impeccable in Operate mode for UI implementation and review. Preserve the
 established workstation and current workflows. No automated tests, mocks,
 benchmarks or unrelated research runs. Static checks and an affected real
