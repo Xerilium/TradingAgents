@@ -306,8 +306,10 @@ class DeskService:
         self.data_jobs = MarketDataJobs(self)
         from .attention import AttentionMonitor
         from .market_discovery import due_scans
+        from .spy_rebalance import SpyRebalance
+        self.spy_rebalance = SpyRebalance(self)
         self.attention_monitor = AttentionMonitor(self.store.database, self.attention_context, self.maintenance,
-            tick=lambda: (self._expire_charts(), due_scans(self.data_jobs)))
+            tick=lambda: (self._expire_charts(), due_scans(self.data_jobs), self.spy_rebalance.tick()))
         self.attention_monitor.start()
 
     def _observe_runtime(self, observation):
@@ -1100,10 +1102,10 @@ class DeskService:
             store.database.transact({"discovery": DEFAULT}, lambda records: records["discovery"]["observations"].update({result["id"]: result}))
         return result
 
-    def configure_symbols(self):
+    def configure_symbols(self, *, additional_symbols=()):
         from .market_discovery import DEFAULT
         selections = self.store.database.read("discovery", DEFAULT)["data"].get("option_selections", {})
-        symbols = list(dict.fromkeys([*self.store.data["config"]["universe"], *selections]))
+        symbols = list(dict.fromkeys([*self.store.data["config"]["universe"], *selections, *additional_symbols]))
         feed = next(iter(selections.values()))["feed"] if selections else None
         self.runtime.configure(symbols, **({"option_feed": feed} if feed else {}))
         self.configuration_error = None
@@ -1254,6 +1256,7 @@ class DeskService:
         return {**record, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
                 "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
                 "current_checks": checks, "broker_order_actions": broker_actions,
+                "spy_rebalance": self.spy_rebalance.status(runtime),
                 "instruments": available_instruments, "option_package_profiles": copy.deepcopy(PACKAGE_PROFILES),
                 "option_execution_profiles": copy.deepcopy(EXECUTION_PROFILES)}
 
@@ -1568,6 +1571,11 @@ class DeskService:
     def save_investor(self, request):
         from .investor import DEFAULT, save
         from .admission import DEFAULT as COMMAND_DEFAULT, invalidate
+        if request.get("action") in {"spy_rebalance_enable", "spy_rebalance_pause"}:
+            self.spy_rebalance.configure(request)
+            return self.investor()
+        if request.get("action") == "spy_rebalance_check":
+            return self.spy_rebalance.check_weights()
         if request.get("action") == "chart_source":
             return {"chart_source": self.pinned_chart_source(request.get("pin"))}
         if request.get("action") == "chart_copy":
@@ -3209,6 +3217,7 @@ class DeskService:
                     stop_calculation_process(process)
 
     def close(self):
+        self.spy_rebalance.stopped = True
         with self.store.lock:
             self.cancelled.update(
                 r["id"] for r in self.store.data["runs"] if r["status"] in {"queued", "running", "cancelling"}
