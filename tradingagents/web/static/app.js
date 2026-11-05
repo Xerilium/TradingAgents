@@ -3754,7 +3754,7 @@ async function runManualScenario(){
   for(;;){
    const collection=await api('/api/evaluations',{action:'collect_inputs',portfolio_id:portfolio.id,portfolio_revision:portfolio.revision,start:manualScenario.start,end:manualScenario.end,...(jobIds.length?{job_ids:jobIds}:{})});
    jobIds=collection.job_ids||jobIds;
-   const jobs=collection.jobs||[], failed=jobs.find(job=>['failed','error','cancelled'].includes(job.status));
+   const jobs=collection.jobs||[], failed=jobs.find(job=>['failed','error','interrupted','canceled','cancelled','completed_with_gaps'].includes(job.status));
    if(failed)throw Error('Price or corporate action collection failed: '+(failed.error||failed.status));
    const missing=(collection.missing?.history?.length||0)+(collection.missing?.corporate_actions?.length||0);
    manualScenario.message='Collecting prices and corporate actions · '+missing+' inputs missing · '+jobs.map(job=>job.status+(job.progress?' '+JSON.stringify(job.progress):'')).join(', ');render();
