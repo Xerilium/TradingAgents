@@ -2995,6 +2995,7 @@ function spyRebalanceMarkup(){
    '<button data-spy-rebalance="enable" '+(spyDedicatedAccount!==account||spyRebalanceBusy?'disabled':'')+'>Enable daily paper trades</button>':
    '<p>Connect the dedicated Alpaca paper account to enable trading.</p>')+
   ' <button data-spy-rebalance="check" '+(spyRebalanceBusy?'disabled':'')+'>Check latest SPY holdings</button>'+
+  ' <button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':spyHoldingsMessage)+'</p></section>';
 }
 async function spyRebalanceAction(action){
@@ -3006,6 +3007,14 @@ async function spyRebalanceAction(action){
    account_id:config.eligible_account_id,dedicated:spyDedicatedAccount===config.eligible_account_id});
   if(state.store_generation!==generation)return;
   if(action==='check')spyHoldingsMessage='State Street holdings dated '+result.as_of+' · '+result.positions+' stocks';
+  else if(action==='preview'){
+   const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
+   spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
+    ' · Last price check '+fullTime(result.quote_at)+'.'+
+    (result.first_sell?' First sell: '+showOrder(result.first_sell)+'.':'')+
+    (result.first_buy?' First buy at current cash: '+showOrder(result.first_buy)+'.':
+     result.has_buy?' Current cash cannot fund the first buy before sales.':'');
+  }
   else{investorRecord=result;state.investor=result;spyDedicatedAccount=null;}
  }catch(error){if(state.store_generation===generation)spyHoldingsMessage=error.message;}
  finally{spyRebalanceBusy=false;render();}

@@ -83,6 +83,26 @@ class SpyRebalance:
         snapshot = self.latest_weights(self.desk.store)
         return {"as_of": snapshot["as_of"], "positions": len(snapshot["entries"]), "cash_weight": snapshot["cash_weight"]}
 
+    def preview_plan(self):
+        store = self.desk.store
+        data = store.database.read(RECORD, DEFAULT)["data"]
+        snapshot = self.latest_weights(store)
+        runtime = self.desk.admission.checked_observation(CONSTRAINTS)
+        account = paper_account(runtime)
+        if self.desk.store is not store or not account or data["account_id"] not in (None, account):
+            raise ValueError("Connect the dedicated Alpaca paper account to preview the rebalance.")
+        session = datetime.now(NEW_YORK).date().isoformat()
+        run, symbols = self.plan(store, session, snapshot, runtime, data["managed_symbols"])
+        first = next(iter(run["legs"]), None)
+        buy = next((terms for terms in run["legs"] if terms["side"] == "BUY"), None)
+        first_buy, _ = self.buy_terms(buy, runtime) if buy else (None, False)
+        def order(terms):
+            return {key: terms[key] for key in ("symbol", "side", "quantity", "order_type", "limit_price")} if terms else None
+        return {"as_of": snapshot["as_of"], "positions": len(symbols), "total": run["total"],
+                "quote_at": runtime.get("prices_checked_at"),
+                "first_sell": order(first) if first and first["side"] == "SELL" else None,
+                "has_buy": buy is not None, "first_buy": order(first_buy)}
+
     def tick(self):
         if self.stopped or self.desk.browse_only or time.monotonic() < self.next_poll:
             return
@@ -157,17 +177,22 @@ class SpyRebalance:
         if snapshot["as_of"] != prior:
             raise ValueError(f"Waiting for State Street SPY holdings dated {prior}.")
         runtime = self.checked_account(data["account_id"])
+        symbols = [entry["symbol"] for entry in snapshot["entries"]]
+        self.ensure_symbols(store, data["account_id"], runtime, [*symbols, *data["managed_symbols"]])
+        return self.plan(store, day, snapshot, runtime, data["managed_symbols"])
+
+    def plan(self, store, day, snapshot, runtime, managed_symbols):
         records = store.database.read("commands", COMMANDS)["data"]
         self.require_no_working_orders(runtime, records)
         weights = {entry["symbol"]: Decimal(entry["weight"]) for entry in snapshot["entries"] if Decimal(entry["weight"]) > 0}
-        positions = self.check_positions(runtime, set(weights) | set(data["managed_symbols"]))
+        positions = self.check_positions(runtime, set(weights) | set(managed_symbols))
         symbols = sorted(set(weights) | set(positions))
-        self.ensure_symbols(store, data["account_id"], runtime, symbols)
         supported = instruments(runtime, symbols)
         missing = [symbol for symbol in symbols if not supported[symbol]["supported"]]
         if missing:
             raise ValueError(f"Waiting for {len(missing)} supported Alpaca assets, including " + ", ".join(missing[:8]) + ".")
-        reason = f"Daily SPY paper rebalance using State Street holdings dated {prior} (SHA-256 {snapshot['source_sha256']})."
+        as_of = snapshot["as_of"]
+        reason = f"Daily SPY paper rebalance using State Street holdings dated {as_of} (SHA-256 {snapshot['source_sha256']})."
         targets = [{"symbol": symbol, "mode": "weight", "value": str(weight * 100), "order_type": "MARKET"}
                    for symbol, weight in weights.items()]
         targets.extend({"symbol": symbol, "mode": "quantity", "value": "0", "order_type": "MARKET"}
@@ -180,7 +205,7 @@ class SpyRebalance:
         legs = [leg["terms"] for leg in basket["legs"] if leg["terms"]["side"] == "SELL"
                 or (decimal(leg["impact"]["estimated_principal"]) or Decimal(0)) >= 1]
         legs.sort(key=lambda terms: terms["side"] != "SELL")
-        return {"session": day, "as_of": prior, "status": "ready" if legs else "completed",
+        return {"session": day, "as_of": as_of, "status": "ready" if legs else "completed",
                 "message": "Waiting for the first order." if legs else "No orders needed.",
                 "legs": legs, "completed": 0, "total": len(legs), "limited": 0, "command_id": None,
                 "source_sha256": snapshot["source_sha256"],
@@ -213,6 +238,26 @@ class SpyRebalance:
         if (not known or commitments or commands.get("recovery_required") or commands.get("new_orders_blocked")
                 or any(item["state"] in ACTIVE for item in commands["commands"].values())):
             raise ValueError("Existing orders or an account block must clear before SPY can rebalance.")
+
+    @staticmethod
+    def buy_terms(terms, runtime):
+        symbol = terms["symbol"]
+        price = price_evidence(terms, runtime)["price"]
+        cash = decimal(runtime["account"].get("cash"))
+        if price is None or cash is None or cash < 0:
+            raise ValueError(f"{symbol}: The buy requires a current price and enough observed cash.")
+        limit = price.quantize(Decimal("0.01"), rounding=ROUND_CEILING)
+        try:
+            fractional_asset(runtime, symbol)
+            increment = Decimal("0.000000001")
+        except ValueError:
+            increment = Decimal(1)
+        planned = Decimal(terms["quantity"])
+        quantity = min(planned, cash / limit).quantize(increment, rounding=ROUND_FLOOR)
+        if quantity * limit < 1:
+            return None, True
+        return {**terms, "order_type": "LIMIT", "limit_price": str(limit),
+                "quantity": format(quantity.normalize(), "f")}, quantity < planned
 
     def advance(self, store, record):
         database = store.database
@@ -251,26 +296,14 @@ class SpyRebalance:
             raise ValueError(f"{symbol}: The holding changed after the daily plan was made.")
         limited = run["limited"]
         if terms["side"] == "BUY":
-            price = price_evidence(terms, runtime)["price"]
-            cash = decimal(runtime["account"].get("cash"))
-            if price is None or cash is None or cash < 0:
-                raise ValueError(f"{symbol}: The buy requires a current price and enough observed cash.")
-            limit = price.quantize(Decimal("0.01"), rounding=ROUND_CEILING)
-            try:
-                fractional_asset(runtime, symbol)
-                increment = Decimal("0.000000001")
-            except ValueError:
-                increment = Decimal(1)
-            planned = Decimal(terms["quantity"])
-            quantity = min(planned, cash / limit).quantize(increment, rounding=ROUND_FLOOR)
-            if quantity * limit < 1:
+            terms, resized = self.buy_terms(terms, runtime)
+            limited += resized
+            if terms is None:
                 completed = run["completed"] + 1
-                update(completed=completed, limited=limited + 1,
+                update(completed=completed, limited=limited,
                        status="completed" if completed == run["total"] else "ready",
                        message=f"{symbol}: Buy skipped because observed cash allows less than $1.")
                 return
-            limited += quantity < planned
-            terms.update(order_type="LIMIT", limit_price=str(limit), quantity=format(quantity.normalize(), "f"))
         with self.desk.maintenance:
             if self.stopped or self.desk.store is not store:
                 return
