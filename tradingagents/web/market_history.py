@@ -245,7 +245,7 @@ class MarketDataJobs:
 
     def manual_symbols(self, body):
         from .manual_portfolios import model
-        from .portfolio_scenario import valid_cusip, contingent_right
+        from .portfolio_scenario import valid_cusip, contingent_right, canonical_recipient
         from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
         from .approval_review import read_artifact
         from .evaluation import reference
@@ -268,6 +268,9 @@ class MarketDataJobs:
                     continue
                 target = row.get("new_symbol") if kind == "spin_offs" and row.get("source_symbol") == symbol else row.get("acquirer_symbol") if kind in {"stock_mergers", "stock_and_cash_mergers"} and row.get("acquiree_symbol") == symbol else None
                 if target and target not in symbols:
+                    target = canonical_recipient(saved, target, row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip"))
+                    if target in symbols:
+                        continue
                     symbols.add(target)
                     identities[target] = valid_cusip(row.get("new_cusip") if kind == "spin_offs" else row.get("acquirer_cusip"))
                     pending.append(target)
