@@ -3689,10 +3689,20 @@ async function loadManualPortfolio(){
   if(data.status==='rejected')throw data.reason;
   manualPortfolio.revision=data.value.revision;manualPortfolio.portfolios=data.value.portfolios||[];
   manualPortfolio.weights=weights.status==='fulfilled'?weights.value:null;
-  manualPortfolio.message=weights.status==='rejected'?'Index weights unavailable: '+weights.reason.message:'';
+  manualPortfolio.message=weights.status==='rejected'?'Index weights unavailable: '+weights.reason.message:weights.value.error||(!weights.value.snapshot?'No index weights are available.':'');
   manualPortfolio.loaded=true;
  }catch(error){manualPortfolio.message=error.message;}
  finally{manualPortfolio.loading=false;if(activePage==='portfolio'&&portfolioTab==='manual'||activePage==='strategy')render();}
+}
+async function refreshManualWeights(){
+ const m=manualPortfolio;if(m.weightLoading)return;
+ m.weightLoading=true;m.message='Refreshing S&P 500 reference weights…';render();
+ try{
+  const weights=await api('/api/portfolio-weights',{action:'refresh'},{timeoutMs:550000});
+  if(weights.error)throw Error(weights.error);
+  m.weights=weights;m.selectedSnapshot='';m.message=weights.snapshot?'Reference weights refreshed. Existing allocations were preserved.':'No index snapshot is available.';
+ }catch(error){m.message='Index weights unavailable: '+error.message;}
+ finally{m.weightLoading=false;render();}
 }
 function manualSnapshots(){
  const data=manualPortfolio.weights||{};
@@ -3708,24 +3718,57 @@ function newManualPortfolio(){
  manualPortfolio.draft={name:'Manual portfolio',capital_usd:'100000',allocations:universe().map(symbol=>({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined})),weight_source:null};
  manualPortfolio.dirty=true;manualPortfolio.message='';
 }
+// Decimal weights stay strings throughout editing and saving. BigInt avoids
+// binary rounding when hundreds of allocations must add up exactly.
+function manualDecimal(value){
+ const text=String(value), match=/^(\d*)(?:\.(\d*))?$/.exec(text);
+ if(!match||!((match[1]||'')+(match[2]||'')))return null;
+ const scale=(match[2]||'').length;
+ return {units:BigInt((match[1]||'0')+(match[2]||'')),scale};
+}
+function manualDecimalString(units,scale){
+ const negative=units<0n;if(negative)units=-units;
+ const digits=units.toString().padStart(scale+1,'0');
+ const text=scale?digits.slice(0,-scale)+'.'+digits.slice(-scale):digits;
+ return (negative?'-':'')+text;
+}
+function manualShiftDecimal(value,places){
+ const parsed=manualDecimal(value);if(!parsed)return '';
+ return places>=0?manualDecimalString(parsed.units*10n**BigInt(Math.max(0,places-parsed.scale)),Math.max(0,parsed.scale-places)):manualDecimalString(parsed.units,parsed.scale-places);
+}
 function manualTotals(){
- const rows=manualPortfolio.draft?.allocations||[], total=rows.reduce((sum,row)=>sum+(Number(row.weight)||0),0);
- return {total,cash:1-total,positions:rows.filter(row=>Number(row.weight)>0).length};
+ const rows=manualPortfolio.draft?.allocations||[], values=rows.map(row=>manualDecimal(row.weight));
+ if(values.some(value=>!value))return {valid:false,positions:0};
+ const scale=Math.max(0,...values.map(value=>value.scale));
+ const total=values.reduce((sum,value)=>sum+value.units*10n**BigInt(scale-value.scale),0n);
+ const cash=10n**BigInt(scale)-total;
+ return {valid:cash>=0n,total:manualDecimalString(total,scale),cash:manualDecimalString(cash,scale),positions:values.filter(value=>value.units>0n).length};
+}
+function manualTotalsText(){
+ const totals=manualTotals();
+ if(!totals.valid)return 'Enter valid nonnegative allocations totaling no more than 100%.';
+ return totals.positions+' positions / '+manualPortfolio.draft.allocations.length+' symbols · Allocated '+manualShiftDecimal(totals.total,2)+'% · Cash '+manualShiftDecimal(totals.cash,2)+'%';
 }
 function manualRowsMarkup(){
- const draft=manualPortfolio.draft,query=manualPortfolio.query.toUpperCase(), refs=new Set((manualSnapshot()?.entries||[]).map(row=>row.symbol));
- return (draft?.allocations||[]).filter(row=>row.symbol.toUpperCase().includes(query)).map(row=>'<tr><th scope="row">'+esc(row.symbol)+'</th><td><input type="number" min="0" max="100" step="any" data-manual-weight="'+esc(row.symbol)+'" aria-label="'+esc(row.symbol)+' allocation percent" value="'+esc(String(Number(row.weight)*100))+'"></td><td>'+esc(refs.has(row.symbol)?'Index weight available':'No index weight in selected snapshot')+'</td></tr>').join('');
+ const draft=manualPortfolio.draft,query=manualPortfolio.query.toUpperCase(), snapshot=manualSnapshot(), refs=new Map((snapshot?.entries||[]).map(row=>[row.symbol,row]));
+ return (draft?.allocations||[]).filter(row=>row.symbol.toUpperCase().includes(query)).map(row=>{
+  const ref=refs.get(row.symbol);
+  const reference=ref?manualShiftDecimal(ref.weight,2)+'% · '+snapshot.as_of:(snapshot?'No index weight in selected snapshot':'Index weights unavailable');
+  return '<tr><th scope="row">'+esc(row.symbol)+'</th><td><input type="number" min="0" max="100" step="any" data-manual-weight="'+esc(row.symbol)+'" aria-label="'+esc(row.symbol)+' allocation percent" value="'+esc(manualShiftDecimal(row.weight,2))+'"></td><td>'+esc(reference)+'</td></tr>';
+ }).join('');
 }
 function manualTotalsUpdate(){
  const totals=manualTotals(), node=document.getElementById('manual-totals');
- if(node)node.textContent=totals.positions+' positions / '+manualPortfolio.draft.allocations.length+' symbols · Allocated '+(totals.total*100).toFixed(4)+'% · Cash '+(totals.cash*100).toFixed(4)+'%';
- const save=document.getElementById('manual-save');if(save)save.disabled=manualPortfolio.loading||!manualPortfolio.dirty||totals.cash < -0.00000001;
+ if(node)node.textContent=manualTotalsText();
+ const save=document.getElementById('manual-save');if(save)save.disabled=manualPortfolio.loading||!manualPortfolio.dirty||!totals.valid;
+ const run=document.getElementById('manual-run');if(run)run.disabled=manualPortfolio.dirty||!manualPortfolio.draft?.id;
+ const source=document.getElementById('manual-source');if(source&&!manualPortfolio.draft?.weight_source)source.textContent='Allocation source: Manual input · Unsaved changes';
 }
 function renderManualPortfolio(){
  if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
  const m=manualPortfolio,d=m.draft,snapshot=manualSnapshot(),snapshots=manualSnapshots();
  const source=d?.weight_source;
- return '<section class="manual-portfolio"><h2>Manual portfolio</h2><p>Create allocations independently of research and model proposals.</p><div class="manual-actions"><label>Saved portfolio <select id="manual-open"><option value="">Choose a saved portfolio</option>'+m.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(d?.id===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><button class="button" id="manual-new">New portfolio from universe</button></div><p role="status">'+esc(m.loading?'Loading portfolios and index weights…':m.message)+'</p>'+(d?'<div class="manual-fields"><label>Name <input id="manual-name" value="'+esc(d.name)+'"></label><label>Capital / USD <input id="manual-capital" type="number" min="0.01" step="0.01" value="'+esc(d.capital_usd)+'"></label></div><div class="manual-actions"><label>S&P 500 snapshot <select id="manual-snapshot"><option value="">'+esc(snapshot?'Current cached snapshot · '+snapshot.as_of:'No snapshot loaded')+'</option>'+snapshots.map(item=>{const value=item.as_of;return '<option value="'+esc(value)+'" '+(m.selectedSnapshot===value?'selected':'')+'>'+esc(item.as_of||value)+'</option>';}).join('')+'</select></label><button class="button" id="manual-use-index" '+(!snapshot?'disabled':'')+'>Use S&P 500 portfolio</button><button class="button" id="manual-add-universe">Add universe symbols</button><button class="button" id="manual-equal">Equal weight</button></div><p>Using the S&P 500 portfolio replaces these rows with the complete selected snapshot. Adding universe symbols preserves existing allocations.</p><p>Reference weights: '+esc(snapshot?(snapshot.provider||'Index')+' · as of '+snapshot.as_of:'Unavailable')+'. Allocation source: '+esc(source?(source.provider||'Index')+' · as of '+source.as_of:'Manual input')+(m.dirty?' · Unsaved changes':'')+'</p><p id="manual-totals" role="status">'+esc(manualTotals().positions+' positions / '+d.allocations.length+' symbols · Allocated '+(manualTotals().total*100).toFixed(4)+'% · Cash '+(manualTotals().cash*100).toFixed(4)+'%')+'</p><label>Find symbol <input id="manual-search" value="'+esc(m.query)+'" autocomplete="off"></label><div class="table-scroll manual-table"><table class="data-table"><thead><tr><th scope="col">Symbol</th><th scope="col">Allocation %</th><th scope="col">Index reference</th></tr></thead><tbody id="manual-rows">'+manualRowsMarkup()+'</tbody></table></div><div class="manual-actions"><button class="button button-primary" id="manual-save" '+(!m.dirty?'disabled':'')+'>Save portfolio</button><button class="button" id="manual-run" '+(m.dirty||!d.id?'disabled':'')+'>Run in Strategy Lab</button></div>':'<p>Choose a saved portfolio or start with the configured universe.</p>')+'</section>';
+ return '<section class="manual-portfolio"><h2>Manual portfolio</h2><p>Create allocations independently of research and model proposals.</p><div class="manual-actions"><label>Saved portfolio <select id="manual-open"><option value="">Choose a saved portfolio</option>'+m.portfolios.map(p=>'<option value="'+esc(p.id)+'" '+(d?.id===p.id?'selected':'')+'>'+esc(p.name)+' · revision '+esc(p.revision)+'</option>').join('')+'</select></label><button class="button" id="manual-new">New portfolio from universe</button></div><p role="status">'+esc(m.loading?'Loading portfolios and index weights…':m.message)+'</p>'+(d?'<div class="manual-fields"><label>Name <input id="manual-name" value="'+esc(d.name)+'"></label><label>Capital / USD <input id="manual-capital" type="number" min="0.01" step="0.01" value="'+esc(d.capital_usd)+'"></label></div><div class="manual-actions"><label>S&P 500 snapshot <select id="manual-snapshot"><option value="">'+esc(snapshot?'Current cached snapshot · '+snapshot.as_of:'No snapshot loaded')+'</option>'+snapshots.map(item=>{const value=item.as_of;return '<option value="'+esc(value)+'" '+(m.selectedSnapshot===value?'selected':'')+'>'+esc(item.as_of||value)+'</option>';}).join('')+'</select></label><button class="button" id="manual-refresh-weights" '+(m.weightLoading?'disabled':'')+'>'+(m.weightLoading?'Refreshing weights…':'Refresh weights')+'</button><button class="button" id="manual-use-index" '+(!snapshot||m.weightLoading?'disabled':'')+'>Use S&P 500 portfolio</button><button class="button" id="manual-add-universe">Add universe symbols</button><button class="button" id="manual-equal">Equal weight</button></div><p>Using the S&P 500 portfolio replaces these rows with the complete selected snapshot. Adding universe symbols preserves existing allocations.</p><p>Reference weights: '+esc(snapshot?(snapshot.provider||'Index')+' · as of '+snapshot.as_of:'Unavailable')+'.</p><p id="manual-source">Allocation source: '+esc(source?(source.provider||'Index')+' · as of '+source.as_of:'Manual input')+(m.dirty?' · Unsaved changes':'')+'</p><p id="manual-totals" role="status">'+esc(manualTotalsText())+'</p><label>Find symbol <input id="manual-search" value="'+esc(m.query)+'" autocomplete="off"></label><div class="table-scroll manual-table"><table class="data-table"><thead><tr><th scope="col">Symbol</th><th scope="col">Allocation %</th><th scope="col">Index reference</th></tr></thead><tbody id="manual-rows">'+manualRowsMarkup()+'</tbody></table></div><div class="manual-actions"><button class="button button-primary" id="manual-save" '+(!m.dirty?'disabled':'')+'>Save portfolio</button><button class="button" id="manual-run" '+(m.dirty||!d.id?'disabled':'')+'>Run in Strategy Lab</button></div>':'<p>Choose a saved portfolio or start with the configured universe.</p>')+'</section>';
 }
 function manualScenarioMarkup(){
  if(!manualPortfolio.loaded&&!manualPortfolio.loading)loadManualPortfolio();
@@ -3734,10 +3777,10 @@ function manualScenarioMarkup(){
 }
 async function saveManualPortfolio(){
  const m=manualPortfolio,d=m.draft,totals=manualTotals();
- if(!d||totals.cash < -0.00000001||d.allocations.some(row=>row.weight===''||!Number.isFinite(Number(row.weight))||Number(row.weight)<0)){m.message='Allocations cannot exceed 100%.';render();return;}
+ if(!d||!totals.valid){m.message='Allocations cannot exceed 100%.';render();return;}
  m.loading=true;m.message='Saving portfolio…';render();
  try{
-  const result=await api('/api/portfolios',{action:'save',expected_revision:m.revision,portfolio:{...d,cash_weight:String(Math.max(0,totals.cash))}});
+  const result=await api('/api/portfolios',{action:'save',expected_revision:m.revision,portfolio:{...d,cash_weight:totals.cash}});
   m.revision=result.revision;m.portfolios=result.portfolios||m.portfolios;
   const saved=result.portfolio||m.portfolios.find(p=>p.id===d.id)||m.portfolios.find(p=>p.name===d.name);
   if(!saved)throw Error('Saved portfolio was not returned. Reload portfolios before running.');
@@ -3770,8 +3813,8 @@ async function runManualScenario(){
 document.addEventListener('input',event=>{
  const el=event.target,m=manualPortfolio,d=m.draft;
  if(el.id==='manual-search'){m.query=el.value;const rows=document.getElementById('manual-rows');if(rows)rows.innerHTML=manualRowsMarkup();return;}
- if(d&&el.dataset.manualWeight){const row=d.allocations.find(item=>item.symbol===el.dataset.manualWeight);if(row){row.weight=el.value===''?'':String(Number(el.value)/100);m.dirty=true;d.weight_source=null;manualTotalsUpdate();}return;}
- if(d&&(el.id==='manual-name'||el.id==='manual-capital')){d[el.id==='manual-name'?'name':'capital_usd']=el.value;m.dirty=true;manualTotalsUpdate();return;}
+ if(d&&el.dataset.manualWeight){const row=d.allocations.find(item=>item.symbol===el.dataset.manualWeight);if(row){row.weight=manualShiftDecimal(el.value,-2);m.dirty=true;d.weight_source=null;manualTotalsUpdate();}return;}
+ if(d&&(el.id==='manual-name'||el.id==='manual-capital')){d[el.id==='manual-name'?'name':'capital_usd']=el.value;d.weight_source=null;m.dirty=true;manualTotalsUpdate();return;}
  const field={'manual-scenario-start':'start','manual-scenario-end':'end','manual-scenario-fee':'fee'}[el.id];if(field)manualScenario[field]=el.value;
 });
 document.addEventListener('change',async event=>{
@@ -3780,7 +3823,7 @@ document.addEventListener('change',async event=>{
  if(el.id==='manual-scenario-portfolio')manualScenario.portfolioId=el.value;
  if(el.id==='manual-snapshot'){
   m.selectedSnapshot=el.value;
-  if(el.value){try{m.weights=await api('/api/portfolio-weights?as_of='+encodeURIComponent(el.value));m.message='';}catch(error){m.message=error.message;}}
+  if(el.value){m.weightLoading=true;m.message='Loading selected snapshot…';render();try{m.weights=await api('/api/portfolio-weights?as_of='+encodeURIComponent(el.value));m.message=m.weights.error||(!m.weights.snapshot?'No snapshot is available for this date.':'');}catch(error){m.message='Index weights unavailable: '+error.message;}finally{m.weightLoading=false;}} 
   render();
  }
 });
@@ -3788,9 +3831,10 @@ document.addEventListener('click',event=>{
  const id=event.target.closest('button')?.id,m=manualPortfolio,d=m.draft;
  if(id==='manual-new'){newManualPortfolio();render();}
  if(id==='manual-save')saveManualPortfolio();
+ if(id==='manual-refresh-weights')refreshManualWeights();
  if(id==='manual-use-index'&&d){const s=manualSnapshot();if(s){d.allocations=s.entries.map(row=>({symbol:row.symbol,weight:String(row.weight),cusip:row.cusip||undefined}));d.weight_source={id:s.id,provider:s.provider,as_of:s.as_of,source_url:s.source_url,source_sha256:s.source_sha256};m.dirty=true;render();}}
  if(id==='manual-add-universe'&&d){const existing=new Set(d.allocations.map(row=>row.symbol)),refs=new Map((manualSnapshot()?.entries||[]).map(row=>[row.symbol,row]));for(const symbol of universe())if(!existing.has(symbol))d.allocations.push({symbol,weight:String(refs.get(symbol)?.weight??'0'),cusip:refs.get(symbol)?.cusip||undefined});d.weight_source=null;m.dirty=true;render();}
- if(id==='manual-equal'&&d&&d.allocations.length){const weight=String(1/d.allocations.length);d.allocations.forEach(row=>row.weight=weight);d.weight_source=null;m.dirty=true;render();}
+ if(id==='manual-equal'&&d&&d.allocations.length){const weight=manualDecimalString(10n**12n/BigInt(d.allocations.length),12);d.allocations.forEach(row=>row.weight=weight);d.weight_source=null;m.dirty=true;render();}
  if(id==='manual-run'&&d&&!m.dirty){manualScenario.portfolioId=d.id;strategyTab='simulations';strategyView='setup';navigatePage('strategy');}
  if(id==='manual-scenario-ytd'){Object.assign(manualScenario,manualDateDefaults());render();}
  if(id==='manual-scenario-run')runManualScenario();
