@@ -2937,17 +2937,20 @@ class DeskService:
             store.database.transact({"reporting": REPORTING_DEFAULT},
                 lambda records: records["reporting"].setdefault("simulations", {}).update({item["id"]: item}))
         action = request.get("action")
-        if action == "spy_year_start":
+        def spy_year_start():
             from decimal import ROUND_FLOOR
             filed = json.loads(Path(__file__).with_name("static").joinpath("spy_year_start_2026.json").read_text(encoding="utf-8"))
-            rows = filed.pop("holdings")
+            rows = filed["holdings"]
             total = sum(Decimal(row["fund_percent"]) for row in rows)
             weights = {row["symbol"]: (Decimal(row["fund_percent"]) * 90 / total).quantize(
                 Decimal("0.00000001"), rounding=ROUND_FLOOR) for row in rows}
             largest = max(weights, key=weights.get)
             weights[largest] += Decimal(90) - sum(weights.values())
             weights["SGOV"] = Decimal(10)
-            return {**filed, "weights": {symbol: str(percent) for symbol, percent in weights.items()}}
+            return filed, weights
+        if action == "spy_year_start":
+            filed, weights = spy_year_start()
+            return {"as_of": filed["as_of"], "weights": {symbol: str(percent) for symbol, percent in weights.items()}}
         if action == "delete_simulations":
             from uuid import UUID
             selected = request.get("ids")
@@ -3017,9 +3020,9 @@ class DeskService:
             weights = model_weights(model)
             filed_holdings = None
             if model.get("holdings_source") == "spy_year_start":
-                filed_holdings = json.loads(Path(__file__).with_name("static").joinpath("spy_year_start_2026.json").read_text(encoding="utf-8"))
-                if {item["symbol"] for item in model["inputs"]} != {row["symbol"] for row in filed_holdings["holdings"]} | {"SGOV"}:
-                    raise ValueError("The model must include the complete December 31 SPY stock list and SGOV.")
+                filed_holdings, expected_weights = spy_year_start()
+                if weights != {symbol: percent / 100 for symbol, percent in expected_weights.items()}:
+                    raise ValueError("Reload the year-start weights to run the full SPY stock list with 10% SGOV.")
             listings = listing_dates()
             first_dates = {symbol: max(start, listings.get(symbol, {}).get("first_trading_session", start)) for symbol in weights}
             missing_history, missing_actions = {}, []
