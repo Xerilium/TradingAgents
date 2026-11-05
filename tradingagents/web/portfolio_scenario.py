@@ -34,11 +34,25 @@ def model_weights(model):
     return {row["symbol"]: Decimal(str(row["weight"])) for row in model["result"]["allocations"] if Decimal(str(row["weight"])) > 0}
 
 
-def parse_actions(symbol, start, end, observation):
+def parse_actions(symbol, start, end, observation, *, load_artifact=None, initial_shares=None):
     """Reject unproven coverage or unsupported action types; never infer events from bars."""
     start, end = date.fromisoformat(start), date.fromisoformat(end)
     if not isinstance(observation, dict):
         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no complete matching provider receipt")
+    if load_artifact is not None and any(gap.startswith("Action has no exact selected-symbol association") for gap in observation.get("gaps", [])):
+        # Reinterpret the immutable provider pages with the corrected role mapping.
+        # Never edit the original observation or erase an unresolved coverage gap.
+        from .stock_evidence import corporate_action_records
+        records, gaps = [], [gap for gap in observation["gaps"] if not gap.startswith("Action has no exact selected-symbol association")]
+        pages = observation.get("receipts", [])
+        for index, receipt in enumerate(pages):
+            payload = load_artifact(receipt["artifact"])
+            if not isinstance(payload, dict) or bool(payload.get("next_page_token")) != (index < len(pages) - 1):
+                raise ValueError(f"{symbol} corporate_actions.receipt: unavailable or incomplete provider pages")
+            page_records, page_gaps = corporate_action_records(symbol, payload, receipt["source_url"])
+            records.extend(page_records)
+            gaps.extend(page_gaps)
+        observation = {**observation, "records": records, "gaps": gaps}
     request = observation.get("request") or {}
     if (observation.get("symbol") != symbol or observation.get("provider") != "alpaca"
             or observation.get("complete") is not True or observation.get("status") not in {"available", "missing"}
@@ -49,14 +63,27 @@ def parse_actions(symbol, start, end, observation):
     actions = []
     for record in observation.get("records", []):
         row, kind = record.get("reported") or {}, record.get("kind", "")
-        if kind == "cash_mergers" and row.get("acquirer_symbol") == symbol and row.get("acquiree_symbol") not in {None, symbol}:
-            effective = date.fromisoformat(row["effective_date"])
-            if start <= effective <= end:
-                actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(),
-                    "target_symbol": row["acquiree_symbol"], "source_id": row.get("id"),
-                    "basis": "Selected stock is the acquirer; this is not a distribution or conversion of its shareholders' holdings"})
+        if kind == "name_changes":
+            # Provider-mapped historical bars already follow the underlying issuer.
+            # A name/CUSIP change has no reported share ratio or cash entitlement.
+            # Keep its full receipt in the preview; do not invent an effective date.
+            if not row.get("old_symbol") or not row.get("new_symbol") or symbol not in {row["old_symbol"], row["new_symbol"]}:
+                raise ValueError(f"{symbol} corporate_actions.name_change: invalid symbol mapping")
+            continue
+        effective = date.fromisoformat(row.get("ex_date") or row.get("effective_date") or "")
+        # This portfolio is first bought at the opening date's completed close.
+        if effective <= start or effective > end:
+            continue
+        if kind in {"cash_mergers", "stock_mergers", "stock_and_cash_mergers"} and row.get("acquirer_symbol") == symbol and row.get("acquiree_symbol") not in {None, symbol}:
+            actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(),
+                "target_symbol": row["acquiree_symbol"], "source_id": row.get("id"),
+                "basis": "Selected stock is the acquirer; this is not a distribution or conversion of its shareholders' holdings"})
             continue
         if kind not in {"cash_dividends", "forward_splits", "reverse_splits"}:
+            if initial_shares == 0:
+                actions.append({"kind": "no_position_action", "ex_date": effective.isoformat(), "source_kind": kind,
+                    "source_id": row.get("id"), "basis": "Whole-share entry bought zero shares; this action has no portfolio entitlement"})
+                continue
             raise ValueError(f"{symbol} {row.get('ex_date') or row.get('effective_date') or 'unknown'} corporate_actions.kind: unsupported {kind}")
         def field(name):
             value = row.get(name)
@@ -126,7 +153,9 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model):
                     continue
                 if day == dates[0]:
                     continue
-                if action["kind"] == "issuer_acquisition":
+                if action["kind"] in {"issuer_acquisition", "no_position_action"}:
+                    if action["kind"] == "no_position_action" and shares[symbol] != 0:
+                        raise ValueError(f"{symbol} {day} corporate_actions: ignored event has a nonzero holding")
                     events.append({"date": day, "symbol": symbol, **action})
                 elif action["kind"] == "split":
                     quantity = shares[symbol] * Decimal(action["new"]) / Decimal(action["old"])

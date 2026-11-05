@@ -2909,7 +2909,7 @@ class DeskService:
             entries = store.database.read("market_history", HISTORY_DEFAULT)["data"]["entries"]
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
-            histories, action_data, errors = {}, {}, []
+            histories, action_data, action_sources, errors = {}, {}, {}, []
             scenario_calendar = None
             for symbol in model_weights(model):
                 try:
@@ -2950,13 +2950,17 @@ class DeskService:
                     action_ref = meta_action.get("last_usable_artifact") or meta_action.get("artifact")
                     if not action_ref:
                         raise ValueError(f"{symbol} {start}..{end} corporate_actions.coverage: no retained provider receipt")
-                    action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)))
+                    from decimal import ROUND_FLOOR
+                    shares = (Decimal(str(model["result"]["capital"])) * model_weights(model)[symbol] / Decimal(histories[symbol][min(histories[symbol])]["close"])).to_integral_value(rounding=ROUND_FLOOR)
+                    action_data[symbol] = parse_actions(symbol, start, end, read_artifact(store.directory, reference(action_ref)),
+                        load_artifact=lambda ref: read_artifact(store.directory, reference(ref)), initial_shares=shares)
+                    action_sources[symbol] = reference(action_ref)
                 except (ValueError, KeyError, TypeError) as error:
                     errors.append(str(error))
             if errors:
                 raise ValueError("; ".join(errors))
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
-                    "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data,
+                    "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data, "corporate_action_sources": action_sources,
                     "entry_basis": "first_retained_daily_close",
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}
             from .evaluation import digest
