@@ -42,7 +42,7 @@ def entry_quantity(capital, weight, price, sizing="whole"):
     return (Decimal(str(capital)) * weight / Decimal(str(price))).quantize(step, rounding=ROUND_FLOOR)
 
 
-def parse_actions(symbol, start, end, observation, *, load_artifact=None, initial_shares=None):
+def parse_actions(symbol, start, end, observation, *, load_artifact=None, initial_shares=None, cusip=None):
     """Reject unproven coverage or unsupported action types; never infer events from bars."""
     start, end = date.fromisoformat(start), date.fromisoformat(end)
     if not isinstance(observation, dict):
@@ -71,6 +71,9 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
     actions = []
     for record in observation.get("records", []):
         row, kind = record.get("reported") or {}, record.get("kind", "")
+        identity = row.get("cusip") or (row.get("acquiree_cusip") if row.get("acquiree_symbol") == symbol else row.get("acquirer_cusip") if row.get("acquirer_symbol") == symbol else row.get("source_cusip") if row.get("source_symbol") == symbol else None)
+        if cusip and identity and identity != cusip:
+            continue
         if kind == "name_changes":
             # Provider-mapped historical bars already follow the underlying issuer.
             # A name/CUSIP change has no reported share ratio or cash entitlement.
@@ -86,6 +89,18 @@ def parse_actions(symbol, start, end, observation, *, load_artifact=None, initia
             actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(),
                 "target_symbol": row["acquiree_symbol"], "source_id": row.get("id"),
                 "basis": "Selected stock is the acquirer; this is not a distribution or conversion of its shareholders' holdings"})
+            continue
+        if kind == "unit_splits" and row.get("new_symbol") == symbol and row.get("old_symbol") != symbol:
+            actions.append({"kind": "issuer_acquisition", "ex_date": effective.isoformat(), "source_id": row.get("id")})
+            continue
+        if kind in {"cash_mergers", "stock_mergers", "stock_and_cash_mergers"} and row.get("acquiree_symbol") == symbol:
+            cash_rate = Decimal(str(row.get("rate") if kind == "cash_mergers" else row.get("cash_rate", 0)))
+            old = Decimal(str(row.get("acquiree_rate", 1)))
+            new = Decimal(str(row.get("acquirer_rate", 0)))
+            if not all(value.is_finite() for value in (cash_rate, old, new)) or cash_rate < 0 or old <= 0 or new < 0:
+                raise ValueError(f"{symbol} {effective} merger: invalid consideration")
+            actions.append({"kind": "merger", "ex_date": effective.isoformat(), "new_symbol": row.get("acquirer_symbol") if new else None,
+                "new": str(new), "old": str(old), "cash_rate": str(cash_rate), "payable_date": row.get("payable_date") or effective.isoformat(), "source_id": row.get("id")})
             continue
         if kind == "spin_offs" and row.get("source_symbol") == symbol and row.get("new_symbol") not in {None, symbol}:
             if initial_shares == 0:
@@ -146,13 +161,13 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
     symbols = tuple(bars)
     if not set(weights).issubset(bars) or set(actions) != set(bars):
         raise ValueError("portfolio inputs: bars and corporate actions are required for every positive allocation")
-    dates = sorted(bars[next(iter(weights))])
-    if not dates or any(set(bars[symbol]) != set(dates) for symbol in weights):
-        raise ValueError("portfolio bars: every symbol must have the same actual dated sessions")
+    dates = sorted(set().union(*(set(rows) for rows in bars.values())))
+    if not dates or any(dates[0] not in bars[symbol] for symbol in weights):
+        raise ValueError("portfolio bars: every initial allocation requires an opening session mark")
     for symbol in symbols:
         for action in actions[symbol]:
-            if action["ex_date"] not in dates:
-                raise ValueError(f"{symbol} {action['ex_date']} ex_date: no synchronized session mark")
+            if not any(day >= action["ex_date"] for day in dates):
+                raise ValueError(f"{symbol} {action['ex_date']} ex_date: no subsequent session")
     cash, shares, receivables = capital, dict.fromkeys(symbols, Decimal(0)), []
     events, curve = [], []
     for symbol in weights:
@@ -173,7 +188,7 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
     for day in dates:
         for symbol in symbols:
             for action in actions[symbol]:
-                if action["ex_date"] != day:
+                if day != next((session for session in dates if session >= action["ex_date"]), None):
                     continue
                 if day == dates[0]:
                     continue
@@ -187,6 +202,15 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
                         raise ValueError(f"{symbol} {day} distribution: fractional entitlement requires fractional sizing or cash-in-lieu evidence")
                     shares[action["new_symbol"]] += quantity
                     events.append({"date": day, "symbol": symbol, **action, "shares_received": str(quantity)})
+                elif action["kind"] == "merger":
+                    quantity = shares[symbol]
+                    if action["new_symbol"]:
+                        shares[action["new_symbol"]] += quantity * Decimal(action["new"]) / Decimal(action["old"])
+                    amount = quantity * Decimal(action["cash_rate"])
+                    if amount:
+                        receivables.append({"symbol": symbol, "payable_date": action["payable_date"], "amount": amount})
+                    shares[symbol] = Decimal(0)
+                    events.append({"date": day, "symbol": symbol, **action, "shares_converted": str(quantity), "amount_usd": str(amount)})
                 elif action["kind"] == "split":
                     quantity = shares[symbol] * Decimal(action["new"]) / Decimal(action["old"])
                     if sizing == "whole" and quantity != quantity.to_integral_value():
@@ -204,6 +228,8 @@ def account_portfolio(bars, actions, fee_usd, native_fills, model, sizing="whole
         for symbol in symbols:
             if not shares[symbol]:
                 continue
+            if day not in bars[symbol]:
+                raise ValueError(f"{symbol} {day} close: missing while position is held")
             price = Decimal(str(bars[symbol][day]["close"]))
             if not price.is_finite() or price <= 0:
                 raise ValueError(f"{symbol} {day} close: invalid")
