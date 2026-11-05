@@ -125,14 +125,14 @@ class RequestBudget:
     def __init__(self):
         self.lock, self.next_request = threading.Lock(), 0
 
-    def wait(self, canceled):
+    def wait(self, canceled, interval=1.1):
         while True:
             if canceled():
                 raise InterruptedError("Data job canceled before its next provider request")
             with self.lock:
                 delay = self.next_request - time.monotonic()
                 if delay <= 0:
-                    self.next_request = time.monotonic() + 1.1
+                    self.next_request = time.monotonic() + interval
                     return
             time.sleep(min(delay, .2))
 
@@ -217,7 +217,7 @@ class MarketDataJobs:
             "complete_history": sum(record["data"]["coverage"].get(s, {}).get("required_coverage", {}).get("sufficient") is True for s in universe),
             "missing_or_incomplete": sum(record["data"]["coverage"].get(s, {}).get("required_coverage", {}).get("sufficient") is not True for s in universe),
             "holdings_outside_universe": sum(item["holding"] and symbol not in universe for symbol, item in instruments.items())},
-            "local_request_budget": "At most one history/supplement request every 1.1 seconds, shared by two data workers; provider entitlement remains unverified"}
+            "local_request_budget": "Alpaca history/supplement requests are capped at 150 per minute, shared by two data workers; provider entitlement remains unverified"}
 
     def sources(self):
         saved = self.current_coverage(self.database.read("market_history", DEFAULT)["data"])
@@ -324,7 +324,7 @@ class MarketDataJobs:
             limit = getattr(self.scan_limits, "value", None)
             if limit:
                 from .market_discovery import scan_dispatch
-            self.budget.wait(lambda limit=limit: canceled() or bool(limit and (limit["run_id"] in self.canceled or time.monotonic() >= limit["deadline"])))
+            self.budget.wait(lambda limit=limit: canceled() or bool(limit and (limit["run_id"] in self.canceled or time.monotonic() >= limit["deadline"])), interval=0.4)
             if limit:
                 scan_dispatch(self, limit)
             try:
