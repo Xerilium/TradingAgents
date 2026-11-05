@@ -2914,10 +2914,9 @@ class DeskService:
             history = store.database.read("market_history", HISTORY_DEFAULT)["data"]
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
             missing_history, missing_actions = [], []
-            for row in model["result"]["allocations"]:
-                if Decimal(row["weight"]) == 0:
-                    continue
-                symbol = row["symbol"]
+            selected = {row["symbol"] for row in model["result"]["allocations"] if Decimal(row["weight"]) > 0}
+            selected.update(self.data_jobs.manual_symbols(request) - {row["symbol"] for row in model["inputs"]})
+            for symbol in sorted(selected):
                 matches = [item for item in history["entries"].values() if item.get("symbol") == symbol and self.data_jobs.timeframe(item) == "1Day" and item.get("adjustment") == "raw" and item.get("start", "9999") <= start and item.get("end", "") >= end and item.get("complete") is True and item.get("pagination_complete") is True]
                 if not matches:
                     missing_history.append(symbol)
@@ -2930,8 +2929,16 @@ class DeskService:
             job_ids = request.get("job_ids")
             if job_ids is None:
                 job_ids = []
+            current_jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
+            active = any(current_jobs.get(identity, {}).get("status") in {"queued", "running", "canceling"} for identity in job_ids)
+            if not active:
+                attempted_history, attempted_actions = set(), set()
+                for identity in job_ids:
+                    job = current_jobs.get(identity) or {}
+                    attempted = attempted_actions if job.get("kind") == "supplementary" else attempted_history
+                    attempted.update(job.get("symbols", {}))
                 common = {"purpose": "manual_portfolio", "portfolio_id": request["portfolio_id"], "portfolio_revision": request["portfolio_revision"], "start": start, "end": end}
-                for symbols, details in ((missing_history, {"action": "start", "asof": end, "adjustment": "raw", "timeframe": "1Day"}), (missing_actions, {"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]})):
+                for symbols, details in ((sorted(set(missing_history) - attempted_history), {"action": "start", "asof": end, "adjustment": "raw", "timeframe": "1Day"}), (sorted(set(missing_actions) - attempted_actions), {"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]})):
                     if symbols:
                         before = set(store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"])
                         self.data_jobs.request({**common, **details, "symbols": symbols})
