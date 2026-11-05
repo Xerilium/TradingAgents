@@ -293,6 +293,8 @@ class MarketDataJobs:
         instruments = self.service.investor()["instruments"]
         benchmark = self.service.reporting(compact=True).get("benchmark")
         benchmark_symbol = benchmark["symbol"] if benchmark and body.get("purpose") == "benchmark" else None
+        if body.get("purpose") == "simulation_benchmark":
+            benchmark_symbol = "SPY"
         if any(s not in instruments and s != benchmark_symbol for s in symbols):
             raise ValueError("Select configured symbols or observed holdings")
         adjustment = body.get("adjustment")
@@ -301,7 +303,7 @@ class MarketDataJobs:
         timeframe = body.get("timeframe", "1Day")
         if timeframe not in TIMEFRAMES:
             raise ValueError("Unsupported chart interval; choose " + ", ".join(TIMEFRAMES))
-        if body.get("purpose") in {"required_baseline", "benchmark"} and timeframe != "1Day":
+        if body.get("purpose") in {"required_baseline", "benchmark", "simulation_benchmark"} and timeframe != "1Day":
             raise ValueError("Required baselines and daily benchmarks require the recorded 1Day interval")
         identity = str(uuid4())
         request = {"start": first.isoformat(), "end": last.isoformat(), "asof": asof.isoformat(), "adjustment": adjustment,

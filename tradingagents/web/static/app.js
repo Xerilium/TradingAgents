@@ -1464,12 +1464,56 @@ function strategyHeadlineMarkup(result){
   return '<div><dt>'+label+'</dt><dd>'+formatStatNumber(value??'Unavailable')+'</dd><small>'+esc(unit)+' · '+esc(basis)+'</small></div>';
  }).join('')+'</dl>';
 }
+let portfolioBenchmark=null;
+async function loadPortfolioBenchmark(item,collect=false){
+ if(item?.result?.kind!=='portfolio_scenario'||!item.result.ledger)return;
+ if(!collect&&portfolioBenchmark?.id===item.id&&portfolioBenchmark.generation===state.store_generation)return;
+ const curve=item.result.ledger.equity_curve;
+ const comparison={id:item.id,generation:state.store_generation,start:curve[0].date,end:curve.at(-1).date,busy:true,error:'',history:null};
+ portfolioBenchmark=comparison;
+ if(activePage==='strategy')render();
+ try{
+  let historyState=await api('/api/market-history');
+  const matches=()=>Object.values(historyState.data.entries).filter(entry=>entry.symbol==='SPY'&&entry.timeframe==='1Day'&&entry.adjustment==='all'&&entry.start<=comparison.start&&entry.end>=comparison.end&&entry.complete&&entry.pagination_complete&&!entry.error).sort((a,b)=>b.captured_at.localeCompare(a.captured_at));
+  if(collect){
+   const previousJobs=new Set(Object.keys(historyState.data.jobs));
+   historyState=await api('/api/market-history',{action:'start',symbols:['SPY'],start:comparison.start,end:comparison.end,asof:comparison.end,adjustment:'all',timeframe:'1Day',purpose:'simulation_benchmark'});
+   const job=Object.values(historyState.data.jobs).find(job=>!previousJobs.has(job.id)&&job.request?.purpose==='simulation_benchmark'&&job.request.start===comparison.start&&job.request.end===comparison.end);
+   if(!job)throw new Error('SPY collection could not be identified. Reopen this result to check retained data.');
+   while(['queued','running'].includes(historyState.data.jobs[job.id]?.status)){
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    if(portfolioBenchmark!==comparison||state.store_generation!==comparison.generation)return;
+    historyState=await api('/api/market-history');
+   }
+   if(historyState.data.jobs[job.id]?.status!=='completed')throw new Error(historyState.data.jobs[job.id]?.symbols?.SPY?.error||'SPY collection did not complete. Load the benchmark again to retry.');
+  }
+  const entry=matches()[0];
+  if(!entry)throw new Error('SPY prices have not been collected for this period.');
+  const history=await api('/api/market-history?symbol=SPY&key='+encodeURIComponent(entry.key));
+  const prices=day=>history.bars.filter(bar=>bar.t===day).map(bar=>Number(bar.raw.c));
+  const first=prices(comparison.start),last=prices(comparison.end);
+  if(history.symbol!=='SPY'||history.timeframe!=='1Day'||history.adjustment!=='all'||history.currency!=='USD'||history.feed!=='iex'||!history.complete||!history.pagination_complete||history.error||first.length!==1||last.length!==1||!first.concat(last).every(price=>Number.isFinite(price)&&price>0))throw new Error('Benchmark unavailable. Complete dividend-adjusted SPY closing prices are required on both dates.');
+  comparison.history={start:comparison.start,end:comparison.end,start_close:first[0],end_close:last[0],return_pct:(last[0]/first[0]-1)*100,source:history.source,captured_at:history.captured_at};
+ }catch(error){comparison.error=error.message;}
+ finally{
+  comparison.busy=false;
+  if(portfolioBenchmark===comparison&&state.store_generation===comparison.generation&&activePage==='strategy')render();
+ }
+}
+function portfolioBenchmarkMarkup(result){
+ const comparison=portfolioBenchmark?.id===evaluationItem?.id&&portfolioBenchmark.generation===state.store_generation?portfolioBenchmark:null;
+ const prefix='<section aria-label="S&P 500 comparison"><h4>S&P 500 comparison · SPY</h4>';
+ if(!comparison?.history)return prefix+'<p role="status">'+esc(comparison?.busy?'Loading SPY comparison…':comparison?.error||'Load SPY prices for the same period.')+'</p><button class="button" id="portfolio-benchmark-load" '+(comparison?.busy?'disabled':'')+'>Load S&P 500 benchmark</button></section>';
+ const benchmark=comparison.history,capital=Number(result.starting_cash),ending=Number(result.ledger.equity_curve.at(-1).equity_usd),portfolioReturn=(ending/capital-1)*100,gap=portfolioReturn-benchmark.return_pct;
+ const signed=value=>(value>0?'+':'')+value.toFixed(2);
+ return prefix+'<p>'+esc(benchmark.start)+' through '+esc(benchmark.end)+' · SPY dividend-adjusted closing prices.</p><div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">Portfolio / benchmark</th><th scope="col">Return</th><th scope="col">Ending value</th></tr></thead><tbody><tr><th scope="row">Model portfolio</th><td>'+signed(portfolioReturn)+'%</td><td>'+esc(money(ending))+'</td></tr><tr><th scope="row">S&P 500 proxy · SPY</th><td>'+signed(benchmark.return_pct)+'%</td><td>'+esc(money(capital*(1+benchmark.return_pct/100)))+'</td></tr></tbody></table></div><p>Portfolio minus SPY <strong>'+signed(gap)+' percentage points</strong>. Both start with '+esc(money(capital))+'.</p>'+simulationDetails('Benchmark price evidence',benchmark)+'</section>';
+}
 function portfolioScenarioMarkup(result){
  const ledger=result.ledger;if(!ledger)return '<p class="negative">'+esc(result.error||'Portfolio calculation did not complete.')+'</p>';
  const last=ledger.equity_curve.at(-1),ending=Number(last.equity_usd),capital=Number(result.starting_cash),entries=ledger.events.filter(row=>row.kind==='entry');
  const weights=Object.entries(result.target_weights||{}).map(([symbol,weight])=>symbol+' '+(Number(weight)*100).toFixed(2)+'%').concat(result.target_cash_weight!=null?['cash '+(Number(result.target_cash_weight)*100).toFixed(2)+'%']:[]).join(', ');
  const change=Number.isFinite(capital)&&capital>0?money(ending-capital)+' ('+((ending/capital-1)*100).toFixed(2)+'%)':'Unavailable: starting capital was not retained';
- return '<h3>Model portfolio · historical scenario</h3><p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+'. Ending equity '+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p><h4>Historical whole-share entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
+ return '<h3>Model portfolio · historical scenario</h3><p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+'. Ending equity '+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p>'+portfolioBenchmarkMarkup(result)+'<h4>Historical whole-share entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
 }
 function simulationResultMarkup(result){
  if(result.kind==='portfolio_scenario')return portfolioScenarioMarkup(result);
@@ -1522,6 +1566,7 @@ async function evaluationAction(action,id){
   if(evaluationSources&&action!=='load')evaluationSources=await api('/api/evaluations');
  }catch(error){evaluationError=error.message;}
  finally{evaluationBusy=false;if(activePage==='strategy')render();}
+ if(!evaluationError&&evaluationItem?.status==='completed')loadPortfolioBenchmark(evaluationItem);
  clearTimeout(evaluationTimer);
  if(!evaluationError&&['queued','running'].includes(evaluationItem?.status)){const identity=evaluationItem.id;evaluationTimer=setTimeout(()=>evaluationAction('open',identity),5000);}
 }
@@ -1533,6 +1578,7 @@ document.addEventListener('input',event=>{
 document.addEventListener('change',event=>{if(event.target.dataset.evaluationField==='proposal_id'){evaluationDraft.history_key='';render();}});
 document.addEventListener('click',event=>{
  if(event.target.closest('#portfolio-scenario-run')){runPortfolioScenario();return;}
+ if(event.target.closest('#portfolio-benchmark-load')){loadPortfolioBenchmark(evaluationItem,true);return;}
  const button=event.target.closest('[data-evaluation-open],#evaluation-load,[data-evaluation-load],#evaluation-preview,#evaluation-run');if(!button)return;
  if(button.dataset.evaluationOpen){strategyView='results';evaluationAction('open',button.dataset.evaluationOpen);}else evaluationAction((button.id||'evaluation-load').replace('evaluation-',''));
 });
