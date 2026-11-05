@@ -2972,7 +2972,7 @@ class DeskService:
             from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT
             observations = store.database.read("stock_evidence", EVIDENCE_DEFAULT)["data"]["observations"]
             histories, action_data, action_sources, errors = {}, {}, {}, []
-            scenario_calendar = None
+            scenario_calendar, calendar_sessions = None, None
             for symbol in model_weights(model):
                 try:
                     matches = [entry for entry in entries.values() if entry.get("symbol") == symbol and self.data_jobs.timeframe(entry) == "1Day" and entry.get("adjustment") == "raw" and entry.get("start", "9999") <= start and entry.get("end", "") >= end and entry.get("complete") is True and entry.get("pagination_complete") is True and not entry.get("error")]
@@ -3002,6 +3002,12 @@ class DeskService:
                     if not isinstance(calendar, list) or not calendar:
                         raise ValueError(f"{symbol} {start}..{end} calendar.artifact: unavailable, empty or changed")
                     sessions = {row["date"] for row in calendar if start <= row["date"] <= end}
+                    if not sessions:
+                        raise ValueError(f"{symbol} {start}..{end} calendar: no trading sessions")
+                    if calendar_sessions is None:
+                        calendar_sessions = sessions
+                    elif sessions != calendar_sessions:
+                        raise ValueError(f"{symbol} {start}..{end} calendar: retained sessions differ")
                     selected = [row for row in history.get("bars", []) if start <= row.get("t", "") <= end]
                     by_day = {row["t"]: row for row in selected}
                     if len(selected) != len(by_day) or set(by_day) - sessions:
@@ -3043,7 +3049,7 @@ class DeskService:
                         raise ValueError(f"{symbol} {first}..{end} distribution marks: no complete raw daily receipt")
                     meta = max(matches, key=lambda item: item.get("captured_at", ""))
                     history = read_artifact(store.directory, reference(meta.get("last_usable_artifact") or meta.get("artifact")))
-                    sessions = {day for rows in histories.values() for day in rows if first <= day <= end}
+                    sessions = {day for day in calendar_sessions if first <= day <= end}
                     selected = [row for row in (history or {}).get("bars", []) if first <= row.get("t", "") <= end]
                     if len(selected) != len(sessions) or {row["t"] for row in selected} != sessions:
                         raise ValueError(f"{symbol} distribution marks: missing, duplicate or off-calendar daily bar")
@@ -3055,6 +3061,7 @@ class DeskService:
                     action_sources[symbol] = action_ref
             spec = {"kind": "portfolio_scenario", "engine_version": "1.231.0", "model": model, "start": start, "end": end,
                     "share_sizing": sizing,
+                    "calendar_sessions": sorted(calendar_sessions),
                     "fee_usd": str(request.get("fee_usd", "")), "bars": histories, "actions": action_data, "corporate_action_sources": action_sources,
                     "entry_basis": "first_retained_daily_close",
                     "basis": "Hindsight allocation scenario; entries use the first completed daily close, not historical research availability or broker performance"}

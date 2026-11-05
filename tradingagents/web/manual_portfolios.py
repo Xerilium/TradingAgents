@@ -34,7 +34,8 @@ def save(store, request, weights=None):
             if not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,19}", symbol) or symbol in seen or not weight.is_finite() or not 0 <= weight <= 1:
                 raise ValueError("Invalid or duplicate symbol or weight")
             seen.add(symbol)
-            allocations.append({"symbol": symbol, "weight": str(weight), **({"cusip": str(row["cusip"])} if row.get("cusip") else {})})
+            allocations.append({"symbol": symbol, "weight": str(weight), **({"cusip": str(row["cusip"])} if row.get("cusip") else {}),
+                                **({"historical_symbol": str(row["historical_symbol"])} if row.get("historical_symbol") else {})})
         if not capital.is_finite() or capital <= 0 or not cash.is_finite() or not 0 <= cash <= 1 or sum((Decimal(row["weight"]) for row in allocations), cash) != 1:
             raise ValueError("Capital must be positive and allocations plus cash must total 100%")
     except (KeyError, TypeError, AttributeError, InvalidOperation) as error:
@@ -51,8 +52,8 @@ def save(store, request, weights=None):
         snapshot = weights.state(as_of=claim.get("as_of")).get("snapshot")
         if not snapshot or claim.get("id") != snapshot["id"] or claim.get("source_sha256") != snapshot["source_sha256"]:
             raise ValueError("Index snapshot is unavailable or changed")
-        expected = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip") or None) for row in snapshot["entries"]}
-        actual = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip") or None) for row in allocations}
+        expected = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip") or None, row.get("historical_symbol") or None) for row in snapshot["entries"]}
+        actual = {row["symbol"]: (Decimal(row["weight"]), row.get("cusip") or None, row.get("historical_symbol") or None) for row in allocations}
         if actual != expected:
             raise ValueError("Edited allocations do not match the selected index snapshot; clear its source")
         portfolio["weight_source"] = {key: snapshot[key] for key in ("id", "as_of", "source_sha256", "provider")}
@@ -75,6 +76,7 @@ def model(store, identity, revision):
         from .app_database import StoreConflict
         raise StoreConflict(current_revision)
     return {"id": portfolio["id"], "name": portfolio["name"], "portfolio_revision": revision,
-            "inputs": [{"symbol": row["symbol"], **({"cusip": row["cusip"]} if row.get("cusip") else {})} for row in portfolio["allocations"]],
+            "inputs": [{"symbol": row["symbol"], **({"cusip": row["cusip"]} if row.get("cusip") else {}),
+                        **({"historical_symbol": row["historical_symbol"]} if row.get("historical_symbol") else {})} for row in portfolio["allocations"]],
             "result": {"capital": portfolio["capital_usd"], "target_cash_weight": portfolio["cash_weight"],
                        "allocations": portfolio["allocations"]}, "weight_source": portfolio.get("weight_source")}
