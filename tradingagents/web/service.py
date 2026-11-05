@@ -3153,24 +3153,30 @@ class DeskService:
                     attempted = list(collection["attempted"])
                     history_dates = {}
                     for symbol, first in missing_history.items():
-                        history_dates.setdefault(first, []).append(symbol)
-                    requests = [("history", symbols, first) for first, symbols in history_dates.items()]
+                        renamed = any(item["kind"] == "name_change" and item.get("new_symbol") == symbol
+                            and item.get("old_symbol") != symbol and item.get("old_cusip")
+                            and item["old_cusip"] == item.get("new_cusip")
+                            for item in action_data.get(symbol, []))
+                        asof = first if filed_holdings and not renamed else end
+                        history_dates.setdefault((first, asof), []).append(symbol)
+                    requests = [("history", symbols, first, asof) for (first, asof), symbols in history_dates.items()]
                     if missing_actions:
-                        requests.append(("actions", missing_actions, start))
-                    for kind, symbols, first in requests:
+                        requests.append(("actions", missing_actions, start, None))
+                    for kind, symbols, first, asof in requests:
                         keys = [kind + ":" + symbol for symbol in symbols]
                         if any(key in attempted for key in keys):
                             raise ValueError("Downloaded simulation inputs are still incomplete for " + ", ".join(symbols))
                         body = {"symbols": symbols, "start": first, "end": end}
                         body.update({"action": "evidence", "provider": "alpaca", "scopes": ["corporate_actions"]} if kind == "actions"
-                            else {"action": "start", "asof": first if filed_holdings else end, "adjustment": "raw", "timeframe": "1Day"})
+                            else {"action": "start", "asof": asof, "adjustment": "raw", "timeframe": "1Day"})
                         jobs = store.database.read("market_history", HISTORY_DEFAULT)["data"]["jobs"]
                         active = next((job for job in jobs.values() if job["status"] in {"queued", "running"}
                             and set(job["symbols"]) == set(symbols) and job["request"].get("start") == first
                             and job["request"].get("end") == end
                             and (job.get("kind") == "supplementary") == (kind == "actions")
                             and (job["request"].get("scopes") == ["corporate_actions"] if kind == "actions"
-                                 else job["request"].get("adjustment") == "raw" and job["request"].get("timeframe") == "1Day")), None)
+                                 else job["request"].get("adjustment") == "raw" and job["request"].get("timeframe") == "1Day"
+                                 and job["request"].get("asof") == asof)), None)
                         if active:
                             job_ids.append(active["id"])
                         else:
