@@ -1288,7 +1288,7 @@ def simulate_portfolio(spec):
         report = engine.trader.generate_fills_report()
         fills = {}
         for _, row in report.iterrows():
-            symbol = str(row["instrument_id"]).split(".")[0]
+            symbol = str(InstrumentId.from_str(str(row["instrument_id"])).symbol)
             if symbol in fills:
                 raise ValueError(f"{symbol} native_fill: multiple fills require explicit aggregation")
             fills[symbol] = {"shares": str(row["last_qty"]), "price": str(row["last_px"]), "fee_usd": str(fee)}
