@@ -3196,29 +3196,33 @@ function policyPanel(){
  return '<details id="investor-policy" class="panel" '+(policyOpen?'open':'')+'><summary>Your risk checks · revision '+investorRecord.data.policy.revision+'</summary>'+investorStatus()+'<p>You can decide later and keep browsing. Only configured checks apply. Unset optional checks do not block orders; they are not treated as disabled or assigned defaults. Saving these choices does not approve or submit orders; exact-revision review and the account order block still apply.</p><div class="policy-rules">'+Object.entries(labels).map(([key,label])=>{const rule=rules[key]||{state:'unset',value:'',reason:''},copy=policyRuleCopy[key]||[label,label,''];return '<fieldset><legend>'+esc(copy[0])+'</legend><p>'+esc(copy[2])+'</p><label>Use this rule<select id="policy-state-'+key+'" data-policy-key="'+key+'" data-policy-field="state">'+['unset','enabled','disabled'].map(v=>'<option value="'+v+'" '+(rule.state===v?'selected':'')+'>'+esc(policyChoiceCopy[v])+'</option>').join('')+'</select></label><label>'+esc(copy[1])+'<input inputmode="decimal" id="policy-value-'+key+'" data-policy-key="'+key+'" data-policy-field="value" value="'+esc(rule.value||'')+'"></label><label>Optional note about this choice<input id="policy-rule-reason-'+key+'" data-policy-key="'+key+'" data-policy-field="reason" value="'+esc(rule.reason||'')+'"></label>'+policyParameterMarkup(key,rule)+'</fieldset>';}).join('')+'</div><label for="policy-reason">Optional note about these changes<textarea id="policy-reason" rows="2">'+esc(policyReason)+'</textarea></label><button id="save-policy">Save risk-check choices</button><p>Saving a policy revision invalidates dependent approval records. Missing source data can block an applied rule; a price-fall estimate is not a guaranteed loss cap.</p><details><summary>Policy history</summary><pre>'+esc(JSON.stringify(investorRecord.data.policy_history,null,2))+'</pre></details></details><details class="panel" id="investor-proposals" '+(proposalListOpen?'open':'')+'><summary>Saved human proposals · '+investorRecord.data.proposals.length+'</summary>'+investorRecord.data.proposals.map(p=>'<article><h3>'+esc(p.terms.side+' '+p.terms.quantity+' '+p.terms.symbol)+' · '+esc(p.status)+' · revision '+p.revision+'</h3><p>'+fullTime(p.updated_at)+(p.restored_requires_review?' · Restored records; impact review required':p.conditions_stale?' · Policy changed; impact review invalidated':'')+'</p><button data-open-proposal="'+esc(p.id)+'">Open exact terms / revise / review</button><details><summary>Revision history and source references</summary><pre>'+esc(JSON.stringify(p.history,null,2))+'</pre></details></article>').join('')+'</details>';
 }
 let basketOpen=false,basketForm={targets:[],reason:'',fee_per_leg:'',slippage_bps:'',assumed_filled:[]},basketPreview=null;
-let spyDedicatedAccount=null,spyRebalanceBusy=false,spyHoldingsMessage='',spyPreview=null;
+let spyRebalanceBusy=false,spyHoldingsMessage='',spyPreview=null;
 function spyRebalanceMarkup(){
  const heading='<section class="orders-spy-rebalance" aria-label="Daily SPY paper rebalance"><h2>Daily SPY paper rebalance</h2>';
  const schedule=investorRecord?.spy_rebalance;
  if(!schedule)return heading+'<p>SPY rebalance is unavailable.</p></section>';
  const {enabled,eligible_account_id:account,account_id:bound,run}=schedule;
  const eligible=account&&(!bound||bound===account)&&investorRecord.broker_transport_enabled;
- const status=enabled?(account===bound?'Enabled':'Waiting for the dedicated paper account'):'Off';
+ const status=enabled?(account===bound?'Automatic trading on':'Waiting for the dedicated paper account'):'Automatic trading off';
  const preview=spyPreview?.generation===state.store_generation&&spyPreview?.account===account&&
   state.nautilus?.status==='connected'&&state.nautilus.account?.id===account?spyPreview:null;
  const message=spyPreview&&!preview?'':spyHoldingsMessage;
+ const canSubmit=eligible&&!schedule.in_progress&&preview?.submitToken&&Date.now()<preview.submitExpires;
  return heading+
   '<p>Uses State Street’s holdings from the previous trading session. The desk must be open during regular market hours.</p>'+
   '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
   '<div class="basket-actions">'+
-  (enabled?'<button data-spy-rebalance="pause" '+(spyRebalanceBusy?'disabled':'')+'>Pause daily paper trades</button>':
-   eligible?'<label><input type="checkbox" id="spy-dedicated-account" '+(spyDedicatedAccount===account?'checked':'')+'> I confirm this paper account is dedicated to SPY</label> '+
-   '<button data-spy-rebalance="enable" '+(spyDedicatedAccount!==account||spyRebalanceBusy?'disabled':'')+'>Enable daily paper trades</button>':
-   '<p>Connect the dedicated Alpaca paper account to enable trading.</p>')+
-  ' <button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button></div>'+
+  '<button data-spy-rebalance="'+(enabled?'pause':'enable')+'" '+(spyRebalanceBusy||!enabled&&!eligible?'disabled':'')+'>'+
+   (enabled?'Disable automatic paper trades':'Enable automatic paper trades')+'</button>'+
+  '<button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
+  (run?.status==='queued'?'<button data-spy-rebalance="cancel" '+(spyRebalanceBusy?'disabled':'')+'>Cancel queued rebalance</button>':
+   '<button data-spy-rebalance="submit" '+(!canSubmit||spyRebalanceBusy?'disabled':'')+'>Submit paper orders</button>')+'</div>'+
+  (preview?.submitToken&&state.nautilus?.market_open===false?'<p>Submit queues this rebalance for the next regular session.</p>':'')+
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
+  (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+
+   preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
   (preview?.trades.length?'<h3>Proposed trades ('+esc(preview.trades.length)+')</h3>'+
-   '<p>Share estimates use the latest available prices. The desk recalculates the trades during the next regular session.</p>'+
+   '<p>The desk sets buy limits from current quotes and may reduce share counts to fit available cash.</p>'+
    '<div class="table-scroll spy-preview-trades" role="region" aria-label="Proposed SPY trades" tabindex="0"><table class="data-table">'+
    '<thead><tr><th scope="col">Stock</th><th scope="col">Action</th><th scope="col">Planned shares</th></tr></thead><tbody>'+
    preview.trades.map(trade=>'<tr><td>'+esc(trade.symbol)+'</td><td>'+esc(trade.side)+'</td><td>'+esc(trade.quantity)+'</td></tr>').join('')+
@@ -3227,21 +3231,25 @@ function spyRebalanceMarkup(){
 async function spyRebalanceAction(action){
  if(spyRebalanceBusy)return;
  const generation=state.store_generation,config=investorRecord.spy_rebalance;
- spyRebalanceBusy=true;spyHoldingsMessage='';spyPreview=null;render();
+ spyRebalanceBusy=true;spyHoldingsMessage='';
+ if(['preview','enable','pause'].includes(action))spyPreview=null;
+ render();
  try{
   const result=await api('/api/investor',{action:'spy_rebalance_'+action,rebalance_revision:config.revision,
-   account_id:config.eligible_account_id,dedicated:spyDedicatedAccount===config.eligible_account_id});
+   account_id:config.eligible_account_id,dedicated:action==='enable',submit_token:spyPreview?.submitToken});
   if(state.store_generation!==generation)return;
   if(action==='preview'){
-   spyPreview={generation,account:config.eligible_account_id,trades:result.trades??[]};
+   spyPreview={generation,account:config.eligible_account_id,trades:result.trades??[],
+    policyBlockers:result.policy_blockers??[],submitToken:result.submit_token,submitExpires:Date.now()+300000};
    const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
    spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
+    ' · Trading Rules revision '+result.policy_revision+' · Target stock exposure '+Number(result.target_stock_pct).toFixed(2)+'%'+
     ' · Last price check '+time(result.quote_at)+'.'+
     (result.first_sell?' First sell: '+showOrder(result.first_sell)+'.':'')+
-    (result.first_buy?' First buy at current cash: '+showOrder(result.first_buy)+'.':
+    (result.first_buy?' First buy estimate: '+showOrder(result.first_buy)+'.':
      result.has_buy?' Current cash cannot fund the first buy before sales.':'');
   }
-  else{investorRecord=result;state.investor=result;spyDedicatedAccount=null;}
+  else{investorRecord=result;state.investor=result;if(spyPreview)spyPreview.submitToken=null;}
  }catch(error){if(state.store_generation===generation)spyHoldingsMessage=error.message;}
  finally{spyRebalanceBusy=false;render();}
 }
@@ -3291,7 +3299,6 @@ function bindBaskets(root){
   if(index!==undefined||fields[e.target.id]){const preview=root.querySelector('#basket-preview');if(preview)preview.innerHTML=basketEvidence();const generated=root.querySelector('#basket-generated-legs');if(generated)generated.innerHTML='<p>Targets or assumptions changed. Preview the basket again to review proposed order terms.</p>';}
  });
  root.addEventListener('change',e=>{
-  if(e.target.id==='spy-dedicated-account'){spyDedicatedAccount=e.target.checked?investorRecord.spy_rebalance.eligible_account_id:null;render();}
   if(e.target.id==='basket-add-symbol'&&e.target.value){addBasketTarget(e.target.value);render();}
   if(e.target.dataset.basketFill){const s=e.target.dataset.basketFill;basketForm.assumed_filled=e.target.checked?[...new Set([...basketForm.assumed_filled,s])]:basketForm.assumed_filled.filter(v=>v!==s);investorDirty=true;}
  });
@@ -3596,7 +3603,11 @@ async function loadDetail(s){
 function refreshData(source){
  if(!attentionRecord||!attentionDirty&&!attentionBusy&&source.attention?.revision>attentionRecord.revision)attentionRecord=source.attention;else if(attentionRecord&&source.attention)attentionRecord.observations=source.attention.observations;
  if(!investorRecord||!investorDirty&&!investorBusy&&source.investor?.revision>investorRecord.revision)investorRecord=source.investor;
- if(investorRecord&&source.investor)investorRecord.instruments=source.investor.instruments;
+ if(investorRecord&&source.investor){
+  investorRecord.instruments=source.investor.instruments;
+  const schedule=source.investor.spy_rebalance;
+  if(schedule&&(!investorRecord.spy_rebalance||schedule.revision>=investorRecord.spy_rebalance.revision))investorRecord.spy_rebalance=schedule;
+ }
  const connected=Boolean(source.connection?.connected&&source.account), names=source.company_names||{};
  const research=Object.fromEntries(Object.entries(source.saved_research||source.research||{}).filter(([,r])=>r.run_id&&r.status==='completed').map(([s,r])=>{const key=r.run_id+':'+s+':'+(r.revision||0);return [s,{...r,...results.get(key)}];}));
  DATA={name:source.config.name,captured_at:new Date().toISOString(),account:connected?source.account:{},account_observed_at:source.updated_at,prices_checked_at:source.quotes_updated_at,connected,market_open:source.clock?.is_open,

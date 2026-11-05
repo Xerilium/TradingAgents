@@ -4,12 +4,17 @@ import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from urllib.parse import urlencode
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .admission import ACTIVE, DEFAULT as COMMANDS
+from .approval_review import read_artifact
 from .baskets import preview
-from .investor import DEFAULT as INVESTOR, decimal, fractional_asset, instruments, price_evidence, save, working_commitments
+from .investor import DEFAULT as INVESTOR, RULES, decimal, fractional_asset, instruments, price_evidence, save, working_commitments
+from .market_history import DEFAULT as HISTORY
+from .policy_evaluation import evaluate as evaluate_policy
 from .portfolio_weights import PortfolioWeights
+from .stock_evidence import DEFAULT as EVIDENCE
 
 
 RECORD = "spy_paper_rebalance"
@@ -17,6 +22,14 @@ DEFAULT = {"enabled": False, "account_id": None, "managed_symbols": [], "run": N
 PAPER = "https://paper-api.alpaca.markets"
 NEW_YORK = ZoneInfo("America/New_York")
 CONSTRAINTS = {"account_max_age_seconds": "90", "quote_max_age_seconds": "300", "approval_max_age_seconds": "30"}
+ACTIVE_RUN = {"queued", "ready", "dispatching", "waiting_fill"}
+PREVIEW_AGE = 300
+QUOTE_RULES = {"max_spread_bps", "min_quote_size", "session_freshness"}
+
+
+def rule_limit(policy, name, default):
+    rule = policy["rules"].get(name, {})
+    return Decimal(rule["value"]) if rule.get("state") == "enabled" else Decimal(default)
 
 
 def paper_account(runtime):
@@ -38,6 +51,12 @@ class SpyRebalance:
         self.next_poll = 0.0
         self.stopped = False
         self.weights = None
+        self.manual_preview = None
+
+    @staticmethod
+    def active_manual_run(data):
+        run = data["run"]
+        return run and run.get("manual") is True and run["status"] in ACTIVE_RUN
 
     def status(self, runtime):
         record = self.desk.store.database.read(RECORD, DEFAULT)
@@ -45,6 +64,8 @@ class SpyRebalance:
         run = data["run"]
         return {"revision": record["revision"], "enabled": data["enabled"], "account_id": data["account_id"],
                 "eligible_account_id": paper_account(runtime),
+                "in_progress": bool(run and run["session"] >= datetime.now(NEW_YORK).date().isoformat()
+                                    and run["status"] in ACTIVE_RUN),
                 "run": {key: run.get(key) for key in ("session", "as_of", "status", "message", "completed", "total", "limited")} if run else None}
 
     def configure(self, request):
@@ -85,7 +106,8 @@ class SpyRebalance:
 
     def preview_plan(self, account_id):
         store = self.desk.store
-        data = store.database.read(RECORD, DEFAULT)["data"]
+        record = store.database.read(RECORD, DEFAULT)
+        data = record["data"]
         snapshot = self.latest_weights(store)
         runtime = self.desk.admission.checked_observation(CONSTRAINTS)
         account = paper_account(runtime)
@@ -103,16 +125,128 @@ class SpyRebalance:
                 raise ValueError("The paper account or workspace changed. Open a new preview.")
         session = datetime.now(NEW_YORK).date().isoformat()
         run, symbols = self.plan(store, session, snapshot, runtime, data["managed_symbols"])
+        policy = self.check_plan_policy(store, run)
+        blockers = self.review_plan_rules(store, runtime, run["legs"], policy)
+        token = uuid4().hex if run["legs"] and not blockers else None
+        with self.desk.maintenance:
+            if self.desk.store is not store:
+                raise ValueError("The application workspace changed. Preview again.")
+            self.manual_preview = {"token": token, "store": store, "revision": record["revision"], "account": account,
+                                   "connection": runtime["connection_session"], "cash": runtime["account"].get("cash"),
+                                   "expires": time.monotonic() + PREVIEW_AGE, "run": run, "symbols": symbols}
         first = next(iter(run["legs"]), None)
         buy = next((terms for terms in run["legs"] if terms["side"] == "BUY"), None)
-        first_buy, _ = self.buy_terms(buy, runtime) if buy else (None, False)
+        first_buy, _ = self.buy_terms(buy, runtime, policy) if buy else (None, False)
         def order(terms):
             return {key: terms[key] for key in ("symbol", "side", "quantity", "order_type", "limit_price")} if terms else None
         return {"as_of": snapshot["as_of"], "positions": len(symbols), "total": run["total"],
                 "quote_at": runtime.get("prices_checked_at"),
+                "submit_token": token,
+                "policy_revision": run["policy_revision"], "target_stock_pct": run["target_stock_pct"],
+                "policy_blockers": blockers,
                 "trades": [{key: terms[key] for key in ("symbol", "side", "quantity")} for terms in run["legs"]],
                 "first_sell": order(first) if first and first["side"] == "SELL" else None,
                 "has_buy": buy is not None, "first_buy": order(first_buy)}
+
+    def submit_preview(self, request):
+        preview = self.manual_preview
+        token = request.get("submit_token")
+        if not token or not preview or token != preview["token"] or time.monotonic() >= preview["expires"]:
+            raise ValueError("Preview the SPY rebalance again before submitting.")
+        self.order_account(preview["account"])
+        day = datetime.now(NEW_YORK).date().isoformat()
+        clock = self.desk.data_jobs.read("/v2/clock", data=False, canceled=lambda: self.stopped)["data"]
+        market_open = clock.get("is_open")
+        if market_open is True:
+            session = day
+        else:
+            try:
+                next_open = datetime.fromisoformat(clock["next_open"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError("The next regular session could not be confirmed. Preview again.") from error
+            if next_open.tzinfo is None or clock.get("is_open") is not False or next_open <= datetime.now(UTC):
+                raise ValueError("The next regular session could not be confirmed. Preview again.")
+            session = next_open.astimezone(NEW_YORK).date().isoformat()
+        with self.desk.maintenance:
+            store = self.desk.store
+            if (self.stopped or self.manual_preview is not preview or store is not preview["store"]
+                    or time.monotonic() >= preview["expires"] or request.get("account_id") != preview["account"]):
+                raise ValueError("The account or preview changed. Preview the SPY rebalance again.")
+            runtime = self.order_account(preview["account"])
+            if runtime["connection_session"] != preview["connection"]:
+                raise ValueError("The paper account reconnected. Preview the SPY rebalance again.")
+            if runtime.get("market_open") is not market_open or datetime.now(NEW_YORK).date().isoformat() != day:
+                raise ValueError("The market session changed. Preview the SPY rebalance again.")
+            database = store.database
+            record = database.read(RECORD, DEFAULT)
+            data = record["data"]
+            run = data["run"]
+            if run and run["session"] >= day and run["status"] in ACTIVE_RUN:
+                raise ValueError("A SPY rebalance is already queued or running.")
+            if record["revision"] != preview["revision"]:
+                raise ValueError("The SPY rebalance changed. Preview it again before submitting.")
+            self.check_plan_policy(store, preview["run"])
+            self.check_preview_account(store, runtime, preview["run"], preview["symbols"], preview["cash"])
+            queued = {**preview["run"], "manual": True, "manual_id": token, "session": session, "status": "queued",
+                      "preview_cash": preview["cash"], "message": f"Paper rebalance queued for {session}."}
+            database.update(RECORD, record["revision"], lambda saved: saved.update(
+                account_id=preview["account"], managed_symbols=preview["symbols"], run=queued), DEFAULT)
+            self.manual_preview = None
+            self.next_poll = 0.0
+
+    def cancel_queued(self, request):
+        def cancel(data):
+            run = data["run"]
+            if not run or run.get("manual") is not True or run["status"] != "queued":
+                raise ValueError("The paper rebalance is no longer queued.")
+            run.update(status="blocked", message="Queued paper rebalance canceled.")
+        self.desk.store.database.update(RECORD, request.get("rebalance_revision"), cancel, DEFAULT)
+
+    def check_preview_account(self, store, runtime, run, symbols, cash):
+        self.require_no_working_orders(runtime, store.database.read("commands", COMMANDS)["data"])
+        positions = self.check_positions(runtime, set(symbols))
+        if positions != {symbol: Decimal(quantity) for symbol, quantity in run["current"].items()}:
+            raise ValueError("Paper holdings changed. Preview the SPY rebalance again.")
+        if decimal(cash) is None or decimal(runtime["account"].get("cash")) != decimal(cash):
+            raise ValueError("Paper cash changed. Preview the SPY rebalance again.")
+
+    @staticmethod
+    def check_plan_policy(store, run):
+        policy = store.database.read("investor", INVESTOR)["data"]["policy"]
+        if run.get("policy_revision", policy["revision"]) != policy["revision"]:
+            raise ValueError("Trading Rules changed. Preview the SPY rebalance again.")
+        return policy
+
+    @staticmethod
+    def review_plan_rules(store, runtime, terms, policy):
+        rules = {key: rule for key, rule in policy["rules"].items()
+                 if rule.get("state") == "enabled" and key != "cash_reserve_pct"}
+        if not terms or not rules:
+            return []
+        commands = store.database.read("commands", COMMANDS)["data"]
+        history = store.database.read("market_history", HISTORY)["data"]
+        evidence = store.database.read("stock_evidence", EVIDENCE)["data"]
+        legs = [{"terms": order, "price_cap": price_evidence(order, runtime)["price"], "fee": None} for order in terms]
+
+        def failed(selected, group):
+            result = evaluate_policy(selected[0]["terms"], {**policy, "rules": group}, runtime, commands, history,
+                                     evidence, CONSTRAINTS, lambda ref: read_artifact(store.directory, ref),
+                                     proposed_legs=selected)
+            return [f"{RULES[check['name']]}: {check['reason']}" for check in result["checks"]
+                    if check["name"] in group and not check["passed"]]
+
+        portfolio_rules = {key: rule for key, rule in rules.items() if key not in QUOTE_RULES}
+        quote_rules = {key: rule for key, rule in rules.items() if key in QUOTE_RULES}
+        blockers = failed(legs, portfolio_rules) if portfolio_rules else []
+        if quote_rules:
+            symbols_by_reason = {}
+            for leg in legs:
+                for reason in failed([leg], quote_rules):
+                    symbols_by_reason.setdefault(reason, []).append(leg["terms"]["symbol"])
+            for reason, symbols in symbols_by_reason.items():
+                examples = ", ".join(symbols[:5])
+                blockers.append(f"{reason} Affected stocks: {len(symbols)} ({examples}{', …' if len(symbols) > 5 else ''}).")
+        return blockers
 
     def tick(self):
         if self.stopped or self.desk.browse_only or time.monotonic() < self.next_poll:
@@ -122,26 +256,38 @@ class SpyRebalance:
             return
         store = self.desk.store
         data = store.database.read(RECORD, DEFAULT)["data"]
-        if not data["enabled"]:
+        if not data["enabled"] and not self.active_manual_run(data):
             return
         runtime = self.desk.runtime.state()
         if runtime.get("market_open") is not True or paper_account(runtime) != data["account_id"]:
             return
         session = datetime.now(NEW_YORK).date()
         run = data["run"]
-        if run and run["session"] == session.isoformat() and run["status"] in {"completed", "blocked"}:
+        if run and (run["session"] > session.isoformat() or
+                    run["session"] == session.isoformat() and run["status"] in {"completed", "blocked"}):
             return
         self.future = self.desk.data_jobs.executor.submit(self.step, store, session)
 
     def step(self, store, session):
+        if session != datetime.now(NEW_YORK).date():
+            return
         database = store.database
         record = database.read(RECORD, DEFAULT)
         data = record["data"]
-        if not data["enabled"] or self.stopped or self.desk.store is not store:
+        manual = self.active_manual_run(data)
+        if not (data["enabled"] or manual) or self.stopped or self.desk.store is not store:
             return
         day, run = session.isoformat(), data["run"]
+        if run and (run["session"] > day or run["session"] == day and run["status"] in {"completed", "blocked"}):
+            return
         fresh_run = not run or run["session"] != day or run["status"] == "waiting"
         try:
+            if manual and run["session"] != day:
+                fresh_run = False
+                raise ValueError("The approved regular session ended. Preview again before submitting.")
+            if manual and run["status"] == "queued":
+                self.release_queued(store, record, session)
+                return
             if fresh_run:
                 self.next_poll = time.monotonic() + 60
                 new_run, symbols = self.prepare(store, session, data)
@@ -156,8 +302,13 @@ class SpyRebalance:
             if isinstance(error, StoreConflict):
                 return
             current = database.read(RECORD, DEFAULT)
-            if not current["data"]["enabled"] or self.desk.store is not store:
+            if self.desk.store is not store or not (current["data"]["enabled"] or self.active_manual_run(current["data"])):
                 return
+            if current["revision"] != record["revision"]:
+                current_run = current["data"]["run"]
+                if (fresh_run or run["status"] == "queued" or not current_run
+                        or (current_run["session"], current_run.get("manual_id")) != (run["session"], run.get("manual_id"))):
+                    return
             def fail(saved):
                 if fresh_run:
                     saved["run"] = {"session": day, "status": "waiting", "message": str(error)}
@@ -168,29 +319,69 @@ class SpyRebalance:
             except StoreConflict:
                 pass
 
-    def checked_account(self, account_id):
+    def order_account(self, account_id):
         self.desk.admission.enabled()
         runtime = self.desk.admission.checked_observation(CONSTRAINTS)
-        if paper_account(runtime) != account_id or runtime.get("market_open") is not True:
-            raise ValueError("The dedicated paper account and an open regular session are required.")
+        if not account_id or paper_account(runtime) != account_id:
+            raise ValueError("Connect the dedicated Alpaca paper account.")
         return runtime
 
-    def prepare(self, store, session, data):
-        self.checked_account(data["account_id"])
+    def checked_account(self, account_id, *, session=None, close_at=None):
+        runtime = self.order_account(account_id)
+        if runtime.get("market_open") is not True:
+            raise ValueError("The dedicated paper account and an open regular session are required.")
+        now = datetime.now(NEW_YORK)
+        if (session is not None and session != now.date().isoformat()
+                or close_at is not None and now >= datetime.fromisoformat(close_at)):
+            raise ValueError("The approved regular session ended. Preview again before submitting.")
+        return runtime
+
+    def session_calendar(self, session):
         query = urlencode({"start": (session - timedelta(days=14)).isoformat(), "end": session.isoformat()})
         calendar = self.desk.data_jobs.read("/v2/calendar?" + query, data=False, canceled=lambda: self.stopped)["data"]
         day = session.isoformat()
-        dates = {item["date"] for item in calendar}
+        dates = {item["date"]: item for item in calendar}
         prior = max((value for value in dates if value < day), default=None)
         if day not in dates or not prior:
             raise ValueError("The Alpaca calendar does not confirm this session and the previous session.")
+        return prior, dates[day]
+
+    def release_queued(self, store, record, session):
+        data, run = record["data"], record["data"]["run"]
+        prior, calendar = self.session_calendar(session)
+        close_at = datetime.fromisoformat(f"{run['session']}T{calendar['close']}").replace(tzinfo=NEW_YORK).isoformat()
+        snapshot = self.latest_weights(store)
+        if snapshot["as_of"] != prior or snapshot["source_sha256"] != run["source_sha256"]:
+            raise ValueError("The approved SPY weights are no longer current. Preview and submit again.")
+        runtime = self.checked_account(data["account_id"], session=run["session"], close_at=close_at)
+        policy = self.check_plan_policy(store, run)
+        blockers = self.review_plan_rules(store, runtime, run["legs"], policy)
+        if blockers:
+            raise ValueError(blockers[0])
+        with self.desk.maintenance:
+            if self.stopped or self.desk.store is not store:
+                return
+            runtime = self.checked_account(data["account_id"], session=run["session"], close_at=close_at)
+            self.check_plan_policy(store, run)
+            self.check_preview_account(store, runtime, run, data["managed_symbols"], run["preview_cash"])
+            store.database.update(RECORD, record["revision"], lambda saved: saved["run"].update(
+                status="ready", close_at=close_at, message="Reviewed paper rebalance ready to send."), DEFAULT)
+
+    def prepare(self, store, session, data):
+        self.checked_account(data["account_id"])
+        prior, _ = self.session_calendar(session)
+        day = session.isoformat()
         snapshot = self.latest_weights(store)
         if snapshot["as_of"] != prior:
             raise ValueError(f"Waiting for State Street SPY holdings dated {prior}.")
         runtime = self.checked_account(data["account_id"])
         symbols = [entry["symbol"] for entry in snapshot["entries"]]
         self.ensure_symbols(store, data["account_id"], runtime, [*symbols, *data["managed_symbols"]])
-        return self.plan(store, day, snapshot, runtime, data["managed_symbols"])
+        run, symbols = self.plan(store, day, snapshot, runtime, data["managed_symbols"])
+        blockers = self.review_plan_rules(store, runtime, run["legs"], self.check_plan_policy(store, run))
+        if blockers:
+            raise ValueError(blockers[0])
+        return run, symbols
 
     def plan(self, store, day, snapshot, runtime, managed_symbols):
         records = store.database.read("commands", COMMANDS)["data"]
@@ -204,11 +395,15 @@ class SpyRebalance:
             raise ValueError(f"Waiting for {len(missing)} supported Alpaca assets, including " + ", ".join(missing[:8]) + ".")
         as_of = snapshot["as_of"]
         reason = f"Daily SPY paper rebalance using State Street holdings dated {as_of} (SHA-256 {snapshot['source_sha256']})."
-        targets = [{"symbol": symbol, "mode": "weight", "value": str(weight * 100), "order_type": "MARKET"}
-                   for symbol, weight in weights.items()]
+        investor = store.database.read("investor", INVESTOR)["data"]
+        policy = investor["policy"]
+        invested = min(100 - rule_limit(policy, "cash_reserve_pct", 0), rule_limit(policy, "max_gross_exposure_pct", 100))
+        position_limit = rule_limit(policy, "max_position_pct", 100)
+        target_weights = {symbol: min(weight * invested, position_limit) for symbol, weight in weights.items()}
+        targets = [{"symbol": symbol, "mode": "weight", "value": str(weight), "order_type": "MARKET"}
+                   for symbol, weight in target_weights.items()]
         targets.extend({"symbol": symbol, "mode": "quantity", "value": "0", "order_type": "MARKET"}
                        for symbol in sorted(positions.keys() - weights.keys()))
-        investor = store.database.read("investor", INVESTOR)["data"]
         basket = preview(investor, {"targets": targets, "reason": reason}, runtime, (), commands=records)
         missing = [row["symbol"] for row in basket["targets"] if row["desired_quantity"] is None or row["valuation_price"] is None]
         if missing:
@@ -220,13 +415,15 @@ class SpyRebalance:
                 "message": "Waiting for the first order." if legs else "No orders needed.",
                 "legs": legs, "completed": 0, "total": len(legs), "limited": 0, "command_id": None,
                 "source_sha256": snapshot["source_sha256"],
+                "policy_revision": policy["revision"], "target_stock_pct": str(sum(target_weights.values(), Decimal(0))),
                 "current": {symbol: str(quantity) for symbol, quantity in positions.items()}}, symbols
 
     def ensure_symbols(self, store, account_id, runtime, symbols):
         if set(symbols).issubset(runtime["desired_symbols"]):
             return
         with self.desk.maintenance:
-            if self.desk.store is not store or not store.database.read(RECORD, DEFAULT)["data"]["enabled"]:
+            data = store.database.read(RECORD, DEFAULT)["data"]
+            if self.desk.store is not store or not (data["enabled"] or self.active_manual_run(data)):
                 raise ValueError("The daily SPY loop was paused or the workspace changed.")
             self.checked_account(account_id)
             self.desk.configure_symbols(additional_symbols=symbols)
@@ -251,12 +448,17 @@ class SpyRebalance:
             raise ValueError("Existing orders or an account block must clear before SPY can rebalance.")
 
     @staticmethod
-    def buy_terms(terms, runtime):
+    def buy_terms(terms, runtime, policy):
         symbol = terms["symbol"]
         price = price_evidence(terms, runtime)["price"]
         cash = decimal(runtime["account"].get("cash"))
         if price is None or cash is None or cash < 0:
             raise ValueError(f"{symbol}: The buy requires a current price and enough observed cash.")
+        equity = decimal(runtime["account"].get("equity"))
+        reserve = rule_limit(policy, "cash_reserve_pct", 0)
+        if reserve and (equity is None or equity <= 0):
+            raise ValueError("Account equity is required to keep the configured cash reserve.")
+        spendable = max(Decimal(0), cash - (equity or Decimal(0)) * reserve / 100)
         limit = price.quantize(Decimal("0.01"), rounding=ROUND_CEILING)
         try:
             fractional_asset(runtime, symbol)
@@ -264,7 +466,7 @@ class SpyRebalance:
         except ValueError:
             increment = Decimal(1)
         planned = Decimal(terms["quantity"])
-        quantity = min(planned, cash / limit).quantize(increment, rounding=ROUND_FLOOR)
+        quantity = min(planned, spendable / limit).quantize(increment, rounding=ROUND_FLOOR)
         if quantity * limit < 1:
             return None, True
         return {**terms, "order_type": "LIMIT", "limit_price": str(limit),
@@ -279,6 +481,7 @@ class SpyRebalance:
             return database.update(RECORD, record["revision"], change, DEFAULT)
 
         runtime = self.checked_account(data["account_id"])
+        policy = self.check_plan_policy(store, run)
         commands = database.read("commands", COMMANDS)["data"]
         if run["command_id"]:
             command = commands["commands"].get(run["command_id"]) or {}
@@ -307,7 +510,7 @@ class SpyRebalance:
             raise ValueError(f"{symbol}: The holding changed after the daily plan was made.")
         limited = run["limited"]
         if terms["side"] == "BUY":
-            terms, resized = self.buy_terms(terms, runtime)
+            terms, resized = self.buy_terms(terms, runtime, policy)
             limited += resized
             if terms is None:
                 completed = run["completed"] + 1
@@ -318,14 +521,20 @@ class SpyRebalance:
         with self.desk.maintenance:
             if self.stopped or self.desk.store is not store:
                 return
-            self.checked_account(data["account_id"])
+            self.check_plan_policy(store, run)
+            self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
             claimed = update(status="dispatching", message=f"Preparing {symbol}.")
-            command_id = self.admit(terms, runtime, data["account_id"])
+            command_id = self.admit(terms, runtime, data["account_id"], manual=run.get("manual") is True)
             database.update(RECORD, claimed["revision"], lambda saved: saved["run"].update(
                 status="waiting_fill", command_id=command_id, limited=limited, message=f"Waiting for {symbol} to fill."), DEFAULT)
+            try:
+                self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
+            except (ValueError, PermissionError):
+                self.desk.admission.resolve_never_dispatched(command_id)
+                raise
             self.desk.runtime.request("dispatch", command_id=command_id, action="submit")
 
-    def admit(self, terms, runtime, account_id):
+    def admit(self, terms, runtime, account_id, *, manual=False):
         from .admission import invalidate
         admission = self.desk.admission
         def draft(records):
@@ -339,7 +548,8 @@ class SpyRebalance:
         result = admission.transaction(draft, evidence=True)
         proposal = result["investor"]["data"]["proposals"][0]
         expected = {name: result[name]["revision"] for name in ("investor", "commands")}
-        approved = admission.approve(proposal["id"], actor=f"standing-paper-spy:{account_id}", reason=terms["rationale"],
+        authority = "manual-paper-spy" if manual else "standing-paper-spy"
+        approved = admission.approve(proposal["id"], actor=f"{authority}:{account_id}", reason=terms["rationale"],
             constraints=CONSTRAINTS, proposal_revision=proposal["revision"], policy_revision=proposal["policy_revision"],
             evaluation_binding_sha256=proposal["risk_evaluation"]["binding_sha256"], expected=expected)
         approval = next(item for item in approved["commands"]["data"]["approvals"].values() if item["proposal_id"] == proposal["id"])

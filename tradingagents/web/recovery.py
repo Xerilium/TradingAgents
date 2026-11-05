@@ -249,7 +249,9 @@ def validate_spy_rebalance(value):
     if (type(enabled) is not bool or (enabled or account_id is not None) and not (isinstance(account_id, str) and account_id)
             or not isinstance(symbols, list) or any(not isinstance(symbol, str) or not symbol for symbol in symbols)
             or run is not None and (not isinstance(run, dict) or not isinstance(run.get("session"), str)
-                                    or run.get("status") not in ("waiting", "ready", "dispatching", "waiting_fill", "completed", "blocked"))):
+                                    or run.get("status") not in ("waiting", "queued", "ready", "dispatching", "waiting_fill", "completed", "blocked")
+                                    or "manual" in run and type(run["manual"]) is not bool
+                                    or run.get("status") == "queued" and run.get("manual") is not True)):
         raise ValueError("Invalid saved SPY rebalance")
 
 
@@ -417,6 +419,9 @@ def invalidate_authority(database, *, retained_commands=()):
                 collections = ("proposals", "baskets")
             elif name == "spy_paper_rebalance":
                 value["enabled"] = False
+                run = value["run"]
+                if run and run.get("manual") is True and run["status"] in {"queued", "ready", "dispatching", "waiting_fill"}:
+                    run.update(status="blocked", message="Restored paper rebalance requires a new preview.")
                 collections = ()
             elif name == "commands":
                 value.setdefault("new_orders_blocked", False)
