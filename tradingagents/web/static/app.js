@@ -89,7 +89,7 @@ function quoteStatus(q,styled=false){
 const workspaceLabels={overview:'Dashboard',portfolio:'Portfolio',markets:'Markets',research:'Research',orders:'Orders',strategy:'Strategy lab',journal:'Journal',alerts:'Alerts',workflows:'Workflows',settings:'Settings'};
 let activePage = Object.hasOwn(workspaceLabels,location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
 let navigationIntent=0;
-function canNavigatePage(next,resume){return !(activePage==='workflows'&&next!=='workflows'&&!workflowCanLeave(resume)) && !(activePage==='settings'&&next!=='settings'&&!discardCredentialDraft());}
+function canNavigatePage(next,resume){if(activePage==='settings'&&next!=='settings')portfolioPromptChecked=false;return !(activePage==='workflows'&&next!=='workflows'&&!workflowCanLeave(resume)) && !(activePage==='settings'&&next!=='settings'&&!discardCredentialDraft());}
 function navigatePage(next,complete=null,intent=++navigationIntent){
  if(intent!==navigationIntent)return false;
  if(!canNavigatePage(next,()=>navigatePage(next,complete||(()=>render({force:true})),intent)))return false;
@@ -539,6 +539,7 @@ function renderConnectionIdentity(){
 async function api(path, body, {timeoutMs=path.startsWith('/api/instruments/')||['/api/refresh','/api/runs','/api/proposals'].includes(path)?550000:body===undefined?15000:120000,signal}={}){
   if(coolingDown(path,body))throw new Error(rateLimitMessage(path,body));
   const diagnostic=path==='/api/quotes/refresh'?{request_id:crypto.randomUUID().replaceAll('-',''),method:body===undefined?'GET':'POST',path}:null;
+  const startedAt=Date.now(),method=body===undefined?'GET':'POST',route=path.split('?')[0];
   let responseStatus=null,responseStage='fetch';
   const logQuote=(event,category)=>{if(diagnostic)console.info('Quote request',JSON.stringify({time:new Date().toISOString(),...diagnostic,event,category,status:responseStatus,stage:responseStage}));};
   logQuote('started','pending');
@@ -572,11 +573,15 @@ async function api(path, body, {timeoutMs=path.startsWith('/api/instruments/')||
     logQuote('failed',signal?.aborted?'canceled':timedOut?'deadline':error.name==='AbortError'?'aborted':responseStatus!==null?(responseStatus>=400?'http_error':'response_error'):error.name==='TypeError'?'network_rejection':'client_error');
     if(signal?.aborted)throw new Error('Request canceled.');
     if(timedOut||error.name==='AbortError'){
-      const message=body===undefined?'The local service did not respond in time. Your last snapshot is still shown; try refreshing.':
-        path==='/api/orders'?'The submission request timed out. Refresh broker status before taking another action; its outcome may be unknown.':
-        path==='/api/orders/cancel'?'The cancellation request timed out; its outcome may be unknown. Refresh to reconcile broker status. Do not resend cancellation.':
-        'The request timed out. Refresh the workspace to check its status before trying again.';
-      throw new Error(message);
+      const outcome=timedOut?`exceeded its ${timeoutMs} ms deadline`:'was aborted before its deadline';
+      const response=responseStatus===null?'no HTTP response headers were received':`HTTP ${responseStatus}, ${responseStage==='body'?'reading response body':responseStage}`;
+      const recovery=body===undefined?(route==='/api/state'&&state?' The last workspace snapshot is still shown.':''):
+        path==='/api/orders'?' Refresh broker status before taking another action; submission outcome may be unknown.':
+        path==='/api/orders/cancel'?' Refresh to reconcile broker status. Do not resend cancellation; its outcome may be unknown.':
+        ' Refresh the workspace to check its status before trying again.';
+      const failure=new Error(`${method} ${route} ${outcome} after ${Date.now()-startedAt} ms (${response}). ${error.name}: ${error.message}${recovery}`,{cause:error});
+      if(responseStatus!==null)failure.status=responseStatus;
+      throw failure;
     }
     throw error;
   }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
@@ -769,6 +774,31 @@ function renderWorkspace(){
  return renderSettings();
 }
 let portfolioTab='holdings';
+const portfolioPrompt={bundle:null,draft:'',loading:false,message:'',error:false,storageError:''};
+let portfolioPromptChecked=false;
+try{const saved=JSON.parse(sessionStorage.getItem('portfolioPromptDraft')||'null');if(saved?.bundle&&typeof saved.draft==='string')Object.assign(portfolioPrompt,saved);}catch{portfolioPrompt.storageError='Draft storage is unavailable. A refresh may lose unsaved changes.';}
+function persistPortfolioPrompt(){try{if(portfolioPromptDirty())sessionStorage.setItem('portfolioPromptDraft',JSON.stringify({bundle:portfolioPrompt.bundle,draft:portfolioPrompt.draft}));else sessionStorage.removeItem('portfolioPromptDraft');portfolioPrompt.storageError='';}catch{portfolioPrompt.storageError='Draft storage is unavailable. A refresh may lose unsaved changes.';}const notice=$('#portfolio-prompt-storage-error');if(notice)notice.textContent=portfolioPrompt.storageError;}
+const portfolioPromptDirty=()=>!!portfolioPrompt.bundle&&portfolioPrompt.draft!==portfolioPrompt.bundle.files[portfolioPrompt.bundle.joint_portfolio_file];
+window.addEventListener('beforeunload',event=>{if(portfolioPromptDirty()){event.preventDefault();event.returnValue='';}});
+async function loadPortfolioPrompt(){
+ if(portfolioPrompt.loading)return;
+ portfolioPrompt.loading=true;portfolioPromptChecked=true;
+ try{const catalog=await api('/api/workflows');if(portfolioPrompt.bundle&&portfolioPromptDirty()){if(catalog.active!==portfolioPrompt.bundle.name){portfolioPrompt.message='The active workflow changed. Your draft is retained for '+portfolioPrompt.bundle.name+'. Discard it to load the current workflow.';portfolioPrompt.error=true;}return;}const bundle=await api('/api/workflows?name='+encodeURIComponent(catalog.active));if(!bundle.joint_portfolio_file||!Object.hasOwn(bundle.files,bundle.joint_portfolio_file))throw Error('Portfolio prompt mapping is unavailable.');portfolioPrompt.bundle=bundle;portfolioPrompt.draft=bundle.files[bundle.joint_portfolio_file];portfolioPrompt.message='';portfolioPrompt.error=false;}
+ catch(error){portfolioPrompt.message=error.message;portfolioPrompt.error=true;}
+ finally{portfolioPrompt.loading=false;if(activePage==='settings'&&settingsTab==='Research')render({force:true});}
+}
+async function savePortfolioPrompt(){
+ if(!portfolioPrompt.bundle||portfolioPrompt.loading)return;
+ const bundle=portfolioPrompt.bundle,draft=portfolioPrompt.draft;
+ portfolioPrompt.loading=true;
+ try{const catalog=await api('/api/workflows');if(catalog.active!==bundle.name)throw Error('The active workflow changed. Your draft is retained; discard it to load the current workflow.');const result=await api('/api/workflows',{action:'save',name:bundle.name,expected_active:bundle.name,revision:bundle.revision,files:{...bundle.files,[bundle.joint_portfolio_file]:draft}});portfolioPrompt.bundle={...result,joint_portfolio_file:bundle.joint_portfolio_file};if(portfolioPrompt.draft===draft)portfolioPrompt.draft=result.files[bundle.joint_portfolio_file];portfolioPrompt.message='Portfolio prompt saved.'+(result.warning?' '+result.warning:'');portfolioPrompt.error=false;}
+ catch(error){portfolioPrompt.message=error.status===409?'This workflow changed elsewhere. Your draft is retained. Discard it to load the latest version. '+error.message:error.message;portfolioPrompt.error=true;}
+ finally{portfolioPrompt.loading=false;persistPortfolioPrompt();if(activePage==='settings'&&settingsTab==='Research')render({force:true});}
+}
+function portfolioPromptMarkup(){
+ const p=portfolioPrompt,b=p.bundle;
+ return '<section class="settings-section"><h2>Portfolio modeling prompt</h2><p>Edits the active workflow’s saved prompt for future portfolio models. Existing custom workflows are not replaced by shipped defaults.</p>'+(b?'<p>Workflow: '+esc(b.name)+'</p><label class="field" for="portfolio-prompt">Joint portfolio prompt</label><textarea id="portfolio-prompt" class="form-control" rows="12" '+(p.loading||state.browse_only?'disabled':'')+'>'+esc(p.draft)+'</textarea><div class="form-actions"><button type="button" class="button" id="portfolio-prompt-discard" '+(p.loading?'disabled':'')+'>Discard changes</button><button type="button" class="button button-primary" id="portfolio-prompt-save" '+(p.loading||state.browse_only||!portfolioPromptDirty()?'disabled':'')+'>Save prompt</button></div>':'<button type="button" class="button" id="portfolio-prompt-retry" '+(p.loading?'disabled':'')+'>'+(p.loading?'Loading…':'Load prompt')+'</button>')+'<p role="'+(p.error?'alert':'status')+'">'+esc(p.message)+'</p><p id="portfolio-prompt-storage-error" role="alert">'+esc(p.storageError)+'</p></section>';
+}
 let portfolioModelCapital='10000';
 function portfolioModelActions(){
  const job=state.portfolio_model||{status:'idle'},running=['queued','running'].includes(job.status);
@@ -786,7 +816,8 @@ function renderProposedPortfolio(){
  ${job.error?`<div class="notice error"><strong>Portfolio model failed</strong><pre>${esc(asText(job.error))}</pre></div>`:''}
  ${result?`<section class="panel"><div class="panel-header"><h2>Joint proposed allocation</h2><span>${esc(result.provider)} / ${esc(result.model)}</span></div><p>Model capital ${money(number(result.capital))} · reference stock value ${money(number(result.reference_value))} · residual cash ${money(number(result.cash))} · target cash ${pct(result.target_cash_weight)}</p><p>${esc(result.cash_rationale)}</p><p class="muted">Whole shares are rounded down from target weights. Residual cash includes rounding. Dated reference prices are not executable or live quotes; entry conditions still apply.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Stock</th><th>Target weight</th><th>Whole shares</th><th>Model reference · dated</th><th>Last now · IEX</th><th>Drift %</th><th>Your position</th><th>Reference value</th><th>Rationale and entry conditions</th></tr></thead><tbody>${result.allocations.map(row=>`<tr><td>${esc(row.symbol)}</td><td>${pct(row.weight)}</td><td>${esc(row.shares)}</td><td>${money(number(row.reference.price))}<small class="muted">${fullTime(row.reference.timestamp)} · ${esc(row.reference.basis)}${row.reference.stale?' · stale':''}</small></td><td>${money(state.quotes?.[row.symbol]?.price)}<small>${quoteStatus(state.quotes?.[row.symbol]||{},true)}</small></td><td>${number(state.quotes?.[row.symbol]?.price)>0&&number(row.reference.price)>0?percent((Number(state.quotes[row.symbol].price)/Number(row.reference.price)-1)*100):'Unavailable'}</td><td>${esc(exposureKnown()?(positions().find(position=>position.symbol===row.symbol)?.qty??'0'):'UNKNOWN')}</td><td>${money(number(row.reference_value))}</td><td><details id="portfolio-model-${esc(job.id)}-${esc(row.symbol)}-conditions"><summary>Allocation rationale and conditions</summary><p>${esc(row.rationale)}</p><h3>Entry conditions</h3><p>${esc(row.entry_conditions)}</p></details></td></tr>`).join('')}</tbody></table></div></section>`:''}
  ${(job.exclusions||[]).length?`<details open><summary>Excluded stocks (${job.exclusions.length})</summary><ul>${job.exclusions.map(row=>`<li><strong>${esc(row.symbol)}</strong> · ${esc(row.status)} · ${esc(asText(row.reason))}${row.run_id?` · run ${esc(row.run_id)} / revision ${esc(row.revision??'unreported')}`:''}</li>`).join('')}</ul></details>`:''}
- ${bindings?`<details id="portfolio-model-${esc(job.id)}-sources"><summary>Saved research bindings and source coverage</summary><table class="data-table"><thead><tr><th>Stock</th><th>Saved result</th><th>Research date</th><th>Source coverage</th></tr></thead><tbody>${bindings}</tbody></table><p>Inputs were captured ${fullTime(job.created_at)}. The next explicit model action replaces this session result.</p></details>`:''}</section>`;
+ ${bindings?`<details id="portfolio-model-${esc(job.id)}-sources"><summary>Saved research bindings and source coverage</summary><table class="data-table"><thead><tr><th>Stock</th><th>Saved result</th><th>Research date</th><th>Source coverage</th></tr></thead><tbody>${bindings}</tbody></table><p>Inputs were captured ${fullTime(job.created_at)}. The next explicit model action replaces this session result.</p></details>`:''}
+ ${job.status!=='idle'?`<details id="portfolio-model-${esc(job.id)}-trace"><summary>Retained request and result trace</summary><p>This is one structured model call, not a tool-event trace or private reasoning. Raw model response is not retained.</p><h3>System prompt</h3><pre>${esc(result?.system_prompt??'Unavailable for this run.')}</pre><h3>Captured request inputs</h3><pre>${esc(asText({model_capital:job.capital,starting_model_holdings:[],eligible_research:job.inputs||[]}))}</pre><h3>Run details and exclusions</h3><pre>${esc(asText({provider:job.provider,model:job.model,created_at:job.created_at,started_at:job.started_at,completed_at:job.completed_at,elapsed_seconds:job.elapsed_seconds,exclusions:job.exclusions}))}</pre><h3>Parsed result</h3><pre>${esc(result?asText(result):'Unavailable for this run.')}</pre></details>`:''}</section>`;
 }
 document.addEventListener('input',event=>{if(event.target.id==='portfolio-model-capital')portfolioModelCapital=event.target.value;});
 document.addEventListener('click',async event=>{if(!event.target.closest('[data-action="model-portfolio"]'))return;try{await act('portfolio-model','/api/portfolio-model',{request_id:crypto.randomUUID(),capital:portfolioModelCapital},'Joint portfolio model queued.');}catch{}});
@@ -854,7 +885,7 @@ function dashboardAttentionSummary(){
 
 document.addEventListener('click',event=>{if(event.target.closest('[data-dashboard-held-research]')&&dashboardCoverage('positions')){selectedSymbols=new Set(positions().map(position=>position.symbol).filter(symbol=>universe().includes(symbol)&&!researchIsCurrent(symbol)));render();}});
 
-document.addEventListener('click',event=>{const alert=event.target.closest('[data-alert-tab]'),evidence=event.target.closest('[data-alert-evidence-tab]'),setting=event.target.closest('[data-settings-tab]'),occurrence=event.target.closest('[data-dashboard-occurrence]');if(alert){alertsTab=alert.dataset.alertTab;if(alertsTab!=='Inbox'){attentionEvidenceRequest=null;attentionEvidence=null;attentionEvidenceError='';}render();}if(evidence){alertEvidenceTab=evidence.dataset.alertEvidenceTab;render();}if(setting){settingsTab=setting.dataset.settingsTab;render({force:true});}if(occurrence)openAttentionEvidence(occurrence.dataset.dashboardOccurrence,occurrence);});
+document.addEventListener('click',event=>{const alert=event.target.closest('[data-alert-tab]'),evidence=event.target.closest('[data-alert-evidence-tab]'),setting=event.target.closest('[data-settings-tab]'),occurrence=event.target.closest('[data-dashboard-occurrence]');if(alert){alertsTab=alert.dataset.alertTab;if(alertsTab!=='Inbox'){attentionEvidenceRequest=null;attentionEvidence=null;attentionEvidenceError='';}render();}if(evidence){alertEvidenceTab=evidence.dataset.alertEvidenceTab;render();}if(setting){settingsTab=setting.dataset.settingsTab;portfolioPromptChecked=false;render({force:true});}if(occurrence)openAttentionEvidence(occurrence.dataset.dashboardOccurrence,occurrence);});
 const settingsLabels={Account:'Account & Engine',Research:'Research & Models',Integrations:'Universe & Keys','Trading rules':'Trading Rules & Native Cache',Diagnostics:'Diagnostics & Backup'};
 function accountStatusFlags(){
  const account=state.nautilus?.account||{},configuration=state.nautilus?.account_configuration||{};
@@ -878,7 +909,7 @@ function renderSettings(){
  const identity=state.connection?.identity||{};
  let content='';
  if(settingsTab==='Account')content='<section class="settings-section"><h2>Account &amp; Engine</h2><dl><dt>Observed mode / account</dt><dd>'+esc(stateErrorMessage?'Unconfirmed — last snapshot':identity.observed_mode||'Unverified')+' / '+esc(identity.observed_account_id||'Unavailable')+'</dd><dt>Configured mode</dt><dd>'+esc(identity.configured_mode||'Unavailable')+'</dd><dt>Market feed</dt><dd>'+esc(state.health?.feed||'Unavailable')+'</dd></dl>'+accountStatusFlags()+'<p>Review and approve each order, then submit separately from Orders.</p><a class="button" href="#orders">Orders: '+(paused()?'Paused':'Active')+' · Manage</a></section>'+credentialMarkup('alpaca')+'<div class="settings-runtime-slot"></div><details id="settings-funding"><summary>Alpaca funding and official documents</summary>'+brokerServices()+'</details>';
- if(settingsTab==='Research')content=settingsFormMarkup('Research');
+ if(settingsTab==='Research')content=settingsFormMarkup('Research')+portfolioPromptMarkup();
  if(settingsTab==='Integrations')content=settingsFormMarkup('Integrations')+credentialMarkup('service');
  if(settingsTab==='Trading rules')content=UniverseReview.renderPolicy(state)+nativeEnginePanel();
  if(settingsTab==='Diagnostics')content=renderSettingsDiagnostics();
@@ -920,7 +951,14 @@ function bindSettings(){
  }
  const provider=$('#config-llm_provider');
  if(provider){const previous=provider.value;provider.onchange=()=>{const next=provider.value;if(previous!=='codex')providerFieldDrafts.set(previous,Object.fromEntries(['backend_url','quick_think_llm','deep_think_llm'].map(key=>[key,$('#config-'+key).value])));captureSettingsDraft();Object.assign(settingsDraft,next==='codex'?{backend_url:'',quick_think_llm:'gpt-6-luna',deep_think_llm:'gpt-6-sol'}:providerFieldDrafts.get(next)||{backend_url:'',quick_think_llm:'',deep_think_llm:''},{llm_provider:next});render({force:true});};}
- if(settingsTab==='Research'){updateModelLimits();fetchModelLimits();$('#refresh-model-limits')?.addEventListener('click',()=>fetchModelLimits(true));}
+ if(settingsTab==='Research'){
+  updateModelLimits();fetchModelLimits();$('#refresh-model-limits')?.addEventListener('click',()=>fetchModelLimits(true));
+  if(!portfolioPromptChecked&&!portfolioPrompt.loading)loadPortfolioPrompt();
+  $('#portfolio-prompt')?.addEventListener('input',event=>{portfolioPrompt.draft=event.target.value;persistPortfolioPrompt();const save=$('#portfolio-prompt-save');if(save)save.disabled=!portfolioPromptDirty();});
+  $('#portfolio-prompt-save')?.addEventListener('click',savePortfolioPrompt);
+  $('#portfolio-prompt-retry')?.addEventListener('click',loadPortfolioPrompt);
+  $('#portfolio-prompt-discard')?.addEventListener('click',()=>{portfolioPrompt.bundle=null;portfolioPrompt.draft='';portfolioPrompt.error=false;persistPortfolioPrompt();loadPortfolioPrompt();render({force:true});});
+ }
  if(settingsTab==='Trading rules'){
   const policy=document.querySelector('#universe-review.settings-policy'),save=policy?.querySelector('#save-policy'),discard=policy?.querySelector('#discard-policy');
   if(policy&&discard){const actions=document.createElement('div');actions.className='settings-policy-actions';if(save)actions.append(save);actions.append(discard);policy.append(actions);}
@@ -1073,14 +1111,6 @@ function researchDrift(symbol){
  const q=state?.quotes?.[symbol]||{},research=state?.research?.[symbol];
  const histories=[UniverseReview.loadedDailyHistory(symbol),chartEvidence.get(`${research?.run_id}:${symbol}`)].filter(Boolean);
  const bar=histories.filter(h=>(!h.symbol||h.symbol===symbol)&&(!h.run_id||h.run_id===research?.run_id)&&(!h.timeframe||h.timeframe==='1Day')&&(!h.adjustment||h.adjustment==='raw')).flatMap(h=>h.bars||[]).find(b=>String(b.t).slice(0,10)===research?.trade_date&&number(b.raw?.c)>0);
- const key=`${research?.run_id}:${symbol}`;
- if(research?.run_id&&research.trade_date&&!bar&&!chartEvidence.has(key)&&!chartRequests.has(key)&&!chartErrors.has(key)){
-  chartRequests.add(key);
-  api(`/api/instruments/${encodeURIComponent(symbol)}?run_id=${encodeURIComponent(research.run_id)}`).then(detail=>{
-   if(detail.symbol!==symbol||detail.run_id!==research.run_id||!Array.isArray(detail.bars))throw new Error('Market evidence does not match the research.');
-   chartEvidence.set(key,detail);chartLoadedAt.set(key,Date.now());
-  }).catch(error=>chartErrors.set(key,error.message)).finally(()=>{chartRequests.delete(key);if(['research','overview'].includes(activePage))render();});
- }
  const close=number(bar?.raw?.c),last=number(q.price);
  return close!==null&&close>0&&last!==null?percent((last/close-1)*100):'—';
 }
@@ -1143,7 +1173,7 @@ const researchRunKey=run=>JSON.stringify([state.server_instance_id,state.store_g
 const researchRunVersion=run=>JSON.stringify([run?.status,run?.event_count,run?.source_evidence?.attempt_count,run?.gateway_evidence,run?.jev_evidence,run?.results?.map(item=>[item.symbol,item.revision,item.status])]);
 async function loadResearchRun(run,force=false){
  if(!run?.id)return;const key=researchRunKey(run),previous=researchRunDetails.get(key),version=researchRunVersion(run);
- if(previous?.pending||!force&&(previous?.error||previous?.version===version&&(!['running','queued','cancelling','cancel_requested'].includes(run.status)||Date.now()-previous.at<10000)))return;
+ if(previous?.pending||!force&&previous?.version===version&&(previous?.error||!['running','queued','cancelling','cancel_requested'].includes(run.status)||Date.now()-previous.at<10000))return;
  const entry={...previous,pending:true,error:'',version,at:Date.now()};researchRunDetails.set(key,entry);
  try{const full=await api('/api/runs/'+encodeURIComponent(run.id));if(key!==researchRunKey(run)||researchRunDetails.get(key)!==entry)return;if(full.id!==run.id)throw new Error('Run detail identity differs from the selected source.');entry.data=full;}
  catch(error){if(key===researchRunKey(run))entry.error=error.message;}
@@ -1434,10 +1464,37 @@ function strategyHeadlineMarkup(result){
   return '<div><dt>'+label+'</dt><dd>'+formatStatNumber(value??'Unavailable')+'</dd><small>'+esc(unit)+' · '+esc(basis)+'</small></div>';
  }).join('')+'</dl>';
 }
+function portfolioScenarioMarkup(result){
+ const ledger=result.ledger;if(!ledger)return '<p class="negative">'+esc(result.error||'Portfolio calculation did not complete.')+'</p>';
+ const last=ledger.equity_curve.at(-1),ending=Number(last.equity_usd),capital=Number(result.starting_cash),entries=ledger.events.filter(row=>row.kind==='entry');
+ const weights=Object.entries(result.target_weights||{}).map(([symbol,weight])=>symbol+' '+(Number(weight)*100).toFixed(2)+'%').concat(result.target_cash_weight!=null?['cash '+(Number(result.target_cash_weight)*100).toFixed(2)+'%']:[]).join(', ');
+ const change=Number.isFinite(capital)&&capital>0?money(ending-capital)+' ('+((ending/capital-1)*100).toFixed(2)+'%)':'Unavailable: starting capital was not retained';
+ return '<h3>Model portfolio · historical scenario</h3><p>'+esc(result.start)+' through '+esc(result.end)+' · '+esc(Number.isFinite(capital)&&capital>0?money(capital):'Unavailable')+' initial capital · '+esc(weights||'Target weights unavailable')+'.</p><p>Model '+esc(result.model_id||'Unavailable')+'. Ending equity '+esc(money(ending))+' · change '+esc(change)+'. Ending cash '+esc(money(ledger.cash_usd))+'. Includes any unpaid dividend receivables.</p><h4>Historical whole-share entries</h4>'+experimentTable(entries)+'<h4>Ending shares</h4>'+experimentTable(Object.entries(ledger.shares).map(([symbol,shares])=>({symbol,shares})))+'<p>Entry after the first completed raw daily bar, sized and filled at its modeled close; ending holdings marked at the last dated raw daily close. Fee '+esc(money(result.fee_usd))+' per entry order. No modeled slippage, reinvestment, cash interest or rebalancing. Distributions stay cash. Not historical research performance or broker performance.</p><details><summary>Dated splits and cash distributions</summary>'+experimentTable(ledger.events.filter(row=>row.kind!=='entry'))+'</details><details><summary>Unpaid dividend receivables</summary>'+experimentTable(ledger.receivables)+'</details><details><summary>Daily combined equity and cash</summary>'+experimentTable(ledger.equity_curve)+'</details>'+simulationDetails('Native fills and retained accounting',result);
+}
 function simulationResultMarkup(result){
+ if(result.kind==='portfolio_scenario')return portfolioScenarioMarkup(result);
  const reports=result.reports||{},rows=name=>Array.isArray(reports[name]?.data)?reports[name].data.length:'Unavailable';
  return '<h3>Modeled simulation result · '+esc(simulationLabel(result.status))+'</h3><p>Native engine '+esc(result.engine_version||'Unavailable')+' · reported orders '+rows('orders')+' · fills '+rows('fills')+' · positions '+rows('positions')+'</p>'+(result.error?'<p class="negative">'+esc(result.error)+'</p>':'')+strategyHeadlineMarkup(result)+nativeAnalyzerMarkup(result.native_result)+(Array.isArray(result.equity_curve)?experimentCurves([{label:'Modeled equity',points:result.equity_curve},...(Array.isArray(result.benchmark_curve)?[{label:'Retained benchmark',points:result.benchmark_curve,benchmark:true}]:[])], 'Retained modeled equity / USD'):'<p>Dollar equity curve unavailable in this saved-plan result. '+esc(result.benchmark?.reason||'No matching benchmark supplied.')+'</p>')+(result.portfolio_returns?'<details><summary>Retained native return observations · source basis</summary>'+orderFacts(result.return_series_basis||'Basis not supplied')+experimentTable(Object.entries(result.portfolio_returns).map(([at,value])=>({at,return:value})))+'</details>':'')+'<p>Native simulation reports are separate from broker account performance. Report counts do not establish profit or loss.</p>'+['orders','fills','positions','account'].map(name=>simulationReportMarkup(name[0].toUpperCase()+name.slice(1),reports[name])).join('')+simulationDetails('Model limitations and assumptions',{limitations:result.limitations,assumptions:result.assumptions,return_series_basis:result.return_series_basis})+simulationDetails('Complete native result, events, and source references',result);
 }
+let portfolioScenarioModel=null,portfolioScenarioFile=null,portfolioScenarioStatus='',portfolioScenarioBusy=false;
+const portfolioScenarioDraft={start:'',end:'',fee_usd:'0'};
+async function runPortfolioScenario(){
+ if(portfolioScenarioBusy)return;
+ const file=document.getElementById('portfolio-scenario-model').files[0]||portfolioScenarioFile;
+ const start=document.getElementById('portfolio-scenario-start').value,end=document.getElementById('portfolio-scenario-end').value,fee_usd=document.getElementById('portfolio-scenario-fee').value;
+ portfolioScenarioBusy=true;
+ try {
+  if(!file)throw new Error('Select the original archived model JSON.');
+  portfolioScenarioFile=file;portfolioScenarioModel=JSON.parse(await file.text());
+  portfolioScenarioStatus='Running historical scenario…';render();
+  const result=await api('/api/evaluations',{action:'portfolio_scenario',model:portfolioScenarioModel,start,end,fee_usd});
+  portfolioScenarioStatus='Simulation '+result.id+' · '+simulationLabel(result.status);
+  evaluationItem=result;strategyView='results';await evaluationAction('open',result.id);
+ }catch(error){portfolioScenarioStatus=error.message;}
+ finally{portfolioScenarioBusy=false;render();}
+}
+document.addEventListener('change',event=>{if(event.target.id==='portfolio-scenario-model'){portfolioScenarioFile=event.target.files[0]||null;portfolioScenarioStatus='';}});
+document.addEventListener('input',event=>{const key={'portfolio-scenario-start':'start','portfolio-scenario-end':'end','portfolio-scenario-fee':'fee_usd'}[event.target.id];if(key)portfolioScenarioDraft[key]=event.target.value;});
 function evaluationMarkup(){
  const sources=evaluationSources,selected=evaluationItem,preview=selected?.preview,sims=(sources?.items||[]).filter(item=>!['experiment','experiment_comparison'].includes(item.kind));
  const input=(key,label)=>'<label>'+label+'<input data-evaluation-field="'+key+'" value="'+esc(evaluationDraft[key])+'"></label>';
@@ -1445,7 +1502,7 @@ function evaluationMarkup(){
  const step1=sources?select('proposal_id','Immutable saved plan revision',sources.proposals.map(p=>[p.id,p.terms.symbol+' · '+p.terms.side+' '+p.terms.quantity+' '+p.terms.order_type+' '+p.terms.time_in_force+' · revision '+p.revision]))+select('history_key','Saved raw daily history receipt',sources.histories.filter(h=>!evaluationDraft.proposal_id||sources.proposals.find(p=>p.id===evaluationDraft.proposal_id)?.terms.symbol===h.symbol).map(h=>[h.key,h.symbol+' · '+h.start+' to '+h.end+' · '+h.adjustment+' · captured '+h.captured_at]))+input('start_at','Window start / ISO timestamp with timezone')+input('end_at','Window end / ISO timestamp with timezone')+input('decision_at','Plan available at / ISO timestamp with timezone')+select('decision_basis','Plan availability basis',[['recorded_decision','On or after this revision was recorded'],['hindsight_scenario','Historical scenario; availability not established']])+'<p>Complete raw daily bars, sourced session calendar and instrument receipt are required. Split-adjusted data cannot be relabeled raw.</p>':'<p>Load saved plans and data to select an exact revision and raw daily history receipt.</p>';
  const step2=sources?input('starting_cash','Starting cash / USD')+input('fee_usd','Assumed fee / USD (enter zero explicitly)')+select('fee_per','Fee charged per',[['order','Order'],['fill','Fill']])+input('limit_fill_probability','Limit fill probability / 0 to 1')+input('slippage_probability','Slippage probability / 0 to 1')+input('random_seed','Integer random seed')+input('latency_ns','Assumed latency / integer nanoseconds (DAY requires 0)'):'<p>Capital, fees and fill assumptions become available after loading sources.</p>';
  const step3=(sources?'<label><input type="checkbox" data-evaluation-field="reviewed" '+(evaluationDraft.reviewed?'checked':'')+'> I reviewed USD assumptions and empty starting holdings. Submit after the first completed daily bar; use OHLC ordering, FULL bracket activation and open ending positions. Actual fees are unknown. DAY expiry follows the next sourced close; same-bar stop/target order is ambiguous. Broker fills and historical research availability are not established.</label><button class="button" id="evaluation-preview" '+(evaluationBusy?'disabled':'')+'>Save Immutable Preview</button>':'<p>Load sources and review explicit assumptions before saving a preview.</p>')+strategyRunButton(true)+'<p>Changing any setup field invalidates the selected preview. Run uses its saved ID and specification hash.</p>';
- return strategyPanels('<section id="strategy-simulations"><div data-strategy-panel="setup"><h2>Setup</h2><button class="button" id="evaluation-load" '+(evaluationBusy?'disabled':'')+'>Load Saved Plans &amp; Data</button><p role="status">'+esc(evaluationError||(evaluationBusy?'Working…':selected?.status?simulationLabel(selected.status):''))+'</p><details id="simulation-step-1" class="strategy-step" open><summary>1. Plan &amp; history receipt</summary>'+step1+'</details><details id="simulation-step-2" class="strategy-step"><summary>2. Capital, fees &amp; fill assumptions</summary>'+step2+'</details><details id="simulation-step-3" class="strategy-step" open><summary>3. Immutable preview &amp; Run</summary>'+step3+'</details><details id="simulation-profile"><summary>Supported simulation profile</summary><p>Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</p></details></div><div data-strategy-panel="results">'+(selected?.result?simulationResultMarkup(selected.result):'')+(preview?'<details id="simulation-saved-preview" '+(!selected?.result?'open':'')+'><summary>Saved immutable preview</summary>'+simulationPreviewMarkup(preview)+'</details>':!selected?.result?'<div class="empty-state"><h3>No simulation selected</h3><p>Save an immutable preview in Setup or open a retained simulation from Runs &amp; Compare.</p></div>':'')+'</div><div data-strategy-panel="runs">'+(sources?'<h3>Saved simulations</h3>'+sims.map(item=>'<button class="button" data-evaluation-open="'+esc(item.id)+'">'+esc(item.proposal.id+' revision '+item.proposal.revision+' · '+simulationLabel(item.status))+'</button>').join('')+(sims.length?'':'<p>No saved simulations.</p>'):'<p>Load saved plans and data in Setup to browse retained simulations.</p>')+'</div></section>');
+ return strategyPanels('<section id="strategy-simulations"><div data-strategy-panel="setup"><h2>Setup</h2><details id="portfolio-scenario-form" class="strategy-step"><summary>Model portfolio · historical scenario</summary><p>Apply the archived model weights to historical data. This is not historical research performance or a broker result.</p><label>Original model archive <input id="portfolio-scenario-model" type="file" accept="application/json"></label><label>Start date <input id="portfolio-scenario-start" type="date" value="'+esc(portfolioScenarioDraft.start)+'"></label><label>End date <input id="portfolio-scenario-end" type="date" value="'+esc(portfolioScenarioDraft.end)+'"></label><label>Fee per order / USD <input id="portfolio-scenario-fee" type="number" min="0" step="0.01" value="'+esc(portfolioScenarioDraft.fee_usd)+'"></label><button class="button" type="button" id="portfolio-scenario-run" '+(portfolioScenarioBusy?'disabled':'')+'>Run historical scenario</button><p>'+esc(portfolioScenarioFile?'Selected archive: '+portfolioScenarioFile.name:'No archive selected.')+'</p><pre id="portfolio-scenario-status" role="status">'+esc(portfolioScenarioStatus)+'</pre></details><button class="button" id="evaluation-load" '+(evaluationBusy?'disabled':'')+'>Load Saved Plans &amp; Data</button><p role="status">'+esc(evaluationError||(evaluationBusy?'Working…':selected?.status?simulationLabel(selected.status):''))+'</p><details id="simulation-step-1" class="strategy-step" open><summary>1. Plan &amp; history receipt</summary>'+step1+'</details><details id="simulation-step-2" class="strategy-step"><summary>2. Capital, fees &amp; fill assumptions</summary>'+step2+'</details><details id="simulation-step-3" class="strategy-step" open><summary>3. Immutable preview &amp; Run</summary>'+step3+'</details><details id="simulation-profile"><summary>Supported simulation profile</summary><p>Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</p></details></div><div data-strategy-panel="results">'+(selected?.result?simulationResultMarkup(selected.result):'')+(preview?'<details id="simulation-saved-preview" '+(!selected?.result?'open':'')+'><summary>Saved immutable preview</summary>'+(selected.kind==='portfolio_scenario'?simulationDetails('Historical inputs and accounting assumptions',preview):simulationPreviewMarkup(preview))+'</details>':!selected?.result?'<div class="empty-state"><h3>No simulation selected</h3><p>Save an immutable preview in Setup or open a retained simulation from Runs &amp; Compare.</p></div>':'')+'</div><div data-strategy-panel="runs">'+(sources?'<h3>Saved simulations</h3>'+sims.map(item=>'<button class="button" data-evaluation-open="'+esc(item.id)+'">'+esc((item.kind==='portfolio_scenario'?'Fixed portfolio · '+item.start+' to '+item.end:item.proposal.id+' revision '+item.proposal.revision)+' · '+simulationLabel(item.status))+'</button>').join('')+(sims.length?'':'<p>No saved simulations.</p>'):'<p>Load saved plans and data in Setup to browse retained simulations.</p>')+'</div></section>');
 }
 async function evaluationAction(action,id){
  if(evaluationBusy)return;evaluationBusy=true;evaluationError='';render();
@@ -1475,6 +1532,7 @@ document.addEventListener('input',event=>{
 });
 document.addEventListener('change',event=>{if(event.target.dataset.evaluationField==='proposal_id'){evaluationDraft.history_key='';render();}});
 document.addEventListener('click',event=>{
+ if(event.target.closest('#portfolio-scenario-run')){runPortfolioScenario();return;}
  const button=event.target.closest('[data-evaluation-open],#evaluation-load,[data-evaluation-load],#evaluation-preview,#evaluation-run');if(!button)return;
  if(button.dataset.evaluationOpen){strategyView='results';evaluationAction('open',button.dataset.evaluationOpen);}else evaluationAction((button.id||'evaluation-load').replace('evaluation-',''));
 });

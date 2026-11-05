@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 import yaml
-from tradingagents.workflows import WorkflowBundle, bundled_files
+from tradingagents.workflows import MISSION_FILE, MISSION_ROLES, WorkflowBundle, bundled_files
 from .workflow_diagram import project_workflow
 
 
@@ -176,6 +176,8 @@ class WorkflowStore:
         with self.lock:
             bundle, files, revision = self._read(name)
             return {'name': name, 'files': files, 'revision': revision, 'active': self._active(),
+                    'mission_file': MISSION_FILE, 'mission_roles': {key: bundle.definition['prompts'][key] for key in sorted(MISSION_ROLES)},
+                    'joint_portfolio_file': bundle.definition['prompts']['joint_portfolio'],
                     'diagram': project_workflow(bundle)}
 
     def active_bundle(self):
@@ -294,6 +296,8 @@ class WorkflowStore:
                 bundle, _ = self._files(data.get('files'))
                 return {'diagram': project_workflow(bundle)}
             if action in ('save', 'save_as'):
+                if 'expected_active' in data and self._active() != data['expected_active']:
+                    raise WorkflowConflict('The active workflow changed. Your draft is retained.')
                 return self._save(name, data.get('files'), data.get('revision'), create=action == 'save_as')
             if action == 'activate':
                 bundle, files, revision = self._read(name)

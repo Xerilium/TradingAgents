@@ -112,7 +112,11 @@ class ResearchMemoryNoteTests(unittest.TestCase):
                 result = {**self.result, "reports": {asset: "**Rating**: Underweight"}}
                 content = build_research_note(self.run, result)
                 self.assertNotIn("Recommendation:", content)
+                self.assertIn("Symbol: [[AAPL]]", content)
                 self.assertIn("**Rating**: Underweight", content)
+        rated = build_research_note(self.run, {**self.result, "rating": "Buy"})
+        self.assertIn("Symbol: [[AAPL]]", rated)
+        self.assertIn("Recommendation: Buy for [[AAPL]].", rated)
 
     def test_debates_render_as_readable_turns(self):
         content = build_research_note(self.run, self.result)

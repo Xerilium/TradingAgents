@@ -357,7 +357,7 @@ class DeskStore:
                             status = self.result_summary(result)
                             data["research"][result["symbol"]] = {
                                 **{key: status.get(key) for key in
-                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision", "completion_gaps")},
+                                   ("symbol", "status", "rating", "trade_date", "elapsed_seconds", "revision", "completion_gaps", "coverage_gaps")},
                                 "run_id": run["id"],
                                 "social_sentiment": status.get("social_sentiment"),
                                 "laya": {key: status["laya"].get(key) for key in

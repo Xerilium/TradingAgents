@@ -370,7 +370,7 @@ class DeskHandler(BaseHTTPRequestHandler):
         try:
             request_path = urlsplit(self.path).path
             length = int(self.headers.get("Content-Length", "0"))
-            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else (2 * 1024 * 1024 if request_path == "/api/workflows" else 65536)
+            maximum = 90 * 1024 * 1024 if request_path == "/api/recovery" else (2 * 1024 * 1024 if request_path in {"/api/workflows", "/api/evaluations"} else 65536)
             if not 0 < length <= maximum or self.headers.get("Transfer-Encoding"):
                 raise ValueError("Request body exceeds the supported endpoint size boundary.")
             if self.headers.get_content_type() != "application/json":

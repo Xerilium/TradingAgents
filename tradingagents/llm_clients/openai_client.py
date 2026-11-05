@@ -30,14 +30,14 @@ _budget_summary = ContextVar("budget_summary", default=False)
 def _is_rate_limit(exc: BaseException) -> bool:
     """Whether a model endpoint refused the request on transient pressure.
 
-    Matches 429 and 5xx statuses, timeouts and connection errors (permanent 4xx
+    Matches 408, 429 and 5xx statuses, timeouts and connection errors (permanent 4xx
     stay fail-fast), and the machine-readable codes local servers use (a busy
     queue answers 429 ``queue_wait_timeout`` once its own wait deadline expires).
     """
     if isinstance(exc, (TimeoutError, httpx.TransportError)):
         return True
     status = getattr(exc, "status_code", None)
-    if status == 429 or (type(status) is int and 500 <= status <= 599):
+    if status in (408, 429) or (type(status) is int and 500 <= status <= 599):
         return True
     body = getattr(exc, "body", None)
     if isinstance(body, dict):

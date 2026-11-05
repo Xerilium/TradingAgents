@@ -74,7 +74,7 @@ def fetch(jobs, identity, symbol, scope, provider, request):
                         if not isinstance(rows, list):
                             raise ValueError("Corporate-action group is unsupported")
                         for row in rows:
-                            if symbol not in {row.get("symbol"), row.get("old_symbol"), row.get("new_symbol"), row.get("initiating_symbol"), row.get("target_symbol")}:
+                            if symbol not in {row.get("symbol"), row.get("old_symbol"), row.get("new_symbol"), row.get("initiating_symbol"), row.get("target_symbol"), row.get("acquirer_symbol"), row.get("acquiree_symbol")}:
                                 gaps.append("Action has no exact selected-symbol association; inspect its source receipt")
                                 continue
                             effective = row.get("ex_date") or row.get("effective_date")

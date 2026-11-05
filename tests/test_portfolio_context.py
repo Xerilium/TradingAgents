@@ -16,6 +16,120 @@ import pytest
 from tradingagents.agents.context import get_portfolio_context_from_state
 from tradingagents.portfolio import PortfolioContext, load_portfolio
 
+def test_joint_portfolio_sizing_explanation_instructions():
+    from pathlib import Path
+
+    prompts = Path(__file__).resolve().parents[1] / "tradingagents" / "workflow_assets" / "prompts"
+    system = (prompts / "joint_portfolio.txt").read_text(encoding="utf-8")
+    rationale = (prompts / "allocation_rationale.txt").read_text(encoding="utf-8")
+    cash = (prompts / "joint_cash_rationale.txt").read_text(encoding="utf-8")
+    assert "relative to other eligible instruments" in system
+    assert "unsupported precision" in system
+    assert "broker execution approval" in system.lower()
+    assert "relative to other eligible instruments" in rationale
+    assert "larger or smaller allocation" in rationale
+    assert "additional allocation" in cash
+
+    import ast
+    from decimal import Decimal
+    from pydantic import BaseModel, Field, create_model
+    from tradingagents.workflows import WorkflowBundle, bundled_files
+
+    source = prompts.parents[1] / "web" / "portfolio_model.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    nodes = [node for node in tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef))]
+    captured = {}
+
+    class Client:
+        def get_llm(self):
+            return self
+
+        def with_structured_output(self, schema, include_raw):
+            captured["schema"] = schema
+            raise StopIteration
+
+    scope = {"__name__": "portfolio_prompt_test", "Decimal": Decimal, "BaseModel": BaseModel,
+             "Field": Field, "create_model": create_model, "json": json,
+             "build_default_config": lambda: {}, "create_tier_client": lambda *args: Client()}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), scope)
+    try:
+        scope["model_portfolio"]({"llm_provider": "offline"}, [], Decimal("100"),
+                                 WorkflowBundle.from_files(bundled_files()))
+    except StopIteration:
+        pass
+    schema = captured["schema"].model_json_schema()
+    assert schema["properties"]["cash_rationale"]["description"] == cash.strip()
+    assert schema["$defs"]["Allocation"]["properties"]["rationale"]["description"] == rationale.strip()
+
+
+def test_joint_portfolio_evidence_preserves_23_candidates_above_120000_characters():
+    import ast
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "tradingagents" / "web" / "portfolio_model.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    builder = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "model_portfolio")
+    start = next(index for index, node in enumerate(builder.body)
+                 if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "evidence" for target in node.targets))
+    end = next(index for index in range(start + 1, len(builder.body))
+               if isinstance(builder.body[index], ast.Assign) and any(isinstance(target, ast.Name) and target.id == "settings" for target in builder.body[index].targets))
+    inputs = [{"symbol": f"S{index:02}", "run_id": f"saved-{index}", "revision": index,
+               "final_decision": "Retain conditional entry and downside risk. " * 200,
+               "source_coverage": "News is unavailable; do not infer neutral sentiment.",
+               "reference": {"price": "100", "timestamp": "2026-11-04T20:00:00Z"}}
+              for index in range(23)]
+    scope = {"json": json, "inputs": inputs, "capital": "100000"}
+    exec(compile(ast.Module(body=builder.body[start:end], type_ignores=[]), str(source), "exec"), scope)
+    assert len(scope["evidence"]) > 120_000
+    payload = json.loads(scope["evidence"])
+    assert payload["eligible_research"] == inputs
+    assert len(payload["eligible_research"]) == 23
+    assert payload["model_capital"] == "100000"
+    assert payload["starting_model_holdings"] == []
+
+
+def test_joint_portfolio_prompt_is_retained_from_the_same_system_message():
+    import ast
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "tradingagents" / "web" / "portfolio_model.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    builder = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "model_portfolio")
+    prompt = next(node for node in builder.body if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Name) and target.id == "system_prompt" for target in node.targets))
+    assert ast.unparse(prompt.value) == "workflow.text('joint_portfolio')"
+    messages = [node for node in ast.walk(builder) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name) and node.func.id == "SystemMessage"]
+    assert len(messages) == 1 and ast.unparse(messages[0].keywords[0].value) == "system_prompt"
+    result = next(node for node in builder.body if isinstance(node, ast.Return))
+    fields = dict(zip((key.value for key in result.value.keys), result.value.values))
+    assert ast.unparse(fields["system_prompt"]) == "system_prompt"
+
+
+def test_workflow_load_exposes_validated_joint_portfolio_path():
+    import ast
+    from pathlib import Path
+
+    import yaml
+    from tradingagents.workflows import WorkflowBundle, bundled_files
+
+    files = bundled_files()
+    definition = yaml.safe_load(files["workflow.yaml"])
+    path = "prompts/custom_joint_portfolio.txt"
+    definition["prompts"]["joint_portfolio"] = path
+    files[path] = "Custom portfolio instruction."
+    files["workflow.yaml"] = yaml.safe_dump(definition, sort_keys=False)
+    bundle = WorkflowBundle.from_files(files)
+    source = Path(__file__).resolve().parents[1] / "tradingagents" / "web" / "workflows.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    store = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "WorkflowStore")
+    load = next(node for node in store.body if isinstance(node, ast.FunctionDef) and node.name == "load")
+    result = next(node for node in ast.walk(load) if isinstance(node, ast.Return))
+    fields = dict(zip((key.value for key in result.value.keys), result.value.values))
+    value = eval(compile(ast.Expression(fields["joint_portfolio_file"]), str(source), "eval"), {"bundle": bundle})
+    assert value == path and bundle.files[value] == "Custom portfolio instruction."
+
+
 HOLDING = {
     "cash": 25000.0,
     "currency": "USD",

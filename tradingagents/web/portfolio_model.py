@@ -51,14 +51,12 @@ def model_portfolio(config, inputs, capital, workflow=None):
     )
     evidence = json.dumps({"model_capital": str(capital), "starting_model_holdings": [],
                            "eligible_research": inputs}, ensure_ascii=False)
-    if len(evidence) > 120_000:
-        raise ValueError("Saved evidence exceeds the joint synthesis limit of 120,000 characters; no model call made and no candidates truncated")
     settings = {**build_default_config(), **config, "deep_think_provider": config["llm_provider"],
                 "deep_think_backend_url": config.get("backend_url")}
     client = create_tier_client(settings, "deep")
+    system_prompt = workflow.text("joint_portfolio")
     response = client.get_llm().with_structured_output(portfolio_schema, include_raw=True).invoke([
-        SystemMessage(content=(
-            workflow.text("joint_portfolio"))),
+        SystemMessage(content=system_prompt),
         HumanMessage(content=evidence),
     ])
     if response.get("parsing_error") or not isinstance(response.get("parsed"), portfolio_schema):
@@ -87,5 +85,5 @@ def model_portfolio(config, inputs, capital, workflow=None):
         raise ValueError("Joint allocation omitted the cash rationale")
     return {"allocations": rows, "capital": str(capital), "reference_value": str(spent),
             "cash": str(capital - spent), "target_cash_weight": str(1 - total_weight),
-            "cash_rationale": proposed.cash_rationale, "provider": client.get_provider_name(),
+            "cash_rationale": proposed.cash_rationale, "system_prompt": system_prompt, "provider": client.get_provider_name(),
             "model": client.model, "response_metadata": getattr(response.get("raw"), "response_metadata", {})}

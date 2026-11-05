@@ -1,1 +1,1 @@
-Research-backed reason for this positive or zero allocation.
+Concise evidence-backed explanation of the chosen numeric weight relative to other eligible instruments and cash, why a larger or smaller allocation was rejected, and which material uncertainty or source gap could change the choice. Explain zero weights without forcing an allocation; do not invent unsupported precision.
