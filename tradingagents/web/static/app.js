@@ -3197,18 +3197,41 @@ function policyPanel(){
 }
 let basketOpen=false,basketForm={targets:[],reason:'',fee_per_leg:'',slippage_bps:'',assumed_filled:[]},basketPreview=null;
 let spyRebalanceBusy=false,spyHoldingsMessage='',spyPreview=null;
+const fundFields=[['monthly_net_withdrawal_usd','Monthly net withdrawals from this account after other income / USD'],['reserve_months','Reserve coverage / months'],['tax_provision_usd','Manual tax provision / USD'],['trading_cushion_usd','Trading cushion / USD']];
+let fundDraft=null,fundDirty=false,fundBusy=false,fundMessage='';
+function fundContract(f){return f&&Number.isInteger(f.revision)&&Array.isArray(f.plans)&&f.plans.every(p=>p&&typeof p.account_id==='string'&&Number.isInteger(p.revision)&&['active','inactive'].includes(p.status))&&Object.hasOwn(f,'current_account_id')&&Object.hasOwn(f,'current')&&Object.hasOwn(f,'budget')&&Object.hasOwn(f,'budget_error');}
+function fundBudgetValid(b){const amount=k=>number(b[k])!==null&&number(b[k])>=0;return b&&typeof b.active==='boolean'&&['policy_floor_usd','required_reserve_usd','cash_usd','equity_usd','shortfall_usd','investable_sleeve_usd'].every(amount)&&['spending_reserve_usd','authored_reserve_usd'].every(k=>Object.hasOwn(b,k)&&(b.active?amount(k):b[k]===null))&&Object.hasOwn(b,'spendable_cash_usd')&&(amount('spendable_cash_usd')||b.spendable_cash_usd===null&&typeof b.spendable_cash_error==='string'&&!!b.spendable_cash_error)&&Object.hasOwn(b,'account_at')&&Object.hasOwn(b,'account_observation_started_at');}
+function fundPlanMarkup(){
+ const f=investorRecord?.fund_plans;
+ if(!fundContract(f))return '<section><h3>Account fund plan</h3><p>Unavailable. This desk service does not provide the fund plan contract.</p></section>';
+ const account=f.current_account_id,plan=f.current;
+ if(!fundDraft||!fundDirty&&fundDraft.account!==account)fundDraft={account,revision:plan?.revision??0,recordRevision:f.revision,investorRevision:investorRecord.revision,status:plan?.status||'inactive',...Object.fromEntries(fundFields.map(([key])=>[key,plan?.[key]??'']))};
+ if(!fundDirty&&fundDraft.account===account&&(fundDraft.revision!==(plan?.revision??0)||fundDraft.recordRevision!==f.revision||fundDraft.investorRevision!==investorRecord.revision))fundDraft={account,revision:plan?.revision??0,recordRevision:f.revision,investorRevision:investorRecord.revision,status:plan?.status||'inactive',...Object.fromEntries(fundFields.map(([key])=>[key,plan?.[key]??'']))};
+ const changed=fundDirty&&(fundDraft.account!==account||fundDraft.revision!==(plan?.revision??0)||fundDraft.recordRevision!==f.revision||fundDraft.investorRevision!==investorRecord.revision),b=f.budget;
+ const rows=fundBudgetValid(b)?[['Spending reserve',b.spending_reserve_usd],['Manual tax provision',b.active?plan?.tax_provision_usd:null],['Trading cushion',b.active?plan?.trading_cushion_usd:null],['Authored reserve',b.authored_reserve_usd],['Trading Rules cash floor',b.policy_floor_usd],['Required reserve (greater of authored reserve and floor)',b.required_reserve_usd],['Observed cash',b.cash_usd],['Reserve shortfall',b.shortfall_usd],['Spendable cash above reserve',b.spendable_cash_usd],['SPY investable sleeve',b.investable_sleeve_usd]].map(([label,value])=>'<tr><th scope="row">'+esc(label)+'</th><td>'+esc(value==null?'Unavailable':money(value))+'</td></tr>').join(''):'';
+ const other=f.plans.filter(p=>p.account_id!==account);
+ return '<section id="account-fund-plan"><h3>Account fund plan</h3><p>US paper planning for one observed account at a time. No transfers, tax-lot selection or total-return calculation. Observed cash is not confirmed withdrawable cash.</p><p>Observed account: '+esc(account||'Unavailable')+' · Editing account: '+esc(fundDraft.account||'Unavailable')+' · Plan revision '+esc(fundDraft.revision)+' · Fund plans revision '+esc(fundDraft.recordRevision)+' · Investor revision '+esc(fundDraft.investorRevision)+' · <span id="fund-dirty-status">'+(fundDirty?'Unsaved changes':plan?'Saved terms':'No saved plan')+'</span></p>'+
+  (changed?'<p role="alert">Account or revision changed. Your edits are retained but cannot be saved. Reload the plan to discard them and use the current observation.</p>':'')+
+  '<div class="proposal-fields"><label>Plan status<select id="fund-status" data-fund-field="status"><option value="inactive" '+(fundDraft.status==='inactive'?'selected':'')+'>Planning only</option><option value="active" '+(fundDraft.status==='active'?'selected':'')+'>Apply reserve to SPY sizing</option></select></label>'+fundFields.map(([key,label])=>'<label>'+label+'<input id="fund-'+key+'" data-fund-field="'+key+'" inputmode="decimal" value="'+esc(fundDraft[key])+'"></label>').join('')+'</div><p>Leave unknown values blank; enter 0 only when zero is intended. Applying a reserve requires all four terms. A material save pauses automatic paper trades, blocks active runs and clears the manual preview. Re-enable automatic trades explicitly after review; saving never enables them.</p><button id="fund-save" '+(!account||changed||fundBusy||!fundDirty?'disabled':'')+'>Save fund plan</button> <button id="fund-reload" '+(fundBusy?'disabled':'')+'>Reload plan and discard edits</button><p id="fund-message" role="status">'+esc(fundMessage)+'</p><h3>Saved-plan budget</h3><p>Based on saved terms, not unsaved edits. Spending reserve, tax provision and cushion add together; the required reserve is the greater of that sum and the Trading Rules cash floor, not both added. A cash shortfall suggests preparing a sell-down, not guaranteed proceeds.</p>'+(rows?'<div class="table-scroll"><table class="data-table"><tbody>'+rows+'</tbody></table></div>':'<p>Unavailable. '+esc(f.budget_error||'A current eligible account observation and complete applied terms are required.')+'</p>')+(fundBudgetValid(b)?'<p>'+(b.active?'Applied account reserve.':'No spending reserve is protected; legacy percentage policy floor applies.')+(b.spendable_cash_usd===null?' Spendable cash unavailable: '+esc(b.spendable_cash_error):' Spendable cash accounts for known commitments; it is not settled or withdrawable cash.')+'</p><p>Broker account observed '+fullTime(b.account_at)+' · Account fetch started '+fullTime(b.account_observation_started_at)+'. Target stock exposure of the full account is shown in the SPY preview.</p>':'')+(other.length?'<details><summary>Other saved account plans · inspection only</summary><p>These accounts are not currently observed. No account totals are combined.</p>'+other.map(p=>'<p>Account '+esc(p.account_id)+' · revision '+esc(p.revision)+' · '+esc(p.status==='active'?'Apply reserve':'Planning only')+' · updated '+fullTime(p.updated_at)+'<br>'+fundFields.map(([key,label])=>esc(label)+': '+esc(p[key]??'Unknown')).join(' · ')+'</p>').join('')+'</details>':'')+'</section>';
+}
+async function saveFundPlan(){
+ const f=investorRecord?.fund_plans;if(fundBusy||!fundDirty||!fundContract(f)||!fundDraft.account||f.current_account_id!==fundDraft.account||f.revision!==fundDraft.recordRevision||investorRecord.revision!==fundDraft.investorRevision||((f.current?.revision??0)!==fundDraft.revision))return;
+ const draft=fundDraft,snapshot=JSON.stringify(draft),generation=state.store_generation;fundBusy=true;fundMessage='Saving…';render();
+ try{const result=await api('/api/investor',{action:'fund_plan_save',account_id:draft.account,expected_revision:draft.investorRevision,fund_plans_revision:draft.recordRevision,plan_revision:draft.revision,status:draft.status,...Object.fromEntries(fundFields.map(([key])=>[key,draft[key]===''?null:draft[key]]))});if(state.store_generation!==generation)return;investorRecord=result;state.investor=result;spyPreview=null;if(fundDraft===draft&&JSON.stringify(draft)===snapshot){fundDirty=false;fundDraft=null;}fundMessage='Plan saved. Material changes pause automatic paper trades; preview again before trading.';}
+ catch(error){fundMessage=error.message+(error.status===409?' Reload the plan before saving.':'');}finally{fundBusy=false;render();}
+}
 function spyRebalanceMarkup(){
  const heading='<section class="orders-spy-rebalance" aria-label="Daily SPY paper rebalance"><h2>Daily SPY paper rebalance</h2>';
  const schedule=investorRecord?.spy_rebalance;
  if(!schedule)return heading+'<p>SPY rebalance is unavailable.</p></section>';
  const {enabled,eligible_account_id:account,account_id:bound,run}=schedule;
- const eligible=account&&(!bound||bound===account)&&investorRecord.broker_transport_enabled;
+ const eligible=account&&(!bound||bound===account)&&investorRecord.broker_transport_enabled&&fundContract(investorRecord.fund_plans)&&investorRecord.fund_plans.current_account_id===account&&fundBudgetValid(investorRecord.fund_plans.budget);
  const status=enabled?(account===bound?'Automatic trading on':'Waiting for the dedicated paper account'):'Automatic trading off';
  const preview=spyPreview?.generation===state.store_generation&&spyPreview?.account===account&&
-  state.nautilus?.status==='connected'&&state.nautilus.account?.id===account?spyPreview:null;
+  state.nautilus?.status==='connected'&&state.nautilus.account?.id===account&&spyPreview.fundRevision===investorRecord.fund_plans?.revision&&spyPreview.policyRevision===investorRecord.data?.policy?.revision?spyPreview:null;
  const message=spyPreview&&!preview?'':spyHoldingsMessage;
  const canSubmit=eligible&&!schedule.in_progress&&preview?.submitToken&&Date.now()<preview.submitExpires;
- return heading+
+ return heading+fundPlanMarkup()+
   '<p>Uses State Street’s holdings from the previous trading session. The desk must be open during regular market hours.</p>'+
   '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
   '<div class="basket-actions">'+
@@ -3239,9 +3262,10 @@ async function spyRebalanceAction(action){
    account_id:config.eligible_account_id,dedicated:action==='enable',submit_token:spyPreview?.submitToken});
   if(state.store_generation!==generation)return;
   if(action==='preview'){
-   spyPreview={generation,account:config.eligible_account_id,trades:result.trades??[],
-    policyBlockers:result.policy_blockers??[],submitToken:result.submit_token,submitExpires:Date.now()+300000};
-   const showOrder=order=>order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):'');
+   if(!Number.isInteger(result.policy_revision)||number(result.target_stock_pct)===null||number(result.target_stock_pct)<0||number(result.target_stock_pct)>100||!fundBudgetValid(result.fund_budget)||!Array.isArray(result.trades)||!Array.isArray(result.policy_blockers)||!(result.submit_token===null||typeof result.submit_token==='string'&&!!result.submit_token)||typeof result.as_of!=='string'||typeof result.quote_at!=='string'||!Number.isInteger(result.positions)||!Number.isInteger(result.total)||!result.trades.every(t=>t&&typeof t.symbol==='string'&&['BUY','SELL'].includes(t.side)&&number(t.quantity)!==null&&number(t.quantity)>0)||!result.policy_blockers.every(reason=>typeof reason==='string')){spyPreview=null;spyHoldingsMessage='Unavailable. The SPY preview response is incomplete; submission is disabled.';return;}
+   spyPreview={generation,account:config.eligible_account_id,fundRevision:investorRecord.fund_plans.revision,policyRevision:result.policy_revision,trades:result.trades,
+    policyBlockers:result.policy_blockers,submitToken:result.submit_token,submitExpires:Date.now()+300000};
+   const showOrder=order=>order&&typeof order.symbol==='string'&&['BUY','SELL'].includes(order.side)&&number(order.quantity)!==null&&typeof order.order_type==='string'?order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):''):'Order details unavailable';
    spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
     ' · Trading Rules revision '+result.policy_revision+' · Target stock exposure '+Number(result.target_stock_pct).toFixed(2)+'%'+
     ' · Last price check '+time(result.quote_at)+'.'+
@@ -3290,6 +3314,8 @@ function bindBaskets(root){
  root.querySelectorAll('[data-target-index]').forEach(input=>{const target=basketForm.targets[Number(input.dataset.targetIndex)],labels={mode:'Target type',value:'Target',order_type:'Order type',limit_price:'Limit price'};if(target)input.setAttribute('aria-label',target.symbol+' '+labels[input.dataset.targetField]);});
  root.addEventListener('toggle',e=>{if(e.target.id==='allocation-workspace')basketOpen=e.target.open;},true);
  root.addEventListener('input',e=>{
+  const fundField=e.target.dataset.fundField;
+  if(fundField&&fundDraft){fundDraft[fundField]=e.target.value;fundDirty=true;fundMessage='';const save=root.querySelector('#fund-save');if(save)save.disabled=fundBusy||fundDraft.account!==investorRecord?.fund_plans?.current_account_id||fundDraft.recordRevision!==investorRecord?.fund_plans?.revision||fundDraft.investorRevision!==investorRecord?.revision;const status=root.querySelector('#fund-dirty-status');if(status)status.textContent='Unsaved changes';return;}
   const index=e.target.dataset.targetIndex,field=e.target.dataset.targetField;
   if(index!==undefined){basketForm.targets[Number(index)][field]=e.target.value;basketForm.assumed_filled=[];basketPreview=null;investorDirty=true;}
   const fields={'basket-reason':'reason','basket-fee':'fee_per_leg','basket-slippage':'slippage_bps'};
@@ -3303,6 +3329,8 @@ function bindBaskets(root){
   if(e.target.dataset.basketFill){const s=e.target.dataset.basketFill;basketForm.assumed_filled=e.target.checked?[...new Set([...basketForm.assumed_filled,s])]:basketForm.assumed_filled.filter(v=>v!==s);investorDirty=true;}
  });
  root.addEventListener('click',e=>{
+  if(e.target.id==='fund-save'){saveFundPlan();return;}
+  if(e.target.id==='fund-reload'){if(fundDirty&&!confirm('Discard unsaved fund plan changes?'))return;fundDraft=null;fundDirty=false;fundMessage='';render();return;}
   const spyAction=e.target.closest('[data-spy-rebalance]');
   if(spyAction){spyRebalanceAction(spyAction.dataset.spyRebalance);return;}
   const open=e.target.closest('[data-open-basket]'),remove=e.target.closest('[data-remove-target]');
@@ -3605,6 +3633,7 @@ function refreshData(source){
  if(!investorRecord||!investorDirty&&!investorBusy&&source.investor?.revision>investorRecord.revision)investorRecord=source.investor;
  if(investorRecord&&source.investor){
   investorRecord.instruments=source.investor.instruments;
+  const funds=source.investor.fund_plans;if(!fundBusy&&fundContract(funds)&&(!fundContract(investorRecord.fund_plans)||funds.revision>=investorRecord.fund_plans.revision))investorRecord.fund_plans=funds;
   const schedule=source.investor.spy_rebalance;
   if(schedule&&(!investorRecord.spy_rebalance||schedule.revision>=investorRecord.spy_rebalance.revision))investorRecord.spy_rebalance=schedule;
  }
@@ -3761,12 +3790,19 @@ function dashboardHistory(s,load=false){
  if(load&&!marketErrors.has(s)){Object.assign(marketForm(s),{key:entry.key,timeframe:entry.timeframe});queueMicrotask(()=>loadCurrentHistory(s,entry.key));}return null;
 }
 let portfolioSelection='';
+function gainReviewMarkup(){
+ const rows=DATA.holdings;
+ const intro='<section><h2>Paper gain and loss review</h2><p>Broker-observed average-position unrealized P/L, observed '+fullTime(DATA.account_observed_at)+'. This is not tax-lot, realized tax or wash-sale information. Review tax and withdrawal decisions outside the desk; no transfer or tax benefit is implied.</p><button data-open-fund-plan>Open account fund plan</button>';
+ if(!DATA.holdings_available)return intro+'<p>Positions are unavailable. Connect and reconcile the paper account to review observed holdings.</p></section>';
+ if(!rows.length)return intro+'<p>No open paper positions reported. Browse Markets to research a stock; pending orders remain separate.</p></section>';
+ return intro+'<div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">Holding</th><th scope="col">Quantity</th><th scope="col">Average cost / USD</th><th scope="col">Broker mark / USD</th><th scope="col">Unrealized P/L / USD</th><th scope="col">Unrealized P/L / %</th><th scope="col">Preparation</th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+esc(p.symbol||'Unavailable')+'</td><td>'+esc(p.qty??'Unavailable')+'</td><td>'+esc(p.avg_entry_price??'Unavailable')+'</td><td>'+esc(p.current_price??'Unavailable')+'</td><td>'+esc(p.unrealized_pl??'Unavailable')+'</td><td>'+percent(number(p.unrealized_plpc)===null?null:Number(p.unrealized_plpc)*100)+'</td><td>'+(p.symbol&&!brokerExposureUnknown(p)&&String(p.side).toLowerCase()==='long'&&number(p.qty)>0?'<button data-gain-sell="'+esc(p.symbol)+'">Prepare sell</button>':'Unavailable')+'</td></tr>').join('')+'</tbody></table></div><p>Prepare sell opens an unsaved ordinary ticket. You choose the exact quantity and order terms; approval and submission remain separate.</p></section>';
+}
 function renderPortfolio(source){
  refreshTicketData(source);portfolioView='holdings';detailOpen=Boolean(portfolioSelection&&DATA.holdings.some(position=>position.symbol===portfolioSelection));if(detailOpen){symbol=portfolioSelection;detailReturn={page:'portfolio'};}
- return '<div id="universe-review" class="portfolio-workspace"><div id="workspace-save-status" role="status"></div><div id="workspace" class="workspace '+(detailOpen?'detail-open':'')+'"><section id="holdings-view"><div class="panel-header"><h2>Observed positions</h2><button data-action="export-positions" '+(!positions().length?'disabled':'')+'>Export positions CSV</button></div><div id="holdings-body">'+holdingsTable()+'</div><details><summary>Technical reconciliation record</summary>'+orderFacts({observed_at:DATA.account_observed_at,reconciliation:DATA.reconciliation,positions:DATA.holdings})+'</details></section><aside id="stock-detail" class="detail" '+(!detailOpen?'hidden':'')+'><div class="detail-header"><h2 id="detail-title">Position review</h2><button id="close-detail">Back to positions</button></div><div id="detail-content" class="detail-content">'+(detailOpen?instrumentMarkup():'')+'</div></aside></div></div>';
+ return '<div id="universe-review" class="portfolio-workspace"><div id="workspace-save-status" role="status"></div><div id="workspace" class="workspace '+(detailOpen?'detail-open':'')+'"><section id="holdings-view"><div class="panel-header"><h2>Observed positions</h2><button data-action="export-positions" '+(!positions().length?'disabled':'')+'>Export positions CSV</button></div><div id="holdings-body">'+holdingsTable()+'</div>'+gainReviewMarkup()+'<details><summary>Technical reconciliation record</summary>'+orderFacts({observed_at:DATA.account_observed_at,reconciliation:DATA.reconciliation,positions:DATA.holdings})+'</details></section><aside id="stock-detail" class="detail" '+(!detailOpen?'hidden':'')+'><div class="detail-header"><h2 id="detail-title">Position review</h2><button id="close-detail">Back to positions</button></div><div id="detail-content" class="detail-content">'+(detailOpen?instrumentMarkup():'')+'</div></aside></div></div>';
 }
 function bindPortfolio(){
- const root=$('universe-review');root.addEventListener('click',event=>{const stock=event.target.closest('[data-stock]');if(stock)openStock(stock.dataset.stock,stock);if(event.target.id==='holdings-direction'){holdingsDescending=!holdingsDescending;persistPreferences();render();}});
+ const root=$('universe-review');root.addEventListener('click',event=>{const fund=event.target.closest('[data-open-fund-plan]'),sell=event.target.closest('[data-gain-sell]');if(fund){navigatePage('orders',()=>{ordersTab='SPY Rebalance';render({force:true});document.getElementById('account-fund-plan')?.scrollIntoView({block:'start'});});return;}if(sell){const s=sell.dataset.gainSell,p=DATA.holdings.find(row=>row.symbol===s);if(!DATA.holdings_available||!p||brokerExposureUnknown(p)||String(p.side).toLowerCase()!=='long'||!(number(p.qty)>0))return;if(ticketDirty&&!confirm('Discard unsaved ticket edits and prepare a new sell?'))return;selectResearchPreparation(null,s);ticketSymbol=s;proposalForms.set(proposalKey(s),{symbol:s,side:'SELL',quantity:'',order_type:'',limit_price:'',time_in_force:'DAY',session:'regular',exit_plan:null,rationale:'',research:null,decision_evidence_scopes:[]});proposalPreviews.delete(proposalKey(s));holdingExitModes.delete(proposalKey(s));ticketDirty=true;selectedOrderProposal='';openTicket(s,sell);return;}const stock=event.target.closest('[data-stock]');if(stock)openStock(stock.dataset.stock,stock);if(event.target.id==='holdings-direction'){holdingsDescending=!holdingsDescending;persistPreferences();render();}});
  $('holdings-query')?.addEventListener('input',event=>{holdingsQuery=event.target.value;persistPreferences();render();});
  for(const id of ['holdings-sort','holdings-filter'])$(id)?.addEventListener('change',event=>{if(id==='holdings-sort')holdingsSort=event.target.value;else holdingsFilter=event.target.value;persistPreferences();render();});
  $('close-detail').addEventListener('click',closeStock);if(detailOpen)bindReport();workspaceStatus();restoreInstrumentScroll();
