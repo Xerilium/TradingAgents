@@ -144,7 +144,7 @@ def records(database, resolve_artifact=None):
         rows = connection.execute("SELECT name,revision,payload FROM app_records").fetchall()
     result = {}
     for name, revision, payload in rows:
-        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery"} or type(revision) is not int or revision < 1:
+        if name not in {"journal", "latest_research", "workspace", "investor", "reporting", "commands", "attention", "attention_observations", "market_history", "stock_evidence", "discovery", "spy_paper_rebalance"} or type(revision) is not int or revision < 1:
             raise ValueError("Unsupported application record scope or revision")
         result[name] = json.loads(payload)
     validate_journal(result.get("journal"))
@@ -165,6 +165,8 @@ def records(database, resolve_artifact=None):
                 symbols.add(item["symbol"])
     from .record_integrity import validate
     validate(result, resolve_artifact)
+    if "spy_paper_rebalance" in result:
+        validate_spy_rebalance(result["spy_paper_rebalance"])
     if "discovery" in result:
         from .market_discovery import validate as validate_discovery
         validate_discovery(result["discovery"], result.get("workspace"), resolve_artifact)
@@ -184,6 +186,17 @@ def records(database, resolve_artifact=None):
     if reporting and (not isinstance(reporting.get("entries"), dict) or not isinstance(reporting.get("collections"), list)):
         raise ValueError("Invalid saved journal/reporting records")
     return result
+
+
+def validate_spy_rebalance(value):
+    if not isinstance(value, dict) or set(value) != {"enabled", "account_id", "managed_symbols", "run"}:
+        raise ValueError("Invalid saved SPY rebalance")
+    enabled, account_id, symbols, run = (value[key] for key in ("enabled", "account_id", "managed_symbols", "run"))
+    if (type(enabled) is not bool or (enabled or account_id is not None) and not (isinstance(account_id, str) and account_id)
+            or not isinstance(symbols, list) or any(not isinstance(symbol, str) or not symbol for symbol in symbols)
+            or run is not None and (not isinstance(run, dict) or not isinstance(run.get("session"), str)
+                                    or run.get("status") not in ("waiting", "ready", "dispatching", "waiting_fill", "completed", "blocked"))):
+        raise ValueError("Invalid saved SPY rebalance")
 
 
 def validate_journal(journal):
@@ -348,6 +361,9 @@ def invalidate_authority(database, *, retained_commands=()):
                 collections = ("proposals", "drafts")
             elif name == "investor":
                 collections = ("proposals", "baskets")
+            elif name == "spy_paper_rebalance":
+                value["enabled"] = False
+                collections = ()
             elif name == "commands":
                 value.setdefault("new_orders_blocked", False)
                 value.update(recovery_required=True, recovery_reason="Restored authority requires fresh identity reconciliation")
