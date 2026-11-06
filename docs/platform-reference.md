@@ -70,6 +70,13 @@ Validation enforces registered nodes, required stages, joins and bounded debate
 routing. This is research configuration, not arbitrary code execution or a
 second trading engine. Runs use their captured workflow/settings revision.
 
+In Research, search and status filters narrow the list; selecting a ticker opens
+its saved result. A row checkbox changes the next research batch, not the inspected
+stock. Status counts cover unique configured and saved stocks before search, batch
+filtering or pagination. A completed result can have coverage gaps: completion and
+source coverage are separate. Inspect Summary, Reports, Debate & Risk, Sources &
+Filings and Activity for the saved decision and its evidence.
+
 ### Model providers and tools
 
 The desktop's Codex provider uses the installed, signed-in Codex app-server.
@@ -160,6 +167,12 @@ unavailable; do not silently substitute today's report.
 | Approved order | Reviewed exact terms and required current context | Still needs separate submission |
 | Actual portfolio | Broker-observed balances, positions, orders and fills | Broker state; not replaced by local modeling |
 
+Portfolio has Positions, Allocations, Model proposal and Performance. Positions
+shows observed holdings and pending exposure; **Open account fund plan** opens
+Orders → SPY Rebalance. Allocations contains fixed-weight historical scenarios;
+loading preset weights does not run a simulation. Holdings as-of dates do not
+establish historical publication or availability at the scenario start.
+
 Portfolio → Model proposal invokes one joint deep-model synthesis. It starts with model
 cash rather than copying actual holdings. Deterministic sizing floors each
 allocation to whole shares using the supplied dated prices and reports residual
@@ -167,10 +180,26 @@ cash. Invalid/omitted allocations and failed inputs are not silently invented
 or replaced. It neither creates a human basket nor authorizes orders.
 
 Portfolio performance uses retained observations and declared methods. Missing
-account history, fees or complete event coverage stays unavailable. Native cache
-tables, broker performance and hypothetical scenarios are different reports.
+account history, fees or complete event coverage stays unavailable. Without a saved
+interval, **Open account history to compare performance** opens Journal → Account
+History rather than presenting failed-looking metrics. Native cache tables, broker
+performance and hypothetical scenarios are different reports.
+
+The model's **Model capital (USD)** and **Prices and research as of** inputs sit
+below the Portfolio header with **Model portfolio**. Compatible normal renders
+keep an actively edited native date connected, including partial dates; navigation,
+forced renders or changed model context retain the normal replacement behavior.
 
 ## Orders, approval and execution
+
+Orders groups controls into Ticket & Blotter, Fills & Fees, Human Baskets,
+SPY Rebalance and Option Instructions. The top-bar **Orders: Active · Manage**
+(or paused equivalent) selects Ticket & Blotter and focuses account order controls;
+it is navigation, not a gate change.
+
+SPY Rebalance's **Find planned stock** filters displayed preview rows only; the
+full plan and its authority bindings stay unchanged. Natural expiry keeps the
+preview readable, disables submission and asks for a new **Preview**.
 
 The path is:
 

@@ -1,11 +1,86 @@
 # TradingAgents trading desk
 
-TradingAgents is a local desktop platform for market research, portfolio
-analysis, historical simulation, and explicitly controlled order execution.
-This fork combines the upstream TradingAgents research framework with a desktop
-desk, NautilusTrader, an app-owned Alpaca bridge, and supporting data and memory
-services. Research and modeled results help a person make decisions; they do
-not grant authority to trade.
+Research stocks. Review a portfolio plan. Keep control of the trade.
+
+TradingAgents is a local desktop desk for stock research, portfolio planning,
+historical simulation and controlled order execution. Its central goal is to help
+you build and manage a portfolio of individual stocks against the S&P 500.
+
+[Start the desk](#start-the-desk) · [Platform reference](docs/platform-reference.md) · [Local operating guide](docs/local-desk-guide.md)
+
+## Find the next useful action
+
+| I want to… | Open | What to do |
+| --- | --- | --- |
+| Find and inspect a stock | **Markets** | Search the universe or a watchlist, then open the stock's chart and details. |
+| Understand a saved conclusion | **Research** | Select the stock, read its Summary, then inspect Reports or Sources & Filings. |
+| Review my account | **Portfolio → Positions** | Check observed holdings, cash and pending exposure. |
+| Explore an allocation | **Portfolio → Allocations** or **Model proposal** | Set a historical allocation, or model a separate portfolio from saved research and dated prices. |
+| Review an S&P 500 stock rebalance | **Orders → SPY Rebalance** | Review the account fund plan and the proposed stock trades. |
+| Prepare exact order terms | **Orders → Ticket & Blotter** or **Human Baskets** | Prepare drafts, review each order, approve exact terms and submit separately. |
+| Compare results | **Portfolio → Performance** | Open a saved account-history interval; use Journal → Account History when one is needed. |
+
+These are independent tools, not a required sequence. Dashboard gives a compact
+starting view; Strategy lab, Journal, Alerts and Workflows support deeper work.
+
+## Read the research, not just the rating
+
+Search narrows the list. Select a stock to open its saved result; the checkbox
+beside it belongs to the next research batch. Summary brings the decision and
+supporting arguments together. Reports and Sources & Filings let you inspect why.
+
+![Research workspace with AAPL selected, result-status filters and explicit coverage gaps](docs/images/research-review.jpg)
+
+*Research review: inspect one saved stock without changing the research batch.*
+
+A completed result can still have coverage gaps. The desk keeps the latest result
+per ticker; a new research cycle replaces that ticker's previous result.
+
+## Inspect the whole rebalance, then find one stock
+
+SPY Rebalance turns loaded SPY fund holdings weights into a reviewable stock plan.
+An account fund plan can reserve cash for spending and other authored needs.
+Use **Find planned stock** to inspect a constituent without changing the full plan.
+An expired preview remains readable and asks you to generate a new one.
+
+![SPY Rebalance preview with AAPL lookup showing one of 503 planned trades](docs/images/spy-rebalance-preview.jpg)
+
+*Plan review: the lookup shows one matching stock while the full plan stays intact.*
+
+Screenshots are real development views captured on 5 November 2026. Figures and
+status belong to those captures. [Image notes](docs/images/README.md) record their
+source revisions and scope.
+
+## Keep planning and trading distinct
+
+Research and model portfolios help you decide; they do not place orders. Model
+capital is separate from account cash, and model allocations use deterministic
+whole-share sizing against dated prices. Human drafts and baskets hold exact terms.
+Per-order approval and broker submission are separate actions. Standing automatic
+paper-rebalance authority is a separate, explicit control.
+
+See the [order and execution reference](docs/platform-reference.md#orders-approval-and-execution)
+for eligibility, account bindings and broker behavior.
+
+## Start the desk
+
+### Installed desktop
+
+On Windows, open TradingAgents from the desktop or Start menu shortcut.
+The repository's `Start-TradingDesk.cmd` opens that installed executable too.
+The app uses `http://127.0.0.1:8098/`; its tray provides Open, Restart,
+Check for updates, Open logs and Quit.
+
+### Isolated development
+
+From the checkout, use `Start-TradingDesk-Dev.cmd`. Development uses port **8099**
+and its own profile, separate from the installed app's production profile.
+Do not start another instance when the development desk is already running.
+
+Manage credentials through Settings and the operating system's credential store.
+For launch, storage, recovery and verified environment details, use the
+[local desk guide](docs/local-desk-guide.md). macOS on Apple Silicon is a packaging
+target; the recorded local verification is on Windows.
 
 ## How the platform fits together
 
@@ -26,66 +101,31 @@ flowchart LR
   Bridge <--> Alpaca[Alpaca broker and market data]
 ```
 
-The paths are not a required sequence. A person may inspect research, run an
-isolated simulation, model a portfolio, or prepare a human order separately.
-The desk collects exact terms and presents approval and submission as distinct
-actions. Alpaca remains the source of broker-observed balances, holdings,
-orders, and fills. A modeled allocation, research recommendation, saved draft,
-or approval is not a broker fill.
+- **Tauri and the Python desk** provide the interface, local records and coordination.
+- **TradingAgents, LangGraph and LangChain** run research roles through the configured
+  model and data providers. **Laya** screens social posts; **Maenifold** holds durable memory.
+- **NautilusTrader** is the trading engine. The app-owned **Alpaca bridge** supplies
+  broker and market observations; this is not a second trading engine.
+- **Historical evaluation workers and Optuna** support simulations and optional
+  experiments. Their results remain separate from observed account performance.
 
-| Component | Responsibility and boundary |
+Saved settings determine the active providers and tools. The
+[platform reference](docs/platform-reference.md) covers data sources, integrations,
+storage, supported profiles and the [source map](docs/platform-reference.md#source-map).
+
+## Guides and development
+
+| Guide | Use it for |
 | --- | --- |
-| Desktop shell and desk | Tauri manages the installed app and its owned processes. The browser interface presents the workspaces; Lightweight Charts and its drawing plugin render chart data. |
-| Python desk service | Coordinates settings, research, evidence, proposals, baskets, approvals, calculations, local records, and commands to the native runtime. It is not a second broker. |
-| TradingAgents, LangGraph, and LangChain | Run market, social, news, and fundamentals analysts, research debate, trader planning, and risk review. Their conclusions are advisory. |
-| Model providers | The desk supports the Codex app-server adapter using existing sign-in and an OpenAI-compatible endpoint, including Unsloth. Saved settings determine the active provider and models. |
-| Laya | An app-owned local Python router screens original social posts for relevance and sentiment, retaining provenance and uncertainty as research evidence. It does not authorize orders. Jev is an optional framework/CLI path, not a selectable fallback for the desk's Laya integration. |
-| Maenifold | Gateway tools provide configured memory, graph, and structured reasoning capabilities. Durable Maenifold memory is separate from desk records; not every research call uses the Gateway. |
-| NautilusTrader | A separate native runtime supplies the trading node, instruments, risk, orders, events, cache, accounting, and isolated historical evaluation. |
-| Alpaca bridge and broker | App-owned data and execution clients connect Nautilus interfaces to Alpaca REST and trading updates. Alpaca supplies broker account and market observations. Supported integration is not proof that every order type has been executed successfully. |
-| Data providers | Supported paths include Alpaca, Yahoo Finance/yfinance, SEC EDGAR, and optional Alpha Vantage, FRED, Polymarket, Reddit, and StockTwits sources. Availability depends on configuration, credentials, and provider access. |
-| Local storage | SQLite and artifacts retain settings and authored records, including lists, notes, rules, drafts, and baskets. Research storage keeps only the latest result per ticker; a new cycle replaces that ticker's previous result. The desk does not maintain a competing research replay ledger or checkpoint-based resume history. |
-| Evaluation workers and Optuna | Existing workers support historical simulation, chart and scan calculations, and strategy experiments; Optuna supports optional optimization. Results are hypothetical, not broker outcomes. |
-
-## Use the desk
-
-- **Dashboard and Markets** show account observations, watchlists, stock selection, discovery, charts, and instrument details.
-- **Research** configures and monitors batches and presents saved conclusions, reports, debate, sources, and activity.
-- **Portfolio** separates actual observed positions and performance from a session-only joint model proposal. The proposal uses eligible latest research and cached dated prices, separate model capital, and deterministic whole-share sizing.
-- **Orders** holds human drafts and baskets. Review exact terms, approve each order, and submit separately. A basket is not an atomic broker transaction.
-- **Strategy lab** evaluates saved plans and strategies against retained historical data with explicit assumptions.
-- **Journal, Alerts, Workflows, and Settings** support decisions and outcomes, attention rules, research workflow configuration, and operations.
-
-See the [platform reference](docs/platform-reference.md) for workflows, providers, data
-boundaries, source paths, and detailed operations. See the [local desk guide](docs/local-desk-guide.md)
-for the installed environment, recovery, and recorded acceptance evidence. For UI
-design review and the canonical workspace redesign specification, see the
-[UI design critique](docs/ui-design-critique.md) and the
-[UI redesign blueprint](docs/ui-redesign-blueprint.md).
-
-## Start and operate
-
-On Windows, open the installed TradingAgents desktop or Start menu shortcut.
-The installed app serves `http://127.0.0.1:8098/` and uses its private production
-profile under `%USERPROFILE%\.cache\trader\production`. The tray shows a status line
-and provides Open, Restart, Check for updates, Open logs, and Quit. Refer to the local guide
-for verified behavior and recovery; do not assume every tray operation or broker
-order type has been accepted in every environment.
-
-For isolated development, run `.\Start-TradingDesk-Dev.cmd` from the
-checkout. It uses port 8099 and `%USERPROFILE%\.cache\trader\development`,
-separate from production data and credentials. The repository's
-`Start-TradingDesk.cmd` opens the installed production app. Desktop credentials
-use the operating system's credential store (Windows Credential Manager or macOS Keychain), managed through Settings, with separate production and
-development namespaces; do not put secrets in served assets or backups. macOS 26+ on Apple Silicon is a packaging target that still needs verification on a Mac; the verified paths in this guide are Windows.
-
-Normal releases update the app and launcher while preserving installed private
-runtimes. Full dependency setup is a separate operation. See the
-[packaging guide](packaging/README.md), [contributor instructions](AGENTS.md),
-and [source reference](docs/platform-reference.md#source-map).
+| [Platform reference](docs/platform-reference.md) | Workspaces, research, data, orders and implementation paths |
+| [Local desk guide](docs/local-desk-guide.md) | Launch, storage, recovery and acceptance evidence |
+| [Packaging](packaging/README.md) | App-only releases and private runtime preservation |
+| [UI design direction](docs/ui-redesign-blueprint.md) | Workspace design and interaction structure |
+| [Contributor instructions](AGENTS.md) | Local delivery, security and operating rules |
+| [Dogfood loop](docs/dogfood-loop.md) | One-item improvement cycles, UI clarity and living documentation |
 
 ## Project origins
 
 This repository extends [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents).
-The browser desk and integrations described here are specific to this fork. See
-the [license](LICENSE) and the notices under `tradingagents/web/static/vendor/` for their respective terms.
+The desktop desk and integrations described here are specific to this fork. See
+the [license](LICENSE) and notices under `tradingagents/web/static/vendor/`.

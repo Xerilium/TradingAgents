@@ -86,10 +86,14 @@ SequentialThinking during multi-step problem solving and BuildContext to find
 related source memories, reading relevant sources before relying on them.
 Keep delivery status in local issues (`docs/issues`), not duplicate documents or this file.
 
-Every UI implementer and reviewer must load the
-[Impeccable](D:/maenifold/assets/skills/impeccable/SKILL.md) skill, run context setup
-once, use the appropriate playbook in Operate mode, and read the craft floor
-before UI edits. Use Microsoft writing style for UI copy and reports.
+Every UI implementer and reviewer must load the installed `impeccable` skill
+through the Skill tool, run context setup once per agent session, use the
+appropriate playbook in Operate mode, and read the craft floor before UI edits.
+Use Read mode for documentation and Microsoft writing style for UI copy/reports.
+Follow [the dogfood loop brief](docs/dogfood-loop.md): keep operating skills and
+product docs current, use privacy-reviewed real screenshots in the README, and
+prefer plain English, intuitive grouping and glanceable, load-bearing information
+over repeated disclaimers, jargon and dense text or textbox-heavy dashboards.
 The design suggests how to refactor; exact layouts, labels, and screen counts
 are not mandates. Preserve explicit user requirements and existing functionality.
 Abandon business elements/actions without real data sources or capabilities;
