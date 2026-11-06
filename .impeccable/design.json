@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-26T21:48:24.469554Z",
+  "generatedAt": "2026-11-06T04:56:27.090Z",
   "title": "Design System: TradingAgents Paper Desk",
   "extensions": {
     "colorMeta": {
@@ -465,8 +465,8 @@
       "name": "Workspace navigation",
       "kind": "nav",
       "refersTo": "navigation-active",
-      "description": "Desktop sidebar navigation with a visible active page; horizontal scrolling at narrow widths.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a class=\"ds-nav-link\" href=\"#overview\" aria-current=\"page\">Dashboard</a><a class=\"ds-nav-link\" href=\"#research\">Research</a><a class=\"ds-nav-link\" href=\"#orders\">Orders</a></nav>",
+      "description": "SPY-first desktop sidebar with a visible active page. Existing narrow-width CSS is historical implementation detail; supported visual checks target1920×1080 or larger.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a class=\"ds-nav-link\" href=\"#spy\" aria-current=\"page\">SPY portfolio</a><a class=\"ds-nav-link\" href=\"#overview\">Dashboard</a><a class=\"ds-nav-link\" href=\"#research\">Research</a><a class=\"ds-nav-link\" href=\"#orders\">Orders</a></nav>",
       "css": ".ds-nav{display:flex;flex-direction:column;gap:4px;width:208px;padding:8px;background:var(--navy,#101a23);font-family:var(--font,\"Segoe UI\",sans-serif)}.ds-nav-link{display:flex;align-items:center;min-height:36px;padding:8px 12px;border:1px solid transparent;color:var(--nav-text,#b9c7d1);font-size:14px;text-decoration:none}.ds-nav-link:hover{background:#202e38}.ds-nav-link[aria-current=page]{background:#203329;color:#a5e7bd;border-color:var(--accent,#79ce9e)}.ds-nav-link:focus-visible{outline:2px solid var(--accent,#79ce9e);outline-offset:2px}@media(max-width:790px){.ds-nav{width:100%;flex-direction:row;overflow:auto}.ds-nav-link{flex:none;white-space:nowrap}}"
     },
     {
@@ -503,13 +503,13 @@
   ],
   "narrative": {
     "northStar": "The Linked Trading Desk",
-    "overview": "A compact workstation places portfolio exposure, instrument data, and agent evidence within one continuous reading surface. Its charcoal navy layers, cool rules, and green controls follow the user's pinned Active Trader Pro direction. The interface supports sustained inspection through modest headings, tabular numbers, and explicit selection.\n\nThe visual system keeps research, proposals, and broker execution legible as separate states. Selection links the watchlist, chart, and evidence inspector; it does not imply an order. Paper identity, source timestamps, unavailable data, and broker acknowledgements are part of the interface's information hierarchy.",
+    "overview": "The primary daily workspace is SPY portfolio: observed account context, reserves and investment budget precede the existing rebalance controls. This is the current composition, not visual-quality or execution acceptance.\n\nA compact workstation places portfolio exposure, instrument data, and agent evidence within one continuous reading surface. Its charcoal navy layers, cool rules, and green controls follow the user's pinned Active Trader Pro direction. The interface supports sustained inspection through modest headings, tabular numbers, and explicit selection.\n\nThe visual system keeps research, proposals, and broker execution legible as separate states. Selection links the watchlist, chart, and evidence inspector; it does not imply an order. Paper identity, source timestamps, unavailable data, and broker acknowledgements are part of the interface's information hierarchy.",
     "keyCharacteristics": [
-      "Desktop sidebar navigation and linked instrument panels.",
+      "SPY-first desktop navigation, with supporting linked instrument panels.",
       "Charcoal surfaces separated by fine rules and lighter headers.",
       "Green actions and selections with labeled status semantics.",
       "System typography with aligned, tabular financial figures.",
-      "Responsive stacking that preserves instrument context."
+      "Existing responsive CSS preserves instrument context; product design and verification target1920×1080 or larger."
     ],
     "rules": [
       {

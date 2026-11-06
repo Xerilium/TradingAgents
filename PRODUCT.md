@@ -85,4 +85,4 @@ A structured agent *process* with a controlled execution path, not a single-prom
 2. Research, preparation, approval and submission are different steps; none implies the next.
 3. Broker state is the truth. Local records, simulations and model output are labelled for what they are.
 4. Fail loudly and visibly: missing keys, stale data, incomplete research or coverage gaps are shown, never silently replaced, truncated or invented.
-5. The interface follows the real workflow (account → markets → research → orders → portfolio) and exposes only actions with real data sources and capabilities.
+5. The interface leads with the SPY index-management journey: account and reserves → investment budget and dated holdings → rebalance review → specifically authorized execution → reconciled outcomes and exceptions. Research, charts, simulations and other workspaces support that journey. Expose only actions with real data sources and capabilities.

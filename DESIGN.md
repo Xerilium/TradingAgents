@@ -214,7 +214,7 @@ The visual system keeps research, proposals, and broker execution legible as sep
 - System typography with aligned, tabular financial figures.
 - Responsive stacking that preserves instrument context.
 
-Extracted from the current cascade in `tradingagents/web/static/app.css` and the workspace stylesheets `ui-workflows.css`, `ui-markets.css`, `ui-instrument.css`, `ui-orders.css` and `ui-research-journal.css`, the shell in `tradingagents/web/static/index.html`, and the rendered component templates in `tradingagents/web/static/app.js`. The final dark `:root` and subsequent workstation rules supersede earlier light definitions. This document records the implemented system; it is not a complete application QA verdict. The surface brief is `.impeccable/surface-brief-paper-desk.md`.
+Extracted from the current cascade in `tradingagents/web/static/app.css` and the workspace stylesheets `ui-workflows.css`, `ui-markets.css`, `ui-instrument.css`, `ui-orders.css` and `ui-research-journal.css`, the shell in `tradingagents/web/static/index.html`, and the rendered component templates in `tradingagents/web/static/app.js`. The final dark `:root` and subsequent workstation rules supersede earlier light definitions. This document records the incumbent visual system; it is not a complete application QA or visual-quality verdict. The current primary SPY surface is registered in `.impeccable/surfaces/tradingagents-web-static-app-js.md`. The older `.impeccable/surface-brief-paper-desk.md` records a historical general-workstation direction and is not the SPY onboarding contract.
 
 ## Colors
 
@@ -269,6 +269,8 @@ The typography resembles a native trading workstation. Compact labels remain sub
 
 ## Layout
 
+The product is designed and visually verified at **1920 × 1080 or larger only**. Smaller-width rules described below are existing CSS observations, not supported-size acceptance targets or instructions to spend work on small layouts. The daily task is SPY index management; supporting instrument panels do not define the primary landing experience.
+
 The blueprint Foundation uses a 36px app bar and 40px workspace heading, with
 8px 12px 12px main padding and no workspace footer. Errors and recovery notices
 retain natural height. The symbol search, labeled account flags, local-draft
@@ -292,9 +294,9 @@ at 790px width the navigation becomes a scrolling horizontal row. The app bar
 wraps when controls need more space. These are CSS viewport rules; browser
 resizing does not establish actual Windows DPI acceptance.
 
-The desktop shell places a vertical navigation sidebar (172px, widening to 208px from 1100px) beside the workspace and its context bar. The workspace pages are Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
+The desktop shell places a vertical navigation sidebar (172px, widening to 208px from 1100px) beside the workspace and its context bar. The workspace pages are SPY portfolio, Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings. SPY portfolio (`#spy`) is the default and first sidebar entry; Dashboard remains an explicit supporting workspace. At narrow widths the navigation becomes a horizontal scrolling row above the workspace.
 
-The Dashboard ledger presents five account measures in content-sized columns and scrolls horizontally when needed. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist and its table remain scrollable when their controls need more space.
+The shared account ledger presents five account measures in content-sized columns and scrolls horizontally when needed. SPY portfolio reuses it above an observed-position/reconciliation line and the existing fund-plan/rebalance panel. Fund-plan editing and the full budget are native disclosures. This describes the current composition, not approval of its hierarchy or space use. At desktop sizes the Dashboard uses linked watchlist, chart, research, positions and orders panels. Its wider grid gives the watchlist and chart the first row; shorter or narrower views use panel tabs. The watchlist and its table remain scrollable when their controls need more space.
 
 | Condition | Implemented behavior |
 | --- | --- |
