@@ -762,8 +762,8 @@ function renderWorkspace(){
  if(activePage==='markets')return (UniverseReview.renderMarkets||UniverseReview.render)(state);
  if(activePage==='portfolio'){
   const portfolioTabsMarkup=renderTablist('portfolio-tabs','Portfolio views',[['holdings','Positions'],['allocations','Allocations'],['proposed','Model proposal'],['performance','Performance']],portfolioTab,'portfolio-tab');
-  const portfolioActions=portfolioTab==='proposed'?portfolioModelActions():portfolioTab==='performance'?performanceExportActions():'';
-  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+accountLedger()+(portfolioTab==='allocations'?renderPortfolioAllocations():portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
+  const portfolioActions=portfolioTab==='performance'?performanceExportActions():'';
+  return pageHeader('Portfolio','',portfolioActions,portfolioTabsMarkup)+(portfolioTab==='proposed'?'<div class="portfolio-model-controls" role="group" aria-label="Model portfolio inputs">'+portfolioModelActions()+'</div>':'')+accountLedger()+(portfolioTab==='allocations'?renderPortfolioAllocations():portfolioTab==='proposed'?renderProposedPortfolio():portfolioTab==='holdings'?(UniverseReview.renderPortfolio||UniverseReview.render)(state):renderPerformance());
  }
  if(activePage==='research')return renderResearch();
  if(activePage==='orders')return renderOrders();
