@@ -93,5 +93,53 @@ reported no anti-pattern failures and only the pre-existing `#4dabf7` advisory,
 now at line 2395 after this insertion. Regex-only source scanning is not runtime
 or rendered accessibility acceptance. No tests or mocks were added or run.
 
-Fresh independent review `wf_e50859b3-d61` is pending. The single affected
-native-edit live batch has not yet run on this revision.
+Fresh independent review `wf_e50859b3-d61` found no actionable defects against
+`cfdb5ec77b02d50b12693a566c60b5f5169a7857` and verified the candidate blob.
+The reviewer ran its own Impeccable context once and read Operate, harden, craft
+floor, PRODUCT and DESIGN. Review covered actual polling admission, compatible
+connected-group replacement, generic restore bypass and fallback boundaries.
+It was source-only; native browser behavior was not inferred from the review.
+
+The single actual native-edit batch is in progress on the reviewed source.
+Initial state was idle with blank date and snapshot sequence 1415 / update
+2026-11-06T02:40:17.415684+00:00. Native month-only keys again displayed
+`11/dd/yyyy` with the day selected. No model action was used. The same editor is
+being left focused through an ordinary changed snapshot before acceptance.
+
+The first stored DOM reference preceded focus/typing and could legitimately be
+replaced before the edit began, so it is not identity evidence for this case.
+The later actual screenshot at update 02:41:19 still showed `11/dd/yyyy` with the
+day selected. A fresh reference was captured while that same edit remained
+focused at sequence 1432 / update 02:41:49 for the connected-node observation.
+
+During this batch the user questioned the `?dogfood=...` reload label. It is not a
+product mode: the page loads the normal `/static/app.js` and other standard
+scripts; the static JavaScript has no dogfood branch. All implementation is in the
+existing product source on `nautilus`, not a separate UI/server. Stop adding these
+unnecessary labels and return to clean `http://127.0.0.1:8099/#portfolio` after the
+in-progress native edit. Production remains untouched.
+
+## Failed live batch and revised source plan
+
+The single authorized live batch did not establish acceptance. After capturing
+references while the date was already focused at sequence 1432 / 02:41:49, state
+advanced to sequence 1441 / 02:42:20. The old date/group were disconnected and
+replaced; the screenshot again showed `mm/dd/yyyy` with month selected. Surrounding
+ledger/result nodes updated too, and the job remained idle. Some intervening
+updates had preserved the visible partial month, but that is not a pass for the
+whole observed editing interval.
+
+Source inspection shows that ordinary focus/visibility refreshes call `readState()`
+without the periodic-only flag. Other non-forced feedback renders can also bypass
+that flag. The exact caller of the observed replacement was not instrumented;
+these are confirmed uncovered source paths, not a claimed runtime stack trace.
+
+Revised plan: remove polling-origin plumbing. Retain the compatible focused date
+on any normal same-context non-forced render. Encode server/store and model job
+id/status in the existing control group's markup so full-group comparison still
+rejects changed context, authoritative values, constraints, editability or action
+state. Keep forced/reset/navigation behavior and all handlers unchanged. No second
+live round is authorized by this failure. Correct source, obtain fresh review,
+commit it, and request fresh human authorization for one more affected smoke.
+The partial date is cleared by returning to the clean normal product URL; no
+model request, research/provider job, approval or broker action occurred.
