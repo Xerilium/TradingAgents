@@ -2,8 +2,9 @@
 
 ## Status and scope
 
-Planned from the real dev8099 Portfolio → Allocations view on 5 November 2026.
-Baseline `a7cbfa4`, `nautilus`, `D:/src/TradingAgents`; initial working tree clean.
+Completed implementation `13841ff` and one responsive live affected smoke on
+5 November 2026. Baseline `a7cbfa4`, `nautilus`, `D:/src/TradingAgents`;
+initial working tree clean.
 One complete item: restore access to the existing allocation action buttons.
 No changes to presets, dates, allocation math, simulations or broker authority.
 
@@ -54,13 +55,46 @@ Reviewed source blobs:
 JavaScript syntax passed. Independent source review found no confirmed findings
 against `7b562f1` and the blobs recorded above. The reviewer ran Impeccable context
 successfully, read Operate/adaptation guidance and craft floor, and confirmed
-cascade scope and unchanged handlers. Source review does not prove reachability;
-one affected responsive live smoke is pending. No automated tests were added
-or run.
+cascade scope and unchanged handlers. Source review alone did not establish
+reachability; the primary's live evidence follows. Scoped whitespace validation
+passed after removing an extra documentation EOF blank line. No automated tests
+were added or run.
 
 ## Evidence
 
-Original draft: 503 configured symbols, all weights zero, capital100000, fee0 and
+Original draft: 503 configured symbols, all weights zero, capital $100,000, fee $0 and
 blank start/end dates. Preserve these values. No live simulation or preset-load
 acceptance is implied by the source mapping. Before capture:
 `.local-workspace/dogfood-20261105/allocation-actions-before.jpg` (ignored).
+
+### Live smoke and decision
+
+The primary reloaded the actual running dev8099 app at `13841ff` and exercised
+one affected responsive batch, without restarting the app or native runtime:
+
+- At 1024 × 768 all six actions rendered within the panel. The action row's
+  scroll width fell from 1,239px to its actual 818px width; computed wrap was on.
+- The previously clipped Clear weights button was clicked by native pointer
+  input on the existing empty draft. The result remained 0 of 503 positions,
+  0% invested and 100% cash target. Capital $100,000, fee $0 and blank dates remained
+  unchanged. This does not prove clearing a populated authored allocation.
+- At 768 × 1024 the actions wrapped into three rows, all visible inside the
+  panel. Scroll width equaled its 734px width; the page width remained 768px.
+  The rendered capture showed complete labels and a reachable Clear weights.
+- Browser console inspection reported no errors. Viewport emulation was reset
+  to desktop immediately after the narrow capture.
+
+Primary decision: accept the complete allocation-toolbar access repair at the
+observed widths. Preset loading, simulation execution, nonzero weight editing
+and other form-action rows were not live-exercised; their behavior was not
+changed. No provider collection, new research, broker action, trading-authority
+change, runtime installation or production operation occurred. Rendered browser
+captures and DOM were inspected; the app could not show this session's pane, so
+this is not joint user-visible-pane acceptance.
+
+After captures (ignored local evidence):
+- `.local-workspace/dogfood-20261105/allocation-actions-after-desktop.jpg`.
+- `.local-workspace/dogfood-20261105/allocation-actions-after-narrow.jpg`.
+
+Continue the user's loop with a requested 60-second post-completion delay;
+scheduler minute-boundary rounding can exceed that requested delay.
