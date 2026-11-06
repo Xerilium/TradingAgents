@@ -20,10 +20,20 @@ Desktop host with a browser workspace. A Tauri 2 tray application (Windows x64 a
 
 ## Users
 
-- Primary: the individual operator of this desk. They watch a configured stock universe (fresh default **FANGMAN**: META, AAPL, NVDA, GOOGL, MSFT, AMZN, NFLX; saved configurations can differ and the live paper desk observed on 2026-10-29 tracks 24 symbols), run multi-agent research on selected stocks, and decide what to trade. Job: go from market observation to evidence-backed research to exact, separately approved orders, then follow broker-observed outcomes, without losing track of what each record actually proves.
+- Primary: the individual operator of this personal index-management desk. Their daily job is to understand account/reserve state, review the SPY investment budget and dated holdings, inspect the rebalance, use only specifically authorized execution, and reconcile outcomes or exceptions. Stock research, charts and simulations support that journey. Saved account and universe settings determine the active inputs; defaults and historical observations are not current state.
 - The operator is the only decision maker. Agents advise; they never approve or submit orders.
 
 ## Product Purpose
+
+TradingAgents is a **personal index-management desk**. SPY replication is the first
+shipping priority and the reason to open it every day. Its primary daily workspace
+must make this journey obvious: understand the account and reserves → review the
+investment budget and dated holdings → inspect the rebalance → use the authorized
+execution path → reconcile outcomes and handle exceptions. Research, charts,
+simulations and other trading tools support that purpose; work elsewhere only
+when it directly blocks this journey. Setup, editing and technical detail are
+secondary to the current situation and next useful action. A functioning rebalance
+alone does not establish SPY return parity.
 
 The operator's goal is to manage their own small SPY-benchmarked fund across
 accounts, balancing index tracking with living-expense distributions, cash

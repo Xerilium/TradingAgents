@@ -2,9 +2,23 @@
 
 ## Goal
 
-Build a trading desk that is clear, dependable and useful beside Fidelity Trader+
-and Robinhood. The main journey is holding discrete stocks to track or exceed the
-S&P 500. Research supports that goal; it is not a reason to add unrelated features.
+Build a **personal index-management desk**. **SPY replication is the first shipping
+priority and the reason to open the app every day.** Fidelity Trader+ and Robinhood
+are usability references, not a reason to build a general-purpose trading suite.
+Research, charts, simulations and other trading tools support this purpose.
+
+Stay on this complete journey until it is release-ready:
+
+**Understand the account and reserves → review the investment budget and dated
+holdings → inspect the rebalance → use the authorized execution path → reconcile
+outcomes and handle exceptions.**
+
+Prioritize broken behavior, then jank, friction and missing essentials **within
+that journey**. Work elsewhere only when it directly blocks this goal. A functioning
+rebalance alone does not prove SPY return parity; tracking claims need qualified
+account and benchmark evidence, with the actual method, dates and gaps stated.
+Do not substitute hypothetical results or incomplete price-only evidence for
+observed total-return parity.
 
 Use this file as the standing brief for the completion-paced loop. Current human
 instructions and the repository's security, preservation and trading-authority
@@ -38,6 +52,24 @@ rules still take precedence.
   limits in `docs/issues`; do not make the reader manage the delivery process.
 - Commit the complete item and its evidence. Confirm the working tree's actual
   state before reporting completion. Broker actions remain separately authorized.
+
+## Make index management the primary daily workspace
+
+- Rethink navigation and layout so the complete SPY journey is the obvious daily
+  starting point, not a feature buried under Orders. This is a shipping priority,
+  not a claim that the current navigation already achieves it.
+- Make the current situation and next useful action clear at a glance: account
+  and reserve state, usable investment budget, dated holdings, proposed rebalance,
+  execution/reconciliation state and any exception that blocks progress.
+- Keep setup, editing and technical evidence secondary but accessible. Reuse the
+  existing account, fund-plan, holdings, rebalance, execution and reporting paths;
+  do not invent functionality or data to fill a design.
+- Release readiness requires evidence across the complete journey, including
+  exceptions and outcomes, not just a working preview or submitted request. Keep
+  unexercised execution and unsupported tracking claims explicitly unproven.
+- This loop does not authorize paper trades. The execution stage remains gated
+  by separate explicit human authorization for the specific action. Preserve all
+  existing verification, review, documentation, commit and authorization rules.
 
 ## Design for a glance
 
