@@ -22,8 +22,8 @@ Before capture (ignored):
 
 ## Investigation and constraints
 
-A dynamic workflow independently traces the exact counter/filter/coverage
-contracts and researches documented broker research limitations. Do not assume
+A dynamic workflow independently traced the exact counter/filter/coverage
+contracts and researched documented broker research limitations. Do not assume
 the counts are wrong. Choose the smallest complete clarity correction only after
 that trace. Preserve counts, filter keys, selection, saved result identity,
 quality metadata, model-proposal eligibility and latest-only retention. No new
@@ -34,3 +34,39 @@ craft floor; fresh independent code review must run its own Impeccable context.
 Then one affected live smoke using the retained AAPL result and existing filters.
 No research rerun, provider job, fabricated data, automated test, mock, private
 configuration/credential inspection, order, approval or authority change.
+
+## Verified diagnosis and plan
+
+The source-mapping workflow `wf_e35e7913-1e3` confirmed two separate axes.
+`researchProgress()` counts unique configured and saved symbols before search,
+pagination or batch selection, using the same result-status predicate as the
+filters. These are not distinct-run counts. Compact saved summaries can classify
+missing required reports as incomplete (`store.py` and `evidence_requirements.py`).
+Source/Gateway/social/persistence coverage receipts are a separate collection in
+`service.py`; a completed result may retain coverage gaps. Their count is not a
+claim about unique failed providers or network calls. No incorrect counter was
+established in the observed 26-completed / zero-incomplete state.
+
+Official sources accessed 5 November 2026:
+
+- [Fidelity research-firm information](https://research2.fidelity.com/fidelity/research/reports/release2/Research/ExploreResearchFirms.asp):
+  primary read confirmed the disclaimer that supplied information is not guaranteed
+  accurate, complete or timely.
+- [Robinhood Cortex Digests methodology](https://robinhood.com/us/en/support/articles/cortex-digests-methodology/):
+  research worker reports limits on instrument coverage and accuracy. Neither
+  source defines this desk's result-status or coverage-gap counts; no exact UI
+  parity is claimed.
+
+Plan: replace the ambiguous incomplete badge only in the two coverage fragments
+(row and selected summary) with the existing neutral badge containing the actual
+coverage-gap count. Preserve the separate missing-required-report notice and all
+status predicates. Add visible help within the existing wrapping status-filter
+section: counts cover all configured and saved stocks regardless of search or
+batch selection; completed results can have coverage gaps. Give the section a
+consistent accessible name and description. One scoped full-width paragraph rule
+keeps the explanation inside the nonshrinking filter section rather than adding
+another shrinking workspace child. No new data, metric, filter or backend change.
+
+Fresh source review follows the complete UI batch, then one retained-input smoke
+covering AAPL Summary, Reports, Sources & Filings, completed/incomplete filters,
+search scope and a narrower viewport. No research/provider request or broker action.
