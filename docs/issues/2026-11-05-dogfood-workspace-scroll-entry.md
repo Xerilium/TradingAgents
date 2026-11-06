@@ -70,3 +70,17 @@ Use Impeccable Operate/harden guidance and craft floor. Obtain fresh independent
 source review with its own Impeccable context, then one affected real-navigation
 smoke batch. No automated tests, mocks, fabricated populated records, credential
 or private configuration inspection, authority changes or broker actions.
+
+## Source implementation and checks
+
+`render()` now compares the existing main page marker with `activePage`, then
+zeros only `#main`'s two offsets just after committing a different workspace.
+Same-page early returns, rendering, input/descendant-scroll restoration, bindings
+and completion callbacks are unchanged. No CSS, markup, backend, terms or handlers
+changed. Source delta: 1 added / 1 removed JavaScript line; reviewed candidate
+blob `bec580927e352ee36a4cb6c24c3bb3b94d168705`.
+
+JavaScript syntax and Git whitespace checks passed. The Impeccable detector
+reported only the previously documented `#4dabf7` palette advisory at line 2378,
+outside this change. No palette repair, automated tests or mocks were added.
+Fresh independent source review and one affected live smoke are pending.
