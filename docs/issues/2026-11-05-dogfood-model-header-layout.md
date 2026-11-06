@@ -2,8 +2,9 @@
 
 ## Status and observed jank
 
-In progress from live dev8099 observations on 5 November 2026. Baseline
-`03f168f`, `nautilus`, `D:/src/TradingAgents`; initial working tree clean.
+Completed implementation `f76ff20`, fresh independent source review and one
+native-input/layout live batch on 5 November 2026. Baseline `03f168f`, `nautilus`,
+`D:/src/TradingAgents`; initial working tree clean.
 All work remains integrated on this branch; no new branch or worktree.
 
 Primary inspected Portfolio Positions, Model proposal and Allocations, then
@@ -88,5 +89,57 @@ source detector reported no anti-pattern failures and only the pre-existing
 out-of-scope `#4dabf7` palette advisory at app.js line 2378. Regex-only detection
 is not rendered accessibility or product acceptance evidence.
 
-Fresh independent review `wf_13f0ef48-532` is pending. The single affected live
-batch has not run on this revision.
+Fresh independent review `wf_13f0ef48-532` found no actionable defects against
+`f76ff20be3e5552745052e749b82d9ce83c29def` and verified both candidate blobs.
+The reviewer ran its own Impeccable context once and read Operate, layout, craft
+floor, PRODUCT and DESIGN. It checked the unchanged model markup/conditions and
+explicit handler, input preservation, scoped cascade and preserved Performance
+exports. This was source-only review, not rendered acceptance.
+
+## Live acceptance evidence and decision
+
+Primary loaded the actual dev8099 frontend at the reviewed source without a
+service restart and performed one affected batch without activating the model:
+
+- At 1024 × 768, Portfolio title and all tabs stayed in the common header. The
+  proposed-only input group appeared underneath. Positions and Model proposal
+  had identical header bounds (x=188, y=89, width=820, height=60.296875); Positions
+  had no model control group. Field labels now sit above inputs with the existing
+  4px layout gap; the group's 8px gap separates fields and the explicit action.
+- Re-entered the exact existing capital value, 10000, with native Ctrl+A/type;
+  no new capital or as-of term was invented. Capital focus and value remained
+  intact while actual state polling returned 200 and the observed update advanced
+  from 02:25:53 to 02:26:24 UTC. The date stayed blank. Native Tab reached the date
+  input. The entire segmented date-to-action Tab sequence was not established;
+  no key or pointer activated Model portfolio.
+- Navigating to Positions and back retained capital 10000 and blank as-of. The
+  job remained idle and the visible message stayed “No joint portfolio modeled
+  in this app session.” No populated model record was fabricated.
+- At 768 × 1024 and 1600 × 1000 the labels, inputs and action fit one control row;
+  group client/scroll dimensions matched (736 × 67 and 1360 × 67). The common
+  header and account ledger stayed separate and the result surface remained usable.
+- At 375 × 812 the two fields remained readable and the action wrapped to the
+  next row. Group client/scroll dimensions both measured 343 × 113. Document
+  width matched viewport width at all measured sizes (375, 768, 1024 and 1600).
+  This was part of the same responsive batch, not a second model/test run.
+- Restored 1024 × 768, then cleared viewport emulation to desktop. Console
+  inspection reported no errors. Existing authority stayed “Orders: Active ·
+  Manage”; job status stayed idle. No model/provider job, research rerun,
+  simulation, fund-plan save, credential/private configuration inspection,
+  installation, production operation, order, approval or authority action.
+
+Primary decision: accept the discrete model-form layout correction after fresh
+source scrutiny and these actual layout/input cases. Queued/running/populated
+jobs, long/localized terms, 200% browser zoom, physical assistive technology and
+the full segmented native-date keyboard sequence remain source-reviewed or
+unexercised, not claimed as passes. No automated tests or mocks. This does not
+validate model allocations or broker execution. Captures and DOM were personally
+inspected; no joint human acceptance is claimed.
+
+Ignored local captures under `.local-workspace/dogfood-20261105/`:
+`model-header-layout-before.jpg`, `model-header-layout-after.jpg`,
+`model-header-layout-after-tablet.jpg`, `model-header-layout-after-phone.jpg`.
+
+Continue the completion-paced loop with requested 60-second delay, dynamic
+workflows, fresh source scrutiny and integrated local commits on `nautilus`.
+Scheduler minute-boundary rounding can exceed the requested delay.
