@@ -280,13 +280,16 @@ fresh data or commit databases, credentials, environment files or backup archive
 
 ## Everyday workflow
 
-The navigation has ten workspaces: **Dashboard**, **Portfolio**, **Markets**,
-**Research**, **Orders**, **Strategy lab**, **Journal**, **Alerts**,
-**Workflows**, and **Settings**. **Simulate a saved plan** is **Strategy lab →
+The navigation has eleven workspaces, led by **SPY portfolio** (`#spy`), then
+**Dashboard**, **Portfolio**, **Markets**, **Research**, **Orders**, **Strategy lab**,
+**Journal**, **Alerts**, **Workflows**, and **Settings**. The root desk URL and brand
+link open SPY portfolio; explicit workspace hashes still open their named page.
+Orders → SPY Rebalance remains available. **Simulate a saved plan** is **Strategy lab →
 Simulations**. Reusable experiments are **Strategy lab → Experiments**.
 
 | Page | How to use it |
 | --- | --- |
+| SPY portfolio | Start here for the observed account, reserve and SPY budget. Review existing rebalance inputs and status. Preview, automatic authority and submission remain separate explicit actions; navigation grants none of them. |
 | Portfolio | Check account balances and holdings; scan the universe using search, filters, sorting and columns. Select stocks to organize watchlists. Open a stock's market evidence and available charts before relying on an agent recommendation. |
 | Research | Choose a stock's latest saved result. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
 | Orders | Create or review a local proposal or basket. Check symbol, side, quantity, order type, limit price when applicable and time in force. Read readiness reasons. Approve exact terms, then separately Submit only when intentionally placing an order. |
@@ -707,7 +710,7 @@ later authorized desk restart; this review did not restart or launch research.
 
 ## Read-only smoke test
 
-Open the ten workspaces in the actual browser. Confirm connected Nautilus/account
+Open the workspaces in the actual browser. Confirm connected Nautilus/account
 status, price coverage for the saved universe, readable saved research, visible
 order readiness, persisted settings and journal entries. Capture results and
 errors. Do not approve, submit, cancel, replace, launch research or restore a

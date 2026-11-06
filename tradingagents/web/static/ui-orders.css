@@ -3,7 +3,7 @@
 .alerts-inbox-grid{display:grid;grid-template-columns:minmax(340px,52%) minmax(320px,48%);gap:var(--space-3);align-items:start}
 @media(max-width:1100px){.alerts-inbox-grid{grid-template-columns:1fr}}
 /* Direct Orders/Baskets composition. */
-#main[data-page=orders]{display:flex;flex-direction:column;min-height:0;overflow:auto}
+#main[data-page=orders],#main[data-page=spy]{display:flex;flex-direction:column;min-height:0;overflow:auto}
 #universe-review.orders-workspace{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:visible;color:var(--ink);background:var(--ground)}
 .orders-workspace #orders-tabs{flex:none;margin:0;min-height:40px}
 .orders-readiness{flex:none;padding:var(--space-2);border-bottom:1px solid var(--line);font-size:var(--text-meta)}

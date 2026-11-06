@@ -4,6 +4,20 @@ Use the [root README](../README.md) for the component map and
 [local operating guide](local-desk-guide.md) for deployment and recovery.
 This reference describes the current source capability, not an acceptance log.
 
+## Primary daily workspace
+
+**SPY portfolio** (`#spy`) is first in the sidebar and opens when the desk URL has
+no recognized workspace hash. The brand/home link returns there. Existing explicit
+routes, including Dashboard (`#overview`) and Orders (`#orders`), remain available.
+
+The page reuses the account balance strip and existing fund-plan/rebalance controls.
+It shows the account observation time, coverage-qualified position count and
+connected-state reconciliation status; **View portfolio** opens supporting account
+views. Portfolio's **Open account fund plan** opens the primary SPY editor directly.
+Orders → SPY Rebalance remains an alternate entry to the same in-session plan and
+preview. Navigation changes no plan terms or trading authority. This entry is not
+acceptance of the full execution/reconciliation journey or SPY return parity.
+
 ## Fixed-portfolio hindsight evaluation
 
 The existing fixed-portfolio action uses the archived allocation, retained raw
@@ -169,7 +183,7 @@ unavailable; do not silently substitute today's report.
 
 Portfolio has Positions, Allocations, Model proposal and Performance. Positions
 shows observed holdings and pending exposure; **Open account fund plan** opens
-Orders → SPY Rebalance. Allocations contains fixed-weight historical scenarios;
+the editor in SPY portfolio. Allocations contains fixed-weight historical scenarios;
 loading preset weights does not run a simulation. Holdings as-of dates do not
 establish historical publication or availability at the scenario start.
 
@@ -242,8 +256,8 @@ control actual availability. Paper fills also do not establish live execution.
 
 ### Account fund plans and paper gain/loss review
 
-Orders → SPY Rebalance includes a saved plan for the currently observed USD paper
-account. Monthly net withdrawals from that account, reserve coverage in months,
+SPY portfolio (also available through Orders → SPY Rebalance) includes a saved
+plan for the currently observed USD paper account. Monthly net withdrawals from that account, reserve coverage in months,
 a manual tax provision and a trading cushion are explicit nullable terms. Blank
 is unknown; zero must be authored. Planning-only plans do not constrain sizing.
 An applied incomplete plan blocks SPY sizing. Other saved account plans are

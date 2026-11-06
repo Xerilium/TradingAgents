@@ -9,7 +9,7 @@ Follow the user’s current request and any authorization already given. Do not 
 
 ## Start here
 
-1. Read `references/global-controls-startup.md` for startup, the ten workspaces, the sidebar, and the top bar.
+1. Read `references/global-controls-startup.md` for startup, the SPY-first workspaces, the sidebar, and the top bar.
 2. Read the reference for the requested pages. Read another only if the task crosses pages.
 3. Use the internal browser at `http://127.0.0.1:8098/` (installed production desk). Development uses port 8099 with its own profile. Do not start another desk instance unless the user asks.
 4. Check live settings and account state before explaining or acting. Defaults and old screenshots are not current state. Mark facts as live-observed or source-only.
@@ -50,7 +50,7 @@ uses the separate installed `impeccable` skill; this skill remains an operating 
 
 - `references/global-controls-startup.md` — startup, global controls, and evidence limits.
 - `references/markets-research.md` — Dashboard, Markets, charts, and Research.
-- `references/portfolio-orders-journal.md` — Portfolio, Orders, and Journal.
+- `references/portfolio-orders-journal.md` — SPY portfolio, Portfolio, Orders, and Journal.
 - `references/strategy-alerts-settings.md` — Strategy lab, Alerts, and Settings (including credentials, model limits, and Deep/Fast budgets).
 - `references/workflows.md` — Workflows workspace: prompts, workflow YAML, preview, save, and activation.
 

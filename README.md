@@ -14,16 +14,22 @@ tools support that purpose. A working rebalance alone does not prove SPY return 
 
 | I want to… | Open | What to do |
 | --- | --- | --- |
+| Start my daily index review | **SPY portfolio** | Check the account observation, balances, reserves and SPY budget, then inspect the rebalance. |
 | Find and inspect a stock | **Markets** | Search the universe or a watchlist, then open the stock's chart and details. |
 | Understand a saved conclusion | **Research** | Select the stock, read its Summary, then inspect Reports or Sources & Filings. |
 | Review my account | **Portfolio → Positions** | Check observed holdings, cash and pending exposure. |
 | Explore an allocation | **Portfolio → Allocations** or **Model proposal** | Set a historical allocation, or model a separate portfolio from saved research and dated prices. |
-| Review an S&P 500 stock rebalance | **Orders → SPY Rebalance** | Review the account fund plan and the proposed stock trades. |
+| Review an S&P 500 stock rebalance | **SPY portfolio** | Review the account fund plan and the proposed stock trades. Orders → SPY Rebalance remains an alternate entry. |
 | Prepare exact order terms | **Orders → Ticket & Blotter** or **Human Baskets** | Prepare drafts, review each order, approve exact terms and submit separately. |
 | Compare results | **Portfolio → Performance** | Open a saved account-history interval; use Journal → Account History when one is needed. |
 
-These are independent tools, not a required sequence. Dashboard gives a compact
-starting view; Strategy lab, Journal, Alerts and Workflows support deeper work.
+**SPY portfolio** is the daily starting point: opening the desk without a workspace
+hash lands here, and the TradingAgents home link returns here. Dashboard, research,
+charts, simulations and the other workspaces remain available as supporting tools.
+
+![SPY portfolio as the first workspace, with observed account balances, reconciliation, reserve and SPY budget](docs/images/spy-portfolio.jpg)
+
+*The daily entry at a real 1920 × 1080 viewport. Editing stays secondary; automatic trading is off in this dated capture.*
 
 ## Read the research, not just the rating
 

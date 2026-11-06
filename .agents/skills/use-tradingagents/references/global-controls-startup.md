@@ -17,7 +17,7 @@ Normal server startup starts Nautilus from the saved settings and starts the con
 
 The shell is defined in `index.html` and drawn by `renderChrome()`, `renderNotice()` and `renderConnectionIdentity()` in `app.js`. The shell has a left sidebar and a top bar.
 
-- **Sidebar navigation** (`workspaceLabels` in `app.js`): ten workspaces — Dashboard (`#overview`), Portfolio, Markets, Research, Orders, Strategy lab (`#strategy`), Journal, Alerts, **Workflows** and Settings. The Orders link shows a count of pending, proposed or ready order proposals. Links are hash routes such as `#workflows`. Leaving Workflows with unsaved edits asks **Discard unsaved workflow changes?**. Leaving Settings with an unsaved credential entry asks **Discard unsaved credential changes?**. Declining keeps you on the page.
+- **Sidebar navigation** (`workspaceLabels` in `app.js`): eleven workspaces — **SPY portfolio** (`#spy`) first, then Dashboard (`#overview`), Portfolio, Markets, Research, Orders, Strategy lab (`#strategy`), Journal, Alerts, **Workflows** and Settings. A fresh URL without a recognized workspace hash opens SPY portfolio; the brand/home link returns there. Explicit existing hashes still open their named workspace. The 5 November 2026 affected 1920 × 1080 check observed the fresh root entry and Portfolio's fund-plan handoff to `#spy`; this is navigation evidence, not broker or full-journey acceptance. The Orders link shows a count of pending, proposed or ready order proposals. Links are hash routes such as `#workflows`. Leaving Workflows with unsaved edits asks **Discard unsaved workflow changes?**. Leaving Settings with an unsaved credential entry asks **Discard unsaved credential changes?**. Declining keeps you on the page.
 - **Sidebar footer**: paper/live/unverified account mode, Nautilus connection, market stream and Laya status. Read the actual state rather than treating a saved screenshot as current.
 - **Top bar**: the universe and current workspace, **Find a symbol**, market/snapshot status, **Refresh**, Alerts, and **Orders: Active · Manage** or its paused equivalent. Manage opens the account order controls; it does not change the order gate.
 
@@ -78,7 +78,7 @@ A request can be blocked while another action is busy, the page is hidden, or a 
 
 ## Application recovery page
 
-If the journal cannot load, the server can show **Application recovery** instead of the ten workspaces. Engine, research and data workers stay stopped. This is a conditional source-only screen; do not induce corruption to demonstrate it.
+If the journal cannot load, the server can show **Application recovery** instead of the normal workspaces. Engine, research and data workers stay stopped. This is a conditional source-only screen; do not induce corruption to demonstrate it.
 
 - **Backup ZIP · maximum 64 MiB** selects an existing local application backup.
 - **Inspect archive** uploads it to the local recovery service for validation and shows its manifest/checksum. Current records do not change at inspection.
