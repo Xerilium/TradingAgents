@@ -44,6 +44,11 @@ SPY Rebalance turns loaded SPY fund holdings weights into a reviewable stock pla
 An account fund plan can reserve cash for spending and other authored needs.
 Review the reserve and SPY budget first. Open **Edit account fund plan** to change
 its terms, or **Saved budget and account details** for the full breakdown.
+
+![SPY fund-plan summary with reserve, investment budget and separate editing and budget disclosures](docs/images/spy-fund-plan.png)
+
+*Review first, edit when needed. This detail capture comes from the real 1920 × 1080 desk.*
+
 Use **Find planned stock** to inspect a constituent without changing the full plan.
 An expired preview remains readable and asks you to generate a new one.
 

@@ -1,9 +1,10 @@
 # Dogfood: make SPY fund-plan editing deliberate
 
-Current operating rule: the human removed the failed-local-check reapproval rule.
-The corrected focus check is already-authorized local development work, not a
-human-approval hold. Proceed with the affected real check; preserve failed evidence
-and claim acceptance only from observed results. No paper trades are authorized.
+Current status: **the scoped fund-plan presentation and corrected disclosure-focus
+paths are accepted at a real 1920 × 1080 viewport**. The follow-through below
+preserves the earlier failed round and its correction. This is not acceptance of
+the full SPY shipping journey, broker execution or SPY return parity. No paper
+trades were authorized or performed.
 
 ## Observation and scope
 
@@ -162,15 +163,82 @@ requirements.
 Navigation must become an obvious primary daily workspace; this disclosure patch
 does not claim that larger navigation change is already delivered or release-ready.
 
-README and platform guidance now explain the current disclosures; the affected
-Portfolio/Orders operating reference was synchronized to the installed skill,
-byte-for-byte, without replacing unrelated files. Raw supported-size screenshots
-are saved as evidence. No new README image is promoted as whole-workflow acceptance
-while the focus correction remains unverified live.
+At the prior closeout, source was corrected and independently reviewed, but the
+live focus confirmation and new guide image were still pending. The later
+operating-rule correction removed the redundant approval gate; it did not convert
+the earlier failed observations into passes.
 
-Current status: **source-corrected and independently reviewed; affected live focus
-confirmation remains to be performed under existing authorization**. This is not
-a human-permission hold. No second smoke, paper trade, approval, submission,
-authority change, provider job, automated test, mock, build or production action
-occurred in this recorded iteration. The later operating-rule correction removes
-the reapproval gate; it does not change these historical observations.
+## Completed focused verification — 5 November 2026
+
+Baseline `7df8b5b`, clean `nautilus`; unchanged reviewed app blob
+`5e9b27533a4498f94af9b65629556c4c5b8114c3`. Resumed the affected failed paths under
+existing authorization, without repeating the earlier passing layout/budget cycle.
+The actual browser viewport was inspected as **1920 × 1080** at each focus case.
+The normal `http://127.0.0.1:8099/#orders` and `#portfolio` routes were used.
+
+| Affected path | Observed normal updates | Result |
+| --- | --- | --- |
+| Editor summary | Snapshot 08:01:00 → 08:01:32 | `fund-plan-editor-toggle` remained the active SUMMARY; the original node was disconnected and the replacement focused. Editor stayed open; native Enter closed it. |
+| Budget summary | Snapshot 08:01:32 → 08:02:34 | `fund-plan-budget-toggle` remained the active SUMMARY after node replacement. Budget stayed open; native Enter closed it, with both disclosures then closed. |
+| Portfolio → Open account fund plan | Snapshot 08:04:07 → 08:04:37 | Selected SPY Rebalance, opened the editor and focused its summary despite the remembered closed state. Focus survived replacement; native Enter still closed it. Budget stayed closed. |
+
+All four authored terms stayed blank, status stayed inactive and Save stayed
+disabled. Automatic trading remained off; no plan save, Preview generation, order
+approval/submission/cancel/replace, authority change, research/model/simulation job,
+automated test, mock, build, credential/private configuration or production action.
+Console inspection returned no errors. No application code changed in this
+follow-through.
+
+The pane was off-screen and could not be fronted because the session was not open
+in a window. Primary requested visibility without blocking the work, inspected the
+actual rendered browser through tools and saved screenshots. This is tool-observed
+functional/rendered evidence, not a claim of human-witnessed foreground UAT or a
+timing/performance benchmark. Snapshot advances prove intervening normal renders;
+no page events, records, clocks or data were fabricated.
+
+A coordinate-action batch for the Portfolio entry was refused before execution.
+A safer named-control attempt had a stale reference. A fresh screenshot followed
+by the ordinary standalone native click opened the actual navigation button. No
+connected-app write, broker action or permission bypass was performed.
+
+## Guide image and closeout
+
+- Raw full capture: `.local-workspace/dogfood-20261105/spy-fund-plan-focus-corrected-after-1080p.jpg`.
+- Raw native Browser region capture: `spy-fund-plan-focus-corrected-detail-1080p.png`
+  in that same ignored folder. Region (90, 42)–(796, 195) of the rendered 800 × 450
+  pane capture; the page viewport remained 1920 × 1080.
+- Promoted unchanged to `docs/images/spy-fund-plan.png` (706 × 153), Git blob
+  `63b4ea0fd402daa36fe3b75bf0acae73396b23bb`, matching the raw file byte-for-byte.
+  No visible identifier, credential, private note or unrelated desktop content.
+  PNG chunks are IHDR/IDAT/IEND only; the selected full JPEG had no EXIF/XMP block.
+  No financial value or status was repainted.
+- README includes the real detail image and image notes explain its viewport,
+  capture framing, revision, dated figures and authority-state limits.
+- The operating reference now records the observed focus correction. Its changed
+  installed copy is synchronized separately with an overwrite guard.
+
+Primary acceptance: **complete for this discrete fund-plan presentation and
+native-summary focus item**. The failed round remains recorded above. Active-plan
+save/error/shortfall and account-switch cases were not exercised by this focused
+follow-through; their source review is not runtime acceptance. The broader primary
+daily workspace, complete SPY execution/reconciliation journey and return-parity
+measurement are not accepted by this item. No paper trades are authorized.
+
+Fresh final evidence/privacy review `wf_904a70a8-145` completed against `7df8b5b`
+and this documentation/image diff, with the app blob unchanged. It found no
+actionable defect, confirmed the failed history and bounded acceptance, and
+visually inspected both new captures without finding visible identifiers, secrets,
+private notes or misleading framing. It did not independently rerun the browser
+or metadata checks; the live results above are primary observations.
+
+Primary final decision: accept this discrete item. The changed tracked/installed
+operating reference matches byte-for-byte; unrelated installed files were untouched.
+All 21 checked local documentation/image targets resolve and whitespace checks
+passed. This completion batch adds **zero application-code lines and zero tests**.
+Raw captures remain ignored; only the reviewed guide PNG is promoted. Delivery is
+local on `nautilus`, with no push or production release.
+
+Reusable lesson:
+`memory://knowledge/projects/tradingagents/tradingagents-disclosure-summaries-need-their-own-stable-focus-ids`.
+The SPY-first loop can move to its next discrete in-journey item; this record does
+not claim overall release readiness or authorize any paper trade.
