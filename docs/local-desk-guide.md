@@ -286,7 +286,7 @@ starts the adapter process. The desktop app owns the desk process.
 | --- | --- |
 | `desk_status` | Service and engine state, reconciliation, and observation times |
 | `list_research` | Latest retained result per ticker, including failures and gaps. Use `next_offset` for the next page. |
-| `get_research` | Latest result for a ticker and its report keys. Pass `report` with one of those keys to read that report. |
+| `get_research` | Latest result for a ticker and its report keys. Pass `report` with one of those keys to read it, including `source_coverage` when available. |
 | `get_portfolio` | Observed balances, holdings and their coverage, fund budget, and SPY rebalance status |
 | `get_quote` | Cached price, source, event time, and the desk's configured freshness status |
 

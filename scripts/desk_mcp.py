@@ -1,7 +1,7 @@
 """Serve read-only TradingAgents tools over local MCP stdio."""
 
 import argparse
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -34,22 +34,23 @@ def serve(*, dev):
             raise ValueError(f"Cannot reach the {profile} desk on port {port}. Open the desk and try again.") from None
 
     @mcp.tool(annotations=read_only)
-    def desk_status() -> dict:
+    def desk_status() -> dict[str, Any]:
         """Read service, engine and reconciliation status from the running desk."""
         health = get("/api/health")
+        reconciliation = health.get("reconciliation") or {}
         return {"profile": profile, **{key: health.get(key) for key in (
             "service", "engine", "engine_version", "browse_only",
-            "account_observed_at", "prices_checked_at", "reconciliation", "history_status",
-        )}}
+            "account_observed_at", "prices_checked_at", "history_status",
+        )}, "reconciliation": {key: reconciliation.get(key) for key in ("status", "gaps")}}
 
     @mcp.tool(annotations=read_only)
     def list_research(offset: Annotated[int, Field(ge=0)] = 0,
-                      limit: Annotated[int, Field(ge=1, le=100)] = 25) -> dict:
+                      limit: Annotated[int, Field(ge=1, le=100)] = 25) -> dict[str, Any]:
         """List the latest retained result per ticker, including failed and incomplete results."""
         return get("/api/context/research", offset=offset, limit=limit)
 
     @mcp.tool(annotations=read_only)
-    def get_research(symbol: str, report: str | None = None) -> dict:
+    def get_research(symbol: str, report: str | None = None) -> dict[str, Any]:
         """Read a ticker's latest retained research and available report keys. Pass a report key to read its text."""
         params = {"symbol": symbol}
         if report is not None:
@@ -57,12 +58,12 @@ def serve(*, dev):
         return get("/api/context/research", **params)
 
     @mcp.tool(annotations=read_only)
-    def get_portfolio() -> dict:
+    def get_portfolio() -> dict[str, Any]:
         """Read observed balances, position coverage, fund budget and SPY rebalance status."""
         return get("/api/context/portfolio")
 
     @mcp.tool(annotations=read_only)
-    def get_quote(symbol: str) -> dict:
+    def get_quote(symbol: str) -> dict[str, Any]:
         """Read a cached stock price with its source, event time and configured freshness status."""
         return get("/api/context/quote", symbol=symbol)
 

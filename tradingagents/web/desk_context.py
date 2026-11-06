@@ -28,7 +28,9 @@ def research(desk, *, symbol=None, report=None, offset="0", limit="25"):
 
     def summary(run_id, result):
         item = store.result_summary(result)
-        return {"run_id": run_id, **_fields(item, "symbol status rating trade_date revision completion_gaps coverage_gaps report_keys")}
+        gaps = item.get("coverage_gaps")
+        return {"run_id": run_id, **_fields(item, "symbol status rating trade_date revision completion_gaps report_keys"),
+                "coverage_gap_count": len(gaps) if gaps is not None else None}
 
     with store.lock:
         latest = {result["symbol"]: (run["id"], result)
