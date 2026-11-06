@@ -159,6 +159,11 @@ actual installation, saved data and permitted smoke test.
   finish the work. A failed check is work to diagnose, fix and recheck, not a new
   permission gate. Batch corrections and recheck the affected failed paths without
   asking again; do not repeat passing cycles or claim unobserved acceptance.
+- A broker-action restriction or missing live execution evidence blocks that
+  specific action or acceptance claim, not authorized development. Do not pause
+  the development loop or require the operator to supply another defect on that
+  basis. Continue investigating and completing meaningful non-trading work; keep
+  broker, credential, destructive-action, production and testing boundaries intact.
 - Question-widget prompting is banned for already-authorized work. Do not call
   `AskUserQuestion` in this checkout. Do not populate `ask` or `actions` on the
   app's `mcp__ccd_turn__wrap_up` to reauthorize development, ordinary navigation,

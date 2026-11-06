@@ -1,6 +1,8 @@
 # SPY execution acceptance boundary
 
-Status: bounded evidence closeout complete; the completion timer is paused at broker-execution acceptance. This is not release acceptance or a claim that all source is defect-free.
+Status: the loop-pause decision was rejected by the operator on 6 November 2026 and is superseded. The execution acceptance gaps below remain valid, but they do not block ongoing authorized development.
+
+**Active correction:** broker-action restrictions apply to those specific actions, not the entire development loop. Continue investigating and improving the SPY journey under the standing authorization. Do not require the operator to supply a new defect or grant permission again for ordinary development. The historical pause rationale below is evidence of the mistake, not an operating rule.
 
 ## Current scope and observation
 
@@ -30,12 +32,20 @@ No code, tests, CSS/backend, plan/reporting save, Preview/research/model/simulat
 
 Evidence: [read-first overview](2026-11-05-dogfood-spy-read-first-overview.md), [account exceptions](2026-11-05-dogfood-spy-account-exceptions.md), [preview toolbar](2026-11-05-dogfood-spy-preview-toolbar.md), [empty positions](2026-11-05-dogfood-portfolio-empty-spy-handoff.md), and [blocked-run correction](2026-11-05-dogfood-spy-blocked-run-status.md). The last issue records qualified Fidelity order-status guidance; no broker-specific behavior is inferred from it. No new UI composition or upstream research was needed for this evidence closeout.
 
-## Independent review and primary decision
+## Historical review and superseded decision
 
 Evidence review `wf_e83a44f2-c50` found the acceptance claims otherwise supported, but requested a clearer distinction between the execution boundary and stopping all possible development. Primary added that distinction. Its suggestion that onboarding/critique remain due was not adopted: the current explicit loop input marks `8474ad3` / `399148b` completed and forbids repeating them, superseding the stale next-iteration wording in the standing brief. No completed checkpoint is reopened.
 
-Primary decision: pause the completion timer for this bounded batch rather than manufacture another task or seek broad trading authority. The next unfinished acceptance stage in the documented journey is specifically authorized execution and its actual outcomes. This is not a claim that all future nonbroker corrections are impossible. A concrete new defect or real input can support further development under the existing rules, without reauthorizing ordinary checks. No failed affected local check is parked behind an approval gate.
+Superseded primary decision: pause the completion timer for this bounded batch rather than manufacture another task or seek broad trading authority. The next unfinished acceptance stage in the documented journey is specifically authorized execution and its actual outcomes. This is not a claim that all future nonbroker corrections are impossible. A concrete new defect or real input can support further development under the existing rules, without reauthorizing ordinary checks. No failed affected local check is parked behind an approval gate.
 
 The independent review covered documentation/cited evidence only, not the browser, broker, source completeness or every remaining product state. Primary retains the current real observation and its limits. No application, design, operating-control or guide-image change was necessary. Code/test changes: 0. Commit this evidence locally on nautilus; no push. Keep the three foreign working changes untouched.
 
 Reviewed draft Git blob: `4047d885b002fe266df7e6421edad05f90f12ef7`. The final scope clarification is the primary correction, not a second independent acceptance pass.
+
+## Correction — 6 November 2026
+
+The operator rejected the pause reason. Primary accepts the correction: absence of authorization for broker execution did not establish a blocker for continued investigation, source review, UI improvements or permitted local verification. The standing completion-paced loop is to resume. This changes no broker, credential, destructive-action, production or testing boundary. Do not infer that missing live execution acceptance exhausts useful non-trading work.
+
+## Resumption review — 6 November 2026
+
+Independent review `wf_e8ee7b65-03b` found no findings in the AGENTS rule and correction draft (issue blob `77a81438c9bfc12a0ce7c838c6c074cba07f1334`). It reviewed documentation scope only. Primary accepts the correction and restores one completion-paced development wakeup; broker actions remain separately unauthorized. No application code or tests changed. The existing on-disk correction was preserved, not replaced.
