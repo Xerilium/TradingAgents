@@ -2,8 +2,9 @@
 
 ## Status and observed failure
 
-In progress from live dev8099 observations on 5 November 2026. Baseline
-`6033ab4`, `nautilus`, `D:/src/TradingAgents`; initial working tree clean.
+Completed implementation `d7d4abf`, fresh independent source review and one
+affected live responsive smoke on 5 November 2026. Baseline `6033ab4`,
+`nautilus`, `D:/src/TradingAgents`; initial working tree clean.
 All work stays integrated on this branch. No new worktree or branch.
 
 The real Orders → Ticket & Blotter view at 1024 × 768 shows preparation labels,
@@ -83,6 +84,58 @@ Git whitespace validation and the layout-scoped Impeccable detector passed; the
 detector returned no findings. There is no JavaScript change requiring a syntax
 check. No automated tests were added or run.
 
-A separate fresh independent reviewer is scrutinizing the actual diff against
-`7c2188b`, cascade, both responsive modes and shared Orders views. Review and one
-live affected responsive smoke remain pending; no acceptance is implied yet.
+A separate fresh independent reviewer found no confirmed actionable findings
+against `7c2188b` and the recorded blob, committed as `d7d4abf`. The reviewer
+successfully ran Impeccable context and read PRODUCT, DESIGN, Operate, layout and
+craft floor. Source review confirmed both responsive modes, the preserved wide
+scrolling rules and shared Orders callers. It did not establish runtime behavior.
+
+## Acceptance evidence and decision
+
+Primary reloaded the running dev8099 app at `d7d4abf` and completed one affected
+responsive live smoke batch, without restarting the service or creating terms:
+
+- At 1024 × 768, the existing bracket/replacement disclosure was expanded by
+  native pointer. Preparation reserved 1,296px and the following review pane
+  started 12px below it. The review pane reserved 2,172px. The Manage shortcut
+  scrolled to clean, readable Stage 3 content, with no preparation fields painted
+  over it. No order-action control was used.
+- At 1024 × 1024, the one-column grid also reserved its full content heights:
+  client/scroll heights matched at 1,077px for preparation and 2,426px for review.
+  This covers the taller grid failure that a flex-only fix would have missed.
+- At 768 × 1024, the stacked panes' client/scroll heights matched at 1,315px and
+  2,479px, with 12px between panes. The rendered Stage 2/3 boundary was readable.
+- At 1600 × 768, the existing bounded panes retained `min-height:0` and
+  `overflow:auto`. Native scrolling inside preparation moved its scroll position
+  to 600px while the review pane and main stayed at zero. At 1600 × 1000, the
+  two-column grid retained bounded independent panes and readable Stage 1/2.
+  An immediate resize capture was stale; the settled wide/short capture, not that
+  stale frame, was inspected and retained.
+- Document width equaled viewport width at all five sizes. Viewport emulation was
+  reset to desktop. Human Baskets was then selected through the actual tab: the
+  existing empty basket view started below preparation, client/scroll heights
+  matched, and the rendered boundary did not overlap. This does not validate
+  populated baskets. Fills & Fees and Option Instructions were source-reviewed
+  shared callers, not separately live-exercised.
+- The topbar remained “Orders: Active · Manage”, with the existing BND selection,
+  no approved order and $100,000 cash. No console errors were reported. No draft
+  save, preview, approval, submission, pause/resume, cancel/replace, simulation,
+  provider collection, research run, installation or production operation.
+
+Primary decision: accept this discrete pane-sizing repair after fresh source
+scrutiny and the observed responsive batch. Filled or dirty drafts, populated
+approvals/orders/baskets and every disclosure variant remain unverified; none was
+fabricated for acceptance. No automated tests or mocks were added or run. This is
+not full order-workflow or broker-execution acceptance. Browser captures and DOM
+were inspected; the session's pane could not be jointly shown in the prior
+iteration, so no joint user-visible acceptance is claimed.
+
+Ignored local evidence under `.local-workspace/dogfood-20261105/`:
+`order-ticket-overlap-before.jpg`, `order-ticket-overlap-after-desktop.jpg`,
+`order-ticket-overlap-after-narrow.jpg`, `order-ticket-overlap-after-tall-grid.jpg`,
+`order-ticket-overlap-after-wide-short.jpg` and
+`order-ticket-overlap-after-baskets.jpg`.
+
+Continue the completion-paced loop with its requested one-minute delay, dynamic
+workflows, fresh code scrutiny and local commits integrated on `nautilus`.
+Scheduler minute-boundary rounding can exceed 60 seconds.
