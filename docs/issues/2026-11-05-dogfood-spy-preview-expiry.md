@@ -2,8 +2,9 @@
 
 ## Status and observed failure
 
-In progress from live dev8099 observations on 5 November 2026. Baseline
-`453aca8`, `nautilus`, `D:/src/TradingAgents`; initial working tree clean.
+Completed implementation `93070a3`, fresh independent source review and one
+natural-expiry live UI batch on 5 November 2026. Baseline `453aca8`, `nautilus`,
+`D:/src/TradingAgents`; initial working tree clean.
 All work stays integrated on this branch; no new branch or worktree.
 
 The retained preview from the preceding item showed its last price check at
@@ -95,7 +96,7 @@ as `93070a3`. The reviewer ran Impeccable context and read PRODUCT, DESIGN,
 Operate, harden and craft floor. Source coverage included client/server deadlines,
 all preview/token/blocker/queue states and preserved financial handlers. The
 reviewer explicitly retained the earlier-server-deadline and next-render caveats.
-One natural-expiry live observation remains pending; no final runtime acceptance.
+The single natural-expiry live observation is complete; evidence and limits follow.
 
 ## Live observation checkpoint
 
@@ -109,10 +110,43 @@ control was used. No token/whole API response was read or printed.
 Initial ready-state capture (ignored):
 `.local-workspace/dogfood-20261105/spy-preview-expiry-fresh.jpg`.
 
-Leave this same preview open. Its client deadline must be past by 17:50:52 local
-because the successful preview was already observed at 17:45:51. Resume after
-that time for the expiry half of this single batch. Do not reload, preview again,
-change clocks/TTL, submit, toggle authority or begin another dogfood item. Read the
-actual warning/disabled Submit/queue hint/full plan and verify the retained local
-filter, then record actual evidence and limits, commit and rearm the ordinary
-one-minute completion loop.
+The same preview was left open past its natural validity window. No reload,
+new preview, altered clock/TTL or new dogfood item occurred during the wait.
+
+## Natural-expiry evidence and decision
+
+Primary resumed this same batch at `2026-11-06T01:52:23.404Z` (17:52:23 local),
+more than six minutes after the initial ready-state observation. Before any
+navigation, input or manual render action on resumption:
+
+- The actual rendered warning read “This preview has expired. Select Preview
+  SPY rebalance to review a new plan before submitting.”
+- Submit was disabled, Preview remained enabled and the queue hint was absent.
+  The retained dry-run summary, Proposed trades (503) heading and 503-of-503
+  count remained visible. Existing automatic trading was still on and unchanged.
+- Native lookup of AAPL still showed 1 of 503 and its retained BUY quantity
+  22.316587347, while the warning persisted and Submit stayed disabled. Clear
+  restored all 503 rows without re-enabling submission or requesting a preview.
+- Browser console inspection reported no errors. At 1024 × 768, the warning,
+  controls and retained review content rendered without horizontal page overflow.
+  No broker action, approval, queue, authority toggle, fund-plan save, research,
+  simulation, runtime installation or production operation occurred.
+
+Primary decision: accept the discrete expiry-disclosure correction after fresh
+source scrutiny and this one real natural-expiry batch. Only one validation
+preview was created; the expired retained preview remained the same afterward.
+No clock mutation, shortened TTL, fabricated record, automated test or mock.
+
+This proves the observed ready and post-deadline UI states, not an update at the
+precise deadline, behavior while every page is hidden/idle, or synchronization
+with the earlier authoritative server deadline. Server rejection, null-token,
+policy-blocked, queued/in-progress and account/revision-invalidated combinations
+remain source-reviewed, not separately exercised. Broker execution is unverified.
+Browser captures and DOM were inspected; no joint user-visible acceptance claim.
+
+After capture (ignored):
+`.local-workspace/dogfood-20261105/spy-preview-expiry-after.jpg`.
+
+Continue the requested completion-paced loop with a one-minute delay, dynamic
+workflows, fresh independent code scrutiny and all local commits on `nautilus`.
+Scheduler minute-boundary rounding can exceed 60 seconds.
