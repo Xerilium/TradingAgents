@@ -1257,7 +1257,7 @@ class DeskService:
     def investor(self):
         from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version, working_commitments, decimal, contingent_group
         from .approval_review import evaluate
-        from .admission import ACTIVE, DEFAULT as COMMANDS
+        from .admission import DEFAULT as COMMANDS
         from .market_history import DEFAULT as HISTORY
         from .stock_evidence import DEFAULT as EVIDENCE
         record = self.store.database.read("investor", DEFAULT)
@@ -1297,7 +1297,18 @@ class DeskService:
             if quantity is not None and broker_available is not None:
                 quantity = min(quantity, max(broker_available, 0))
             instrument.update(available_exit_quantity=str(quantity) if quantity is not None else None, exit_availability_known=quantity is not None)
+        return {**record, "fund_plans": self.fund_plan_status(runtime, record["data"]["policy"]),
+                "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
+                "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
+                "current_checks": checks, "broker_order_actions": broker_actions,
+                "spy_rebalance": self.spy_rebalance.status(runtime),
+                "instruments": available_instruments, "option_package_profiles": copy.deepcopy(PACKAGE_PROFILES),
+                "option_execution_profiles": copy.deepcopy(EXECUTION_PROFILES)}
+
+    def fund_plan_status(self, runtime, policy):
+        from .admission import ACTIVE, DEFAULT as COMMANDS
         from .fund_plans import DEFAULT as FUND_DEFAULT, RECORD as FUND_RECORD, account_key, budget, validate
+        from .investor import working_commitments
         from .spy_rebalance import paper_account
         fund_record = self.store.database.read(FUND_RECORD, FUND_DEFAULT)
         validate(fund_record["data"])
@@ -1315,19 +1326,13 @@ class DeskService:
                                      and not current_commands.get("recovery_required")
                                      and not current_commands.get("new_orders_blocked")
                                      and not any(item.get("state") in ACTIVE for item in current_commands["commands"].values()))
-                fund_budget = budget(current, observed, record["data"]["policy"], commitments_clear=commitments_clear)
+                fund_budget = budget(current, observed, policy, commitments_clear=commitments_clear)
             else:
                 budget_error = "A current reconciled USD paper account is required."
         except ValueError as error:
             budget_error = str(error)
-        funds = {"revision": fund_record["revision"], "current_account_id": account_id, "current": current,
-                 "plans": list(fund_record["data"]["plans"].values()), "budget": fund_budget, "budget_error": budget_error}
-        return {**record, "fund_plans": funds, "rule_labels": RULES, "rule_parameters": RULE_PARAMETERS, "approval_records_enabled": self.admission.review_enabled,
-                "command_admission_enabled": self.admission.admission_enabled, "broker_transport_enabled": self.admission.execution_enabled,
-                "current_checks": checks, "broker_order_actions": broker_actions,
-                "spy_rebalance": self.spy_rebalance.status(runtime),
-                "instruments": available_instruments, "option_package_profiles": copy.deepcopy(PACKAGE_PROFILES),
-                "option_execution_profiles": copy.deepcopy(EXECUTION_PROFILES)}
+        return {"revision": fund_record["revision"], "current_account_id": account_id, "current": current,
+                "plans": list(fund_record["data"]["plans"].values()), "budget": fund_budget, "budget_error": budget_error}
 
     def health(self, *, journal_revision=None):
         import sqlite3
@@ -2286,10 +2291,7 @@ class DeskService:
             "reconnect_to_apply": bool(error or configured != runtime.get("endpoint")),
             "credential_policy": "Credentials and destination are pinned until an explicit new native session"}
 
-    def _runtime_market(self):
-        runtime = self.runtime.state()
-        connection_identity = self.connection_context(runtime)
-        available = runtime["status"] == "connected"
+    def _market_quotes(self, runtime, symbols):
         from .investor import DEFAULT as INVESTOR_DEFAULT
         rule = self.store.database.read("investor", INVESTOR_DEFAULT)["data"]["policy"]["rules"].get("session_freshness", {})
         opened = runtime.get("market_open")
@@ -2297,8 +2299,8 @@ class DeskService:
         configured = (rule.get("state") == "enabled" and type(opened) is bool and maximum is not None and maximum > 0
                       and rule.get("session") in {"regular_session_required", "allow_closed_session_review"})
         quotes = {}
-        for symbol in dict.fromkeys(self.store.data["config"]["universe"] + [p["symbol"] for p in runtime.get("positions", [])]):
-            observation = runtime.get("market_data", {}).get(symbol, {}) if available else {}
+        for symbol in symbols:
+            observation = runtime.get("market_data", {}).get(symbol, {}) if runtime["status"] == "connected" else {}
             trade, quote = observation.get("trade"), observation.get("quote")
             price = float(trade["price"]) if trade else (
                 (float(quote["bid_price"]) + float(quote["ask_price"])) / 2 if quote else None)
@@ -2318,6 +2320,14 @@ class DeskService:
                 "change_pct": (price / float(previous) - 1) * 100 if price and previous else None,
                 "error": observation.get("error") or (None if price else "Latest price unavailable"),
                 "checked_at": runtime.get("prices_checked_at")}
+        return quotes
+
+    def _runtime_market(self):
+        runtime = self.runtime.state()
+        connection_identity = self.connection_context(runtime)
+        available = runtime["status"] == "connected"
+        symbols = dict.fromkeys(self.store.data["config"]["universe"] + [p["symbol"] for p in runtime.get("positions", [])])
+        quotes = self._market_quotes(runtime, symbols)
         errors = [] if available else [
             {"source": source, "message": runtime.get("error") or "Start Nautilus to load engine state."}
             for source in ("connection", "account", "positions", "orders", "quotes")]

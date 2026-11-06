@@ -193,6 +193,24 @@ class DeskHandler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self._send(200, self.server.service.health())
             return
+        if path in {"/api/context/research", "/api/context/portfolio", "/api/context/quote"}:
+            from . import desk_context
+
+            view = {"/api/context/research": desk_context.research,
+                    "/api/context/portfolio": desk_context.portfolio,
+                    "/api/context/quote": desk_context.quote}[path]
+            query = parse_qs(url.query, keep_blank_values=True)
+            try:
+                if any(len(values) != 1 for values in query.values()):
+                    raise ValueError("Repeated context parameter.")
+                result = view(self.server.service, **{key: values[0] for key, values in query.items()})
+            except desk_context.ContextUnavailable as exc:
+                self._send(404, {"error": str(exc)})
+            except (TypeError, ValueError):
+                self._send(400, {"error": "Invalid desk context request."})
+            else:
+                self._send(200, result)
+            return
         if path == "/api/commands":
             self._send(200, self.server.service.admission.snapshot())
             return

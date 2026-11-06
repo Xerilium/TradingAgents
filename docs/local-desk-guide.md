@@ -262,6 +262,39 @@ from a listener query that failed is not proof that the port is unused. Do not
 launch duplicate hosts or recreate runtimes on that evidence. This command is
 for development; production maintenance uses its installed isolated runtime.
 
+### Connect a local MCP client
+
+The optional TradingAgents MCP server runs over stdio using the official
+[Python MCP SDK v1](https://py.sdk.modelcontextprotocol.io/v1/), already included
+in the desk runtime. Start the desk normally and add a local stdio server in
+your MCP client. Set **Command** to the absolute path to the desk Python
+executable and **Args** to the equivalent of this development example:
+
+```json
+{
+  "command": "D:/src/TradingAgents/.venv/Scripts/python.exe",
+  "args": ["-I", "D:/src/TradingAgents/scripts/desk_mcp.py", "--dev"]
+}
+```
+
+`--dev` selects the development desk on port 8099. For the installed desk,
+use its private desk Python and omit `--dev` to select port 8098. The running
+desk must include the `/api/context/` routes from this revision. The MCP client
+starts the adapter process. The desktop app owns the desk process.
+
+| Tool | Returns |
+| --- | --- |
+| `desk_status` | Service and engine state, reconciliation, and observation times |
+| `list_research` | Latest retained result per ticker, including failures and gaps. Use `next_offset` for the next page. |
+| `get_research` | Latest result for a ticker and its report keys. Pass `report` with one of those keys to read that report. |
+| `get_portfolio` | Observed balances, holdings and their coverage, fund budget, and SPY rebalance status |
+| `get_quote` | Cached price, source, event time, and the desk's configured freshness status |
+
+Tools read from the running desk's loopback API through its normal session.
+They can expose private portfolio observations and saved research to the MCP
+client. A missing price or incomplete position coverage is returned as such.
+Research, data collection, settings and order actions stay in the desk.
+
 ## Where things live
 
 | Item | Current location / purpose |
