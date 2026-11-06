@@ -227,6 +227,20 @@ Saving credentials does not switch an active account. Stop Nautilus, then start
 it to load the saved account and endpoint. Normal app startup also uses that
 native store. Verify the observed paper/live account before preparing orders.
 
+### Activate source-only backend changes
+
+Use **TradingAgents Development → Restart** in the existing Windows tray.
+The debug development host reloads checkout Python and its native worker; do not
+launch another dev instance or start the Python server directly. Before an
+authorized restart, confirm automatic authority is off, no active manual run and
+no working, pending or unknown commands/orders. Stop activation if these change.
+Normal browser reload does not reload backend Python. After restart, verify a new
+native session, fresh exact paper-account reconciliation and saved policy/floor.
+Health's `source_sha256` records the three execution-cycle source files at desk
+startup; `native_source_sha256` identifies the worker bytes at native startup.
+Compare with the reviewed committed files; profile identity alone is not revision
+evidence. Regenerate session-only previews after the changed native binding.
+
 ### Check development access without restarting
 
 Use `scripts/desk_api.py` for local API reads. It opens the workspace normally,

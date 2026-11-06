@@ -68,6 +68,7 @@ def main():
         with (Path(native_package_file).parent / relative).open("rb") as source:
             if hashlib.file_digest(source, "sha256").hexdigest() != expected["sha256"]:
                 raise ValueError("Native files differ from the reviewed official wheel: " + relative)
+    source_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     native_epoch = str(uuid4())  # One identity per actual worker/native-node process, not per web adapter.
     venue, usd = Venue("ALPACA"), Currency.from_str("USD")
     startup = json.loads(sys.stdin.readline())
@@ -774,7 +775,7 @@ def main():
                 "observed_mode": connection.mode if connected and not observed["error"] else "unknown",
                 "mode_basis": "Official trading origin plus authenticated account observation", "credentials_pinned": True},
             "native_risk": risk_snapshot(connected and not observed["error"]),
-            "version": __version__, "native_epoch": native_epoch, "worker_pid": os.getpid(), "persistence": dict(persistence_status),
+            "version": __version__, "source_sha256": source_sha256, "native_epoch": native_epoch, "worker_pid": os.getpid(), "persistence": dict(persistence_status),
             "broker_observation": observed.get("broker_observation", {}),
             "native_import_gap": observed.get("native_import_gap"),
             "native_contract": {"source_commit": manifest["source_commit"], "wheel_sha256": manifest["official_wheel"]["sha256"],
@@ -1730,9 +1731,12 @@ def main():
                 elif command.get("command") == "package_valuation":
                     reply["package_valuation"] = clients["data"].prepare_package(command["terms"])
                 elif command.get("command") == "refresh":
-                    await clients["data"].refresh()
-                    await clients["execution"]._query_account(None)
-                    await clients["execution"]._apply_observation()
+                    try:
+                        await clients["data"].refresh()
+                        await clients["execution"]._query_account(None, force=command.get("post_fill") is True)
+                        await clients["execution"]._apply_observation()
+                    except (HTTPError, URLError, TimeoutError) as exc:
+                        observed["error"] = reply["error"] = "Account refresh unavailable (" + type(exc).__name__ + ")"
                 elif command.get("command") == "dispatch":
                     observer.dispatch(command["command_id"], command.get("action", "submit"))
                     reply["queued_in_native_engine"] = True

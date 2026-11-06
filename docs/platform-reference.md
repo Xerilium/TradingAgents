@@ -27,6 +27,19 @@ approval or the ticket ready count. **Review account order controls** opens
 Orders management and focuses its account controls; ordinary updates retain that
 pane by Orders tab. An empty exception list does not establish a complete SPY preflight pass.
 The server still checks freshness, commitments and exact preview bindings.
+SPY execution requests the existing native quote/account refresh before deriving
+its next bounded LIMIT, outside the maintenance lock. It then rereads the run and
+rechecks account/session, policy, fund binding, cash and holdings before existing
+exact admission and one-shot transport. A refresh does not prove a new exchange
+event or an acceptable spread; existing source-age and applied rules still govern.
+Authoritative full-fill progress requests one post-fill account observation and
+wakes the existing single-step executor on run/command/account progress. The
+post-fill observation must still start after the fill and match expected holdings
+before another leg; partial/unknown outcomes do not advance. Normal polling is a
+fallback, not a parallel-order path. These mechanics require a loaded backend
+revision; health exposes startup source hashes for the desk and native worker.
+Broker fill-driven acceptance remains unobserved until an authorized real run.
+
 Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity
 across same-context ordinary updates. Native disclosure expanded state and focus

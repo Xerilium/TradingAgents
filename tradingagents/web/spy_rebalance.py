@@ -53,6 +53,26 @@ class SpyRebalance:
         self.stopped = False
         self.weights = None
         self.manual_preview = None
+        self.observed_progress = None
+        self.post_fill_refreshed = None
+        self.wake_pending = False
+
+    def step_finished(self, future):
+        with self.desk.maintenance:
+            wake, self.wake_pending = self.wake_pending, False
+            if wake:
+                self.tick(wake=True)
+
+    def observe(self, runtime):
+        run = self.desk.store.database.read(RECORD, DEFAULT)["data"]["run"]
+        if not run or run["status"] not in ACTIVE_RUN:
+            return
+        command = self.desk.store.database.read("commands", COMMANDS)["data"]["commands"].get(run.get("command_id"), {})
+        progress = (run.get("manual_id"), run["session"], run["status"], run["completed"],
+                    command.get("id"), command.get("state"), runtime.get("account_observation_started_at"))
+        if progress != self.observed_progress:
+            self.observed_progress = progress
+            self.tick(wake=True)
 
     @staticmethod
     def active_manual_run(data):
@@ -274,25 +294,28 @@ class SpyRebalance:
                 blockers.append(f"{reason} Affected stocks: {len(symbols)} ({examples}{', …' if len(symbols) > 5 else ''}).")
         return blockers
 
-    def tick(self):
-        if self.stopped or self.desk.browse_only or time.monotonic() < self.next_poll:
-            return
-        self.next_poll = time.monotonic() + 5
-        if self.future is not None and not self.future.done():
-            return
-        store = self.desk.store
-        data = store.database.read(RECORD, DEFAULT)["data"]
-        if not data["enabled"] and not self.active_manual_run(data):
-            return
-        runtime = self.desk.runtime.state()
-        if runtime.get("market_open") is not True or paper_account(runtime) != data["account_id"]:
-            return
-        session = datetime.now(NEW_YORK).date()
-        run = data["run"]
-        if run and (run["session"] > session.isoformat() or
-                    run["session"] == session.isoformat() and run["status"] in {"completed", "blocked"}):
-            return
-        self.future = self.desk.data_jobs.executor.submit(self.step, store, session)
+    def tick(self, *, wake=False):
+        with self.desk.maintenance:
+            if self.stopped or self.desk.browse_only or not wake and time.monotonic() < self.next_poll:
+                return
+            if self.future is not None and not self.future.done():
+                self.wake_pending |= wake
+                return
+            self.next_poll = time.monotonic() + 5
+            store = self.desk.store
+            data = store.database.read(RECORD, DEFAULT)["data"]
+            if not data["enabled"] and not self.active_manual_run(data):
+                return
+            runtime = self.desk.runtime.state()
+            if runtime.get("market_open") is not True or paper_account(runtime) != data["account_id"]:
+                return
+            session = datetime.now(NEW_YORK).date()
+            run = data["run"]
+            if run and (run["session"] > session.isoformat() or
+                        run["session"] == session.isoformat() and run["status"] in {"completed", "blocked"}):
+                return
+            self.future = self.desk.data_jobs.executor.submit(self.step, store, session)
+            self.future.add_done_callback(self.step_finished)
 
     def step(self, store, session):
         if session != datetime.now(NEW_YORK).date():
@@ -528,14 +551,37 @@ class SpyRebalance:
     def advance(self, store, record):
         database = store.database
         data, run = record["data"], record["data"]["run"]
+        with self.desk.maintenance:
+            if self.stopped or self.desk.store is not store:
+                return
+            if paper_account(self.desk.runtime.state()) != data["account_id"]:
+                return
+            command = database.read("commands", COMMANDS)["data"]["commands"].get(run.get("command_id"), {})
+            refresh = not run["command_id"] and run["status"] == "ready"
+            post_fill = command.get("state") == "filled" and self.post_fill_refreshed != command.get("id")
+        if refresh or post_fill:
+            # Native replies need the observer's maintenance lock; never wait for them while holding it.
+            try:
+                self.desk.runtime.request("refresh", post_fill=post_fill)
+            except ValueError:
+                with self.desk.maintenance:
+                    self.wake_pending = False
+                    self.next_poll = time.monotonic() + 5
+                return
         def update(**changes):
             def change(saved):
                 saved["run"].update(changes)
             return database.update(RECORD, record["revision"], change, DEFAULT)
 
         with self.desk.maintenance:
-            if self.stopped or self.desk.store is not store:
+            current = database.read(RECORD, DEFAULT)
+            if self.stopped or self.desk.store is not store or current["revision"] != record["revision"]:
                 return
+            data, run = current["data"], current["data"]["run"]
+            if not data["enabled"] and not self.active_manual_run(data):
+                return
+            if post_fill:
+                self.post_fill_refreshed = command["id"]
             runtime = self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
             policy = self.check_plan_policy(store, run)
             plan = self.check_fund_binding(store, runtime, run)

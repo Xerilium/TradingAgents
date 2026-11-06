@@ -199,6 +199,8 @@ def research_quote_context(symbol, trade_date, market, workflow=None):
 class DeskService:
     def __init__(self, directory: Path, gateway=None, graph_factory=None, runtime=None,
                  browse_only=False, history_dir=None, migrate_legacy=False):
+        self.source_sha256 = {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
+                              for name in ("service.py", "spy_rebalance.py", "nautilus_worker.py")}
         defaults = build_default_config()
         defaults["llm_provider"] = os.getenv("TRADINGAGENTS_LLM_PROVIDER", "codex")
         # The library leaves inference retries unset so other callers keep their SDK
@@ -319,6 +321,8 @@ class DeskService:
                 self.admission.reconcile()
             else:
                 self.admission.observe_current(self.runtime.state())
+            if getattr(self, "spy_rebalance", None):
+                self.spy_rebalance.observe(self.runtime.state())
 
     def attention_context(self):
         runtime = self.runtime.state()
@@ -1337,7 +1341,8 @@ class DeskService:
         account = runtime.get("account") or {}
         from .admission import DEFAULT as COMMAND_DEFAULT
         commands = self.store.database.read("commands", COMMAND_DEFAULT)["data"]
-        return {"product": "TradingAgents", "application_identity": hashlib.sha256(str(getattr(self, "launch_root", self.application_root)).casefold().encode()).hexdigest(),
+        return {"product": "TradingAgents", "source_sha256": self.source_sha256,
+                "native_source_sha256": runtime.get("source_sha256"), "application_identity": hashlib.sha256(str(getattr(self, "launch_root", self.application_root)).casefold().encode()).hexdigest(),
                 "browse_only": self.browse_only, "service": "running", "account_mode": str(runtime.get("endpoint") or "Configured Alpaca origin / not connected") + " / observed currency " + str(account.get("currency", "unknown"))
                     + " / multiplier " + str(account.get("multiplier", "unknown")) + " / shorting " + str(account.get("shorting_enabled", "unknown")) + "; native mapping supports CASH only",
                 "engine": runtime.get("status", "unknown"), "engine_version": runtime.get("version"),
