@@ -72,3 +72,17 @@ credential inspection, broker action, provider collection or production operatio
 No automated tests or mocks. Plan one affected responsive live smoke after the
 coordinated source fix and fresh scrutiny; unexercised populated states remain
 explicitly unverified.
+
+## Source implementation and checks
+
+One declaration, `min-height:auto`, was added to the existing under-1500px pane
+rule in `ui-orders.css`. No other code, markup, CSS rule or runtime changed.
+Source delta: 1 added / 1 removed CSS line. Reviewed candidate blob:
+`4d93ce8fe93499debd4d8ad5f2a6c56a4e471de8`.
+Git whitespace validation and the layout-scoped Impeccable detector passed; the
+detector returned no findings. There is no JavaScript change requiring a syntax
+check. No automated tests were added or run.
+
+A separate fresh independent reviewer is scrutinizing the actual diff against
+`7c2188b`, cascade, both responsive modes and shared Orders views. Review and one
+live affected responsive smoke remain pending; no acceptance is implied yet.
