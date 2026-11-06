@@ -71,3 +71,22 @@ and tab navigation without altering their terms or running the model. The one
 live batch will cover 1024 × 768, 768 × 1024 and wide desktop grouping/reachability.
 Running/queued/populated job states remain source-reviewed unless already present;
 no job or fabricated result will be created to manufacture that acceptance.
+
+## Source implementation and checks
+
+Implementation `f76ff20` leaves `portfolioModelActions()` and every input/model
+handler unchanged. Only Portfolio composition relocates its output into a
+proposed-only, named input group after the common title/tab header. Three scoped
+CSS rules define nonshrinking wrapping-row layout, column labels with a small
+gap and the existing 180px input limit. Performance header actions remain intact.
+
+Candidate blobs: app.js `0959964542e6c6a81fbd2b19d55884791bc6b3c3`;
+ui-research-journal.css `23b12e8711fcdcbe3891ff52b64fd7f0f209d954`.
+Delta: 2 added / 2 removed JavaScript lines, 3 added CSS lines. No tests added
+or run. JavaScript syntax and Git whitespace checks passed. Manual Impeccable
+source detector reported no anti-pattern failures and only the pre-existing
+out-of-scope `#4dabf7` palette advisory at app.js line 2378. Regex-only detection
+is not rendered accessibility or product acceptance evidence.
+
+Fresh independent review `wf_13f0ef48-532` is pending. The single affected live
+batch has not run on this revision.
