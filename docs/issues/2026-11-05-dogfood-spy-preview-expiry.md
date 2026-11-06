@@ -89,5 +89,30 @@ Candidate blob: `072176cb38030c8dc2cd01fff06bc514fa36a5f6`.
 Delta: 3 added / 1 removed JavaScript lines; no CSS/backend/test changes.
 JavaScript syntax and Git whitespace checks passed. The Impeccable detector
 reported only the pre-existing `#4dabf7` advisory at line 2378, outside this change.
-No automated tests or mocks. Fresh independent source review and one natural-expiry
-live observation remain pending.
+No automated tests or mocks. A separate fresh independent reviewer found no
+confirmed actionable findings against `a050feb` and the recorded blob, committed
+as `93070a3`. The reviewer ran Impeccable context and read PRODUCT, DESIGN,
+Operate, harden and craft floor. Source coverage included client/server deadlines,
+all preview/token/blocker/queue states and preserved financial handlers. The
+reviewer explicitly retained the earlier-server-deadline and next-render caveats.
+One natural-expiry live observation remains pending; no final runtime acceptance.
+
+## Live observation checkpoint
+
+Primary loaded `93070a3` in the real dev8099 browser and selected SPY Rebalance.
+One fresh Preview action completed; at `2026-11-06T01:45:51.345Z` (17:45:51 local),
+Preview was enabled, Submit enabled, no expiry message appeared, and the closed-
+market queue hint was present. The retained summary/count showed 503 planned
+trades, policy revision 0 and target exposure 99.91%. No Submit or authority
+control was used. No token/whole API response was read or printed.
+
+Initial ready-state capture (ignored):
+`.local-workspace/dogfood-20261105/spy-preview-expiry-fresh.jpg`.
+
+Leave this same preview open. Its client deadline must be past by 17:50:52 local
+because the successful preview was already observed at 17:45:51. Resume after
+that time for the expiry half of this single batch. Do not reload, preview again,
+change clocks/TTL, submit, toggle authority or begin another dogfood item. Read the
+actual warning/disabled Submit/queue hint/full plan and verify the retained local
+filter, then record actual evidence and limits, commit and rearm the ordinary
+one-minute completion loop.
