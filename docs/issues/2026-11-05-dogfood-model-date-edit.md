@@ -2,8 +2,9 @@
 
 ## Status and observed failure
 
-In progress from actual dev8099 observations on 5 November 2026. Baseline
-`987cbd2`, `nautilus`, `D:/src/TradingAgents`; initial working tree clean.
+Source correction complete with fresh review; the single live batch failed on
+the earlier revision and final product acceptance remains open. Baseline `987cbd2`, `nautilus`, `D:/src/TradingAgents`,
+actual dev8099 observations on 5 November 2026; initial working tree clean.
 All work stays on this integrated branch; no new branch or worktree.
 
 Primary followed the native Model proposal as-of-date edit. With the existing
@@ -143,3 +144,44 @@ live round is authorized by this failure. Correct source, obtain fresh review,
 commit it, and request fresh human authorization for one more affected smoke.
 The partial date is cleared by returning to the clean normal product URL; no
 model request, research/provider job, approval or broker action occurred.
+
+## Corrected source review and handoff
+
+Correction `b0155a6c7f172a32735564facee4052ce623419e` removes the periodic-only
+argument/plumbing and scopes retention at the common non-forced render boundary.
+The same normal group markup now carries an escaped server/store/job context;
+its comparison rejects changed identity/status as well as changed values and
+control semantics. The original connected-island helper and surrounding updates
+remain; no custom date state, alternate mode or parallel UI was added.
+
+Final app.js blob: `d8d6c0800266e30a49d1116ceb78c0633996bc4c`.
+Final delta against `65eca6f`: 18 added / 2 removed JavaScript lines, no CSS,
+backend or test changes. Syntax/whitespace checks passed. The source detector
+again found no anti-pattern failures, only the existing palette advisory now at
+line 2394. No automated tests or mocks were added or run.
+
+Fresh independent review `wf_b66bee12-ec3` found no actionable source defects
+against that exact revision/blob and confirmed this is the existing product UI,
+with no dogfood query handling in static source. The reviewer ran its own
+Impeccable context and read Operate, harden, craft floor, PRODUCT and DESIGN.
+It performed no browser/runtime check and did not claim the failure resolved.
+
+Primary decision: source correction is ready, but do not accept the item or claim
+completion of the native-edit journey. The one authorized live batch failed on
+`cfdb5ec`; no second batch has run on `b0155a6`. The normal browser was returned to
+`http://127.0.0.1:8099/#portfolio`, clearing the unsaved partial date. No special
+query is needed to load the normal product source. Installed production is not
+updated by this local development work.
+
+Pause the completion-paced loop pending fresh human authorization for one more
+affected smoke on the clean development URL. That batch should cover the partial
+month through changed snapshots and ordinary focus/visibility refresh, connected
+node plus surrounding updates, keyboard continuation and clearing, without a
+model run. Job/restore/constraint transitions, other browser engines and full
+model/broker execution remain source-reviewed or unexercised. Preserve the failed
+batch evidence rather than relabeling it a pass.
+
+Failed capture (ignored):
+`.local-workspace/dogfood-20261105/model-date-edit-failed-smoke.jpg`.
+Reusable lesson saved at
+`memory://knowledge/projects/tradingagents/tradingagents-partial-native-dates-need-connected-editing-state-across-normal-renders`.
