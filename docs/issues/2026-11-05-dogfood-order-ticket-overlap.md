@@ -22,6 +22,40 @@ reported no findings; that does not establish a working rendered layout.
 Before capture (ignored):
 `.local-workspace/dogfood-20261105/order-ticket-overlap-before.jpg`.
 
+## Research and source diagnosis
+
+Official broker documentation accessed 5 November 2026:
+
+- [Fidelity order FAQ](https://www.fidelity.com/trading/faqs-placing-orders): primary
+  read confirmed preview/edit before submission, with order confirmation distinct
+  from execution. Readable exact terms and separate actions are the applicable
+  principles; this is not broker UI or execution acceptance.
+- [Robinhood order instructions](https://robinhood.com/us/en/support/articles/360001357526/):
+  research worker reports review/edit before a separate submit action. This is
+  documented flow, not an observed Robinhood account or full feature parity.
+
+The independent source worker traced `ui-orders.css`: under 1500px, the two
+panes switch to visible overflow while retaining `min-height:0`. The short/narrow
+breakpoint also stacks them as flex items, whose default shrink compresses their
+boxes. Their content then paints into later stages. Primary additionally inspected
+1024 × 1024 before editing: even the one-column grid gave each pane only 406px
+while their content measured 1,003px and 2,414px. A flex-only fix would miss this
+same failure in the taller grid layout.
+
+Scoped plan: in the existing under-1500px rule that permits visible overflow,
+restore `min-height:auto` for those two panes. Their content-based minimum then
+reserves space in both stacked flex and one-column grid layouts. Preserve the
+wide layout's `min-height:0` and independent `overflow:auto`. No markup, copy,
+JavaScript, handler or global layout change. Reading order stays preparation,
+exact-revision review, then separate broker action; existing density and spacing
+remain. The source classes also serve Fills & Fees, Human Baskets and Option
+Instructions; SPY Rebalance uses a separate layout.
+
+The research worker retrieved the current and previous overlap observations at
+`memory://thinking/sequential/2026/11/06/session-1793926836756-62604` and
+`memory://thinking/sequential/2026/11/06/session-1793926754557-32527`. These are
+attributed historical evidence, not independent UI acceptance or new authority.
+
 ## Investigation and constraints
 
 A dynamic workflow independently traces the source/cascade and researches official
