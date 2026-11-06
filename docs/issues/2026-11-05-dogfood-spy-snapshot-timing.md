@@ -2,8 +2,9 @@
 
 ## Status and observed defect
 
-Planned from live dev8099 observations on 5 November 2026. Baseline `67f9f21`,
-`nautilus`, `D:/src/TradingAgents`; initial tree clean. The user requires fresh
+Completed implementation `85f0709` and one affected real-browser smoke on
+5 November 2026. Baseline `67f9f21`, `nautilus`, `D:/src/TradingAgents`;
+initial tree clean. The user requires fresh
 agent scrutiny for every code change and one discrete complete item per loop.
 
 Primary loaded the shipped year-start SPY 100% stock preset through the UI after
@@ -74,12 +75,41 @@ verifier found no confirmed findings in this exact source blob and successfully
 ran Impeccable context, Operate/audit and craft-floor review. It confirmed the
 native input is not replaced by the disclosure update; rendered behavior remains
 for the primary's smoke, not established by source review. The required Impeccable
-detector reported only the pre-existing `#4dabf7` palette advisory at line2378,
+detector reported only the pre-existing `#4dabf7` palette advisory at line 2378,
 outside this change. No palette or design-system repair was added.
 
 ## Acceptance evidence
 
-Pending one live affected smoke. Drafts can exercise the real year-start
-equal-date and October after-start cases. Saved-result rendering is source-only
-unless a suitable actual retained result can be opened without starting a new
-run. No automated tests, mocks or broker actions.
+Primary reloaded the real dev8099 app at `85f0709` and exercised one affected
+smoke batch with actual shipped captures:
+
+- The year-start 100% stock preset still supplied the same dates and 503 weights.
+  It displayed “Holdings as of 2025-12-31” and the persistent hindsight/availability
+  caveat even though its holdings date equaled the start. No after-start claim
+  was made for equal dates.
+- The October preset displayed MoneyDJ, “Holdings as of 2026-10-30”, 90% stocks
+  and 10% SGOV, and the same persistent caveat. It additionally said the snapshot
+  was dated after the start; it did not claim a publication time. This was 504
+  allocated symbols, including SGOV, with no change to the source preset.
+- Native pointer and Backspace cleared a start-date segment. The input value
+  became blank and focus remained `allocation-start`. The after-start statement
+  disappeared immediately while the general disclosure stayed. Capital $100,000,
+  fee $0 and end 2026-11-04 were unchanged. This verifies that editing case, not
+  every native date-picker or keyboard interaction.
+- Rendered captures showed the disclosure and existing actions at 1024 × 768.
+  Browser console inspection reported no errors. No new simulation, provider
+  collection, research, approval, submission, cancellation or authority change
+  occurred. The two preset actions only read shipped source data.
+
+Primary decision: accept the timing/provenance correction for these observed
+entry cases after fresh source scrutiny. Saved-result rendering is source-reviewed
+but not live-exercised; no result was fabricated or run created to demonstrate it.
+Source captures, calculations and broker authority are unchanged. No automated
+tests or mocks. Browser captures/DOM were inspected, not joint user-visible-pane
+acceptance.
+
+Ignored local captures under `.local-workspace/dogfood-20261105/`:
+`spy-timing-before.jpg`, `spy-timing-after-year-start.jpg` and
+`spy-timing-after-october.jpg`.
+Continue the loop with the requested one-minute completion delay and mandatory
+fresh-agent scrutiny; the scheduler can round beyond 60 seconds.
