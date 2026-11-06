@@ -2,8 +2,9 @@
 
 ## Status and scope
 
-Planned from live development-desk observations on 5 November 2026. Baseline
-`6095882`, `nautilus`, `D:/src/TradingAgents`; working tree initially clean.
+Completed source fix and one live affected smoke batch on 5 November 2026.
+Implementation `265ec22`; baseline `6095882`, `nautilus`,
+`D:/src/TradingAgents`; working tree initially clean.
 The user requested a self-paced professional-trader dogfood loop: broken behavior,
 then jank, friction and missing features. Each iteration delivers one complete
 item. Discrete-stock S&P 500 tracking is the core journey; research is supporting.
@@ -73,14 +74,36 @@ Final JavaScript blob before live smoke:
 `9cf16cfdec77e7fd0d3daff2b3bb9cffa03a2339`. The source delta is 4 added / 2
 removed lines in `static/app.js`; no backend or CSS changes. JavaScript syntax
 and scoped Git whitespace checks passed. No automated test was added or run.
-Targeted independent correction review and the live smoke outcome follow.
+Targeted independent correction review found no surviving source defects.
+A separate UI-context reviewer successfully ran Impeccable context, read PRODUCT,
+DESIGN, Operate and craft floor, and found no source-level scope/layout findings.
+Both reviewed blob `9cf16cfdec77e7fd0d3daff2b3bb9cffa03a2339`; their source-only
+reports are not runtime acceptance.
 
 ## Acceptance and evidence
 
-Pending one affected smoke batch. The real empty-account state can verify
-truthful first-use guidance, disappearance of false calculation failures and
-existing Journal navigation. Populated calculations, induced loading/errors
-and provider collection remain unverified unless real retained inputs naturally
-exercise them. No fresh account-history collection is required for this fix.
-The next loop iteration is scheduled within four minutes of completion, per the
-user's cadence correction; use a three-minute completion-to-start wakeup.
+Primary inspected the real dev8099 app after a browser reload of `265ec22`.
+One affected smoke batch observed:
+
+- The natural reporting read displayed “Loading saved account-history intervals…”
+  without calculation failures, then resolved to the real no-interval entry state.
+- “Open account history to compare performance” explained the next step and
+  qualified benchmark prerequisites. There were zero metric tiles, no false
+  unsupported-method warning and no horizontal page overflow at 1024 × 768.
+- The rendered capture showed the explanation and Journal action fully visible,
+  without the old inner height cap. The action opened Journal → Account History;
+  no collection was started or reporting terms saved.
+- CSV export and source-detail controls remained present. Console inspection
+  reported no errors. No research, simulation, approval, submission, cancellation,
+  transfer, trading-authority change or production operation occurred.
+
+Primary decision: accept this complete first-use/readiness correction for the
+observed empty-account journey. Populated calculations, saved-but-unopened
+intervals, induced failures and provider collection remain source-reviewed but
+not live-exercised; no fabricated inputs or extra cycles were used. The Browser
+pane could not be shown because the app reported no session window; rendered
+captures/DOM were inspected, not joint user-visible-pane acceptance.
+
+After capture: `.local-workspace/dogfood-20261105/performance-entry-after.jpg`
+(ignored local evidence). The next loop iteration must start within four minutes
+of completion, per the user's cadence correction; use a three-minute wakeup.
