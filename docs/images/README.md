@@ -11,14 +11,14 @@ no values or states were repainted.
 | `research-review.jpg` | 5 November 2026 | `753df7a`; 1024 × 768 browser viewport, 800 × 600 image | AAPL inspection, search separate from batch selection, result-status filters and coverage gaps |
 | `spy-rebalance-preview.jpg` | 5 November 2026 | `38b94f1`; 1024 × 768 browser viewport, 800 × 600 image | A real 503-trade preview with a view-only AAPL filter showing one row |
 | `spy-fund-plan.png` | 5 November 2026 | `7df8b5b`, app blob `5e9b27533a4498f94af9b65629556c4c5b8114c3`; real 1920 × 1080 viewport, 706 × 153 detail image | Compact reserve/SPY budget, secondary editing/details and native keyboard focus |
-| `spy-portfolio.jpg` | 5 November 2026 | Source batch based on `399148b`, app blob `b7ad2b18a2d96de0f6ca24e7cb79cf68e7b0479e`; real 1920 × 1080 viewport, 800 × 449 Browser capture | Read-first daily review, sourced reserve/budget, primary Preview and secondary automatic settings |
+| `spy-portfolio.jpg` | 5 November 2026 | Based on `f112f77`, app `96c3d807ff0e45e65be6a559041191d6c47c8f45`, command controls `29cf7f519a5a28b1acdcef73bc92e496a66ba4a4`; real 1920 × 1080 viewport, 800 × 450 Browser capture | Clear-state SPY review and the new account-control handoff link; no blocked state is pictured |
 
 `spy-portfolio.jpg` is an unchanged full Browser screenshot from the accepted
-read-first resting overview, not a cropped smaller layout. Its actual viewport
-was 1920 × 1080; the tool rendered it at 800 × 449. Fund and automatic settings
+clear-state account-exception overview, not a cropped smaller layout. Its actual viewport
+was 1920 × 1080; the tool rendered it at 800 × 450. Fund and automatic settings
 are closed, automatic trading is off and Submit is disabled. The selected JPEG
 matches the ignored raw file byte-for-byte and has no EXIF/XMP/IPTC segment. Its
-Git blob is `7fd08af5984a0d175e15cb36ed1fcdb249c0c22c`. Primary inspected the
+Git blob is `c3387d93be9522ffc16be6736426f866dc5ddc95`. Primary inspected the
 visible image: no account identifier, credential, private note or unrelated
 desktop content. This is scoped overview evidence, not broker acceptance,
 full-journey acceptance or return parity.
@@ -42,7 +42,8 @@ Original ignored evidence under `.local-workspace/dogfood-20261105/`:
 - `spy-fund-plan-focus-corrected-after-1080p.jpg` — full rendered pane image
 - `spy-fund-plan-focus-corrected-detail-1080p.png` — exact promoted region capture
 - `spy-primary-entry-after-1080p.jpg` — historical primary-entry capture
-- `spy-read-first-resting-1080p.jpg` — exact current promoted overview
+- `spy-read-first-resting-1080p.jpg` — historical read-first overview
+- `spy-account-exceptions-clear-1080p.jpg` — exact current promoted clear-state overview
 
 Acceptance records:
 
@@ -52,6 +53,7 @@ Acceptance records:
 - [Fund-plan presentation and corrected focus](../issues/2026-11-05-dogfood-spy-fund-plan-disclosure.md)
 - [Primary SPY entry and navigation](../issues/2026-11-05-dogfood-spy-primary-workspace.md)
 - [Read-first SPY daily review](../issues/2026-11-05-dogfood-spy-read-first-overview.md)
+- [SPY account exceptions and handoff](../issues/2026-11-05-dogfood-spy-account-exceptions.md)
 
 When a pictured workflow changes, replace its guide image after affected
 verification and update this note. Preserve raw evidence separately; do not create

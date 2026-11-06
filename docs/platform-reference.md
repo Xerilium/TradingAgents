@@ -21,7 +21,13 @@ Automatic trading status stays visible, with its authority control under
 to trade. The preview shows its returned SPY weights date and price-check time;
 without a preview those dates are explicitly not loaded in this view. Portfolio's **Open account fund plan** opens the primary SPY editor directly.
 Orders → SPY Rebalance remains an alternate entry to the same in-session plan and
-preview. Navigation changes no plan terms or trading authority. This entry is not
+preview. Known account-wide submission exceptions are shown in SPY, outside disclosures,
+and additionally disable Submit. They reuse the account checks, not human-proposal
+approval or the ticket ready count. **Review account order controls** opens
+Orders management and focuses its account controls; ordinary updates retain that
+pane by Orders tab. An empty exception list does not establish a complete SPY preflight pass.
+The server still checks freshness, commitments and exact preview bindings.
+Navigation changes no plan terms or trading authority. This entry is not
 acceptance of the full execution/reconciliation journey or SPY return parity.
 
 ## Fixed-portfolio hindsight evaluation

@@ -51,8 +51,8 @@ function orderSessionNotice(order,terms){
  return '<p>Reviewed session: '+esc(reviewed)+' · broker-reported session: '+esc(broker)+'. Broker session is retained for cancellation/replacement review; it is not silently changed to regular.</p>'+((order?.extended_hours===true||terms?.session==='extended')?'<p>Extended includes pre-market, after-hours and potentially overnight according to current broker/account/asset capabilities. It does not guarantee pre/post-only execution or an overnight IEX quote. Replacements cannot change the session.</p>':'');
 }
 function linkedOrderNotice(order){return order?.group_parent_id||['bracket','oto','oco'].includes(order?.group_class)?'<p>Canceling a linked order asks Alpaca to cancel the remaining linked orders. '+(order.group_class==='oco'?'These exits share existing shares; canceling them leaves those shares without these exits.':'A partial entry can remain without an active exit.')+' Bracket and OCO exits support price-only changes with new exact approval; OTO replacement is unsupported.</p>':'';}
-function orderReadiness(){
- const record=state.commands||{},data=record.data||{},runtime=state.nautilus||{},sync=runtime.reconciliation||{},investor=state.investor||{},reasons=[];
+function accountOrderReasons(){
+ const record=state.commands||{},data=record.data||{},runtime=state.nautilus||{},sync=runtime.reconciliation||{},reasons=[];
  if(record.execution_enabled!==true)reasons.push('Order submission is unavailable in this browse-only session.');
  if(stateErrorMessage||state.connection?.connected!==true||state.connection?.account_verified!==true)reasons.push('Current account and Nautilus sync are unverified; refresh the local service. Saved pause and order records remain separate.');
  if(runtime.status!=='connected')reasons.push('Account connection: '+(runtime.status||'not connected')+(runtime.error?' · '+runtime.error:'. Connect or refresh the account.'));
@@ -60,6 +60,10 @@ function orderReadiness(){
  if(data.new_orders_blocked===true)reasons.push('You have paused new orders.');
  if(runtime.status==='connected'&&sync.status!=='reconciled')reasons.push('Nautilus account sync: '+((sync.gaps||[]).join('; ')||runtime.native_import_gap||'account and order observations are incomplete.'));
  if(data.recovery_required&&sync.status==='reconciled')reasons.push('Account and order sync: '+(data.recovery_reason||'current order outcomes need to be checked.'));
+ return reasons;
+}
+function orderReadiness(){
+ const record=state.commands||{},data=record.data||{},runtime=state.nautilus||{},investor=state.investor||{},reasons=accountOrderReasons();
  const items=(investor.data?.proposals||[]).filter(p=>p.status==='draft').map(proposal=>{
   const evaluation=investor.current_checks?.[proposal.id],approvals=Object.values(data.approvals||{}).filter(a=>a.proposal_id===proposal.id),eligible=approvals.filter(a=>record.approval_states?.[a.id]==='approved_awaiting_admission'||record.approval_states?.[a.id]==='admitted'&&Object.values(data.commands||{}).some(c=>c.approval_id===a.id&&c.state==='admitted_not_dispatched')),approval=eligible.find(a=>evaluation?.binding_sha256&&a.evaluation_binding_sha256===evaluation.binding_sha256);
   const blockers=[...(evaluation?.blockers||[])];if(!evaluation)blockers.push('Current order checks are unavailable. Refresh to check again.');
