@@ -86,5 +86,11 @@ detector found no anti-pattern failures and only the previously recorded,
 out-of-scope `#4dabf7` palette advisory at app.js line 2378. Its regex-only source
 scan is not rendered contrast or product acceptance evidence.
 
-Fresh independent source review `wf_5a24132f-565` is in progress. Live acceptance
-has not yet run on this revision.
+Fresh independent source review `wf_5a24132f-565` confirmed the candidate blobs
+and ran its own Impeccable context, Operate/clarify and craft floor. It found that
+the existing nonwrapping, ellipsized metadata span can hide the list's gap badge.
+Primary confirmed the narrow metadata grid and is correcting its direct span to
+wrap, preserving the checkbox, symbol and quantity columns and existing selection.
+This is source-reviewed visibility, not a runtime failure newly manufactured for
+acceptance. Live acceptance has not yet run. A fresh follow-up review will inspect
+the completed correction before the one affected browser batch.
