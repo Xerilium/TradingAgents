@@ -2,9 +2,10 @@
 
 ## Status and observed failure
 
-Source correction complete with fresh review; the single live batch failed on
-the earlier revision and final product acceptance remains open. Baseline `987cbd2`, `nautilus`, `D:/src/TradingAgents`,
-actual dev8099 observations on 5 November 2026; initial working tree clean.
+Completed correction `b0155a6`, fresh independent review and a separately
+human-authorized successful live batch after the earlier failed batch. Baseline
+`987cbd2`, `nautilus`, `D:/src/TradingAgents`, actual dev8099 observations on
+5 November 2026; initial working tree clean.
 All work stays on this integrated branch; no new branch or worktree.
 
 Primary followed the native Model proposal as-of-date edit. With the existing
@@ -185,3 +186,65 @@ Failed capture (ignored):
 `.local-workspace/dogfood-20261105/model-date-edit-failed-smoke.jpg`.
 Reusable lesson saved at
 `memory://knowledge/projects/tradingagents/tradingagents-partial-native-dates-need-connected-editing-state-across-normal-renders`.
+
+## Fresh authorized acceptance batch
+
+The human explicitly authorized the fresh check (“Of course U can.”). Primary
+confirmed clean `nautilus`, revision `b0155a6` and exact reviewed source blob
+`d8d6c0800266e30a49d1116ceb78c0633996bc4c`, then opened the normal development
+product at `http://127.0.0.1:8099/#portfolio`. No special query label, separate UI,
+server restart or production operation. No source code changed during this batch.
+
+Initial setup encountered a pane-width change and stale accessibility references.
+A coordinate batch was refused by the browser classifier; it was not retried
+verbatim. Re-established the current normal Portfolio view and used a settled
+1024 × 768 capture followed by a standalone date-field click and native keys.
+These setup/tool limitations are not product acceptance evidence or a broker action.
+
+Observed cases on the corrected source:
+
+- Native month-only entry again displayed `11/dd/yyyy`, with day selected. A DOM
+  reference was captured after the date was focused, at snapshot sequence 1588 /
+  update `2026-11-06T02:54:40.835751+00:00`. Its normalized value was empty, as
+  expected for the incomplete editor, and the model was idle.
+- At sequence 1593 / update `2026-11-06T02:55:11.669181+00:00`, the same date node
+  and controls group remained connected and active. The actual screenshot still
+  showed month 11 and day selection. The old ledger and result nodes had been
+  replaced, proving surrounding content was not frozen to preserve the field.
+- The same date remained connected and focused through sequence 1610 / update
+  `2026-11-06T02:57:14.944371+00:00`, including an ordinary browser-tab away/back
+  observation. The browser reported document.hidden false during the away read,
+  so this does not independently prove the visibilitychange or window-focus event
+  path fired. Those specific event-origin paths remain source-reviewed.
+- Without clicking the date again, native keys continued from the selected day
+  to complete `2026-11-04`, the date of the retained research used in this journey.
+  Both the native value and existing `portfolioModelAsOf` draft matched that ISO
+  date, on the same node. No model request was made.
+- Native Backspace/ArrowLeft cleared all three segments. The rendered field showed
+  `mm/dd/yyyy`, both native and draft values were blank, and capital remained at
+  the existing 10000. The job stayed idle with “No joint portfolio modeled in this
+  app session.” No unsaved partial or complete date was left behind.
+- Console inspection reported no errors. At the measured 1024 × 768 viewport,
+  document width was 1024. Viewport emulation was cleared afterward. No model,
+  research/provider job, simulation, fund-plan save, credential/private configuration
+  read, broker approval/submission/cancel, authority change or production operation.
+  No automated test, mock, fake state, synthetic event or API invocation of the
+  preservation helper was used.
+
+Primary decision: accept the discrete native-date editing correction after fresh
+source scrutiny and this successful, explicitly authorized real batch. Keep the
+failed `cfdb5ec` batch above as historical evidence, not a pass. This verifies the
+observed partial/complete/clear and surrounding-update cases, not every native
+picker/calendar behavior, browser engine, physical assistive technology, forced
+restore, changed constraints or queued/running transition. Broker/model execution
+is not implied. Captures and DOM were personally inspected; joint human acceptance
+is not claimed.
+
+Ignored captures: `model-date-edit-after-retained.jpg`,
+`model-date-edit-after-complete.jpg`, `model-date-edit-after-cleared.jpg` under
+`.local-workspace/dogfood-20261105/`.
+
+Resume the requested completion-paced loop with one discrete item at a time,
+dynamic workflows, fresh code scrutiny and local integration on `nautilus`.
+Use the normal product URL without dogfood query labels. Request 60 seconds after
+completion; scheduler minute rounding can make the actual delay longer.
