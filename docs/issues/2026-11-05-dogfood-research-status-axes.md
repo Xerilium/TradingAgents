@@ -79,8 +79,10 @@ selection, report/coverage metadata, eligibility and backend remain unchanged.
 The help is a full-width flex item inside the existing nonshrinking filter group.
 
 Candidate blobs: app.js `bf773b136a44cabc30a84a799e6b1fc0c2bc3637`;
-ui-research-journal.css `e510a1a6f7247197d657e57f65573dbd4f64cd5f`.
-Delta: 3 added / 3 removed JavaScript lines and 1 added CSS line. No tests added
+ui-research-journal.css `22d0b7b336e7d72355e8463acb7dc99953d89044`
+(after the review correction `16bb9ad`; initial CSS blob was
+`e510a1a6f7247197d657e57f65573dbd4f64cd5f`).
+Final delta: 3 added / 3 removed JavaScript lines and 2 added CSS lines. No tests added
 or run. JavaScript syntax and Git whitespace checks passed. The manual Impeccable
 detector found no anti-pattern failures and only the previously recorded,
 out-of-scope `#4dabf7` palette advisory at app.js line 2378. Its regex-only source
