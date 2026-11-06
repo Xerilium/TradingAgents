@@ -1,14 +1,29 @@
+---
+title: TradingAgents trading desk
+permalink: tradingagents-readme
+type: memory
+status: saved
+created: 2026-11-06T03:29:14Z
+modified: 2026-11-06T03:39:40Z
+tags:
+  - tradingagents
+  - product-map
+  - onboarding
+---
+
 # TradingAgents trading desk
 
 Manage your index portfolio. Know the budget. Review the next rebalance.
 
-TradingAgents is a local personal index-management desk. Its first shipping
-priority is the complete SPY stock-replication journey: account and reserves,
-investment budget and dated holdings, rebalance review, separately authorized
-execution, and reconciled outcomes. Research, charts, simulations and other trading
+[[TradingAgents]] is a local personal index-management desk. Its first shipping
+priority is the complete [[spy]] stock-replication journey: account and [[spy-fund-management]] reserves,
+investment budget and dated holdings, [[spy-rebalance]] review, separately authorized
+execution under [[spy-execution-safety]], and reconciled outcomes. Research, charts, simulations and other trading
 tools support that purpose. A working rebalance alone does not prove SPY return parity.
 
 [Start the desk](#start-the-desk) · [Platform reference](docs/platform-reference.md) · [Local operating guide](docs/local-desk-guide.md)
+
+**Concepts:** [[tradingagents]] · [[spy]] · [[spy-fund-management]] · [[spy-rebalance]] · [[spy-execution-safety]] · [[research-status]] · [[coverage-gaps]]
 
 ## Find the next useful action
 
@@ -41,13 +56,14 @@ supporting arguments together. Reports and Sources & Filings let you inspect why
 
 *Research review: inspect one saved stock without changing the research batch.*
 
-A completed result can still have coverage gaps. The desk keeps the latest result
-per ticker; a new research cycle replaces that ticker's previous result.
+A completed result can still have [[coverage-gaps]]. The desk keeps the latest result
+per ticker; a new research cycle replaces that ticker's previous result. Read
+[[research-status]] before you act on a conclusion.
 
 ## Inspect the whole rebalance, then find one stock
 
-SPY Rebalance turns loaded SPY fund holdings weights into a reviewable stock plan.
-An account fund plan can reserve cash for spending and other authored needs.
+**SPY Rebalance** ([[spy-rebalance]]) turns loaded SPY fund holdings weights into a reviewable stock plan.
+An **account fund plan** ([[spy-fund-management]]) can reserve cash for spending and other authored needs.
 Review the reserve and SPY budget first. Open **Edit account fund plan** to change
 its terms, or **Saved budget and account details** for the full breakdown.
 
@@ -71,7 +87,7 @@ source revisions and scope.
 Research and model portfolios help you decide; they do not place orders. Model
 capital is separate from account cash, and model allocations use deterministic
 whole-share sizing against dated prices. Human drafts and baskets hold exact terms.
-Per-order approval and broker submission are separate actions. Standing automatic
+Per-order approval and broker submission are separate actions ([[spy-execution-safety]]). Standing automatic
 paper-rebalance authority is a separate, explicit control.
 
 See the [order and execution reference](docs/platform-reference.md#orders-approval-and-execution)

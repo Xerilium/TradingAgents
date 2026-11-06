@@ -24,43 +24,6 @@ Use this file as the standing brief for the completion-paced loop. Current human
 instructions and the repository's security, preservation and trading-authority
 rules still take precedence.
 
-## Numbered cadence
-
-Use [the development-loop ledger](issues/dogfood-loop-ledger.md) for the active
-number, completed items and evidence. The new cadence starts at **loop 1** after
-the human's 5 November 2026 instruction; do not retroactively number earlier work.
-
-Choose the iteration type in this order:
-
-1. **Every fifth loop is an alignment review**, overriding odd/even type. Review
-   the immediately preceding four loops: 5 reviews 1–4, 10 reviews 6–9, and so on.
-2. **Other even-numbered loops are UI work**: layout, clarity, interaction and
-   Impeccable onboarding/critique/polish of the existing SPY journey.
-3. **Other odd-numbered loops are non-UI work**: existing SPY logic, data correctness,
-   safety, reliability and service/source contracts. Do not turn them into layout
-   or UI-copy work, or invent backend features to occupy the slot.
-
-Necessary documentation, independent review and affected real verification belong
-with either implementation type; using the browser to verify non-UI behavior does
-not make that a UI loop. Keep selecting the highest-priority in-journey item of
-the scheduled type. Do not fill a slot with unrelated busywork.
-
-At start, record the active number and type. At completion, record the actual
-commit(s), issue/evidence, outcome, limits and remaining findings; advance the
-number once. Resume an interrupted active loop rather than incrementing it.
-Guidance edits, wakeups, notifications, retries and failed checks do not themselves
-consume a number. Do not mark blocked or unverified work as completed.
-
-An alignment review compares the preceding four deliveries with `PRODUCT.md`, the
-SPY-first goal and current human direction. Check the actual diffs and recorded
-outcomes, not just completion reports: contribution to the whole daily journey,
-UI/non-UI scope, preserved capabilities and safeguards, independent review,
-verification gaps and unresolved Impeccable findings. Record drift, missing
-requirements, corrective priorities and a clear alignment decision in `docs/issues`;
-link the review from the ledger and use it to order the following loops. A review
-is not a new trade authorization or a reason to rerun passing checks, jobs or
-broker actions. Preserve explicit unknowns and unexercised execution/return claims.
-
 ## Complete one item at a time
 
 - Start from the actual checkout and running development desk. Preserve other
@@ -117,10 +80,8 @@ broker actions. Preserve explicit unknowns and unexercised execution/return clai
 
 ## Onboard, critique, then improve with Impeccable
 
-The first UI iteration in the new cadence (loop 2, pending in the ledger) must
-verify that this product and the SPY daily workspace are properly onboarded into
-the installed Impeccable skill, then perform its critique. Once that checkpoint
-is complete, consume its findings rather than repeating onboarding each loop.
+The next iteration must verify that this product and the SPY daily workspace are
+properly onboarded into the installed Impeccable skill, then perform its critique.
 Check the actual product/design context and applicable surface brief against the
 human's current purpose and rendered product. Complete missing onboarding through
 the skill's documented workflow; merely loading the skill is not onboarding.
