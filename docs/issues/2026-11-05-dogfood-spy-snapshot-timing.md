@@ -8,7 +8,7 @@ agent scrutiny for every code change and one discrete complete item per loop.
 
 Primary loaded the shipped year-start SPY 100% stock preset through the UI after
 reading its static-only handler. The page showed an SEC N-PORT source dated
-2025-12-31, scenario start2025-12-31/end2026-11-04, and 503 allocated stocks,
+2025-12-31, scenario start 2025-12-31/end 2026-11-04, and 503 allocated stocks,
 without any start-date availability or hindsight warning. No simulation ran.
 
 Both allocation and saved-result renderers compared the holdings as-of date with
@@ -23,8 +23,8 @@ benchmark functionality.
 Official sources accessed 5 November 2026:
 
 - [SEC filing index](https://www.sec.gov/Archives/edgar/data/884394/000141036826020131/0001410368-26-020131-index.htm):
-  primary read confirmed SPDR S&P 500 ETF Trust, report period2025-12-31,
-  filing2026-02-26, accepted16:49:39. That is the linked filing's publication,
+  primary read confirmed SPDR S&P 500 ETF Trust, report period 2025-12-31,
+  filing 2026-02-26, accepted 16:49:39. That is the linked filing's publication,
   not proof of the earliest availability of equivalent holdings elsewhere.
 - [State Street SPY](https://www.ssga.com/us/en/individual/etfs/state-street-spdr-sp-500-etf-trust-spy):
   research worker reports as-of labeling and daily holdings downloads. This does
@@ -34,7 +34,7 @@ Official sources accessed 5 November 2026:
   guarantee. No rule interval is being encoded in the app.
 
 The year-start JSON supplies a reporting date and filing source. The October
-JSON supplies holdings as of2026-10-30 and MoneyDJ source, without a verified
+JSON supplies holdings as of 2026-10-30 and MoneyDJ source, without a verified
 publication/capture timestamp. Neither establishes availability of its exact
 normalized allocation at the selected start. Keep these historical presets
 separate from daily automatic SPY rebalancing and broker performance.
@@ -53,9 +53,33 @@ separate from daily automatic SPY rebalancing and broker performance.
   static syntax/whitespace validation and one affected real-browser smoke with
   actual retained presets. Do not create a simulation or fabricate a result.
 
+## Source implementation and review
+
+The shared `holdingsTimingDisclosure()` is used by allocation drafts and saved
+portfolio scenario results. Both label the date explicitly. The missing-source
+fallback no longer invents an SEC filing source. Start-date edits update only
+the disclosure so the optional after-start statement remains current.
+No data, source files, calculation or execution path changed.
+
+The first fresh reviewer found an introduced native date-editor regression:
+a full workspace render on every date input would replace the focused editor.
+Primary corrected it to update only `allocation-holdings-timing`, leaving the
+native input in place. The reviewer ran Impeccable context and source guidance;
+no runtime acceptance was inferred from that review.
+
+Corrected source blob before smoke: `e96e389f68dae80cee4719642d60ef7fb9914205`.
+JavaScript delta: 9 added / 4 removed lines; no CSS, backend or tests changed.
+JavaScript syntax and Git whitespace checks passed. A separate fresh correction
+verifier found no confirmed findings in this exact source blob and successfully
+ran Impeccable context, Operate/audit and craft-floor review. It confirmed the
+native input is not replaced by the disclosure update; rendered behavior remains
+for the primary's smoke, not established by source review. The required Impeccable
+detector reported only the pre-existing `#4dabf7` palette advisory at line2378,
+outside this change. No palette or design-system repair was added.
+
 ## Acceptance evidence
 
-Pending implementation and one live affected smoke. Drafts can exercise the
-real year-start equal-date and October after-start cases. Saved-result rendering
-is source-only unless a suitable actual retained result can be opened without
-starting a new run. No automated tests, mocks or broker actions.
+Pending one live affected smoke. Drafts can exercise the real year-start
+equal-date and October after-start cases. Saved-result rendering is source-only
+unless a suitable actual retained result can be opened without starting a new
+run. No automated tests, mocks or broker actions.
