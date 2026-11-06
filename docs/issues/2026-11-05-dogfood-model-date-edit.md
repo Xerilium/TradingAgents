@@ -74,3 +74,24 @@ live smoke will repeat month-only entry through a real changed snapshot, inspect
 connected node/visible segment state, continue native keyboard editing, and clear
 the unsaved date without starting a model. Job/restore/constraint combinations
 will remain source-reviewed where no real state already exists.
+
+## Source implementation and checks
+
+Implementation `cfdb5ec` marks only the existing five-second state read as
+periodic. Admission requires unchanged server/store and model job id/status.
+The renderer additionally requires its normal same-context saved input and the
+focused editable date. `retainModelDateControls()` compares freshly parsed group
+markup with a clone whose input value attributes reflect current live values.
+Only compatible groups are retained. Other direct main children are refreshed
+around the still-connected group. The generic focus/value restore is skipped
+only for that retained date; all other rendering and fallback paths remain.
+
+Candidate app.js blob `902f62352eb21f6afc6beb1e370ec037952e38b7`.
+Delta: 21 added / 4 removed JavaScript lines. No CSS/backend/test changes.
+JavaScript syntax and Git whitespace checks passed. Manual Impeccable detector
+reported no anti-pattern failures and only the pre-existing `#4dabf7` advisory,
+now at line 2395 after this insertion. Regex-only source scanning is not runtime
+or rendered accessibility acceptance. No tests or mocks were added or run.
+
+Fresh independent review `wf_e50859b3-d61` is pending. The single affected
+native-edit live batch has not yet run on this revision.
