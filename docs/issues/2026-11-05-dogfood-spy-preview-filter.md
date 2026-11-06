@@ -2,8 +2,9 @@
 
 ## Status and observed friction
 
-In progress from live dev8099 observations on 5 November 2026. Baseline
-`946fcf2`, `nautilus`, `D:/src/TradingAgents`; initial working tree clean.
+Completed implementation `38b94f1`, fresh independent source review and one
+affected real-preview UI smoke on 5 November 2026. Baseline `946fcf2`,
+`nautilus`, `D:/src/TradingAgents`; initial working tree clean.
 Keep all work integrated on `nautilus`; no branch or worktree sprawl.
 
 Primary navigated the real Orders → SPY Rebalance view and traced Preview before
@@ -92,5 +93,60 @@ Candidate source blob: `7f5b54eb68265bd84dc3d2bf051cc8e4ec0f9e84`.
 Delta: 21 added / 7 removed JavaScript lines. No backend, CSS or tests changed.
 JavaScript syntax and Git whitespace checks passed. The Impeccable detector
 reported only the pre-existing `#4dabf7` palette advisory at line 2378, outside
-this change. No automated tests or mocks were added or run. Fresh source review
-and one affected actual UI smoke remain pending.
+this change. No automated tests or mocks were added or run. A separate fresh
+independent reviewer found no confirmed actionable findings against `3520a12` and
+the recorded blob, committed as `38b94f1`. The reviewer successfully ran Impeccable
+context and read PRODUCT, DESIGN, Operate, harden and craft floor. Source coverage
+included escaping, delegated input/native-node reuse, scroll, invalidation and
+full-plan authority boundaries. Runtime acceptance was not inferred from review.
+
+## Acceptance evidence and decision
+
+Primary reloaded the actual running dev8099 frontend at `38b94f1`, without a
+service restart, then completed one affected UI batch using one fresh dry run:
+
+- Before preview, no lookup or misleading no-match state appeared. The validation
+  preview returned the real 503-trade plan. Initial count was “Showing 503 of 503
+  planned trades” and the heading stayed “Proposed trades (503).” There were two
+  dry-run actions in this item: one for initial dogfooding and one for validation,
+  not repeated submission, research or simulation runs.
+- Native scrolling moved the trade table to 600px. Typing lowercase `aapl` reset
+  it to zero and showed only AAPL, BUY, 22.316587347. That exact quantity matched
+  this preview's initial unfiltered row. Focus stayed in the native search input,
+  with selection/caret at 4. No full-plan total was replaced by the match count.
+- Native Ctrl+A and typing ` brk.b ` matched BRK.B despite case, punctuation and
+  surrounding spaces. Count stayed 1 of 503; the retained row showed BUY,
+  2.841465247, with input focus and caret at 7.
+- The existing selected research symbol BND is not in this stock-only plan.
+  Looking it up showed 0 of 503, retained the full-plan heading, and displayed
+  “No matching symbols. Clear the filter to show all planned trades.” No fake
+  order or preview was fabricated for the empty-match case.
+- At 768 × 1024 the search, count, explanation, no-match row and Clear filter
+  rendered without page overflow. Native Tab moved from search to Clear filter;
+  after confirming that exact button held focus, Enter restored all 503 rows and
+  returned focus to the empty search input. AAPL's quantity was still unchanged.
+  Viewport emulation was reset to desktop. The 1024px page width also matched its
+  viewport, and the cleared field/focus/count remained consistent through the
+  observed background refresh period. Physical IME composition was not tested.
+- Console inspection reported no errors. The existing “Automatic trading on”
+  setting was unchanged. There was no fund-plan save, reserve edit, approval,
+  submission, queue, cancel/replace, enable/disable, research run, simulation,
+  installation or production operation. Filtering/clear invoke no API in source;
+  no token or complete API response was printed.
+
+Primary decision: accept the discrete view-only constituent lookup after fresh
+source scrutiny and these observed real-preview cases. The entire plan, sizing
+and submission authority remain separate from the view filter. Zero-trade plans,
+restore/account/revision invalidation, nonzero horizontal scroll, physical IME and
+broker execution were source-reviewed or left unexercised, not claimed as passes.
+No automated tests or mocks. Rendered captures and DOM were inspected; no joint
+user-visible-pane acceptance is claimed.
+
+Ignored local captures under `.local-workspace/dogfood-20261105/`:
+`spy-preview-filter-before.jpg`, `spy-preview-filter-after-full-list.jpg`,
+`spy-preview-filter-after-aapl.jpg` and
+`spy-preview-filter-after-no-match-narrow.jpg`.
+
+Continue the completion-paced loop with the requested one-minute delay, dynamic
+workflows, fresh independent code scrutiny and local commits on `nautilus`.
+Scheduler minute-boundary rounding can exceed 60 seconds.
