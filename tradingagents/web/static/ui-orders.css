@@ -76,7 +76,10 @@
 #universe-review .spy-source-note{color:var(--muted);font-size:var(--text-meta)}
 .spy-manual-review .spy-preview-trades{max-height:32rem;flex:none!important}
 .spy-manual-review>.basket-actions{margin-block:var(--space-2)}
-.spy-manual-review>#spy-trade-clear{align-self:flex-start}
+.spy-trade-toolbar{display:flex;align-items:end;flex-wrap:wrap;gap:var(--space-2)}
+.spy-trade-toolbar label{flex:1;min-width:0;margin:0}
+#universe-review .spy-trade-toolbar input{min-height:var(--control-height)!important}
+#universe-review .spy-trade-toolbar>p{display:flex;align-items:center;min-height:var(--control-height);font-size:var(--text-ui);margin:0!important}
 .spy-automatic{padding-top:var(--space-4);border-top:1px solid var(--line)}
 .spy-automatic-status{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-3)}
 .spy-automatic-status h3{margin:0}

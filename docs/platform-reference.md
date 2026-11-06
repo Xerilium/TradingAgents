@@ -223,8 +223,10 @@ SPY Rebalance and Option Instructions. The top-bar **Orders: Active · Manage**
 (or paused equivalent) selects Ticket & Blotter and focuses account order controls;
 it is navigation, not a gate change.
 
-SPY Rebalance's **Find planned stock** filters displayed preview rows only; the
-full plan and its authority bindings stay unchanged. Natural expiry keeps the
+The SPY preview groups **Find planned stock**, **Clear filter** and the matching-row
+count in a compact wrapping toolbar directly above the complete trade table.
+Filtering changes displayed rows only; the full plan and its authority bindings
+stay unchanged. Natural expiry keeps the
 preview readable, disables submission and asks for a new **Preview**.
 
 The path is:

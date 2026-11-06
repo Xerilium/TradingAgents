@@ -3296,9 +3296,10 @@ function spyRebalanceMarkup(){
   (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
   (preview?.trades.length?'<h3>Proposed trades ('+esc(preview.trades.length)+')</h3>'+
    '<p>The desk sets buy limits from current quotes and may reduce share counts to fit available cash.</p>'+
-   '<label for="spy-trade-query">Find planned stock<input id="spy-trade-query" type="search" data-list-query="spy-preview" value="'+esc(spyTradeQuery)+'" placeholder="Symbol, such as AAPL" aria-describedby="spy-trade-scope spy-trade-count"></label>'+
-   '<button id="spy-trade-clear" type="button">Clear filter</button><p id="spy-trade-scope">Filtering changes this view only, not the full rebalance plan.</p>'+
-   '<p id="spy-trade-count" role="status">Showing '+rows.count+' of '+preview.trades.length+' planned trades.</p>'+
+   '<div class="spy-trade-toolbar"><label for="spy-trade-query">Find planned stock<input id="spy-trade-query" type="search" data-list-query="spy-preview" value="'+esc(spyTradeQuery)+'" placeholder="Symbol, such as AAPL" aria-describedby="spy-trade-scope spy-trade-count"></label>'+
+   '<button id="spy-trade-clear" type="button">Clear filter</button>'+
+   '<p id="spy-trade-count" role="status">Showing '+rows.count+' of '+preview.trades.length+' planned trades.</p></div>'+
+   '<p id="spy-trade-scope">Filtering changes this view only, not the full rebalance plan.</p>'+
    '<div class="table-scroll spy-preview-trades" role="region" aria-label="Proposed SPY trades" tabindex="0"><table class="data-table">'+
    '<thead><tr><th scope="col">Stock</th><th scope="col">Action</th><th scope="col">Planned shares</th></tr></thead><tbody id="spy-trade-rows">'+rows.markup+'</tbody></table></div>':'')+
   '</section></div><section class="spy-automatic" aria-labelledby="spy-automatic-heading"><div class="spy-automatic-status"><h3 id="spy-automatic-heading">Automatic paper trading</h3><p role="status">'+esc(status)+'</p></div>'+
