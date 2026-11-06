@@ -515,3 +515,22 @@ class LocalLaya:
                 raise RuntimeError("Could not stop the previous Laya process.")
             self._connection.close()
             atexit.unregister(self.close)
+
+
+class DisabledLaya:
+    """Stand-in when local Laya is off (default). Loads no model, torch or Hugging Face code."""
+
+    def __init__(self, device="cpu"):
+        self.requested_device = device
+        self.details = {"status": "disabled", "model": MODEL, "revision": REVISION, "requested_device": device,
+                        "device": None, "actual_device": None, "fallback_reason": "Set TRADINGAGENTS_LAYA=1 to enable.",
+                        "cpu_fallback_count": 0, "cpu_fallback_observed": False, "cache": None, "batch_size": BATCH_SIZE}
+
+    def state(self):
+        return dict(self.details)
+
+    def predict_batch(self, *args, **kwargs):
+        raise RuntimeError("Local Laya is disabled. Set TRADINGAGENTS_LAYA=1 to enable.")
+
+    def close(self, *, wait=False):
+        pass
