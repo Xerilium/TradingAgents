@@ -294,13 +294,23 @@ def main():
                         break
                     if self.market_symbols() != symbols:
                         return  # Discard responses for a superseded index.
+                    captured_at = datetime.now(UTC).isoformat()
                     for symbol in batch:
                         result = self.observations[symbol] = {}
                         snapshot = snapshots.get(symbol) or {}
+                        diagnostic = None
+                        if symbol in {"MU", "PM"}:
+                            diagnostic = result["stock_snapshot_evidence"] = {"source": "https://data.alpaca.markets/v2/stocks/snapshots",
+                                "feed": "iex", "captured_at": captured_at, "fields": {}, "normalization": {}}
                         for key in ("latestTrade", "latestQuote"):
                             item = snapshot.get(key) or {}
+                            if diagnostic is not None:
+                                fields = ("t", "p", "s", "i") if key == "latestTrade" else ("t", "bp", "ap", "bs", "as")
+                                diagnostic["fields"][key] = {field: item[field] for field in fields if field in item} if isinstance(item, dict) else None
+                            stage = "provider_fields"
                             try:
                                 stamp = int(datetime.fromisoformat(item["t"].replace("Z", "+00:00")).timestamp() * 1e9)
+                                stage = "native_tick"
                                 instrument = instrument_id(symbol)
                                 if key == "latestTrade" and item["p"] > 0 and item["s"] > 0:
                                     tick = TradeTick(instrument, Price.from_str(str(item["p"])),
@@ -311,10 +321,24 @@ def main():
                                         Price.from_str(str(item["ap"])), Quantity.from_str(str(item["bs"])),
                                         Quantity.from_str(str(item["as"])), stamp, self.clock.timestamp_ns())
                                 else:
+                                    if diagnostic is not None:
+                                        diagnostic["normalization"][key] = {"status": "rejected", "stage": "provider_values",
+                                            "reason": "Trade requires positive price/size" if key == "latestTrade" else "Quote requires positive bid and ask >= bid"}
                                     continue
+                                stage = "native_cache"
                                 self._handle_data(tick)
                                 result[key] = True
-                            except (KeyError, ValueError, TypeError):
+                                if diagnostic is not None:
+                                    normalized = diagnostic["normalization"][key] = {"status": "accepted", "input_event_ns": str(stamp)}
+                                    try:
+                                        cached = self.cache.trade_tick(instrument) if key == "latestTrade" else self.cache.quote_tick(instrument)
+                                        normalized["cached_event_ns"] = str(cached.ts_event) if cached else None
+                                    except Exception as exc:
+                                        normalized.update(cached_event_ns=None, cache_read_error=type(exc).__name__)
+                            except (KeyError, ValueError, TypeError) as exc:
+                                if diagnostic is not None:
+                                    diagnostic["normalization"][key] = {"status": "rejected", "stage": stage,
+                                        "error_type": type(exc).__name__, "reason": "Required field missing" if isinstance(exc, KeyError) else "Provider field or native tick/cache rejected"}
                                 continue
                         result["previous_close"] = (snapshot.get("prevDailyBar") or {}).get("c")
                         if not result.get("latestTrade") and not result.get("latestQuote"):

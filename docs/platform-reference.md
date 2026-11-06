@@ -88,6 +88,12 @@ inputs and run calculations separately.
 
 - Every history source has symbol, interval, feed, adjustment, capture time and
   coverage. Retained daily bars are not a current consolidated quote.
+- MU/PM stock refresh observations include bounded `stock_snapshot_evidence`:
+  allowlisted raw quote/trade fields, IEX/source/capture identity and normalization
+  outcome/input/cache event times. This latest in-memory diagnostic changes no
+  quote acceptance, freshness or fallback and contains no credentials/full payload.
+  It requires the updated native worker; absent fields in an older process are not
+  evidence that the provider omitted data.
 - Saved research inputs and separately collected market history remain distinct.
   Selecting a cache does not refresh it. Collection is an explicit action.
 - Studies, formula revisions, comparison, drawings, source inspection and playback
