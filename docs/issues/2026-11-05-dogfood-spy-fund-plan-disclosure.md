@@ -84,4 +84,82 @@ Primary source decision: accept for one affected real1080p smoke. Syntax and
 whitespace passed; code delta9 added/4 removed JavaScript lines, zero CSS/backend
 or test changes. The CSS hook had no deterministic quality finding on the removed
 CSS draft; it also noted a pre-existing stale design sidecar, which was not repaired
-as an unrelated side effect. Runtime acceptance remains pending.
+as an unrelated side effect.
+
+## One real affected round at1920 ×1080
+
+Source revision `cfb7493`, app blob `cdbe5dca2f044e30b8f3aba16878262806ef5da5`.
+A pane resize cleared emulation during setup; it was reset to1920 ×1080 before
+observations. The first cached view was not acceptance evidence. A real reload
+loaded the committed source; no dogfood URL parameter or alternate UI was used.
+
+Observed:
+
+- Collapsed fund plan height172.06px; Preview at424.63–460.63px, inside the1080px
+  viewport. Editor and full-budget disclosures started closed. No horizontal
+  page overflow. Main labels showed Planning only / No saved plan and Trading
+  Rules only, reserve$0 and SPY budget$100,000 from the actual observed paper state.
+- Native pointer/Enter opened, closed and reopened the editor; Tab entered Plan
+  status. All four authored terms remained blank and status inactive. Save stayed
+  disabled. Open editor and field focus persisted while snapshot advanced from
+  07:38:53 to07:39:24. No terms were invented or saved.
+- The budget disclosure exposed all ten original rows. Unknown authored terms
+  stayed Unavailable; the actual rule floor, required reserve, cash, shortfall,
+  cash above reserve and SPY sleeve stayed available as before.
+- Portfolio's Open account fund plan selected SPY Rebalance and opened the editor.
+  **Failure:** on the later observation, focus was BODY rather than the editor
+  summary. A prior keyboard close attempt on the other ID-less summary also did
+  not reliably persist its intended action through polling.
+- No console errors. Automatic trading remained off; no Preview generation,
+  approval, submission, authority change, provider job, research or simulation.
+
+Overall round: **not accepted**, because disclosure-heading focus was lost.
+Do not turn the passing layout/field observations into full workflow acceptance.
+
+Raw after captures (ignored): `spy-fund-plan-disclosure-after-1080p.jpg` and
+`spy-fund-plan-editor-after-1080p.jpg` under `.local-workspace/dogfood-20261105/`.
+The collapsed image has no visible account identifier or credential; expanded
+account-detail evidence stays private/ignored. Existing README preview image
+still illustrates the unchanged view-only stock lookup, not this new focus path.
+
+## Coordinated focus correction
+
+The common render restores focus by element ID, plus specific ID-less links and
+action buttons; it does not restore an ID-less SUMMARY. Added stable unique IDs
+to both new summary controls so the existing path can restore them. No new focus
+manager, event dispatch, timer, backend or authority change.
+
+Fresh source review `wf_676d928b-ad3` found no actionable defect in the two-ID
+correction, confirmed unique IDs and restoration-before-focus ordering, and
+reviewed app blob `5e9b27533a4498f94af9b65629556c4c5b8114c3` against `cfb7493`.
+Primary accepts the source correction, not runtime acceptance. No second smoke was
+run: the repository requires fresh human authorization after the failed round. Remaining live scope
+is only native disclosure focus/toggle persistence and explicit Portfolio entry
+at1920 ×1080, with real retained inputs and no save/trade action.
+
+## SPY-first direction persisted before closing this iteration
+
+The human explicitly reprioritized the loop to a personal index-management desk:
+SPY replication is the first shipping priority and daily reason to open the app.
+The complete account/reserves → budget/dated holdings → rebalance → specifically
+authorized execution → reconciliation/exceptions journey takes precedence over
+supporting research, charts, simulations or general tool parity. Other work must
+directly block that journey. Real1080p or larger only; a working rebalance is not
+SPY return-parity evidence. No paper trades were authorized.
+
+As requested, this focus was updated **first**: `93fd8bb` commits `PRODUCT.md` and
+the canonical loop brief before iteration closeout. The single future wakeup prompt
+also carries this intent and the recorded failed-smoke gate. Durable fund-purpose
+memory was updated in place, preserving the reserve/liquidity requirements.
+Navigation must become an obvious primary daily workspace; this disclosure patch
+does not claim that larger navigation change is already delivered or release-ready.
+
+README and platform guidance now explain the current disclosures; the affected
+Portfolio/Orders operating reference was synchronized to the installed skill,
+byte-for-byte, without replacing unrelated files. Raw supported-size screenshots
+are saved as evidence. No new README image is promoted as whole-workflow acceptance
+while the focus correction remains unverified live.
+
+Iteration closeout is **source-corrected and independently reviewed, live focus
+confirmation pending**. No second smoke, paper trade, approval, submission, authority
+change, provider job, automated test, mock, build or production action occurred.

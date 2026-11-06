@@ -249,6 +249,13 @@ is unknown; zero must be authored. Planning-only plans do not constrain sizing.
 An applied incomplete plan blocks SPY sizing. Other saved account plans are
 inspection-only, without unobserved balances or consolidated fund totals.
 
+The SPY page leads with the required reserve, investable SPY budget and cash above
+reserve. **Edit account fund plan** opens the existing inputs and save/reload
+controls; **Saved budget and account details** opens the full breakdown and source
+record. Unsaved changes, conflicts, budget errors and positive shortfalls stay
+visible outside those disclosures. Portfolio's **Open account fund plan** opens
+the editor directly. Desktop design and visual checks target 1920 × 1080 or higher.
+
 The authored reserve is monthly withdrawals × months + tax provision + cushion.
 The SPY sizing reserve is the greater of that sum and the enabled Trading Rules
 percentage cash floor. It is not both added together. SPY weights apply to the

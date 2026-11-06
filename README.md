@@ -1,10 +1,12 @@
 # TradingAgents trading desk
 
-Research stocks. Review a portfolio plan. Keep control of the trade.
+Manage your index portfolio. Know the budget. Review the next rebalance.
 
-TradingAgents is a local desktop desk for stock research, portfolio planning,
-historical simulation and controlled order execution. Its central goal is to help
-you build and manage a portfolio of individual stocks against the S&P 500.
+TradingAgents is a local personal index-management desk. Its first shipping
+priority is the complete SPY stock-replication journey: account and reserves,
+investment budget and dated holdings, rebalance review, separately authorized
+execution, and reconciled outcomes. Research, charts, simulations and other trading
+tools support that purpose. A working rebalance alone does not prove SPY return parity.
 
 [Start the desk](#start-the-desk) · [Platform reference](docs/platform-reference.md) · [Local operating guide](docs/local-desk-guide.md)
 
@@ -40,6 +42,8 @@ per ticker; a new research cycle replaces that ticker's previous result.
 
 SPY Rebalance turns loaded SPY fund holdings weights into a reviewable stock plan.
 An account fund plan can reserve cash for spending and other authored needs.
+Review the reserve and SPY budget first. Open **Edit account fund plan** to change
+its terms, or **Saved budget and account details** for the full breakdown.
 Use **Find planned stock** to inspect a constituent without changing the full plan.
 An expired preview remains readable and asks you to generate a new one.
 

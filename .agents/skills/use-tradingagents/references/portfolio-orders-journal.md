@@ -76,6 +76,8 @@ Current tabs: **Ticket & Blotter**, **Fills & Fees**, **Human Baskets**, **SPY R
 
 **Verified affected paths, 5 November 2026.** **Open account fund plan** from Positions opens this tab and focuses the plan. Its authored spending, reserve-month, tax and cushion terms remain separate from observed cash and approval authority. Blank terms mean unknown, not zero. A material save pauses standing automatic paper trading and invalidates the preview; re-enabling it is a separate authorized action. These save semantics are source-confirmed, not populated-save acceptance in the dogfood checks.
 
+**Fund-plan presentation (1080p, 5 November 2026).** The main view shows reserve, SPY budget and cash above reserve before the rebalance actions. **Edit account fund plan** opens all five existing controls; **Saved budget and account details** opens the complete ten-row budget and account/source record. The Portfolio entry opens the editor directly. Blank terms stayed blank and Save stayed disabled during read-only checks. The check exposed lost disclosure-heading focus across polling; a stable-ID correction is not yet live-verified. Do not describe that focus path as accepted. Visual work targets 1920 × 1080 or higher only.
+
 **Find planned stock** filters preview rows only. The count distinguishes matching rows from the complete plan. Clear or no-match changes no trades, preview identity or authority. An expired retained preview explains **Preview** refresh, disables Submit and keeps the plan/filter readable. Observed lookup and natural expiry did not create a preview, enable authority or place trades. Use current preview facts; screenshots show dated examples.
 
 ### Ticket & Blotter record types
