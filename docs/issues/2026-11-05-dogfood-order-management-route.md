@@ -43,10 +43,23 @@ independent agent scrutiny before primary sign-off. Run static syntax/design
 checks and one affected live navigation smoke. Do not click Pause, Resume,
 Approve, Submit, Cancel or Replace; do not create fake order terms for validation.
 
+## Source implementation and checks
+
+Manage now calls the dedicated exported `showOrderManagement()` inside the
+unchanged guarded navigation callback. That helper assigns only the Orders tab.
+The ordinary `showOrderTicketTab()` helper and its preparation callers are
+unchanged. The existing render and focus follow the selection as before.
+
+Source blob before smoke: `0e7bd91565460e14c59de99dd00bcdc8a870d089`.
+JavaScript delta: 2 added / 2 removed lines, no backend/CSS changes. Syntax and
+Git whitespace checks passed. The required Impeccable detector reported only the
+pre-existing `#4dabf7` advisory at line 2378, outside this change. Fresh source
+review is pending. No automated tests were added or run.
+
 ## Acceptance evidence
 
-Pending implementation and fresh review. Live smoke will cover the original
-Human Baskets failure, another affected Orders context and the existing SPY route,
-plus inspection that management remains navigation-only. Any populated dirty
-form or deferred workflow guard not naturally available stays source-reviewed,
-not an invented acceptance case. No automated tests or mocks.
+Pending one live affected smoke. It will cover the original Human Baskets
+failure, another affected Orders context and the existing SPY route, plus
+inspection that management remains navigation-only. Any populated dirty form or
+deferred workflow guard not naturally available stays source-reviewed, not an
+invented acceptance case. No automated tests or mocks.
