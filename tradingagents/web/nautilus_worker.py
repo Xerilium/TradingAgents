@@ -317,8 +317,10 @@ def main():
                                         Quantity.from_str(str(item["s"])), AggressorSide.NO_AGGRESSOR,
                                         TradeId(str(item["i"])), stamp, self.clock.timestamp_ns())
                                 elif key == "latestQuote" and 0 < item["bp"] <= item["ap"]:
-                                    tick = QuoteTick(instrument, Price.from_str(str(item["bp"])),
-                                        Price.from_str(str(item["ap"])), Quantity.from_str(str(item["bs"])),
+                                    bid, ask = Price.from_str(str(item["bp"])), Price.from_str(str(item["ap"]))
+                                    precision = max(bid.precision, ask.precision)
+                                    tick = QuoteTick(instrument, Price.from_str(format(bid.as_decimal(), f".{precision}f")),
+                                        Price.from_str(format(ask.as_decimal(), f".{precision}f")), Quantity.from_str(str(item["bs"])),
                                         Quantity.from_str(str(item["as"])), stamp, self.clock.timestamp_ns())
                                 else:
                                     if diagnostic is not None:
@@ -331,7 +333,7 @@ def main():
                                 if diagnostic is not None:
                                     normalized = diagnostic["normalization"][key] = {"status": "accepted", "input_event_ns": str(stamp)}
                                     try:
-                                        cached = self.cache.trade_tick(instrument) if key == "latestTrade" else self.cache.quote_tick(instrument)
+                                        cached = self.cache.trade_tick(tick.instrument_id) if key == "latestTrade" else self.cache.quote_tick(tick.instrument_id)
                                         normalized["cached_event_ns"] = str(cached.ts_event) if cached else None
                                     except Exception as exc:
                                         normalized.update(cached_event_ns=None, cache_read_error=type(exc).__name__)

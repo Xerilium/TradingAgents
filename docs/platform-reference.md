@@ -92,6 +92,9 @@ inputs and run calculations separately.
   allowlisted raw quote/trade fields, IEX/source/capture identity and normalization
   outcome/input/cache event times. This latest in-memory diagnostic changes no
   quote acceptance, freshness or fallback and contains no credentials/full payload.
+  Valid stock bid/ask prices are losslessly padded to common native precision,
+  matching the option-mapping pattern; an integer bid with a decimal ask must not
+  be rejected solely for a representation-precision mismatch.
   It requires the updated native worker; absent fields in an older process are not
   evidence that the provider omitted data.
 - Saved research inputs and separately collected market history remain distinct.

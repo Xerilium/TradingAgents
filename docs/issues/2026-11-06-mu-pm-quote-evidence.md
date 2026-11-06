@@ -43,3 +43,39 @@ capture/event times to native mapping/cache evidence on one normal existing
 refresh. Fix only a demonstrated defect; if provider input is missing/invalid/
 stale, attribute exact fields and stop. No root-cause or successful correction
 claim until that real evidence exists.
+
+## Real capture and demonstrated MU defect
+
+Human confirmed Development restart. At12:44:03PST the loaded worker hash exactly
+matched reviewed206b4f…243c, newnative
+`c12c2a9b-732e-4f7c-8d1c-7de10e1b1ff6`; paper15d9/reconciled,policy2floor5%,
+spread25age60/freshness60regular,autooff,zeroorders/commands/approvals/run.
+
+One actual existing refresh captured at12:43:36.934130PST from Alpaca IEX:
+MU raw bid690/ask690.39,size10/20,event12:43:35.456255926. Provider values were
+positive/noncrossed, but native tick construction raised ValueError and no quote
+was published. Exact real-field replay through installed Nautilus1.231.0 returned
+`bid_price.precision`0 not equal to `ask_price.precision`2. This confirms a desk
+normalization defect, not provider-absent MU quote in this sample.
+
+Surgical fix reuses existing option mapping pattern: losslessly pad both stock
+prices to their maximum input precision before QuoteTick construction. Captured
+MU replay then returned690.00/690.39,size10/20 with exact decimal values preserved.
+No price rounding, fabricated quote, freshness change or policy relaxation.
+Diagnostic cache lookup uses the constructed tick's instrument identity; a null
+immediate cache result still is not proof cache application failed asynchronously.
+
+PM in the SAME real capture had valid accepted bid197.95/ask198.05,event
+12:43:33.444714411 and trade197.97,event12:43:25.968738357. Its old historical
+staleness cannot be reconstructed; this sample shows no PM input-age defect.
+Mixed bid/ask decimal precision can affect any stock, including PM when present;
+shared correction applies once in the stock mapper. Differing decimal precision
+is representation, not a valid reason to reject two numerically valid prices.
+
+Independent scoped correction review found no significant issues. AST and
+whitespace passed; corrected worker SHA256
+`81052a10d19700516b8ac2e9f1a077ef1872b2b526947dafb81fcc61fc633e76`. Fixed worker activation still requires the supported human
+Development tray Restart after the same empty-order/autooff precheck. No restart
+or broker action performed by coding session. Real post-fix live MU/PM mapping
+remains unverified until that activation; exact captured-value native replay is
+bounded evidence, not execution acceptance.
