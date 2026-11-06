@@ -236,6 +236,14 @@ Filtering changes displayed rows only; the full plan and its authority bindings
 stay unchanged. Natural expiry keeps the
 preview readable, disables submission and asks for a new **Preview**.
 
+A latest run with blocked status is labelled **Latest rebalance blocked**, with its
+actual session, reason and progress warning-styled. It takes priority over routine
+preview guidance, but not busy, in-progress, unavailable-account or account-condition
+messages. **Review account order controls** opens the existing Orders evidence and
+recovery workspace. A new preview does not resolve the previous run. This is
+source-confirmed presentation; no blocked run was induced or live-accepted. Preview,
+submission eligibility and standing authority retain their separate guards.
+
 The path is:
 
 ```text
