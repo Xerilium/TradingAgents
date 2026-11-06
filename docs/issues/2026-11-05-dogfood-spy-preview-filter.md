@@ -76,3 +76,21 @@ one fresh preview after loading the corrected frontend. No automated tests,
 mocks, fake preview records, broker actions, authority changes, private settings
 or credential inspection. Populated retained preview rows, not fabricated fixtures,
 are the verification input. Filtering must not initiate another preview or submit.
+
+## Source implementation and checks
+
+The SPY preview now renders a native Find planned stock field, Clear filter,
+matching/full-plan count, view-only explanation and an explicit no-match row.
+A separate session query derives display rows from the complete preview without
+mutating it. Delegated input replaces only body/count; the existing focused-node
+reuse marker preserves the native input during ordinary renders. Query edits
+reset table vertical scroll and update its existing keyed scroll record while
+retaining horizontal position. Clear restores/focuses the input. Explicit preview
+resets and new previews clear the query. Financial handlers and payload are intact.
+
+Candidate source blob: `7f5b54eb68265bd84dc3d2bf051cc8e4ec0f9e84`.
+Delta: 21 added / 7 removed JavaScript lines. No backend, CSS or tests changed.
+JavaScript syntax and Git whitespace checks passed. The Impeccable detector
+reported only the pre-existing `#4dabf7` palette advisory at line 2378, outside
+this change. No automated tests or mocks were added or run. Fresh source review
+and one affected actual UI smoke remain pending.
