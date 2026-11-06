@@ -75,3 +75,19 @@ and inspect the expired state without submitting. Do not shorten the TTL, alter
 clocks, inject a preview or use tests/mocks. Waiting for the real validity window
 is part of this same item; it does not start a new dogfood iteration. No private
 settings or credentials, broker actions, research or production operation.
+
+## Source implementation and checks
+
+The presentation now derives `previewExpired` for a retained token, false existing
+Submit eligibility and a passed existing client deadline. It adds an inline
+status naming Preview SPY rebalance. The next-session hint requires an available,
+non-busy Submit control that is not replaced by queued cancellation. The original
+`canSubmit` expression and all handlers, token/terms, TTL and backend are unchanged.
+The dry-run summary, full retained plan and view-only filter remain intact.
+
+Candidate blob: `072176cb38030c8dc2cd01fff06bc514fa36a5f6`.
+Delta: 3 added / 1 removed JavaScript lines; no CSS/backend/test changes.
+JavaScript syntax and Git whitespace checks passed. The Impeccable detector
+reported only the pre-existing `#4dabf7` advisory at line 2378, outside this change.
+No automated tests or mocks. Fresh independent source review and one natural-expiry
+live observation remain pending.

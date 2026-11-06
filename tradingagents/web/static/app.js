@@ -3254,6 +3254,7 @@ function spyRebalanceMarkup(){
  const rows=preview?spyTradeRows(preview.trades):null;
  const message=spyPreview&&!preview?'':spyHoldingsMessage;
  const canSubmit=eligible&&!schedule.in_progress&&preview?.submitToken&&Date.now()<preview.submitExpires;
+ const previewExpired=preview?.submitToken&&!canSubmit&&Date.now()>=preview.submitExpires;
  return heading+fundPlanMarkup()+
   '<p>Uses State Street’s holdings from the previous trading session. The desk must be open during regular market hours.</p>'+
   '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
@@ -3263,7 +3264,8 @@ function spyRebalanceMarkup(){
   '<button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
   (run?.status==='queued'?'<button data-spy-rebalance="cancel" '+(spyRebalanceBusy?'disabled':'')+'>Cancel queued rebalance</button>':
    '<button data-spy-rebalance="submit" '+(!canSubmit||spyRebalanceBusy?'disabled':'')+'>Submit paper orders</button>')+'</div>'+
-  (preview?.submitToken&&state.nautilus?.market_open===false?'<p>Submit queues this rebalance for the next regular session.</p>':'')+
+  (previewExpired?'<p role="status" class="warning">This preview has expired. Select Preview SPY rebalance to review a new plan before submitting.</p>':'')+
+  (canSubmit&&!spyRebalanceBusy&&run?.status!=='queued'&&state.nautilus?.market_open===false?'<p>Submit queues this rebalance for the next regular session.</p>':'')+
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
   (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+
    preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
