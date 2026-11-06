@@ -26,6 +26,40 @@ must remain intact: a view filter is not an allocation, approval or order filter
 Before capture (ignored):
 `.local-workspace/dogfood-20261105/spy-preview-filter-before.jpg`.
 
+## Research and plan
+
+Official sources accessed 5 November 2026:
+
+- [Robinhood Legend widgets](https://robinhood.com/us/en/support/articles/widgets-in-robinhood-legend/):
+  primary read confirmed symbol search when adding a watchlist item and column
+  sorting, not filtering existing contents or a trade preview. Local preview
+  lookup is an adaptation, not a claim of exact feature parity.
+- [Fidelity Basket Portfolios FAQ](https://www.fidelity.com/direct-indexing/customized-investing/faqs):
+  research worker reports saved drafts containing securities/target weights
+  separate from editing and trading. This does not prove a preview-filter feature
+  or execution acceptance.
+
+Independent source mapping confirmed that `spyRebalanceAction()` retains the
+complete validated trade array and submits its existing token, not displayed rows.
+`bindBaskets()` already delegates local input/click events. Use that path without
+calling the full renderer on each keystroke.
+
+Add a session-only symbol query, trimmed case-insensitive substring matching,
+a labeled native search input, separate matching/full-plan count, clear action
+and no-match guidance. Derive display rows without mutating source trades. Keep
+the full Proposed trades heading and dry-run summary unchanged and state that
+filtering does not change the full rebalance plan. Input updates replace only the
+table body/count, preserve the input node/caret, and reset vertical table scroll
+while retaining horizontal position. Use the existing focused-node reuse marker
+for ordinary polling renders, not a new focus mechanism. Keep the input value and
+rendered rows synchronized from the same query. Clear resets/focuses the search;
+starting a new preview or explicit preview reset clears the query. Preserve every
+financial admission, expiry and dispatch path.
+
+The research worker read the current attributed observation at
+`memory://thinking/sequential/2026/11/06/session-1793928248593-14002`.
+That is source evidence, not independent UI acceptance.
+
 ## Investigation and constraints
 
 A dynamic workflow independently maps preview state, rendering/binding and input
