@@ -70,3 +70,21 @@ another shrinking workspace child. No new data, metric, filter or backend change
 Fresh source review follows the complete UI batch, then one retained-input smoke
 covering AAPL Summary, Reports, Sources & Filings, completed/incomplete filters,
 search scope and a narrower viewport. No research/provider request or broker action.
+
+## Source implementation and checks
+
+Implementation `e1ad50d` changes only the two coverage labels and adds the scoped
+filter explanation with its accessible description. Result counts, filter keys,
+selection, report/coverage metadata, eligibility and backend remain unchanged.
+The help is a full-width flex item inside the existing nonshrinking filter group.
+
+Candidate blobs: app.js `bf773b136a44cabc30a84a799e6b1fc0c2bc3637`;
+ui-research-journal.css `e510a1a6f7247197d657e57f65573dbd4f64cd5f`.
+Delta: 3 added / 3 removed JavaScript lines and 1 added CSS line. No tests added
+or run. JavaScript syntax and Git whitespace checks passed. The manual Impeccable
+detector found no anti-pattern failures and only the previously recorded,
+out-of-scope `#4dabf7` palette advisory at app.js line 2378. Its regex-only source
+scan is not rendered contrast or product acceptance evidence.
+
+Fresh independent source review `wf_5a24132f-565` is in progress. Live acceptance
+has not yet run on this revision.
