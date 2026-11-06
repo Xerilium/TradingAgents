@@ -50,18 +50,37 @@ history. No leader account was accessed. Source capability is not live acceptanc
 - Explain loading, no saved intervals and saved-but-unopened intervals honestly.
   Reuse the existing Journal → Account history navigation; clicking it must not
   collect data or save reporting terms.
-- Show the unsupported benchmark-method warning only when a benchmark price
-  return is actually calculable but unsupported for strategy comparison.
+- Use recorded backend readiness reasons for benchmark availability. Do not
+  infer unsupported methods from the overall comparison's availability flag.
 - Preserve chart controls, CSV export/import, source details and all existing
   trade boundaries. No backend, data-provider or calculation changes.
 - Apply Impeccable Operate guidance and Microsoft-style action copy. Use existing
   styles, not a redesign. Independently review the source, then one affected
   real-browser smoke batch. No automated tests, mocks or fabricated inputs.
 
+## Source review and corrections
+
+The first independent source reviewer found that gating the inferred benchmark
+warning on calculable price return was still insufficient: an accepted benchmark
+method can have a price return but lack the strategy valuation boundaries needed
+for comparison. Primary confirmed this in `performance.py:101-111` and
+`performance_acceptance.py:33-46`, removed the inferred warning and retained the
+backend's recorded readiness reasons. The new entry state also uses the existing
+`.empty-state` component, not the old 120px-height-capped `.performance-empty`,
+so its explanation and navigation do not require an inner scroll area.
+
+Final JavaScript blob before live smoke:
+`9cf16cfdec77e7fd0d3daff2b3bb9cffa03a2339`. The source delta is 4 added / 2
+removed lines in `static/app.js`; no backend or CSS changes. JavaScript syntax
+and scoped Git whitespace checks passed. No automated test was added or run.
+Targeted independent correction review and the live smoke outcome follow.
+
 ## Acceptance and evidence
 
-Pending implementation and one smoke batch. The real empty-account state can
-verify truthful first-use guidance, disappearance of false calculation failures
-and existing Journal navigation. Populated calculations, induced loading/errors
+Pending one affected smoke batch. The real empty-account state can verify
+truthful first-use guidance, disappearance of false calculation failures and
+existing Journal navigation. Populated calculations, induced loading/errors
 and provider collection remain unverified unless real retained inputs naturally
 exercise them. No fresh account-history collection is required for this fix.
+The next loop iteration is scheduled within four minutes of completion, per the
+user's cadence correction; use a three-minute completion-to-start wakeup.
