@@ -47,8 +47,20 @@ Reviewed SHA256:
 - spy_rebalance.py: `1a9c5459fb3e3d1b6f94162a4accf48758a6d900c1f0eddcd07afed6ed0ed020`
 - nautilus_worker.py: `1d2e32d5e177c73f3977eddd5348dc835251da3991aefecb1733dc2026b5baa0`
 
-Activation has not occurred: the current native session remains the old source,
-health has no startup hashes yet. The supported native tray action is required. No automated tests, mock transports, synthetic events or
+Activation observed after the human confirmed the supported Development tray
+Restart on6November2026. At12:18:32PST all three desk startup hashes and native
+worker startup hash exactly matched the reviewed committed bytes above. New
+server `91ded494-5abe-4214-b4ac-e28e90a3986c` and native session
+`468e59a3-7456-4306-91a5-daa086716a69` replaced the old runtime.
+
+Read-only API and visible SPY page12:18:32–12:18:35PST showed verified official
+paper endpoint/account15d9/USD100000 cash/equity, complete reconciliation with no
+gaps, zero positions/orders/commands/approvals, recoveryfalse, autooff/runnull,
+policyrev1 floor5%, budget95000/reserve5000, no startup/API errors. Preview needed
+and Submit disabled; no retained plan. Operator was told normal browser reload
+then regenerate/review session-only preview; no further backend restart needed.
+This verifies activation and empty-account readiness, not broker execution or
+actual full-fill/account wakeup acceptance. No broker/financial actions performed. No automated tests, mock transports, synthetic events or
 broker actions were authorized/performed. Actual fill-driven execution remains
 unverified without separately authorized real orders and native/broker receipts.
 
