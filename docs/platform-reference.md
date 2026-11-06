@@ -194,10 +194,17 @@ unavailable; do not silently substitute today's report.
 | Actual portfolio | Broker-observed balances, positions, orders and fills | Broker state; not replaced by local modeling |
 
 Portfolio has Positions, Allocations, Model proposal and Performance. Positions
-shows observed holdings and pending exposure; **Open account fund plan** opens
-the editor in SPY portfolio. Allocations contains fixed-weight historical scenarios;
+shows observed holdings and pending exposure. When verified holdings are empty,
+**Review SPY portfolio** returns to the daily review; **Browse Markets** remains
+available for optional research. Navigation does not generate a preview or change
+authority. **Open account fund plan** opens the editor in SPY portfolio. Allocations contains fixed-weight historical scenarios;
 loading preset weights does not run a simulation. Holdings as-of dates do not
 establish historical publication or availability at the scenario start.
+
+![Empty Positions with Review SPY portfolio before optional Markets research](images/portfolio-empty-spy-handoff.png)
+
+The empty-position handoff returns to SPY review without starting a preview or trade.
+See [image provenance](images/README.md) for the dated capture and limits.
 
 Portfolio → Model proposal invokes one joint deep-model synthesis. It starts with model
 cash rather than copying actual holdings. Deterministic sizing floors each

@@ -12,6 +12,18 @@ no values or states were repainted.
 | `spy-rebalance-preview.jpg` | 5 November 2026 | Based on `a98afa6`, app `a05513312d8f126de53b89c039d7863900f185fa`, CSS `e1a17a1a48fdfd310b023fefa1da32101b134273`; actual 1920 × 1080, 800 × 450 Browser capture | Compact search/Clear/count toolbar, one AAPL row from the complete 503-trade plan, naturally expired preview |
 | `spy-fund-plan.png` | 5 November 2026 | `7df8b5b`, app blob `5e9b27533a4498f94af9b65629556c4c5b8114c3`; real 1920 × 1080 viewport, 706 × 153 detail image | Compact reserve/SPY budget, secondary editing/details and native keyboard focus |
 | `spy-portfolio.jpg` | 5 November 2026 | Based on `f112f77`, app `96c3d807ff0e45e65be6a559041191d6c47c8f45`, command controls `29cf7f519a5a28b1acdcef73bc92e496a66ba4a4`; real 1920 × 1080 viewport, 800 × 450 Browser capture | Clear-state SPY review and the new account-control handoff link; no blocked state is pictured |
+| `portfolio-empty-spy-handoff.png` | 5 November 2026 | Based on `6940c7d`, app `b40919b9e5373bf331aa6e9c1c5ab2e23de4eab2`; actual 1920 × 1080, 706 × 171 region capture | Known-empty Positions returns to SPY review, with Markets and fund-plan editing preserved |
+
+`portfolio-empty-spy-handoff.png` is an unchanged Browser region capture from the
+800 × 450 rendering of an actual 1920 × 1080 page. Region (90, 111)–(796, 282)
+contains the complete visible Positions empty-state section, its handoffs and
+closed evidence disclosures; it omits navigation, balances and surrounding blank
+space, not an inconvenient warning. It matches ignored
+`portfolio-empty-spy-detail-1080p.png` byte-for-byte, contains only PNG
+IHDR/IDAT/IEND chunks and has blob `c2cc707373c1a3f9fe545c472da757fd53aae00a`.
+Primary inspected visible privacy. No financial value, date, status or control was
+repainted. This is empty-state/navigation evidence, not populated holdings, tax
+acceptance, broker execution or performance evidence.
 
 `spy-rebalance-preview.jpg` is an unchanged full Browser screenshot. The actual
 page viewport was 1920 × 1080; the tool rendered 800 × 450. AAPL filtering shows one
@@ -59,6 +71,8 @@ Original ignored evidence under `.local-workspace/dogfood-20261105/`:
 - `spy-preview-toolbar-before-1080p.jpg` — control-stack baseline
 - `spy-preview-toolbar-full-after-1080p.jpg` — populated unfiltered toolbar
 - `spy-preview-toolbar-aapl-after-1080p.jpg` — exact current promoted filtered preview
+- `portfolio-empty-spy-after-1080p.jpg` — full affected Positions capture
+- `portfolio-empty-spy-detail-1080p.png` — exact promoted region capture
 
 Acceptance records:
 
@@ -70,6 +84,7 @@ Acceptance records:
 - [Read-first SPY daily review](../issues/2026-11-05-dogfood-spy-read-first-overview.md)
 - [SPY account exceptions and handoff](../issues/2026-11-05-dogfood-spy-account-exceptions.md)
 - [Compact proposed-trade toolbar](../issues/2026-11-05-dogfood-spy-preview-toolbar.md)
+- [Empty Positions SPY handoff](../issues/2026-11-05-dogfood-portfolio-empty-spy-handoff.md)
 
 When a pictured workflow changes, replace its guide image after affected
 verification and update this note. Preserve raw evidence separately; do not create
