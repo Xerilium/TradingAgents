@@ -27,7 +27,11 @@ approval or the ticket ready count. **Review account order controls** opens
 Orders management and focuses its account controls; ordinary updates retain that
 pane by Orders tab. An empty exception list does not establish a complete SPY preflight pass.
 The server still checks freshness, commitments and exact preview bindings.
-Navigation changes no plan terms or trading authority. This entry is not
+Navigation changes no plan terms or trading authority. Unchanged Markets search,
+named Markets/SPY disclosures and SPY review buttons retain their node identity
+across same-context ordinary updates. Native disclosure expanded state and focus
+remain available to structured browser controls; changed semantics still replace
+controls. This does not pause polling or relax review/submission guards. This entry is not
 acceptance of the full execution/reconciliation journey or SPY return parity.
 
 ## Fixed-portfolio hindsight evaluation

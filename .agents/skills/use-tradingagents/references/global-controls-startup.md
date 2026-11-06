@@ -37,6 +37,18 @@ The top-bar **Orders: Active · Manage** / **Orders: Paused · Manage** control 
 
 Search, pagination, sort, filters, tabs, disclosures, symbol inspection, and page size change the displayed view. The app also saves some view preferences in browser local storage (key `paper-desk-view`) through `persistView()` in `tradingagents/web/static/app.js`; this is separate from the server workspace. Check the page reference for each action's actual boundary. A button that says Load may read retained definitions or data; inspect its handler before treating it as safe. Do not assume that Preview, Save, Run, Collect, Import, Export, Enable, Retry, Capture, Approve, Submit, Cancel, Stop, or Restore is read-only.
 
+## Review controls during updates
+
+**Observed 6 November 2026 on dev8099.** Markets search, named Markets/SPY
+disclosures and unchanged SPY review buttons retain their DOM identity across
+ordinary updates in the same page, stock, server and workspace generation.
+The structured Browser can discover native disclosures as button refs;
+expanded state and native focus are retained. Search and Snapshot and source
+details were exercised with the same refs across polling; changed semantics and
+other controls still require fresh refs. A normal page reload loads this static
+fix without restarting Nautilus; it discards that browser's session-only preview.
+See `docs/issues/2026-11-06-browser-review-control-retention.md` for evidence and limits.
+
 ## Workspace save status
 
 Markets and chart workspace edits use a separate server save path (`/api/workspace`). The status reads **All changes saved**, **Unsaved workspace changes**, **Saving workspace…**, or the returned error. `queueWorkspace()` in `app.js` starts a save 450 ms after an edit. `writeWorkspace()` sends the expected workspace revision. Workflows (`/api/workflows`) and Settings (`/api/config`, `/api/credentials`) save through their own explicit buttons, not this auto-save path.
