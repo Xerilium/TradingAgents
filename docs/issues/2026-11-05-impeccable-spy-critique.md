@@ -54,3 +54,7 @@ The full report is archived by the installed critique-storage helper: [scored cr
 Primary accepts this onboarding-and-critique item as complete, not the visual design or full SPY journey. S1–S5 remain open for subsequent loops. Onboarding was committed in8474ad3; this delivery preserves the full fingerprinted critique and actionable backlog locally on nautilus. There are zero application/backend/test changes in this iteration. The generated empty-heuristic metadata was normalized to an explicit empty YAML string after the static whitespace check. No runtime checks were repeated.
 
 Reusable onboarding lesson: memory://knowledge/projects/tradingagents/tradingagents-impeccable-onboarding-requires-a-resolved-current-surface-brief. Unrelated README and loop-brief changes and the ledger deletion remain untouched and excluded from these commits.
+
+## Subsequent implementation
+
+The read-first daily-review batch addresses S1–S3/S5 and the existing-data portion of S4. See [the implementation and affected evidence](2026-11-05-dogfood-spy-read-first-overview.md). The table and score above remain the original critique, not a new assessment. The processed snapshot is closed; no higher score or complete SPY shipping acceptance is claimed. Subsequent work must inspect the remaining end-to-end journey rather than repeat this completed resting-overview batch.

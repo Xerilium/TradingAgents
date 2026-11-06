@@ -3227,7 +3227,7 @@ function fundContract(f){return f&&Number.isInteger(f.revision)&&Array.isArray(f
 function fundBudgetValid(b){const amount=k=>number(b[k])!==null&&number(b[k])>=0;return b&&typeof b.active==='boolean'&&['policy_floor_usd','required_reserve_usd','cash_usd','equity_usd','shortfall_usd','investable_sleeve_usd'].every(amount)&&['spending_reserve_usd','authored_reserve_usd'].every(k=>Object.hasOwn(b,k)&&(b.active?amount(k):b[k]===null))&&Object.hasOwn(b,'spendable_cash_usd')&&(amount('spendable_cash_usd')||b.spendable_cash_usd===null&&typeof b.spendable_cash_error==='string'&&!!b.spendable_cash_error)&&Object.hasOwn(b,'account_at')&&Object.hasOwn(b,'account_observation_started_at');}
 function fundPlanMarkup(){
  const f=investorRecord?.fund_plans;
- if(!fundContract(f))return '<section id="account-fund-plan" tabindex="-1"><h3>Account fund plan</h3><p>Unavailable. This desk service does not provide the fund plan contract.</p></section>';
+ if(!fundContract(f))return '<section id="account-fund-plan" tabindex="-1"><h3>Reserve and investment budget</h3><p>Unavailable. This desk service does not provide the fund plan contract.</p></section>';
  const account=f.current_account_id,plan=f.current;
  if(!fundDraft||!fundDirty&&(fundDraft.account!==account||fundDraft.generation!==state.store_generation))fundDraft={generation:state.store_generation,account,revision:plan?.revision??0,recordRevision:f.revision,investorRevision:fundInvestorRevision,status:plan?.status||'inactive',...Object.fromEntries(fundFields.map(([key])=>[key,plan?.[key]??'']))};
  if(!fundDirty&&fundDraft.account===account&&(fundDraft.revision!==(plan?.revision??0)||fundDraft.recordRevision!==f.revision||fundDraft.investorRevision!==fundInvestorRevision))fundDraft={generation:state.store_generation,account,revision:plan?.revision??0,recordRevision:f.revision,investorRevision:fundInvestorRevision,status:plan?.status||'inactive',...Object.fromEntries(fundFields.map(([key])=>[key,plan?.[key]??'']))};
@@ -3235,8 +3235,8 @@ function fundPlanMarkup(){
  const rows=fundBudgetValid(b)?[['Spending reserve',b.spending_reserve_usd],['Manual tax provision',b.active?plan?.tax_provision_usd:null],['Trading cushion',b.active?plan?.trading_cushion_usd:null],['Authored reserve',b.authored_reserve_usd],['Trading Rules cash floor',b.policy_floor_usd],['Required reserve (greater of authored reserve and floor)',b.required_reserve_usd],['Observed cash',b.cash_usd],['Reserve shortfall',b.shortfall_usd],['Spendable cash above reserve',b.spendable_cash_usd],['SPY investable sleeve',b.investable_sleeve_usd]].map(([label,value])=>'<tr><th scope="row">'+esc(label)+'</th><td>'+esc(value==null?'Unavailable':money(value))+'</td></tr>').join(''):'';
  const other=f.plans.filter(p=>p.account_id!==account);
  const budgetReady=fundBudgetValid(b);
- return '<section id="account-fund-plan" tabindex="-1"><h3>Account fund plan</h3><p><strong>'+esc(budgetReady&&b.active?'Reserve applied':plan?.status==='active'?'Reserve needs attention':'Planning only')+'</strong> · <span id="fund-dirty-status">'+(fundDirty?'Unsaved changes':plan?'Saved terms':'No saved plan')+'</span></p>'+
-  (budgetReady?'<p>'+esc(b.active?'Saved plan and Trading Rules':'Trading Rules only')+': reserve <strong>'+esc(money(b.required_reserve_usd))+'</strong> · SPY budget <strong>'+esc(money(b.investable_sleeve_usd))+'</strong></p><p>Cash above reserve '+esc(b.spendable_cash_usd===null?'Unavailable':money(b.spendable_cash_usd))+' · not confirmed withdrawable cash.</p>':'<p role="alert">Budget unavailable. '+esc(f.budget_error||'A current eligible account observation and complete applied terms are required.')+'</p>')+
+ return '<section id="account-fund-plan" tabindex="-1"><h3>Reserve and investment budget</h3><p><strong>'+esc(budgetReady&&b.active?'Reserve applied':plan?.status==='active'?'Reserve needs attention':'Planning only')+'</strong> · <span id="fund-dirty-status">'+(fundDirty?'Unsaved changes':plan?'Saved terms':'No saved plan')+'</span></p>'+
+  (budgetReady?'<p class="spy-budget-basis">'+(b.active?'Your saved spending reserve and Trading Rules determine this budget.':'<strong>No spending reserve is applied.</strong> Only the Trading Rules cash floor reduces this sizing budget.')+'</p><dl class="spy-budget-values"><div><dt>SPY sizing budget</dt><dd>'+esc(money(b.investable_sleeve_usd))+'</dd></div><div><dt>Required cash reserve</dt><dd>'+esc(money(b.required_reserve_usd))+'</dd></div><div><dt>Cash above reserve</dt><dd>'+esc(b.spendable_cash_usd===null?'Unavailable':money(b.spendable_cash_usd))+'</dd></div></dl><p>Cash above reserve is not confirmed withdrawable cash.</p><p class="spy-source-note">Budget account observed '+fullTime(b.account_at)+'. Saved terms, not unsaved edits.</p>':'<p role="alert">Budget unavailable. '+esc(f.budget_error||'A current eligible account observation and complete applied terms are required.')+'</p>')+
   (budgetReady&&number(b.shortfall_usd)>0?'<p class="warning" role="alert">Reserve shortfall: '+esc(money(b.shortfall_usd))+'. Observed cash is below the saved reserve.</p>':'')+
   (budgetReady&&b.spendable_cash_usd===null?'<p role="alert">Cash above reserve unavailable: '+esc(b.spendable_cash_error)+'</p>':'')+
   (changed?'<p role="alert">Workspace, account or revision changed. Your edits are retained but cannot be saved. Reload the plan to discard them and use the current observation.</p>':'')+
@@ -3265,7 +3265,7 @@ function updateSpyTradeFilter(){
  const panel=body.closest('.spy-preview-trades');panel.scrollTop=0;if(panel.dataset.workspaceScrollKey)workspaceScrolls.set(panel.dataset.workspaceScrollKey,[0,panel.scrollLeft]);
 }
 function spyRebalanceMarkup(){
- const heading='<section class="orders-spy-rebalance" aria-label="Daily SPY paper rebalance"><h2>Daily SPY paper rebalance</h2>';
+ const heading='<section class="orders-spy-rebalance" aria-label="Daily SPY paper rebalance"><h2>Daily review</h2>';
  const schedule=investorRecord?.spy_rebalance;
  if(!schedule)return heading+'<p>SPY rebalance is unavailable.</p></section>';
  const {enabled,eligible_account_id:account,account_id:bound,run}=schedule;
@@ -3277,28 +3277,29 @@ function spyRebalanceMarkup(){
  const message=spyPreview&&!preview?'':spyHoldingsMessage;
  const canSubmit=eligible&&!schedule.in_progress&&preview?.submitToken&&Date.now()<preview.submitExpires;
  const previewExpired=preview?.submitToken&&!canSubmit&&Date.now()>=preview.submitExpires;
- return heading+fundPlanMarkup()+
-  '<p>Uses State Street’s holdings from the previous trading session. The desk must be open during regular market hours.</p>'+
-  '<p role="status">'+esc(status+(run?' · '+run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''):''))+'</p>'+
-  '<div class="basket-actions">'+
-  '<button data-spy-rebalance="'+(enabled?'pause':'enable')+'" '+(spyRebalanceBusy||!enabled&&!eligible?'disabled':'')+'>'+
-   (enabled?'Disable automatic paper trades':'Enable automatic paper trades')+'</button>'+
-  '<button data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
+ const unavailable=!account?'An eligible paper account is unavailable.':bound&&bound!==account?'The rebalance is bound to a different paper account. Review automatic trading settings.':!investorRecord.broker_transport_enabled?'Broker transport is unavailable.':!fundContract(investorRecord.fund_plans)?'The account fund plan is unavailable.':investorRecord.fund_plans.current_account_id!==account?'The fund plan does not match the eligible paper account.':'Resolve the budget error before previewing.';
+ const reviewStatus=spyRebalanceBusy?'Updating rebalance…':schedule.in_progress?'Rebalance in progress':!eligible?'Rebalance unavailable':previewExpired?'Preview expired':preview?.policyBlockers.length?'Trading Rules block submission':preview&&!preview.trades.length?'No trades in this preview':canSubmit?'Preview ready for review':preview?'Preview needs refreshing':'Preview needed';
+ const guidance=!eligible?unavailable:schedule.in_progress?'A rebalance is in progress. Review its status before another submission.':!preview?'Review the reserve and investment budget, then preview proposed buys and sells. Preview does not send orders.':preview.policyBlockers.length?'Resolve the Trading Rules blockers before submitting.':!preview.trades.length?'This preview contains no orders to submit.':!canSubmit?'Generate a new preview before submitting paper orders.':'Review the full proposed trade list before submitting. Submission is a separate broker action.';
+ return heading+'<div class="spy-review-layout">'+fundPlanMarkup()+
+  '<section class="spy-manual-review" aria-labelledby="spy-review-heading"><h3 id="spy-review-heading">Rebalance review</h3><p class="spy-review-status" role="status">'+esc(reviewStatus)+'</p><p>'+esc(guidance)+'</p>'+
+  '<p class="spy-source-note">'+(preview?'State Street SPY weights dated '+esc(preview.asOf)+' · Preview price check '+fullTime(preview.quoteAt):'SPY weights and price-check dates are not loaded in this view. Preview uses State Street’s previous-session holdings.')+'</p>'+
+  (run?'<p role="status">Rebalance: '+esc(run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''))+'</p>':'')+
+  '<div class="basket-actions"><button class="primary" data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
   (run?.status==='queued'?'<button data-spy-rebalance="cancel" '+(spyRebalanceBusy?'disabled':'')+'>Cancel queued rebalance</button>':
    '<button data-spy-rebalance="submit" '+(!canSubmit||spyRebalanceBusy?'disabled':'')+'>Submit paper orders</button>')+'</div>'+
   (previewExpired?'<p role="status" class="warning">This preview has expired. Select Preview SPY rebalance to review a new plan before submitting.</p>':'')+
   (canSubmit&&!spyRebalanceBusy&&run?.status!=='queued'&&state.nautilus?.market_open===false?'<p>Submit queues this rebalance for the next regular session.</p>':'')+
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
-  (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+
-   preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
+  (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
   (preview?.trades.length?'<h3>Proposed trades ('+esc(preview.trades.length)+')</h3>'+
    '<p>The desk sets buy limits from current quotes and may reduce share counts to fit available cash.</p>'+
    '<label for="spy-trade-query">Find planned stock<input id="spy-trade-query" type="search" data-list-query="spy-preview" value="'+esc(spyTradeQuery)+'" placeholder="Symbol, such as AAPL" aria-describedby="spy-trade-scope spy-trade-count"></label>'+
    '<button id="spy-trade-clear" type="button">Clear filter</button><p id="spy-trade-scope">Filtering changes this view only, not the full rebalance plan.</p>'+
    '<p id="spy-trade-count" role="status">Showing '+rows.count+' of '+preview.trades.length+' planned trades.</p>'+
    '<div class="table-scroll spy-preview-trades" role="region" aria-label="Proposed SPY trades" tabindex="0"><table class="data-table">'+
-   '<thead><tr><th scope="col">Stock</th><th scope="col">Action</th><th scope="col">Planned shares</th></tr></thead><tbody id="spy-trade-rows">'+rows.markup+
-   '</tbody></table></div>':'')+'</section>';
+   '<thead><tr><th scope="col">Stock</th><th scope="col">Action</th><th scope="col">Planned shares</th></tr></thead><tbody id="spy-trade-rows">'+rows.markup+'</tbody></table></div>':'')+
+  '</section></div><section class="spy-automatic" aria-labelledby="spy-automatic-heading"><div class="spy-automatic-status"><h3 id="spy-automatic-heading">Automatic paper trading</h3><p role="status">'+esc(status)+'</p></div>'+
+  '<details id="spy-automatic-controls"><summary id="spy-automatic-controls-toggle">Automatic trading settings</summary><p>Standing authority for the daily paper rebalance is separate from manual review. The desk must be open during regular market hours.</p><button data-spy-rebalance="'+(enabled?'pause':'enable')+'" '+(spyRebalanceBusy||!enabled&&!eligible?'disabled':'')+'>'+(enabled?'Disable automatic paper trades':'Enable automatic paper trades')+'</button></details></section></section>';
 }
 async function spyRebalanceAction(action){
  if(spyRebalanceBusy)return;
@@ -3313,11 +3314,9 @@ async function spyRebalanceAction(action){
   if(action==='preview'){
    if(!Number.isInteger(result.policy_revision)||number(result.target_stock_pct)===null||number(result.target_stock_pct)<0||number(result.target_stock_pct)>100||!fundBudgetValid(result.fund_budget)||!Array.isArray(result.trades)||!Array.isArray(result.policy_blockers)||!(result.submit_token===null||typeof result.submit_token==='string'&&!!result.submit_token)||typeof result.as_of!=='string'||typeof result.quote_at!=='string'||!Number.isInteger(result.positions)||!Number.isInteger(result.total)||!result.trades.every(t=>t&&typeof t.symbol==='string'&&['BUY','SELL'].includes(t.side)&&number(t.quantity)!==null&&number(t.quantity)>0)||!result.policy_blockers.every(reason=>typeof reason==='string')){spyPreview=null;spyTradeQuery='';spyHoldingsMessage='Unavailable. The SPY preview response is incomplete; submission is disabled.';return;}
    spyPreview={generation,account:config.eligible_account_id,fundRevision:investorRecord.fund_plans.revision,policyRevision:result.policy_revision,trades:result.trades,
-    policyBlockers:result.policy_blockers,submitToken:result.submit_token,submitExpires:Date.now()+300000};
+    policyBlockers:result.policy_blockers,submitToken:result.submit_token,submitExpires:Date.now()+300000,asOf:result.as_of,quoteAt:result.quote_at};
    const showOrder=order=>order&&typeof order.symbol==='string'&&['BUY','SELL'].includes(order.side)&&number(order.quantity)!==null&&typeof order.order_type==='string'?order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):''):'Order details unavailable';
-   spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · SPY weights dated '+result.as_of+
-    ' · Trading Rules revision '+result.policy_revision+' · Target stock exposure '+Number(result.target_stock_pct).toFixed(2)+'%'+
-    ' · Last price check '+time(result.quote_at)+'.'+
+   spyHoldingsMessage='Dry run · '+result.positions+' stocks · '+result.total+' planned trades · Trading Rules revision '+result.policy_revision+' · Target stock exposure '+Number(result.target_stock_pct).toFixed(2)+'%.'+
     (result.first_sell?' First sell: '+showOrder(result.first_sell)+'.':'')+
     (result.first_buy?' First buy estimate: '+showOrder(result.first_buy)+'.':
      result.has_buy?' Current cash cannot fund the first buy before sales.':'');
@@ -3799,7 +3798,7 @@ function fillsTable(){
 function renderSpyPortfolio(source){
  refreshTicketData(source);
  const reconciliation=!stateErrorMessage&&state.connection?.connected&&state.connection.account_verified===true&&state.nautilus?.status==='connected'?state.nautilus.reconciliation?.status||'Unavailable':'Unconfirmed';
- return '<div id="universe-review" class="orders-workspace">'+pageHeader(workspaceLabels.spy,'','<span>Account observed '+fullTime(state.nautilus?.account_at)+'</span>')+accountLedger()+'<p>Observed positions: '+(dashboardCoverage('positions')?positions().length:'Unknown')+' · Reconciliation: '+esc(reconciliation)+' · <a href="#portfolio">View portfolio</a></p>'+spyRebalanceMarkup()+'</div>';
+ return '<div id="universe-review" class="orders-workspace">'+pageHeader(workspaceLabels.spy,'','<span>Account observed '+fullTime(state.nautilus?.account_at)+'</span>')+accountLedger()+'<p>Observed positions: '+(dashboardCoverage('positions')?positions().length:'Unknown')+' · Reconciliation: '+esc(reconciliation)+' · <a href="#portfolio">Inspect account positions</a></p>'+spyRebalanceMarkup()+'</div>';
 }
 function renderOrdersView(source){
  refreshTicketData(source);

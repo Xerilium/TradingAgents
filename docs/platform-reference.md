@@ -12,8 +12,14 @@ routes, including Dashboard (`#overview`) and Orders (`#orders`), remain availab
 
 The page reuses the account balance strip and existing fund-plan/rebalance controls.
 It shows the account observation time, coverage-qualified position count and
-connected-state reconciliation status; **View portfolio** opens supporting account
-views. Portfolio's **Open account fund plan** opens the primary SPY editor directly.
+connected-state reconciliation status; **Inspect account positions** opens supporting
+account views. The natural-height Daily review places the sourced reserve and
+investment budget beside manual rebalance review. No spending reserve is applied
+when the plan is absent or planning-only; the Trading Rules cash floor still applies.
+Automatic trading status stays visible, with its authority control under
+**Automatic trading settings**. Preview is the primary review action, not permission
+to trade. The preview shows its returned SPY weights date and price-check time;
+without a preview those dates are explicitly not loaded in this view. Portfolio's **Open account fund plan** opens the primary SPY editor directly.
 Orders → SPY Rebalance remains an alternate entry to the same in-session plan and
 preview. Navigation changes no plan terms or trading authority. This entry is not
 acceptance of the full execution/reconciliation journey or SPY return parity.

@@ -61,3 +61,24 @@
 @media(min-width:1500px){body.ticket-is-open #main{margin-right:380px}}
 @media(max-width:1499px){.orders-direct-grid{grid-template-columns:minmax(0,1fr)}.orders-preparation,.orders-review-pane{min-height:auto;overflow:visible}.docked-ticket-drawer{box-shadow:0 8px 28px #0005}}
 @media(max-width:790px),(max-height:800px){.orders-direct-grid{display:flex;flex-direction:column}.orders-workspace .proposal-fields{grid-template-columns:minmax(0,1fr)}.docked-ticket-drawer{max-height:calc(100dvh - 36px)}.ticket-handoff{max-height:30vh;overflow:auto}}
+
+/* Daily SPY review: budget context, dominant review surface, separate authority. */
+#universe-review .orders-spy-rebalance{flex:none;gap:var(--space-4);padding:var(--space-4)}
+.spy-review-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:var(--space-5);align-items:start}
+.spy-review-layout>section{min-width:0}
+.spy-review-layout h3,.spy-automatic h3{margin:0 0 var(--space-2)}
+.spy-manual-review{display:flex;flex-direction:column;gap:var(--space-2);border-left:1px solid var(--line);padding-left:var(--space-5)}
+#universe-review .spy-review-status{font-size:var(--text-heading);font-weight:600}
+#universe-review .spy-budget-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);margin:var(--space-4) 0}
+.spy-budget-values>div{min-width:0}
+.spy-budget-values dt{font-size:var(--text-meta)}
+#universe-review .spy-budget-values dd{font-size:var(--text-heading);font-weight:600;font-variant-numeric:tabular-nums;margin:var(--space-1) 0 0;overflow-wrap:anywhere}
+#universe-review .spy-source-note{color:var(--muted);font-size:var(--text-meta)}
+.spy-manual-review .spy-preview-trades{max-height:32rem;flex:none!important}
+.spy-manual-review>.basket-actions{margin-block:var(--space-2)}
+.spy-manual-review>#spy-trade-clear{align-self:flex-start}
+.spy-automatic{padding-top:var(--space-4);border-top:1px solid var(--line)}
+.spy-automatic-status{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-3)}
+.spy-automatic-status h3{margin:0}
+#universe-review .spy-review-layout>section>p:not(.spy-source-note):not(.spy-review-status){font-size:var(--text-ui)}
+#universe-review .spy-manual-review .primary{border-color:var(--accent);font-weight:600}

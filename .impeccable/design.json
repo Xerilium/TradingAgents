@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-06T04:56:27.090Z",
+  "generatedAt": "2026-11-06T05:15:45.401Z",
   "title": "Design System: TradingAgents Paper Desk",
   "extensions": {
     "colorMeta": {
@@ -503,7 +503,7 @@
   ],
   "narrative": {
     "northStar": "The Linked Trading Desk",
-    "overview": "The primary daily workspace is SPY portfolio: observed account context, reserves and investment budget precede the existing rebalance controls. This is the current composition, not visual-quality or execution acceptance.\n\nA compact workstation places portfolio exposure, instrument data, and agent evidence within one continuous reading surface. Its charcoal navy layers, cool rules, and green controls follow the user's pinned Active Trader Pro direction. The interface supports sustained inspection through modest headings, tabular numbers, and explicit selection.\n\nThe visual system keeps research, proposals, and broker execution legible as separate states. Selection links the watchlist, chart, and evidence inspector; it does not imply an order. Paper identity, source timestamps, unavailable data, and broker acknowledgements are part of the interface's information hierarchy.",
+    "overview": "The primary daily workspace is SPY portfolio: observed account context precedes a natural-height Daily review. The sourced reserve/budget sits beside dominant manual rebalance review and results. Editing and automatic authority use separate native disclosures while authority status remains visible. Existing tokens and tabular figures are preserved. This is scoped composition, not full-journey or execution acceptance.\n\nA compact workstation places portfolio exposure, instrument data, and agent evidence within one continuous reading surface. Its charcoal navy layers, cool rules, and green controls follow the user's pinned Active Trader Pro direction. The interface supports sustained inspection through modest headings, tabular numbers, and explicit selection.\n\nThe visual system keeps research, proposals, and broker execution legible as separate states. Selection links the watchlist, chart, and evidence inspector; it does not imply an order. Paper identity, source timestamps, unavailable data, and broker acknowledgements are part of the interface's information hierarchy.",
     "keyCharacteristics": [
       "SPY-first desktop navigation, with supporting linked instrument panels.",
       "Charcoal surfaces separated by fine rules and lighter headers.",

@@ -289,7 +289,7 @@ Simulations**. Reusable experiments are **Strategy lab → Experiments**.
 
 | Page | How to use it |
 | --- | --- |
-| SPY portfolio | Start here for the observed account, reserve and SPY budget. Review existing rebalance inputs and status. Preview, automatic authority and submission remain separate explicit actions; navigation grants none of them. |
+| SPY portfolio | Start with the observed account, then read Reserve and investment budget beside Rebalance review. No saved spending plan is not a zero-needs plan. Inspect account positions for holdings. Preview shows dated proposed trades; automatic authority lives separately under Automatic trading settings. Preview, authority and submission remain separate actions. |
 | Portfolio | Check account balances and holdings; scan the universe using search, filters, sorting and columns. Select stocks to organize watchlists. Open a stock's market evidence and available charts before relying on an agent recommendation. |
 | Research | Choose a stock's latest saved result. Read the reports, debate and final decision; inspect source dates and failures. Record human review disposition and priority. Saved reports do not become current research merely because today's price changed. |
 | Orders | Create or review a local proposal or basket. Check symbol, side, quantity, order type, limit price when applicable and time in force. Read readiness reasons. Approve exact terms, then separately Submit only when intentionally placing an order. |

@@ -10,6 +10,7 @@ target_fingerprint: "sha256:ee282f937bec1cc1f4b27309e0a5b29f22dfd4db003c5250ed5b
 target_path: "D:\\src\\TradingAgents\\tradingagents\\web\\static\\app.js"
 timestamp: 2026-11-06T05-01-55Z
 slug: tradingagents-web-static-app-js
+closed: true
 ---
 Method: dual-agent — A: a84c8307b65ff8bf1 · B: ad465cf511bb81803
 
