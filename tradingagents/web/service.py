@@ -1654,9 +1654,10 @@ class DeskService:
                         run = spy["run"]
                         if run and run.get("status") in ACTIVE_RUN:
                             run.update(status="blocked", message="Fund plan changed. A new preview and explicit automatic-trading re-enablement are required.")
-                self.store.database.transact({FUND_RECORD: FUND_DEFAULT, SPY_RECORD: SPY_DEFAULT, "investor": DEFAULT}, change,
+                saved = self.store.database.transact({FUND_RECORD: FUND_DEFAULT, SPY_RECORD: SPY_DEFAULT, "investor": DEFAULT}, change,
                     expected={FUND_RECORD: request.get("fund_plans_revision"), "investor": request.get("expected_revision")})
-                self.spy_rebalance.manual_preview = None
+                if saved[FUND_RECORD]["revision"] != request["fund_plans_revision"]:
+                    self.spy_rebalance.manual_preview = None
             return self.investor()
         if request.get("action") in {"spy_rebalance_enable", "spy_rebalance_pause"}:
             self.spy_rebalance.configure(request)

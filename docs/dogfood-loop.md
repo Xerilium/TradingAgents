@@ -24,15 +24,32 @@ Use this file as the standing brief for the completion-paced loop. Current human
 instructions and the repository's security, preservation and trading-authority
 rules still take precedence.
 
-## Complete one item at a time
+## Complete a small batch at a time
 
+The 6 November 2026 direction replaces one-at-a-time delivery with small batches
+and dynamic workflows. Every item must still be a concrete, independently useful
+improvement under the same selection, safety and acceptance criteria. Batching is
+for throughput, not larger features or weaker review.
+
+- Select a small set of source-verified defects or observed workflow problems.
+  Name each item and its acceptance boundary before implementation. Do not fill
+  the batch with speculative work or repeat completed checkpoints.
+- Run independent investigation and verification in parallel with dynamic
+  workflows. Give each implementation worker exclusive file ownership. Serialize
+  edits when fixes share a file; parallelism must not create competing writers.
+- Integrate the fixes before one coordinated review and affected real-browser
+  verification cycle. Collect failures into a correction batch, then recheck only
+  affected failed paths. Record each item's result and unexercised limits.
+- Use `/batch` when the host exposes it. If unavailable, use the available dynamic
+  Workflow orchestration and state that limitation; do not claim the command ran.
 - Start from the actual checkout and running development desk. Preserve other
   work, commit your changes locally on `nautilus`, and do not create branch sprawl
   or push without permission.
 - Dogfood the normal product at `http://127.0.0.1:8099/`. Do not add dogfood query
   labels, alternate interfaces, fake records or another server.
 - Prioritize broken behavior, then jank, then friction, then missing features.
-  Choose one discrete item that can be finished across its affected journey.
+  Keep each selected item discrete and finish its affected journey; a batch is
+  not permission to leave its harder items unfinished.
 - Research the relevant source contracts and, where useful, official leader
   documentation. Separate documented capability from an adapted design principle.
 - Use dynamic workflows for independent investigation and fresh code scrutiny.
@@ -57,7 +74,7 @@ rules still take precedence.
 - Update the affected operating skill and product documentation in the same
   delivery batch. Record the reviewed revision, actual evidence and remaining
   limits in `docs/issues`; do not make the reader manage the delivery process.
-- Commit the complete item and its evidence. Confirm the working tree's actual
+- Commit the complete batch and its evidence. Confirm the working tree's actual
   state before reporting completion. Broker actions remain separately authorized.
 
 ## Make index management the primary daily workspace
@@ -80,8 +97,8 @@ rules still take precedence.
 
 ## Onboard, critique, then improve with Impeccable
 
-The next iteration must verify that this product and the SPY daily workspace are
-properly onboarded into the installed Impeccable skill, then perform its critique.
+Product/SPY onboarding and the initial critique are completed checkpoints
+(`8474ad3` and `399148b`). Do not repeat them on each batch.
 Check the actual product/design context and applicable surface brief against the
 human's current purpose and rendered product. Complete missing onboarding through
 the skill's documented workflow; merely loading the skill is not onboarding.
@@ -150,7 +167,12 @@ understand the current situation or take the next action.
 
 ## Schedule after completion
 
-Request the next iteration 60 seconds after the current item finishes. Use one
+The recurring loop was explicitly stopped on 6 November 2026. A request to use
+batches does not restart it. Run requested batches without scheduling another
+wakeup unless the human explicitly resumes recurring operation.
+
+When recurring operation is explicitly resumed, request the next batch 60 seconds
+after the current batch finishes. Use one
 dynamic wakeup, not overlapping recurring timers. Disclose scheduler rounding
 when it makes the actual delay longer. While work is running, its completion
 notification is the wake signal; use only a long fallback if needed. Each wakeup

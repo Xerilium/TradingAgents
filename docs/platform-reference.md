@@ -300,8 +300,11 @@ SPY portfolio (also available through Orders → SPY Rebalance) includes a saved
 plan for the currently observed USD paper account. Monthly net withdrawals from that account, reserve coverage in months,
 a manual tax provision and a trading cushion are explicit nullable terms. Blank
 is unknown; zero must be authored. Planning-only plans do not constrain sizing.
-An applied incomplete plan blocks SPY sizing. Other saved account plans are
-inspection-only, without unobserved balances or consolidated fund totals.
+Saving an applied reserve requires all four terms. The editor explains missing
+terms and disables Save; the service rejects incomplete active saves before
+mutation. Planning-only terms can remain unknown. Existing incomplete active
+records remain readable and block sizing until resolved. Other saved account
+plans are inspection-only, without unobserved balances or consolidated fund totals.
 
 The SPY page leads with the required reserve, investable SPY budget and cash above
 reserve. **Edit account fund plan** opens the existing inputs and save/reload
@@ -316,6 +319,11 @@ percentage cash floor. It is not both added together. SPY weights apply to the
 remaining investable sleeve, with existing gross/single-stock caps and quantity
 precision. Working or unknown commitments make spendable-cash estimates
 unavailable. Observed cash is not a settled or withdrawable balance.
+
+Saving identical normalized terms and status preserves the existing preview,
+filter, original expiry and authority checks; the editor reports that the plan is
+unchanged. Save and no-op preservation are source-confirmed, not live saved-plan
+acceptance in the current empty-plan check.
 
 Material plan changes pause automatic paper trading, invalidate the old preview
 and block further run dispatch. Explicit re-enablement is required; already-sent

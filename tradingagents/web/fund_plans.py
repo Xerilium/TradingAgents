@@ -73,6 +73,8 @@ def save(data, request, account_id):
     if not isinstance(request.get("status"), str) or request["status"] not in {"active", "inactive"} or any(field not in request for field in FIELDS):
         raise ValueError("Choose plan status and provide each reserve term, using null for unknown values.")
     values = {field: amount(request[field], field) for field in FIELDS}
+    if request["status"] == "active" and any(value is None for value in values.values()):
+        raise ValueError("Enter all four reserve terms before applying the reserve, or choose Planning only.")
     if old and old["status"] == request["status"] and all(old[field] == values[field] for field in FIELDS):
         return False
     data["plans"][key] = {"account_id": account_id, "endpoint": PAPER, "currency": "USD",
