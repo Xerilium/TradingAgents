@@ -76,6 +76,26 @@ Independent scoped correction review found no significant issues. AST and
 whitespace passed; corrected worker SHA256
 `81052a10d19700516b8ac2e9f1a077ef1872b2b526947dafb81fcc61fc633e76`. Fixed worker activation still requires the supported human
 Development tray Restart after the same empty-order/autooff precheck. No restart
-or broker action performed by coding session. Real post-fix live MU/PM mapping
-remains unverified until that activation; exact captured-value native replay is
-bounded evidence, not execution acceptance.
+or broker action performed by coding session. Real post-fix live MU/PM mapping was subsequently verified after human confirmed
+Development tray Restart, as recorded below; execution acceptance remains unverified.
+
+## Actual corrected-worker acceptance
+
+One state read12:46:50.511PST verified correctedworkerSHA81052a…33e76 and
+newnative `23b42d81-27eb-4e1f-adc4-17ca3a773387`, officialpaper15d9USD100000,
+connected/reconciledgaps[],policy2floor5%,autooff,runnull,zero orders/commands/
+approvals and no startup errors.
+
+Real IEX response capture12:46:49.266113:
+- MU raw688.85/700,size10/1140,event12:46:46.796294638 mapped accepted to
+  native688.85/700.00, same size/event. Quote age3.715s,spread160.5645bps.
+- PM raw189/198.45,size100/100,event12:46:44.915384037 mapped accepted to
+  native189.00/198.45, same size/event. Quote age5.596s,spread487.8049bps.
+
+Both mixed-precision inputs now map correctly. Both raw provider quotes exceed
+saved25bps despite meeting60s age; fixing mapping does not clear real quote-quality
+blockers or prove all503 pass. Immediate cached_event diagnostic predates current
+input because native application is asynchronous; actual published native ticks
+in the same read match current inputs, so the intermediate cache value is not a
+published-stale-cache defect. No broker/settings/shared-view actions. Operator was
+notified mapping accepted, remaining raw spread failures, no further restart.
