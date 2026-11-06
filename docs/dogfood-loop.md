@@ -78,6 +78,29 @@ rules still take precedence.
   by separate explicit human authorization for the specific action. Preserve all
   existing verification, review, documentation, commit and authorization rules.
 
+## Onboard, critique, then improve with Impeccable
+
+The next iteration must verify that this product and the SPY daily workspace are
+properly onboarded into the installed Impeccable skill, then perform its critique.
+Check the actual product/design context and applicable surface brief against the
+human's current purpose and rendered product. Complete missing onboarding through
+the skill's documented workflow; merely loading the skill is not onboarding.
+Reuse context setup already completed in the same agent session.
+
+Record the critique in `docs/issues`, tied to the reviewed source revision and
+real 1920 × 1080 or larger observations. Prioritize concrete task-flow, hierarchy,
+density, space-use and interaction problems. A functional navigation check is not
+visual-design approval. Do not invent capabilities or data to fill a layout.
+
+Use those findings as the improvement backlog for subsequent loops. Complete one
+coherent item or coordinated batch at a time, record what was actually resolved,
+and retain outstanding findings instead of restarting the critique every loop.
+Keep using installed Impeccable to polish and improve the product: choose its
+appropriate polish, layout, distill, clarify or harden playbook for each UI batch,
+not just for the initial critique. Verify the affected rendered result without
+repeating passing cycles. All existing scope, review, documentation, preservation
+and trading-authorization boundaries remain in force.
+
 ## Design for a glance
 
 Target **1920 × 1080 (1080p) or higher**. The user will not run the desk below
