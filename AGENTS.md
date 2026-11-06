@@ -155,9 +155,18 @@ actual installation, saved data and permitted smoke test.
   requirement costs 10,000; disclose code/test changes.
 - Start with visible failures and affected feature journeys in the built-in
   browser. Investigate the root cause and make the smallest KISS fix.
-- A human-authorized test or research round means one round. A failure does
-  not authorize another. Do not repeat runs or test cycles without fresh
-  authorization. Fix source in one batch and report its actual validation status.
+- Authorized development includes the affected real local verification needed to
+  finish the work. A failed check is work to diagnose, fix and recheck, not a new
+  permission gate. Batch corrections and recheck the affected failed paths without
+  asking again; do not repeat passing cycles or claim unobserved acceptance.
+- Question-widget prompting is banned for already-authorized work. Do not call
+  `AskUserQuestion` in this checkout. Do not populate `ask` or `actions` on the
+  app's `mcp__ccd_turn__wrap_up` to reauthorize development, ordinary navigation,
+  static checks or affected local verification. Use its required status recap
+  without an approval question. Never turn a failed local check into a human-
+  approval hold, recurring reminder or a reason to stop doing the authorized work.
+  Separate broker actions, credentials, destructive actions and genuinely new
+  scope still require their existing authorization; this rule grants none of them.
 - Solve data rate limits with simple configurable retries and exponential
   backoff. Do not add a queue engine or scheduler for this purpose.
 - Do not create automated tests without fresh, explicit user authorization.

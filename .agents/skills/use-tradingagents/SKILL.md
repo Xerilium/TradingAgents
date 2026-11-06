@@ -5,7 +5,7 @@ description: Guide work in the local TradingAgents desk. Use for tutorials, read
 
 # Use the local TradingAgents desk
 
-Follow the user’s current request and any authorization already given. Do not assume every request is a tutorial. Do not ask for approval again for ordinary navigation, reads, or actions the user has already authorized. For guided tutorials, operate the internal browser and explain visible controls instead of asking the user to click through when you can operate the page.
+Follow the user’s current request and any authorization already given. Do not assume every request is a tutorial. Do not ask for approval again for ordinary navigation, reads, or actions the user has already authorized. Do not use `AskUserQuestion` or app wrap-up question/buttons to reauthorize those steps. A failed local check does not revoke authorization to diagnose, correct and recheck its affected path; it is not a human-approval hold. Broker actions, credentials, destructive actions and genuinely new scope retain their separate boundaries. For guided tutorials, operate the internal browser and explain visible controls instead of asking the user to click through when you can operate the page.
 
 ## Start here
 

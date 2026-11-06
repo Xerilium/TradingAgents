@@ -1,5 +1,10 @@
 # Dogfood: make SPY fund-plan editing deliberate
 
+Current operating rule: the human removed the failed-local-check reapproval rule.
+The corrected focus check is already-authorized local development work, not a
+human-approval hold. Proceed with the affected real check; preserve failed evidence
+and claim acceptance only from observed results. No paper trades are authorized.
+
 ## Observation and scope
 
 Baseline `2dd6907`, clean `nautilus`, normal development desk on 8099. The human
@@ -133,9 +138,10 @@ Fresh source review `wf_676d928b-ad3` found no actionable defect in the two-ID
 correction, confirmed unique IDs and restoration-before-focus ordering, and
 reviewed app blob `5e9b27533a4498f94af9b65629556c4c5b8114c3` against `cfb7493`.
 Primary accepts the source correction, not runtime acceptance. No second smoke was
-run: the repository requires fresh human authorization after the failed round. Remaining live scope
-is only native disclosure focus/toggle persistence and explicit Portfolio entry
-at1920 ×1080, with real retained inputs and no save/trade action.
+run under the then-current reapproval rule. The human has since deleted that rule:
+the remaining native disclosure focus/toggle and Portfolio-entry check is covered
+by existing development authorization. Continue at 1920 × 1080 with real retained
+inputs and no save/trade action; no approval prompt is required.
 
 ## SPY-first direction persisted before closing this iteration
 
@@ -148,9 +154,11 @@ directly block that journey. Real1080p or larger only; a working rebalance is no
 SPY return-parity evidence. No paper trades were authorized.
 
 As requested, this focus was updated **first**: `93fd8bb` commits `PRODUCT.md` and
-the canonical loop brief before iteration closeout. The single future wakeup prompt
-also carries this intent and the recorded failed-smoke gate. Durable fund-purpose
-memory was updated in place, preserving the reserve/liquidity requirements.
+the canonical loop brief before iteration closeout. The future wakeup carries this
+intent. Its earlier failed-smoke approval gate was explicitly removed by the human;
+failed local checks are corrected and rechecked without redundant approval prompts.
+Durable fund-purpose memory was updated in place, preserving reserve/liquidity
+requirements.
 Navigation must become an obvious primary daily workspace; this disclosure patch
 does not claim that larger navigation change is already delivered or release-ready.
 
@@ -160,6 +168,9 @@ byte-for-byte, without replacing unrelated files. Raw supported-size screenshots
 are saved as evidence. No new README image is promoted as whole-workflow acceptance
 while the focus correction remains unverified live.
 
-Iteration closeout is **source-corrected and independently reviewed, live focus
-confirmation pending**. No second smoke, paper trade, approval, submission, authority
-change, provider job, automated test, mock, build or production action occurred.
+Current status: **source-corrected and independently reviewed; affected live focus
+confirmation remains to be performed under existing authorization**. This is not
+a human-permission hold. No second smoke, paper trade, approval, submission,
+authority change, provider job, automated test, mock, build or production action
+occurred in this recorded iteration. The later operating-rule correction removes
+the reapproval gate; it does not change these historical observations.

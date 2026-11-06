@@ -43,10 +43,17 @@ rules still take precedence.
   Read mode for documentation. Do not substitute a hardcoded asset-folder path
   for the installed skill or repeat setup on every iteration.
 - Batch source fixes, obtain fresh independent review, and run the affected real
-  browser smoke within the current task's authorization. Keep automated tests to
-  the repository's explicit authorization rules; no mocks or fabricated services.
-  Do not ask again for ordinary steps already authorized. A failed observation is
-  not a pass, and source review is not live acceptance.
+  browser smoke within the current task's authorization. If it fails, diagnose,
+  fix and recheck the affected failed path as part of that same authorization;
+  do not stop for another approval or repeat passing cycles. A failed observation
+  is not a pass, and source review is not live acceptance. Automated tests still
+  require their separate explicit authorization; no mocks or fabricated services.
+- Do not use `AskUserQuestion`. Do not use the app wrap-up question/buttons to
+  reauthorize development, navigation, static checks or affected local verification
+  already covered by the task. Required app status stays recap-only for that work.
+  Never encode a failed-local-check approval gate in an issue or wakeup prompt.
+  Broker actions, credentials, destructive actions and genuinely new scope keep
+  their existing separate authorization boundaries.
 - Update the affected operating skill and product documentation in the same
   delivery batch. Record the reviewed revision, actual evidence and remaining
   limits in `docs/issues`; do not make the reader manage the delivery process.
