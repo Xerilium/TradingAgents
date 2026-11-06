@@ -37,3 +37,40 @@ smoke using the same partial-month interaction and real background refresh. Clea
 the unsaved partial edit afterward; do not activate Model portfolio. No fabricated
 job state, automated test, mock, provider job, private configuration/credential
 inspection, production operation or broker action.
+
+## Diagnosis and scoped plan
+
+Independent source diagnosis confirmed that the five-second read calls the full
+renderer. `main.innerHTML` disconnects the native date editor; capture/restore
+copies its empty `.value` and refocuses a replacement, losing partial segments.
+The existing list-query node swap also happens after disconnection, so the date
+must not be relabeled as a list search or assumed safe with that swap.
+
+Primary verified the [HTML Date-state sanitization contract](https://html.spec.whatwg.org/multipage/input.html#date-state-(type=date)):
+a value that is not a valid date string is sanitized to an empty string. The
+research worker also read [MDN date input](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/date)
+and [badInput](https://developer.mozilla.org/en-US/docs/Web/API/ValidityState/badInput).
+These distinguish normalized values from browser UI state; they do not guarantee
+that every incomplete edit sets badInput or that assigning `.value` preserves
+native segments. This is a browser-editing requirement, not a claimed feature
+comparison with a particular broker.
+
+Plan: identify the actual periodic read explicitly, distinct from ordinary user
+renders. Only for the same store/server, same model job identity/status, same
+Portfolio proposed context and an editable focused as-of field, retain the
+existing connected model-controls group. Parse the freshly generated markup,
+compare the group's full markup after normalizing cloned input value attributes
+to their live values, and retain it only when authoritative values, input type,
+constraints, disabled/readonly state, button state and copy are unchanged.
+Reconcile the other direct main children around that group without detaching it;
+continue normal ledger/result/chrome updates. Do not assign or refocus the retained
+input through the generic restore path. Otherwise use the existing full render,
+including forced refresh, explicit actions, navigation, restore/generation changes,
+job transitions and changed control semantics. This is one scoped connected-island
+exception, not a new renderer, custom date editor or partial-date state store.
+
+Fresh code scrutiny will check these admission/fallback boundaries. The single
+live smoke will repeat month-only entry through a real changed snapshot, inspect
+connected node/visible segment state, continue native keyboard editing, and clear
+the unsaved date without starting a model. Job/restore/constraint combinations
+will remain source-reviewed where no real state already exists.
