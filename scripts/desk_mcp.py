@@ -25,7 +25,10 @@ def serve(*, dev):
                 client.get("/").raise_for_status()
                 response = client.get(path, params=params, headers={"Accept": "application/json"})
                 if response.status_code in {400, 404, 503}:
-                    raise ValueError(response.json()["error"])
+                    message = response.json()["error"]
+                    if response.status_code == 404 and message == "Not found." and path.startswith("/api/context/"):
+                        message = f"The running {profile} desk lacks MCP context routes. Start the desk from a revision that includes them."
+                    raise ValueError(message)
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as exc:
