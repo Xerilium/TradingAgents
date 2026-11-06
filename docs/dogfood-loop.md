@@ -41,6 +41,11 @@ rules still take precedence.
 
 ## Design for a glance
 
+Target **1920 × 1080 (1080p) or higher**. The user will not run the desk below
+1080p. Do not spend implementation or verification cycles on phone, tablet or
+smaller-window layouts. Set the browser viewport to at least 1920 × 1080 for
+visual checks, even when the embedded pane scales its displayed image down.
+
 Use simple English and a deliberate layout. Visible content should help the user
 understand the current situation or take the next action.
 

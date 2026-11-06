@@ -6,7 +6,7 @@
 
 web
 
-Desktop host with a browser workspace. A Tauri 2 tray application (Windows x64 and macOS 26+ Apple Silicon) owns a local Python desk service and opens its UI in the user's default browser at `http://127.0.0.1:8098/` (production) or `http://127.0.0.1:8099/` (development). The Tauri host has no webview window of its own. Desktop windows are the target; phone layouts are out of scope.
+Desktop host with a browser workspace. A Tauri 2 tray application (Windows x64 and macOS 26+ Apple Silicon) owns a local Python desk service and opens its UI in the user's default browser at `http://127.0.0.1:8098/` (production) or `http://127.0.0.1:8099/` (development). The Tauri host has no webview window of its own. The user will run the desk at **1920 × 1080 (1080p) or higher only**. Design and visual verification target that minimum or larger; phone, tablet and smaller-window layouts are out of scope.
 
 ## Stack
 
