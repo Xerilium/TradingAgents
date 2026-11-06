@@ -44,7 +44,11 @@ Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity
 across same-context ordinary updates. Native disclosure expanded state and focus
 remain available to structured browser controls; changed semantics still replace
-controls. This does not pause polling or relax review/submission guards. This entry is not
+controls. Settings category tabs and policy fields/actions use the same unchanged
+node retention, bounded by category and investor revision. Bid/ask spread and
+Quote freshness state/session choices use labeled native radio groups so
+structured browser clicks can select them; draft choices do not save policy.
+This does not pause polling or relax review/submission guards. This entry is not
 acceptance of the full execution/reconciliation journey or SPY return parity.
 
 ## Fixed-portfolio hindsight evaluation

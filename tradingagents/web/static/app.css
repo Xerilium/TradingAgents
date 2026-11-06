@@ -172,6 +172,9 @@ body{font-size:var(--text-ui)}h1{font-size:var(--text-heading);font-weight:600;l
 .settings-content #universe-review .policy-rules p { margin:0 0 var(--space-1); font-size:var(--text-ui); }
 .settings-content #universe-review .policy-rules label { min-width:0; font-size:var(--text-ui); }
 .settings-content #universe-review .policy-rules input,.settings-content #universe-review .policy-rules select { width:100%; min-width:0; }
+.settings-content #universe-review .policy-rules fieldset.policy-choices { grid-column:1/-1; display:grid; grid-template-columns:1fr; gap:var(--space-1); padding:0; border:0; }
+.settings-content #universe-review .policy-rules .policy-choices label { display:flex; align-items:center; gap:var(--space-2); }
+.settings-content #universe-review .policy-rules .policy-choices input { width:auto; min-height:0; margin:0; }
 .settings-content #universe-review .settings-policy-actions button { margin:0; }
 .app-shell > .workspace > #main[data-page="settings"],.app-shell > .workspace > #main[data-page="alerts"],.app-shell > .workspace > #main[data-page="portfolio"],.app-shell > .workspace > #main[data-page="markets"] { display:flex; flex-direction:column; overflow:hidden; }
 #universe-review.settings-policy { background:transparent; font:inherit; }

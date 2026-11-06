@@ -47,7 +47,15 @@ expanded state and native focus are retained. Search and Snapshot and source
 details were exercised with the same refs across polling; changed semantics and
 other controls still require fresh refs. A normal page reload loads this static
 fix without restarting Nautilus; it discards that browser's session-only preview.
-See `docs/issues/2026-11-06-browser-review-control-retention.md` for evidence and limits.
+Settings category tabs and policy controls now retain unchanged refs as well;
+category and investor-revision changes replace them. In Trading Rules, Bid/ask
+spread and Quote freshness use labeled native radios for Apply/Decide later/Do
+not apply and the freshness session choice. These are separately clickable refs,
+unlike native select options in the inspected Browser tool. Draft editing does
+not save policy; Save risk-check choices remains separate. These choices and
+numeric draft fields were exercised without saving on 6 November 2026.
+See `docs/issues/2026-11-06-browser-review-control-retention.md` and
+`docs/issues/2026-11-06-settings-control-retention.md` for evidence and limits.
 
 ## Workspace save status
 
