@@ -40,9 +40,27 @@ live smoke batch at the original desktop width and a narrow width. Only local
 session-draft actions may be exercised; no simulation or broker action.
 No automated tests, mocks, fabricated allocations or new styles outside this row.
 
+## Source change and validation
+
+The implementation adds `portfolio-allocation-actions` only to this toolbar and
+one scoped CSS rule group in `ui-instrument.css`. Labels, order, handlers and
+all other action rows are unchanged. Source delta: 2 added / 1 removed lines
+across JavaScript and CSS. No backend or test file changed.
+
+Reviewed source blobs:
+- `static/app.js`: `0df29a6583ddddb62b1e51c04093d0f3924df763`.
+- `static/ui-instrument.css`: `947b15a9acbaef4748b93738d4e20c22229149ec`.
+
+JavaScript syntax passed. Independent source review found no confirmed findings
+against `7b562f1` and the blobs recorded above. The reviewer ran Impeccable context
+successfully, read Operate/adaptation guidance and craft floor, and confirmed
+cascade scope and unchanged handlers. Source review does not prove reachability;
+one affected responsive live smoke is pending. No automated tests were added
+or run.
+
 ## Evidence
 
-Pending implementation, independent source review and one live affected smoke.
 Original draft: 503 configured symbols, all weights zero, capital100000, fee0 and
 blank start/end dates. Preserve these values. No live simulation or preset-load
-acceptance is implied by the source mapping.
+acceptance is implied by the source mapping. Before capture:
+`.local-workspace/dogfood-20261105/allocation-actions-before.jpg` (ignored).
