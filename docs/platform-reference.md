@@ -244,6 +244,17 @@ recovery workspace. A new preview does not resolve the previous run. This is
 source-confirmed presentation; no blocked run was induced or live-accepted. Preview,
 submission eligibility and standing authority retain their separate guards.
 
+After a failed manual SPY submit, the client revokes that preview’s submit token
+but retains a still-current full plan and filter. Its session-only failed-submit
+response keeps the actual error separate from preview invalidation. An HTTP error response is
+labelled **Service returned an error**; an unconfirmed response is labelled
+**Check submission outcome**. Neither proves the rebalance was not queued: inspect
+the latest rebalance, orders and fills before another preview or attempt. The
+service can fail while building its response after queuing a run. Existing
+higher-priority run/account status and guidance remain. These error branches are
+source-reviewed, not live broker-error acceptance; no automatic retry or change to
+server admission or standing authority is added.
+
 The path is:
 
 ```text

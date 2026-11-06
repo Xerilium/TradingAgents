@@ -3220,7 +3220,7 @@ function policyPanel(){
  return '<details id="investor-policy" class="panel" '+(policyOpen?'open':'')+'><summary>Your risk checks · revision '+investorRecord.data.policy.revision+'</summary>'+investorStatus()+'<p>You can decide later and keep browsing. Only configured checks apply. Unset optional checks do not block orders; they are not treated as disabled or assigned defaults. Saving these choices does not approve or submit orders; exact-revision review and the account order block still apply.</p><div class="policy-rules">'+Object.entries(labels).map(([key,label])=>{const rule=rules[key]||{state:'unset',value:'',reason:''},copy=policyRuleCopy[key]||[label,label,''];return '<fieldset><legend>'+esc(copy[0])+'</legend><p>'+esc(copy[2])+'</p><label>Use this rule<select id="policy-state-'+key+'" data-policy-key="'+key+'" data-policy-field="state">'+['unset','enabled','disabled'].map(v=>'<option value="'+v+'" '+(rule.state===v?'selected':'')+'>'+esc(policyChoiceCopy[v])+'</option>').join('')+'</select></label><label>'+esc(copy[1])+'<input inputmode="decimal" id="policy-value-'+key+'" data-policy-key="'+key+'" data-policy-field="value" value="'+esc(rule.value||'')+'"></label><label>Optional note about this choice<input id="policy-rule-reason-'+key+'" data-policy-key="'+key+'" data-policy-field="reason" value="'+esc(rule.reason||'')+'"></label>'+policyParameterMarkup(key,rule)+'</fieldset>';}).join('')+'</div><label for="policy-reason">Optional note about these changes<textarea id="policy-reason" rows="2">'+esc(policyReason)+'</textarea></label><button id="save-policy">Save risk-check choices</button><p>Saving a policy revision invalidates dependent approval records. Missing source data can block an applied rule; a price-fall estimate is not a guaranteed loss cap.</p><details><summary>Policy history</summary><pre>'+esc(JSON.stringify(investorRecord.data.policy_history,null,2))+'</pre></details></details><details class="panel" id="investor-proposals" '+(proposalListOpen?'open':'')+'><summary>Saved human proposals · '+investorRecord.data.proposals.length+'</summary>'+investorRecord.data.proposals.map(p=>'<article><h3>'+esc(p.terms.side+' '+p.terms.quantity+' '+p.terms.symbol)+' · '+esc(p.status)+' · revision '+p.revision+'</h3><p>'+fullTime(p.updated_at)+(p.restored_requires_review?' · Restored records; impact review required':p.conditions_stale?' · Policy changed; impact review invalidated':'')+'</p><button data-open-proposal="'+esc(p.id)+'">Open exact terms / revise / review</button><details><summary>Revision history and source references</summary><pre>'+esc(JSON.stringify(p.history,null,2))+'</pre></details></article>').join('')+'</details>';
 }
 let basketOpen=false,basketForm={targets:[],reason:'',fee_per_leg:'',slippage_bps:'',assumed_filled:[]},basketPreview=null;
-let spyRebalanceBusy=false,spyHoldingsMessage='',spyPreview=null,spyTradeQuery='';
+let spyRebalanceBusy=false,spyHoldingsMessage='',spyPreview=null,spyTradeQuery='',spySubmitResult=null;
 const fundFields=[['monthly_net_withdrawal_usd','Monthly net withdrawals from this account after other income / USD'],['reserve_months','Reserve coverage / months'],['tax_provision_usd','Manual tax provision / USD'],['trading_cushion_usd','Trading cushion / USD']];
 let fundDraft=null,fundDirty=false,fundBusy=false,fundMessage='',fundInvestorRevision=null;
 function fundContract(f){return f&&Number.isInteger(f.revision)&&Array.isArray(f.plans)&&f.plans.every(p=>p&&typeof p.account_id==='string'&&Number.isInteger(p.revision)&&['active','inactive'].includes(p.status))&&Object.hasOwn(f,'current_account_id')&&Object.hasOwn(f,'current')&&Object.hasOwn(f,'budget')&&Object.hasOwn(f,'budget_error');}
@@ -3274,14 +3274,17 @@ function spyRebalanceMarkup(){
  const preview=spyPreview?.generation===state.store_generation&&spyPreview?.account===account&&
   state.nautilus?.status==='connected'&&state.nautilus.account?.id===account&&spyPreview.fundRevision===investorRecord.fund_plans?.revision&&spyPreview.policyRevision===investorRecord.data?.policy?.revision?spyPreview:null;
  const rows=preview?spyTradeRows(preview.trades):null;
- const message=spyPreview&&!preview?'':spyHoldingsMessage;
+ const submitResult=spySubmitResult?.generation===state.store_generation?spySubmitResult:null;
+ const submitOutcome=submitResult?.outcome;
+ const submitMessage=submitResult?'SPY submission for account '+submitResult.account+': '+submitResult.message+' The rebalance may already be queued. Check that account’s latest rebalance, orders and fills before creating another preview.':'';
+ const message=submitResult||!spyPreview||preview?spyHoldingsMessage:'';
  const accountReasons=accountOrderReasons();
  const runBlocked=run?.status==='blocked';
  const canSubmit=!accountReasons.length&&eligible&&!schedule.in_progress&&preview?.submitToken&&Date.now()<preview.submitExpires;
  const previewExpired=preview?.submitToken&&!canSubmit&&Date.now()>=preview.submitExpires;
  const unavailable=!account?'An eligible paper account is unavailable.':bound&&bound!==account?'The rebalance is bound to a different paper account. Review automatic trading settings.':!investorRecord.broker_transport_enabled?'Broker transport is unavailable.':!fundContract(investorRecord.fund_plans)?'The account fund plan is unavailable.':investorRecord.fund_plans.current_account_id!==account?'The fund plan does not match the eligible paper account.':'Resolve the budget error before previewing.';
- const reviewStatus=spyRebalanceBusy?'Updating rebalance…':schedule.in_progress?'Rebalance in progress':!eligible?'Rebalance unavailable':accountReasons.length?'Submission blocked':runBlocked?'Latest rebalance blocked':previewExpired?'Preview expired':preview?.policyBlockers.length?'Trading Rules block submission':preview&&!preview.trades.length?'No trades in this preview':canSubmit?'Preview ready for review':preview?'Preview needs refreshing':'Preview needed';
- const guidance=!eligible?unavailable:schedule.in_progress?'A rebalance is in progress. Review its status before another submission.':accountReasons.length?'Resolve the account conditions below before submitting. Preview does not clear them.':runBlocked?'Review the rebalance message and account order controls before starting another rebalance. A new preview does not resolve the previous run.':!preview?'Review the reserve and investment budget, then preview proposed buys and sells. Preview does not send orders.':preview.policyBlockers.length?'Resolve the Trading Rules blockers before submitting.':!preview.trades.length?'This preview contains no orders to submit.':!canSubmit?'Generate a new preview before submitting paper orders.':'Review the full proposed trade list before submitting. Submission is a separate broker action.';
+ const reviewStatus=spyRebalanceBusy?'Updating rebalance…':schedule.in_progress?'Rebalance in progress':!eligible?'Rebalance unavailable':accountReasons.length?'Submission blocked':runBlocked?'Latest rebalance blocked':submitOutcome==='unknown'?'Check submission outcome':submitOutcome==='error'?'Service returned an error':previewExpired?'Preview expired':preview?.policyBlockers.length?'Trading Rules block submission':preview&&!preview.trades.length?'No trades in this preview':canSubmit?'Preview ready for review':preview?'Preview needs refreshing':'Preview needed';
+ const guidance=!eligible?unavailable:schedule.in_progress?'A rebalance is in progress. Review its status before another submission.':accountReasons.length?'Resolve the account conditions below before submitting. Preview does not clear them.':runBlocked?'Review the rebalance message and account order controls before starting another rebalance. A new preview does not resolve the previous run.':submitOutcome?'This retained preview can no longer be submitted.':!preview?'Review the reserve and investment budget, then preview proposed buys and sells. Preview does not send orders.':preview.policyBlockers.length?'Resolve the Trading Rules blockers before submitting.':!preview.trades.length?'This preview contains no orders to submit.':!canSubmit?'Generate a new preview before submitting paper orders.':'Review the full proposed trade list before submitting. Submission is a separate broker action.';
  return heading+'<div class="spy-review-layout">'+fundPlanMarkup()+
   '<section class="spy-manual-review" aria-labelledby="spy-review-heading"><h3 id="spy-review-heading">Rebalance review</h3><p class="spy-review-status" role="status">'+esc(reviewStatus)+'</p><p>'+esc(guidance)+'</p>'+
   (accountReasons.length?'<div id="spy-account-exceptions" class="warning" role="alert"><strong>Account conditions block submission</strong><ul>'+accountReasons.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></div>':'')+
@@ -3294,6 +3297,7 @@ function spyRebalanceMarkup(){
   (previewExpired?'<p role="status" class="warning">This preview has expired. Select Preview SPY rebalance to review a new plan before submitting.</p>':'')+
   (canSubmit&&!spyRebalanceBusy&&run?.status!=='queued'&&state.nautilus?.market_open===false?'<p>Submit queues this rebalance for the next regular session.</p>':'')+
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
+  (submitMessage?'<p role="status" class="warning">'+esc(submitMessage)+'</p>':'')+
   (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
   (preview?.trades.length?'<h3>Proposed trades ('+esc(preview.trades.length)+')</h3>'+
    '<p>The desk sets buy limits from current quotes and may reduce share counts to fit available cash.</p>'+
@@ -3310,6 +3314,7 @@ async function spyRebalanceAction(action){
  if(spyRebalanceBusy)return;
  const generation=state.store_generation,config=investorRecord.spy_rebalance;
  spyRebalanceBusy=true;spyHoldingsMessage='';
+ if(action==='preview')spySubmitResult=null;
  if(['preview','enable','pause'].includes(action)){spyPreview=null;spyTradeQuery='';}
  render();
  try{
@@ -3327,7 +3332,13 @@ async function spyRebalanceAction(action){
      result.has_buy?' Current cash cannot fund the first buy before sales.':'');
   }
   else{investorRecord=result;state.investor=result;if(spyPreview)spyPreview.submitToken=null;}
- }catch(error){if(state.store_generation===generation)spyHoldingsMessage=error.message;}
+ }catch(error){if(state.store_generation===generation){
+  if(action==='submit'){
+   if(spyPreview)spyPreview.submitToken=null;
+   spySubmitResult={generation,account:config.eligible_account_id,outcome:error.status>=400&&!error.cause?'error':'unknown',message:error.message};
+  }
+  spyHoldingsMessage=action==='submit'?'':error.message;
+ }}
  finally{spyRebalanceBusy=false;render();}
 }
 function loadBasket(basket){
