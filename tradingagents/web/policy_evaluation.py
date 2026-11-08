@@ -339,6 +339,8 @@ def evaluate(terms, policy, runtime, commands, history, evidence, constraints, a
                 maximum = limit if opened is True else decimal(rule.get("closed_max_age_seconds"))
                 passed = type(opened) is bool and choice in {"regular_session_required", "allow_closed_session_review"} and (opened or choice == "allow_closed_session_review") and fresh(observed, maximum)
                 reason, details = "Broker regular-session state and investor-selected open/closed age tolerances", {"regular_session_open": opened, "session_choice": choice, "maximum_age_seconds": str(maximum) if maximum is not None else None}
+                if opened is False and choice == "regular_session_required":
+                    reason = "The regular market session is closed. This rule requires it to be open."
         elif key == "max_correlation_pct":
             try:
                 window, minimum = int(rule["window_sessions"]), int(rule["minimum_pairs"])

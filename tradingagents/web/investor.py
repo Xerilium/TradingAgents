@@ -15,7 +15,7 @@ RULES = {"cash_reserve_pct": "Minimum cash reserve %", "max_position_pct": "Maxi
          "max_gross_exposure_pct": "Maximum gross exposure %", "loss_limit_pct": "Loss limit %",
          "scenario_loss_pct": "Scenario loss estimate limit %", "max_sector_pct": "Maximum sector exposure %",
          "max_correlation_pct": "Maximum absolute return correlation %", "max_spread_bps": "Maximum quoted spread / bps",
-         "min_quote_size": "Minimum displayed quote quantity / shares", "session_freshness": "Maximum open-session quote age / seconds"}
+         "min_quote_size": "Minimum displayed quote quantity / shares", "session_freshness": "Quote freshness and session permission"}
 RULE_PARAMETERS = {
     "scenario_loss_pct": {"shock_pct": {"label": "Adverse price decrease / %", "min": 0, "max": 100},
                           "method": {"label": "Scenario method", "choices": ["parallel_long_equity_price_shock"]}},
