@@ -238,14 +238,45 @@ native store. Verify the observed paper/live account before preparing orders.
 
 ### Activate source-only backend changes
 
-Use **Printer Development → Restart** in the existing Windows tray (older builds
-show **TradingAgents Development**).
-The debug development host reloads checkout Python and its native worker; do not
-launch another dev instance or start the Python server directly. Before an
-authorized restart, confirm automatic authority is off, no active manual run and
-no working, pending or unknown commands/orders. Stop activation if these change.
-Normal browser reload does not reload backend Python. After restart, verify a new
-native session, fresh exact paper-account reconciliation and saved policy/floor.
+Leave a healthy, correctly loaded development service alone. For a necessary
+backend start/reload on this PC, use the existing desktop shortcut, not the tray.
+Confirm automatic authority is off, no runs are active and no orders or commands
+are working, pending or unknown. If checks fail or change, stop; never alter
+authority or orders to pass them. Before launching, stop only proven old checkout
+development host/backend PIDs, verified by full executable path, development
+data/port arguments and ancestry. Never use name-wide or production kills.
+Launch once using the appropriate route:
+
+- **Desktop:** open the existing **Start-TradingDesk-Dev** shortcut at
+  `%USERPROFILE%\OneDrive\Desktop\Start-TradingDesk-Dev.lnk`.
+- **Agent:** resolve that shortcut's unchanged `TargetPath`, `Arguments` and
+  `WorkingDirectory`. Launch its exact target and arguments with
+  `Start-Process -Wait -PassThru` in a retained background supervisor, using the
+  resolved working directory. Keep the supervisor alive without polling it;
+  do not assume an unretained shortcut invocation completed the reload.
+
+Its inspected PowerShell target selects only hosts whose full executable path is
+`D:\src\TradingAgents\desktop\src-tauri\target\debug\tradingagents-desktop.exe`,
+uses `Stop-Process` on those matched development hosts, waits up to 10 seconds for
+each to exit, then runs `D:\src\TradingAgents\Start-TradingDesk-Dev.cmd`.
+This is not a graceful tray restart. The `.cmd` alone does not restart an existing
+single-instance host. Do not kill by process name or start the Python server
+directly.
+
+Check the old host exited and only one replacement exists. A new PID is not
+readiness: require the normal development session at `127.0.0.1:8099` to be ready
+and reconciled. An initial connection refusal is not permission to launch
+another copy. Browser reload alone does not reload backend Python.
+
+If startup reports `WriterBusy` for the development application writer lock, do
+not delete or bypass the lock or launch duplicate hosts. Identify the OS
+lock owner; do not assume it is an orphan. Resolve only a verified app-owned
+prior development process, then confirm backend readiness.
+
+Check Edge independently and reuse the exact local Printer tab. If absent, open
+only one authorized isolated visible window; never use a personal profile.
+After readiness, reload `http://127.0.0.1:8099/` and verify a new native session,
+fresh exact paper-account reconciliation, saved policy/floor and the affected UI.
 Health's `source_sha256` records the three execution-cycle source files at desk
 startup; `native_source_sha256` identifies the worker bytes at native startup.
 Compare with the reviewed committed files; profile identity alone is not revision

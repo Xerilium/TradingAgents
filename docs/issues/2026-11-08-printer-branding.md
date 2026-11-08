@@ -7,10 +7,17 @@ research framework/component. This source batch preserves the existing dark
 Operate visual system and mark; it is not an aesthetic redesign.
 
 Base revision: `371ead5` on `nautilus` in `D:\src\TradingAgents`.
-The complete display rebrand and review corrections are implemented and approved
-by independent source review. An authorized app-only build, coordinated
-development UAT and local delivery evidence remain with the orchestrator.
-No production installation or acceptance is claimed.
+The complete display rebrand and review corrections were independently approved
+and committed as `ffe0fccd4fd25f5cff822fe3d5f18893532bbbd0`. Windows compilation
+and custom-template bundling passed; overall release signing is not complete.
+Pre-fix visible Edge UAT observed entry, disclosure persistence, real Preview
+and filtering. Focus retention, draft expiry and execution remain
+unproven. UAT also found a shared rule-heading copy defect; its scoped correction
+is committed in `c3abd0bbf51fe703dbe118802242761ba6c1e119` and independently
+source-approved. The revised `c3abd0b` app-only build compiled and bundled, but
+signing is still incomplete. A post-fix API Preview returned the corrected
+closed-session reason; corrected visual Edge acceptance remains unproven. No
+production installation or acceptance is claimed.
 
 ## Implemented
 
@@ -154,6 +161,173 @@ off. The local template delta is stated separately above. **0 test lines changed
 and 0 tests run.** Documentation/license/image changes are separate from those
 code counts. Existing unrelated untracked dependencies are preserved.
 
+## Windows build observations
+
+### Prior build: `ffe0fcc`
+
+The separate build worker reported the authorized app-only build against frozen
+source `ffe0fccd4fd25f5cff822fe3d5f18893532bbbd0`:
+
+- The first attempt failed with compiler error E0463 before bundling.
+- Nine scoped `serde_repr` release outputs were regenerated, without source,
+  dependency or toolchain changes. The original cause of E0463 was not proven.
+- The corrective standard build compiled the app and `makensis` successfully
+  produced `Printer_0.6.22_x64-setup.exe`, reported as 23.91 MiB.
+- The overall command then exited **1** because `TAURI_SIGNING_PRIVATE_KEY` was
+  not supplied while a public updater key is configured.
+
+**Compilation and custom-template bundling: PASS. Overall release signing:
+NOT COMPLETE.** This is not an overall successful release-build claim. No key,
+key-presence, vault or private-profile inspection, signing retry or installation
+was performed. There is no `.sig` output and this is not a completed
+updater-signed release.
+
+**Artifact boundary:** the artifacts identified by the hashes below were built
+from `ffe0fcc`, before the later `investor.py` rule-heading correction. They do
+not include that wording fix and are superseded by the revised installer
+identified below. These prior hashes do not prove the revised payload. No
+signing-key access is authorized or planned.
+
+Prior-build artifacts reported by the builder:
+
+- Installer:
+  `desktop/src-tauri/target/release/bundle/nsis/Printer_0.6.22_x64-setup.exe`
+  (25,075,960 bytes). SHA-256:
+  `63e727537932cdca2a6d9e0ec766548dc09f33a2b590f6f77c4e967565553f7b`.
+- Launcher: `desktop/src-tauri/target/release/tradingagents-desktop.exe`
+  (13,440,000 bytes). SHA-256:
+  `d5b888205d87c91d27c5f9016a45ae1867bd5c8cf8164cbf44c3376061ae14a0`.
+- Both Windows version resources report ProductName and FileDescription
+  **Printer**, version **0.6.22**.
+- Generated NSIS script SHA-256:
+  `05b360e73ca4ac475ea403537234a0f14a6e66f422c7ec68586a4fccb10651df`.
+  Its defines use Printer display names and TradingAgents legacy identity, with
+  unchanged `com.tradingagents.desktop`, `tradingagents-desktop` and
+  `currentUser`. The uninstall key
+  `Software\Microsoft\Windows\CurrentVersion\Uninstall\TradingAgents`,
+  manufacturer key `Software\tradingagents\TradingAgents` and default directory
+  `%LOCALAPPDATA%\TradingAgents` remain unchanged.
+
+The generated app-only resource map contains 306 app entries and one provenance
+entry, with no wheel or setup payload. Provenance identifies source `ffe0fcc`;
+the builder reported abbreviated provenance hash `36f85359…17c1` and project
+wheel hash `e2dc6dea…8d9`. Bundled `app.js`, `spy_rebalance.py` and `index.html` match
+committed bytes. Private-runtime and lock inputs were unchanged. The first
+E0463 log, scoped-clean log and corrective exit-1 build log remain local and
+ignored under `packaging/build`; logs and generated artifacts are not committed.
+
+### Revised build: `c3abd0b`
+
+The separate builder reported successful compilation and NSIS bundling for
+`c3abd0bbf51fe703dbe118802242761ba6c1e119`. The standard command again exited
+**1** only at the missing private updater-signing key. **Compilation and NSIS
+bundling: PASS. Signed release: NOT COMPLETE.** No `.sig` was generated and no
+key was touched. This is not an overall successful release-build claim.
+
+Rebuilt installer:
+
+- `desktop/src-tauri/target/release/bundle/nsis/Printer_0.6.22_x64-setup.exe`
+  (25,076,140 bytes). SHA-256:
+  `5457f3202a09e28c6a958710b4a27c87de98bf43ac708eba2b649cd55ad38292`.
+- Actual bundled provenance identifies source
+  `c3abd0bbf51fe703dbe118802242761ba6c1e119`. Its SHA-256 is
+  `b7fcad155aa8d3886a4158f5a3cfae921298595cddaf768b0b55088970e87762`,
+  matching the refreshed provenance.
+- Actual bundled project wheel SHA-256:
+  `62b80758ebaee4275023c9a1a5d38a5b0457eaa097d3f22edc30a6ae2f2d6f82`.
+- Revised main executable SHA-256:
+  `95ef6729c5400715d604d9cf234303a0018890bd93b9a2ad12a4430ad5f00f71`.
+- Revised generated NSIS script SHA-256:
+  `68c34becc418de83bca27d9c166a170aef1725a921023b66b7754509d5fe8982`.
+
+Provenance records `working_changes_present=true`: the two evidence issues and
+known untracked dependencies were present during packaging. The builder checked
+the actual bundled files against reviewed source:
+
+- `investor.py` SHA-256:
+  `d49d98c3218412709e698c08b5b0d16a9165e48316e9bdea8015b407d17a1a6c`.
+- `policy_evaluation.py` SHA-256:
+  `843315aaf5b3668ae19f2f824ed95581fad6c97552a02967ad83a193d0d67520`.
+
+Both match reviewed source, demonstrating that the wording fix is included in
+the revised installer. This is not a clean-worktree provenance claim.
+
+The rebuilt installer was not executed. Its bytes replaced the earlier installer
+at the same path. The previous installer hash and wheel hash above are historical
+evidence of the superseded `ffe0fcc` build, not the current file.
+
+An installer compiled by NSIS is not evidence that its upgrade, shortcut,
+uninstall or runtime behavior has been exercised. Those installed paths and
+macOS remain unobserved.
+
+## Development UAT boundary
+
+### Pre-fix visible Edge: `ffe0fcc`
+
+After the built-in pane became unavailable, the parent and SPY UAT owner used a
+separate visible Edge window against the isolated development app at source
+`ffe0fcc`, before the rule-heading follow-up. The Printer page showed a paper,
+reconciled account with zero positions and orders, and automatic trading off.
+
+Observed results:
+
+- The investment budget disclosure stayed open across a natural account
+  refresh.
+- Real Preview reported State Street weights dated **2026-11-05**, a price check
+  on **2026-11-08 at 14:29:51 PST**, **503 stocks / 503 planned trades** and a
+  **94.90% target**.
+- The AAPL row showed **BUY 21.966418766**, with an **estimated limit of
+  342.41 USD**. This is a preview, not a placed order or fill.
+- Filtering for AAPL showed **1 / 503**; Clear restored **503 / 503**.
+- The header showed **Market closed**. Trading Rules reported a quote-age
+  submission block for all 503 rows, and Submit was disabled. Underlying quote
+  timestamps were not exposed.
+- The real pre-fix policy was enabled, with **180-second open-session and
+  closed-session quote limits** and `regular_session_required`. The blocker was
+  confirmed to be **regular-session permission**, not proof that all quotes
+  were stale.
+- The source owner confirmed a UI-copy defect:
+  **Maximum open-session quote age** incorrectly labels the shared
+  `session_freshness` rule when the market is closed. The scoped correction in
+  `investor.py` is **Quote freshness and session permission**. Policy values
+  and guards are unchanged. The correction is committed and independently
+  source-approved in `c3abd0b`. The later backend-only check below does not prove
+  corrected visual wording. The observed block does not establish the underlying
+  quote age.
+
+### Post-fix API Preview: `c3abd0b`
+
+The parent reported one actual API Preview after the source correction. The
+service was healthy and automatic authority remained off. It returned:
+
+- State Street weights dated **2026-11-05** and a price check at
+  **2026-11-08T23:02:07.123732Z**.
+- **503 stocks / 503 planned trades**, target **94.9019818500%**.
+- AAPL **BUY 21.966418766**, estimated limit **342.41 USD**.
+- The exact reason:
+
+> Quote freshness and session permission: The regular market session is closed. This rule requires it to be open. Affected stocks: 503 (AAPL, NVDA, MSFT, AMZN, GOOGL, …).
+
+No submission token was present. This is **backend-only evidence**, not proof
+that the corrected page rendered or its Submit button was disabled.
+
+The old external Edge window was gone. One new isolated launch presented an
+uncertain personal-profile/unrelated-page context and was left untouched. No
+further windows were attempted. The prior pre-fix visible Edge journey remains
+separate evidence; it does not prove the corrected page.
+
+### Remaining limits
+
+**Focus retention remains unresolved**: native Windows denied foreground
+activation and UI Automation `SetFocus` failed. This does not prove a product
+defect. Draft expiry, final fills, live broker execution, signed updates,
+installer execution/upgrade/uninstall and macOS remain unproven.
+
+No broker order, order approval, submission or trade was performed. The
+coordinated SPY issue records the detailed observations. These results replace
+the earlier pane-control boundary; they do not establish full-journey
+acceptance.
+
 ## Review record
 
 The independent review requested changes because the initial Apps-entry-only
@@ -167,15 +341,31 @@ does not create those startup values. That block is removed entirely, with no
 registry read and no retained name-only deletion under either product name.
 
 Independent reviewer `66f5800c-32a5-4517-a9ac-77d1ec7aaf5c` gave **SOURCE APPROVE**
-after the corrections. All reported source findings are resolved. The reviewed
-frozen tracked-diff identity is `65605a2b3433019d1675082ca99d89faee0cf6c2`;
+after the original corrections. All findings from that review were resolved in
+`ffe0fcc`; it does not approve the later UAT-discovered rule-heading correction.
+The reviewed frozen tracked-diff identity is
+`65605a2b3433019d1675082ca99d89faee0cf6c2`;
 reviewed blob prefixes are installer `0659d311`, app `79e8fc4d` and SPY `62d2b84`.
-The complete coordinated source batch is **1,102 lines added and 52 removed**,
+The coordinated source batch in `ffe0fcc` is **1,102 lines added and 52 removed**,
 including the 1,048-line vendored template, with **0 test changes/runs**.
 
+The heading-only follow-up was committed separately as
+`c3abd0bbf51fe703dbe118802242761ba6c1e119` (two files, three lines added and one
+removed). Focused independent source review gave **APPROVE**, with **no
+findings**, against diff identity `457fae07f5804fb28952c9894e000beb6e18bf1e`.
+This approves the source correction, not replacement visual UAT or a completed
+signed release. Revised compilation/bundling and the post-fix API result are
+recorded separately above; corrected visual Edge acceptance remains unproven.
+
 The source owner handed both shared implementation files to the branding owner,
-and the orchestrator granted an exclusive staging/commit turn. The exact task
-files are staged together; existing untracked dependency files are excluded.
-Build evidence, final UAT scope and the committed revision will be recorded in
-the later evidence update. Source/static approval and a package build do not
-establish installed-app, broker or full-journey acceptance.
+and the orchestrator granted an exclusive staging/commit turn. Exactly 33 task
+files were committed locally in `ffe0fccd4fd25f5cff822fe3d5f18893532bbbd0`,
+with the required coauthor and no push. The post-commit index and tracked tree
+were clean; all 51 pre-existing untracked dependency files remained excluded.
+This branding-issue follow-up is documentation only. The separate shared
+rule-heading correction is committed and source-approved, with revised compiled
+installer provenance recorded separately from the prior build. The post-fix API
+reason is verified; corrected visual Edge acceptance remains unproven and
+release signing is incomplete.
+Source/static approval and compilation/bundling do not establish installed-app,
+broker or full-journey acceptance.
