@@ -12,6 +12,12 @@ from pathlib import Path
 from uuid import uuid4
 
 
+def default_nautilus_python(root):
+    """Return the native venv interpreter: Scripts/python.exe on Windows, bin/python elsewhere."""
+    venv = Path(root) / ".venv-nautilus-v1"
+    return venv / "Scripts" / "python.exe" if os.name == "nt" else venv / "bin" / "python"
+
+
 class NautilusRuntime:
     def __init__(self, directory, python, credential_profile, *, application_root=None):
         self.directory, self.python = Path(directory), Path(python)

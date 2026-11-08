@@ -56,8 +56,10 @@ def main():
     manifest_path = Path(__file__).resolve().parents[1] / "assets/runtime-manifests/nautilus-v1-runtime-manifest.json"
     source_root = Path(__file__).resolve().parents[2]
     profile = os.getenv("TRADINGAGENTS_DESKTOP_PROFILE")
-    source_development = profile == "development" and sys.platform == "win32" and (source_root / "pyproject.toml").is_file()
-    if not manifest_path.is_file() and (not profile or source_development):
+    source_development = profile == "development" and sys.platform in {"win32", "darwin"} and (source_root / "pyproject.toml").is_file()
+    if sys.platform == "darwin":  # The bundled and Windows manifests hash Windows .pyd files; macOS has its own.
+        manifest_path = source_root / "docs/nautilus-v1-runtime-manifest-darwin.json"
+    elif not manifest_path.is_file() and (not profile or source_development):
         manifest_path = source_root / "docs/nautilus-v1-runtime-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if __version__ != manifest["nautilus_version"]:

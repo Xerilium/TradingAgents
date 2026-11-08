@@ -23,6 +23,7 @@ if desktop_output is not None:
 
 from tradingagents.integrations.maenifold import GatewayRateLimited
 
+from .nautilus_runtime import default_nautilus_python
 from .service import DeskService
 from .app_database import StoreConflict
 from .recovery import WriterBusy
@@ -545,7 +546,7 @@ def main():
     parser = argparse.ArgumentParser(description="TradingAgents paper trading workspace")
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--data-dir", type=Path, default=Path.cwd() / ".paper-desk")
-    parser.add_argument("--nautilus-python", type=Path, default=Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe")
+    parser.add_argument("--nautilus-python", type=Path, default=default_nautilus_python(Path(__file__).resolve().parents[2]))
     parser.add_argument("--credential-profile", choices=("production", "development"),
                         default="development", help="Native credential-store profile")
     parser.add_argument("--browse-only", action="store_true", help="Browse saved runs and prepare local human proposals; disable research, native order drafts, approval and admission")
