@@ -9,11 +9,21 @@
 - [Application recovery](#application-recovery-page)
 - [Coverage and limits](#coverage-evidence-and-limits)
 
-This reference is for assistant-led tutorials in the local TradingAgents desk. Use the internal browser at `http://127.0.0.1:8098/`, the installed production app. The production app is the Tauri desktop shell at `%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe` (installs from older packaging used `%LOCALAPPDATA%\Programs\TradingAgents`). Open it from the desktop or Start menu shortcut, or with `.\Start-TradingDesk.cmd`, which tries both locations and only starts that installed executable (it exits with “Install TradingAgents before using this launcher.” if neither exists). The app stays in the system tray after the browser closes. The tray offers **Open**, **Restart**, **Check for updates**, **Open logs** and **Quit**. Do not start the server directly or use another port. Development is separate: `.\Start-TradingDesk-Dev.cmd` runs Tauri dev on port 8099 with its own profile (`%USERPROFILE%\.cache\trader\development`) and its own credential entries. Do not use the dev instance to inspect production state.
+This reference is for assistant-led tutorials in the local Printer desk. Use the internal browser at `http://127.0.0.1:8098/`, the installed production app. The production app is the Tauri desktop shell at `%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe` (installs from older packaging used `%LOCALAPPDATA%\Programs\TradingAgents`). Open it from the desktop or Start menu shortcut, or with `.\Start-TradingDesk.cmd`, which tries both locations and only starts that installed executable (it exits with “Install Printer before using this launcher.” if neither exists). The app stays in the system tray after the browser closes. The tray offers **Open**, **Restart**, **Check for updates**, **Open logs** and **Quit**. Do not start the server directly or use another port. Development is separate: `.\Start-TradingDesk-Dev.cmd` runs Tauri dev on port 8099 with its own profile (`%USERPROFILE%\.cache\trader\development`) and its own credential entries. Do not use the dev instance to inspect production state.
 
 Normal server startup starts Nautilus from the saved settings and starts the configured installed Maenifold service if it is unavailable. Laya loads in the background. Codex starts its adapter when research needs it. Startup is asynchronous: an initial stopped/unverified display can precede connection. Browse-only and recovery modes do not start the native connection. Check Account and Diagnostics before declaring startup failed. Read saved provider and account settings before describing active configuration. The old `tradingdesk.launch.json` and `Launch-TradingDesk.py` are not the installed app’s launch path.
 
 ## Global header and navigation
+
+**Source labels, 8 November 2026:** Printer is the product name in the brand/home
+link, browser title, service identity, tray tooltip and desktop dialogs.
+TradingAgents remains the research component. Printer's release metadata and
+installer/shortcut labels use Printer while retaining the existing executable,
+Windows install/upgrade keys/directories, profiles and vault namespaces.
+The supported NSIS template renames only app-owned legacy links; it preserves
+update/no-shortcut behavior, user-removed links and unrelated destinations.
+Older installations are not updated by source edits. Release build/installation
+and macOS acceptance need their own evidence.
 
 The shell is defined in `index.html` and drawn by `renderChrome()`, `renderNotice()` and `renderConnectionIdentity()` in `app.js`. The shell has a left sidebar and a top bar.
 

@@ -1,4 +1,4 @@
-"""Serve read-only TradingAgents tools over local MCP stdio."""
+"""Serve read-only Printer desk tools over local MCP stdio."""
 
 import argparse
 from typing import Annotated, Any
@@ -12,7 +12,7 @@ from pydantic import Field
 def serve(*, dev):
     profile, port = ("development", 8099) if dev else ("installed", 8098)
     mcp = FastMCP(
-        "TradingAgents",
+        "Printer",
         instructions=f"Read the local {profile} desk. Research and market observations may be incomplete or stale.",
     )
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False,

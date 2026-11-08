@@ -1,4 +1,23 @@
-# Desktop release preparation
+# Printer desktop release preparation
+
+Printer is the product display name; TradingAgents remains the research component.
+Keep the `tradingagents-desktop` build target/executable, app identifiers, existing
+install and upgrade bindings, profiles, runtime locations and credential namespaces.
+Tauri `productName` is **Printer**, including Windows installer/wizard, Apps entry,
+shortcuts, executable metadata and macOS display/bundle names. The supported
+vendored NSIS template retains the old TradingAgents install directories and
+registry keys. It renames only app-owned legacy shortcuts, keeps `/NS` and
+`/UPDATE` behavior and user-removed links, and never overwrites an unrelated
+Printer link. See `desktop/src-tauri/windows/UPSTREAM.md` for the pinned upstream
+source, license and local delta. Development uses **Printer Development**.
+
+The Windows app-only artifact is now `Printer_<version>_x64-setup.exe` (for the
+current version, `Printer_0.6.22_x64-setup.exe`). It still upgrades the existing
+`%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe` installation, including
+older remembered installation directories. The release metadata helper accepts
+the actual artifact filename; project-wheel globs remain `tradingagents-*.whl`
+because that is the research/package identity. Source metadata is not evidence
+of a successful installer build, upgrade or macOS build.
 
 Windows x64 and macOS 26+ Apple Silicon use two separate Python environments,
 created in the app's private profile on first launch from an interpreter already

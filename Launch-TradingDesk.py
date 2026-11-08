@@ -42,7 +42,7 @@ def main():
             response.read(1)
         with opener.open(url + "/api/health", timeout=3) as response:
             value = json.loads(response.read(1024 * 1024))
-        return (value.get("product") == "TradingAgents" and value.get("application_identity") == identity
+        return (value.get("product") in {"Printer", "TradingAgents"} and value.get("application_identity") == identity
             and value.get("native_cache_mode") == "memory")
     try:
         with socket.create_connection(("127.0.0.1", config["port"]), timeout=2):
@@ -63,7 +63,7 @@ def main():
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         for _ in range(30):
             if process.poll() is not None:
-                raise ValueError("TradingAgents did not start. Inspect .runtime-stage/launcher.err.log; original stores were retained.")
+                raise ValueError("Printer did not start. Inspect .runtime-stage/launcher.err.log; original stores were retained.")
             try:
                 if matching():
                     break
@@ -81,6 +81,6 @@ if __name__ == "__main__":
     except Exception as exc:
         message = str(exc) if isinstance(exc, ValueError) else "Launch failed (" + type(exc).__name__ + "). Inspect the configured paths and .runtime-stage launcher logs."
         if os.name == "nt":
-            ctypes.windll.user32.MessageBoxW(None, message, "TradingAgents launch", 0x10)
+            ctypes.windll.user32.MessageBoxW(None, message, "Printer launch", 0x10)
         else:
             print(message)

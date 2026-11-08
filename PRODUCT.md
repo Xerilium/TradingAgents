@@ -25,7 +25,8 @@ Desktop host with a browser workspace. A Tauri 2 tray application (Windows x64 a
 
 ## Product Purpose
 
-TradingAgents is a **personal index-management desk**. SPY replication is the first
+Printer is a **personal index-management desk**. TradingAgents is its research
+component, not the name of the whole product. SPY replication is the first
 shipping priority and the reason to open it every day. Its primary daily workspace
 must make this journey obvious: understand the account and reserves → review the
 investment budget and dated holdings → inspect the rebalance → use the authorized
@@ -44,7 +45,7 @@ observes one connected account at a time; a saved account plan is not a live
 consolidated fund, a bank transfer or a tax-lot service. Paper P&L is not a tax
 benefit. Those boundaries must remain visible as capabilities develop.
 
-TradingAgents is a local trading desk that combines AI research, market analysis, order preparation and portfolio monitoring around the user's own Alpaca account. Analyst agents (market, social, news, fundamentals) feed a bull/bear research debate, a research manager, a trader proposal and a three-way risk discussion, ending in a Portfolio Manager recommendation with a rating. NautilusTrader is the execution and accounting engine; the desk reconciles it with broker state. Success is an operator who can take stocks from selection to research to a reviewed order and its reconciled outcome in one application, with each step's source, timestamp and limits visible.
+Printer combines TradingAgents research, market analysis, order preparation and portfolio monitoring around the user's own Alpaca account. TradingAgents analyst agents (market, social, news, fundamentals) feed a bull/bear research debate, a research manager, a trader proposal and a three-way risk discussion, ending in a Portfolio Manager recommendation with a rating. NautilusTrader is the execution and accounting engine; the desk reconciles it with broker state. Success is an operator who can take stocks from selection to research to a reviewed order and its reconciled outcome in one application, with each step's source, timestamp and limits visible.
 
 ## Positioning
 
@@ -59,6 +60,7 @@ A structured agent *process* with a controlled execution path, not a single-prom
 - **Data vendors:** Alpaca (IEX feed observations and history), Yahoo Finance via yfinance, SEC EDGAR, and Alpha Vantage, FRED, Polymarket (keyless), Reddit and StockTwits paths where configured. Availability depends on credentials and service state.
 - **Workspaces:** Dashboard, Portfolio, Markets, Research, Orders, Strategy lab, Journal, Alerts, Workflows and Settings.
 - **Entry points:** the installed desktop app (`Start-TradingDesk.cmd` opens it), `Start-TradingDesk-Dev.cmd` for development, and `scripts/desk_api.py` for authenticated local API reads and authorized actions. The upstream `main.py` and `tradingagents` CLI remain in the repository.
+- **Name compatibility:** Printer is the product display name, including installer, desktop shortcuts and platform metadata. The `tradingagents` package, `tradingagents-desktop` executable/build target, `com.tradingagents.desktop` identifiers, Windows install/upgrade registry keys and directories, profile paths and `TradingAgents.desktop.*` credential namespaces remain stable. The supported NSIS template renames only existing app-owned legacy shortcuts and preserves update/no-shortcut behavior, user-removed links and unrelated destinations. Older installed releases are not updated by source edits. No data migration is part of this rebrand.
 
 ## Capabilities and Constraints
 
@@ -75,7 +77,7 @@ A structured agent *process* with a controlled execution path, not a single-prom
 
 ## Evidence on Hand
 
-- Codebase at `C:\src\TradingAgents`, a fork of TauricResearch/TradingAgents. Python package version 0.7.1; desktop host 0.6.22.
+- Current codebase at `D:\src\TradingAgents`, a fork of TauricResearch/TradingAgents. Python package version 0.7.1; desktop host 0.6.22.
 - Live observation on 2026-10-29 UTC (the evening of 28 October local time): the production desk reports paper-account mode, NautilusTrader 1.231.0 connected, Alpaca IEX feed, Laya ready on CPU, Gateway ready, and the `Default` workflow active with four analysts, one debate round and one risk round. Reconciliation was clean for an empty paper account. This is a read-only observation, not acceptance of any workflow.
 - Acceptance records and observed limits live in `docs/local-desk-guide.md` and `docs/uat`. Do not fabricate run results, performance claims or testimonials, and do not treat source capability as proven broker execution.
 

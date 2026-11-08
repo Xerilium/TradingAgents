@@ -1,4 +1,11 @@
-# Local TradingAgents desk: launch, use and handoff
+# Local Printer desk: launch, use and handoff
+
+Printer is the product; TradingAgents supplies its research workflow. An older
+installed release can still say TradingAgents until upgraded. The Printer
+installer retains the existing executable, install/upgrade keys and directories,
+package/import names, profiles and vault namespaces. It renames only app-owned
+legacy shortcuts, preserving user-removed links and unrelated destinations.
+Source edits do not update an installed app or migrate saved data.
 
 The [product README](../README.md) is the current component map and complete
 operating guide. This document retains detailed implementation contracts and
@@ -41,10 +48,11 @@ grant authority for new orders. Native modeled fee defaults do not establish act
 Fractional replacement preserves the exact total quantity, including prior fills.
 Supported price-only amendments omit quantity from the broker PATCH. Fractional
 MARKET replacement is unavailable; cancellation remains a separate exact action.
-Dollar/notional sizing, fractional basket allocation, and fractional simulation
-remain separate open contracts; the current basket allocator and simulation use
-whole quantities. No fractional broker acceptance or native dispatch/fill behavior
-has been observed for this source change.
+Basket allocation and SPY rebalance sizing follow observed fractional eligibility
+and quantity precision. Dollar/notional order sizing and fractional simulation
+remain separate open contracts; saved-plan simulation uses whole quantities.
+No fractional broker acceptance or native dispatch/fill behavior has been observed
+for this source change.
 
 Sources reviewed 21 October 2026: [fractional trading supported-order section](https://docs.alpaca.markets/us/docs/fractional-trading),
 [20 August 2024 fractional stop/stop-limit changelog](https://docs.alpaca.markets/us/v1.1/changelog/support-for-fractional-usd-stop-stop-limit-lct-stop-stop-limit-limit-with-extended-hours-orders),
@@ -165,7 +173,8 @@ verification does not establish a live connection or live execution acceptance.
 
 ## Launch the existing installation
 
-1. Open the TradingAgents desktop or Start menu shortcut. Both target
+1. Open the installed desktop or Start menu shortcut (older releases say
+   TradingAgents; Printer releases say Printer). Both target
    `%LOCALAPPDATA%\TradingAgents\tradingagents-desktop.exe` (installs from
    older packaging used `%LOCALAPPDATA%\Programs\TradingAgents`).
 2. Open <http://127.0.0.1:8098> if the browser did not open automatically.
@@ -229,7 +238,8 @@ native store. Verify the observed paper/live account before preparing orders.
 
 ### Activate source-only backend changes
 
-Use **TradingAgents Development → Restart** in the existing Windows tray.
+Use **Printer Development → Restart** in the existing Windows tray (older builds
+show **TradingAgents Development**).
 The debug development host reloads checkout Python and its native worker; do not
 launch another dev instance or start the Python server directly. Before an
 authorized restart, confirm automatic authority is off, no active manual run and
@@ -264,7 +274,7 @@ for development; production maintenance uses its installed isolated runtime.
 
 ### Connect a local MCP client
 
-The optional TradingAgents MCP server runs over stdio using the official
+The optional Printer MCP server runs over stdio using the official
 [Python MCP SDK v1](https://py.sdk.modelcontextprotocol.io/v1/), already included
 in the desk runtime. Start the desk normally and add a local stdio server in
 your MCP client. Set **Command** to the absolute path to the desk Python
@@ -304,7 +314,7 @@ Research, data collection, settings and order actions stay in the desk.
 | Application data and research | `application` and `research` within the production profile |
 | API credentials | Native OS vault, under `TradingAgents.desktop.production.*` or `TradingAgents.desktop.development.*`; never publish values |
 | Desk log | `logs\desk.log` within the production profile |
-| Development checkout and data | `C:\src\TradingAgents` and its `%USERPROFILE%\.cache\trader\development` |
+| Development checkout and data | `D:\src\TradingAgents` and its `%USERPROFILE%\.cache\trader\development` |
 | Prior source-linked application and history | `.local-workspace\evidence\runtime-staging\20261017T024233Z-e3f9548d\application` and sibling `history` |
 | Preserved local evidence and backups | `.local-workspace` and existing repository-local backup folders |
 

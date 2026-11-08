@@ -37,13 +37,13 @@ struct Plan {
 
 fn plan(payload: &Path, kind: &str) -> Result<Plan, String> {
     let text = fs::read_to_string(payload.join("provenance.json"))
-        .map_err(|_| "The packaged dependency plan is missing. Reinstall TradingAgents.".to_string())?;
+        .map_err(|_| "The packaged dependency plan is missing. Reinstall Printer.".to_string())?;
     let value: serde_json::Value = serde_json::from_str(&text)
         .map_err(|e| format!("Cannot read the packaged dependency plan: {e}"))?;
     let spec = value.get("environments").and_then(|items| items.get(kind))
-        .ok_or_else(|| format!("The packaged dependency plan does not describe the {kind} environment. Reinstall TradingAgents."))?;
+        .ok_or_else(|| format!("The packaged dependency plan does not describe the {kind} environment. Reinstall Printer."))?;
     let field = |key: &str| spec.get(key).and_then(|v| v.as_str()).map(str::to_string)
-        .ok_or_else(|| format!("The packaged {kind} plan is missing {key}. Reinstall TradingAgents."));
+        .ok_or_else(|| format!("The packaged {kind} plan is missing {key}. Reinstall Printer."));
     Ok(Plan { minor: field("python_minor")?, wheelhouse: payload.join(field("wheelhouse")?),
               requirements: payload.join(field("requirements")?) })
 }
@@ -128,7 +128,7 @@ fn create_environment(payload: &Path, profile: &Path, kind: &str, log: &mut fs::
     let spec = plan(payload, kind)?;
     for required in [&spec.wheelhouse, &spec.requirements] {
         if !required.exists() {
-            return Err(format!("The packaged {kind} dependencies are missing at {}. Reinstall TradingAgents.", required.display()));
+            return Err(format!("The packaged {kind} dependencies are missing at {}. Reinstall Printer.", required.display()));
         }
     }
     let base = host_interpreter(&spec.minor)?;
@@ -233,7 +233,7 @@ impl Backend {
         } else {
             let app = payload.join("app");
             if !app.join("tradingagents/web/server.py").is_file() {
-                return Err("The packaged application code is missing. Reinstall TradingAgents.".into());
+                return Err("The packaged application code is missing. Reinstall Printer.".into());
             }
             command.args(["-I", "-u", "-c",
                 "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('tradingagents.web.server',run_name='__main__')"])

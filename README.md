@@ -1,5 +1,5 @@
 ---
-title: TradingAgents trading desk
+title: Printer index-management desk
 permalink: tradingagents-readme
 type: memory
 status: saved
@@ -11,15 +11,16 @@ tags:
   - onboarding
 ---
 
-# TradingAgents trading desk
+# Printer
 
 Manage your index portfolio. Know the budget. Review the next rebalance.
 
-[[TradingAgents]] is a local personal index-management desk. Its first shipping
+Printer is a local personal index-management desk. Its first shipping
 priority is the complete [[spy]] stock-replication journey: account and [[spy-fund-management]] reserves,
 investment budget and dated holdings, [[spy-rebalance]] review, separately authorized
 execution under [[spy-execution-safety]], and reconciled outcomes. Research, charts, simulations and other trading
-tools support that purpose. A working rebalance alone does not prove SPY return parity.
+tools support that purpose. [[TradingAgents]] is its research component, not the
+name of the whole product. A working rebalance alone does not prove SPY return parity.
 
 [Start the desk](#start-the-desk) · [Platform reference](docs/platform-reference.md) · [Local operating guide](docs/local-desk-guide.md)
 
@@ -39,12 +40,12 @@ tools support that purpose. A working rebalance alone does not prove SPY return 
 | Compare results | **Portfolio → Performance** | Open a saved account-history interval; use Journal → Account History when one is needed. |
 
 **SPY portfolio** is the daily starting point: opening the desk without a workspace
-hash lands here, and the TradingAgents home link returns here. Dashboard, research,
+hash lands here, and the Printer home link returns here. Dashboard, research,
 charts, simulations and the other workspaces remain available as supporting tools.
 
-![SPY portfolio as the first workspace, with observed account balances, reconciliation, reserve and SPY budget](docs/images/spy-portfolio.jpg)
+![Printer SPY portfolio entry, with observed paper balances, reconciliation, reserve and SPY budget](docs/images/printer-spy-entry.png)
 
-*The daily entry at a real 1920 × 1080 viewport. Editing stays secondary; automatic trading is off in this dated capture.*
+*Printer's development entry at 2112 × 1284 on 8 November 2026. Automatic trading is off and no preview is loaded. This is an entry view, not a completed rebalance.*
 
 ## Read the research, not just the rating
 
@@ -78,9 +79,10 @@ An expired preview remains readable and asks you to generate a new one.
 
 *Plan review: the lookup shows one matching stock while the full plan stays intact.*
 
-Screenshots are real development views captured on 5 November 2026. Figures and
+Screenshots are real development views. The Printer entry is dated 8 November 2026;
+the other captures are dated 5 November and predate the Printer name. Figures and
 status belong to those captures. [Image notes](docs/images/README.md) record their
-source revisions and scope.
+sources and scope.
 
 ## Keep planning and trading distinct
 
@@ -97,7 +99,9 @@ for eligibility, account bindings and broker behavior.
 
 ### Installed desktop
 
-On Windows, open TradingAgents from the desktop or Start menu shortcut.
+On Windows, open Printer from the desktop or Start menu shortcut. An older
+installation may still be named TradingAgents until upgraded. Source changes do
+not update an already installed app.
 The repository's `Start-TradingDesk.cmd` opens that installed executable too.
 The app uses `http://127.0.0.1:8098/`; its tray provides Open, Restart,
 Check for updates, Open logs and Quit.
@@ -139,6 +143,10 @@ flowchart LR
   broker and market observations; this is not a second trading engine.
 - **Historical evaluation workers and Optuna** support simulations and optional
   experiments. Their results remain separate from observed account performance.
+
+Printer keeps the existing `tradingagents` Python package, executable, app
+identifier, Windows install paths, profiles and credential namespaces. This name change
+does not migrate data or change order authority.
 
 Saved settings determine the active providers and tools. The
 [platform reference](docs/platform-reference.md) covers data sources, integrations,

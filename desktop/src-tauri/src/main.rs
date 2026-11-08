@@ -24,7 +24,7 @@ impl Drop for UpdateGuard {
     fn drop(&mut self) { self.0.store(false, Ordering::SeqCst); }
 }
 fn notice(app: &tauri::AppHandle, text: impl Into<String>, error: bool) {
-    app.dialog().message(text.into()).title("TradingAgents")
+    app.dialog().message(text.into()).title("Printer")
         .kind(if error { MessageDialogKind::Error } else { MessageDialogKind::Info }).show(|_| {});
 }
 fn status(item: &MenuItem<tauri::Wry>, text: &str) { let _ = item.set_text(text); }
@@ -142,7 +142,7 @@ fn check_updates(app: tauri::AppHandle) {
         };
         let update = match updater.check().await {
             Ok(Some(value)) => value,
-            Ok(None) => { notice(&app, "TradingAgents is up to date.", false); return; }
+            Ok(None) => { notice(&app, "Printer is up to date.", false); return; }
             Err(e) => { notice(&app, format!("Cannot check for updates: {e}"), true); return; }
         };
         let bytes = match update.download(|_, _| {}, || {}).await {
@@ -151,7 +151,7 @@ fn check_updates(app: tauri::AppHandle) {
         };
         let app2 = app.clone();
         app.dialog().message(format!("Version {} is ready. Stop the desk and install it now?", update.version))
-            .title("TradingAgents update").buttons(MessageDialogButtons::OkCancel)
+            .title("Printer update").buttons(MessageDialogButtons::OkCancel)
             .show(move |approved| {
                 if !approved { drop(guard); return; }
                 thread::spawn(move || {
@@ -214,7 +214,7 @@ fn main() {
             let log_dir = profile.join("logs");
             let icon = app.default_window_icon().ok_or("The packaged tray icon is missing")?.clone();
             TrayIconBuilder::new().icon(icon).menu(&menu)
-                .tooltip(if development { "TradingAgents Development" } else { "TradingAgents" })
+                .tooltip(if development { "Printer Development" } else { "Printer" })
                 .on_menu_event(move |app, event| {
                     match event.id.as_ref() {
                         "open" => { let _ = app.state::<Host>().tx.send(Action::Open); }
@@ -234,7 +234,7 @@ fn main() {
             let handle = app.handle().clone();
             thread::spawn(move || supervisor(handle, rx, item, payload, profile, port, development, exiting));
             Ok(())
-        }).build(tauri::generate_context!()).expect("Cannot start TradingAgents desktop host");
+        }).build(tauri::generate_context!()).expect("Cannot start Printer desktop host");
     app.run(|app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             let host = app.state::<Host>();

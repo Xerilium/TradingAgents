@@ -1,8 +1,8 @@
-# TradingAgents UI Redesign Blueprint (Canonical Impeccable Specification)
+# Printer UI Redesign Blueprint (Canonical Impeccable Specification)
 
 - **Status:** Canonical v4 Master Specification (Consolidates all Council Reviews, Pro-Trader Audits, and Existing-Backend Missed Opportunities)
 - **Target Surface:** `tradingagents/web/static/` (`index.html`, `app.js`, `workflows.js`, `command-controls.js`, `nautilus.js`, `lists.js`, `report-format.js`, `market-chart.js`, `app.css`, and `ui-*.css`)
-- **Design System & Product Authority:** [`PRODUCT.md`](../PRODUCT.md) and [`DESIGN.md`](../DESIGN.md) (`TradingAgents Paper Desk`, Impeccable `Operate` mode)
+- **Design System & Product Authority:** [`PRODUCT.md`](../PRODUCT.md) and [`DESIGN.md`](../DESIGN.md) (`Printer`, Impeccable `Operate` mode)
 - **Companion Defect Log:** [`docs/ui-design-critique.md`](ui-design-critique.md)
 
 ---
@@ -207,7 +207,7 @@ To prevent inspecting another stock (`J/K` or clicking a watchlist row) from wip
 
 ```text
 +---------------+------------------------------------------------------------------------------------------+
-| TradingAgents | RESEARCH · PNIS (24)   [Find symbol (Ctrl+K): AMZN___]   IEX Quotes 16:00 ET [⟳ Refresh] |
+| Printer       | RESEARCH · PNIS (24)   [Find symbol (Ctrl+K): AMZN___]   IEX Quotes 16:00 ET [⟳ Refresh] |
 | Paper Desk    |                                                 [🔔 Alerts: 1] [● Orders: Active · Pause]|
 +---------------+------------------------------------------------------------------------------------------+
 | [⊞] Dashboard | (Shown only if commands.data.recovery_required:                                          |

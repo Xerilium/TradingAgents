@@ -1,6 +1,6 @@
 **DON'T BE A CUNT: SAVE YOUR WORK, COMMIT YOUR CHANGES LOCALLY, AND DO NOT LEAVE YOUR WORK UNCOMMITTED OR UNTRACKED. LEAVING OTHER PEOPLE TO RECOVER YOUR UNSAVED SHIT IS UNACCEPTABLE. KEEP SECRETS, CREDENTIALS, PRIVATE RUNTIMES, AND MACHINE-LOCAL FILES OUT OF COMMITS; EXPLICITLY IGNORE THEM. NEVER DISCARD SOMEONE ELSE'S WORK TO GET A CLEAN STATUS.**
 
-# Working on this TradingAgents checkout
+# Working on this Printer checkout
 
 The user stopped use of Serena. Use normal repository tools and Maenifold.
 If `.serena/memories/critical_info.md` exists, read it as a file; do not start Serena.
@@ -50,7 +50,7 @@ Keep component documentation in those files, not duplicated in this file.
 
 ## Primary repository and delivery
 
-`C:/src/TradingAgents` is the primary repository and product checkout. Temporary
+`D:/src/TradingAgents` is the primary repository and product checkout on this PC. Temporary
 worktrees isolate scoped implementation; they do not replace the primary.
 Inspect its actual branch, working changes, and launch configuration before
 assigning work. Do not treat an older candidate worktree as the current product
@@ -111,6 +111,11 @@ actual installation, saved data and permitted smoke test.
 
 ## Product and scope
 
+- Printer is the product; TradingAgents is its research component. Preserve the
+  existing package/import names, executable/build target, app identifier,
+  Windows install/upgrade bindings, profiles and credential namespaces when
+  changing display labels. A rebrand is not a data migration.
+
 - Keep TradingAgents for research, NautilusTrader as the engine, and the Alpaca
   paper integration operational. Do not build a second trading engine.
 - UI work reorganizes existing capabilities; no new backend features or invented
@@ -132,7 +137,7 @@ actual installation, saved data and permitted smoke test.
 
 ## Local operation and preservation
 
-- Work in `C:\src\TradingAgents`; its application branch is `nautilus` unless the task says otherwise.
+- Work in `D:\src\TradingAgents`; its application branch is `nautilus` unless the task says otherwise.
 - Use the installed desktop/Start menu shortcut for production. The repository
   `.\Start-TradingDesk.cmd` opens that installed executable too.
   Production uses port 8098 and its private production profile. Development uses

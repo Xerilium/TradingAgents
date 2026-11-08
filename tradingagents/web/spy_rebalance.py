@@ -602,17 +602,16 @@ class SpyRebalance:
                     raise ValueError("The prior fill lacks complete evidence. Review the rebalance.")
                 current[symbol] = current.get(symbol, Decimal(0)) + quantity * (1 if command["side"] == "BUY" else -1)
                 current = {key: value for key, value in current.items() if value != 0}
-                if not done:
-                    try:
-                        observed_at = datetime.fromisoformat(runtime.get("account_observation_started_at"))
-                        filled_at = datetime.fromisoformat(events[-1]["at"])
-                        if observed_at.tzinfo is None or filled_at.tzinfo is None or observed_at <= filled_at:
-                            return
-                    except (TypeError, ValueError):
-                        raise ValueError("The post-fill account observation time is unavailable.") from None
-                    positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
-                    if positions != current:
-                        raise ValueError("The post-fill holdings do not match the approved rebalance. Review before continuing.")
+                try:
+                    observed_at = datetime.fromisoformat(runtime.get("account_observation_started_at"))
+                    filled_at = datetime.fromisoformat(events[-1]["at"])
+                    if observed_at.tzinfo is None or filled_at.tzinfo is None or observed_at <= filled_at:
+                        return
+                except (TypeError, ValueError):
+                    raise ValueError("The post-fill account observation time is unavailable.") from None
+                positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
+                if positions != current:
+                    raise ValueError("The post-fill holdings do not match the approved rebalance. Review before continuing.")
                 update(status="completed" if done else "ready", completed=completed, command_id=None,
                        fills_completed=run["fills_completed"] + 1,
                        current={key: str(value) for key, value in current.items()},

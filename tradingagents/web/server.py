@@ -34,7 +34,7 @@ class DeskServer(ThreadingHTTPServer):
 
     def __init__(self, address, service):
         if address[0] != "127.0.0.1":
-            raise ValueError("TradingAgents supports IPv4 loopback binding only")
+            raise ValueError("Printer supports IPv4 loopback binding only")
         self.service = service
         self.service_lock = threading.RLock()
         self.credentials_lock = threading.Lock()
@@ -531,7 +531,7 @@ class DeskHandler(BaseHTTPRequestHandler):
         except GatewayRateLimited as exc:
             self._send_rate_limit(exc)
         except (BadZipFile, LargeZipFile):
-            self._send(400, {"error": "Invalid or damaged backup ZIP. Choose an intact TradingAgents backup archive and inspect it again."})
+            self._send(400, {"error": "Invalid or damaged backup ZIP. Choose an intact Printer workspace backup archive and inspect it again."})
         except (ValueError, KeyError, StopIteration) as exc:
             if self.quote_diagnostic is not None:
                 self.quote_diagnostic["exception"] = type(exc).__name__
@@ -560,7 +560,7 @@ class DeskHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TradingAgents paper trading workspace")
+    parser = argparse.ArgumentParser(description="Printer paper trading workspace")
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--data-dir", type=Path, default=Path.cwd() / ".paper-desk")
     parser.add_argument("--nautilus-python", type=Path, default=Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe")
@@ -644,7 +644,7 @@ def main():
             threading.Thread(target=watch_desktop, name="desktop-control", daemon=True).start()
             print(json.dumps({"desktop_ready": True, "port": args.port}), file=desktop_output, flush=True)
         else:
-            print(f"TradingAgents paper workspace: http://127.0.0.1:{args.port}", flush=True)
+            print(f"Printer paper workspace: http://127.0.0.1:{args.port}", flush=True)
         server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         pass

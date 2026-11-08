@@ -1346,7 +1346,7 @@ class DeskService:
         account = runtime.get("account") or {}
         from .admission import DEFAULT as COMMAND_DEFAULT
         commands = self.store.database.read("commands", COMMAND_DEFAULT)["data"]
-        return {"product": "TradingAgents", "source_sha256": self.source_sha256,
+        return {"product": "Printer", "source_sha256": self.source_sha256,
                 "native_source_sha256": runtime.get("source_sha256"), "application_identity": hashlib.sha256(str(getattr(self, "launch_root", self.application_root)).casefold().encode()).hexdigest(),
                 "browse_only": self.browse_only, "service": "running", "account_mode": str(runtime.get("endpoint") or "Configured Alpaca origin / not connected") + " / observed currency " + str(account.get("currency", "unknown"))
                     + " / multiplier " + str(account.get("multiplier", "unknown")) + " / shorting " + str(account.get("shorting_enabled", "unknown")) + "; native mapping supports CASH only",

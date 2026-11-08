@@ -1,9 +1,15 @@
 ---
 name: use-tradingagents
-description: Guide work in the local TradingAgents desk. Use for tutorials, read-only inspection, or user-authorized desk actions. Do not use for app development, financial advice, or autonomous trading.
+description: Guide work in the local Printer desk, including TradingAgents research. Use for tutorials, read-only inspection, or user-authorized desk actions. Do not use for app development, financial advice, or autonomous trading.
 ---
 
-# Use the local TradingAgents desk
+# Use the local Printer desk
+
+Printer is the product; TradingAgents is its research component. This skill keeps
+the `use-tradingagents` command name for compatibility. Older installed releases
+can still show TradingAgents. Executable, install/upgrade, app/profile and vault
+bindings retain their existing names. Do not rename those locations or treat a
+source label change as an installed update.
 
 Follow the user’s current request and any authorization already given. Do not assume every request is a tutorial. Do not ask for approval again for ordinary navigation, reads, or actions the user has already authorized. Do not use `AskUserQuestion` or app wrap-up question/buttons to reauthorize those steps. A failed local check does not revoke authorization to diagnose, correct and recheck its affected path; it is not a human-approval hold. Broker actions, credentials, destructive actions and genuinely new scope retain their separate boundaries. For guided tutorials, operate the internal browser and explain visible controls instead of asking the user to click through when you can operate the page.
 

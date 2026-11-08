@@ -65,7 +65,7 @@ class RecoveryService:
         self.restart_required = False
 
     def health(self):
-        return {"product": "TradingAgents", "application_identity": hashlib.sha256(str(self.original_root).casefold().encode()).hexdigest(),
+        return {"product": "Printer", "application_identity": hashlib.sha256(str(self.original_root).casefold().encode()).hexdigest(),
                 "service": "recovery_only", "browse_only": True, "execution_enabled": False,
                 "engine": "not_started", "new_orders_blocked": True, "store": {"status": "unavailable", "message": self.failure},
                 "original_directory": str(self.original_root), "recovery_directory": str(self.application_root),

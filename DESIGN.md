@@ -1,5 +1,5 @@
 ---
-name: TradingAgents Paper Desk
+name: Printer
 description: A linked trading workstation for broker exposure, agent evidence, and explicit paper orders.
 colors:
   accent: "#79ce9e"
@@ -196,11 +196,14 @@ components:
     padding: "4px 8px"
 ---
 
-# Design System: TradingAgents Paper Desk
+# Design System: Printer
 
 ## Overview
 
 **Creative North Star: "The Linked Trading Desk"**
+
+Printer is the complete index-management desk. TradingAgents remains its research
+component. The name change preserves this visual system and the existing mark.
 
 A compact workstation places portfolio exposure, instrument data, and agent evidence within one continuous reading surface. Its charcoal navy layers, cool rules, and green controls follow the user's pinned Active Trader Pro direction. The interface supports sustained inspection through modest headings, tabular numbers, and explicit selection.
 

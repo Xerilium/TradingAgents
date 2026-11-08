@@ -1,5 +1,10 @@
 # Platform reference
 
+Printer is the complete index-management desk. TradingAgents is the research
+component described below. Compatibility package names, executable and app IDs,
+Windows install/upgrade bindings, profiles and credential namespaces retain their
+existing names; display branding does not migrate saved data.
+
 Use the [root README](../README.md) for the component map and
 [local operating guide](local-desk-guide.md) for deployment and recovery.
 This reference describes the current source capability, not an acceptance log.

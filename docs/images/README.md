@@ -1,18 +1,30 @@
 # Product-guide images
 
-These are real development-desk captures selected from accepted affected-workflow
-evidence. They are dated examples, not current account facts. No account identifier,
+These are real development-desk captures. They are dated examples, not current
+account facts or blanket workflow acceptance. No account identifier,
 credential, private note or unrelated desktop content is visible in the selected
 images. Prices, plan quantities and visible paper-trading status are retained;
 no values or states were repainted.
 
 | Image | Captured | Source revision / viewport | What it demonstrates |
 | --- | --- | --- | --- |
+| `printer-spy-entry.png` | 8 November 2026 | Working development batch over `371ead5`, parent built-in browser on port 8099; 2112 × 1284 viewport and image | Loaded Printer SPY entry with empty paper holdings, reconciliation and budget, automatic trading off and no loaded preview; not a completed rebalance |
 | `research-review.jpg` | 5 November 2026 | `753df7a`; 1024 × 768 browser viewport, 800 × 600 image | AAPL inspection, search separate from batch selection, result-status filters and coverage gaps |
 | `spy-rebalance-preview.jpg` | 5 November 2026 | Based on `a98afa6`, app `a05513312d8f126de53b89c039d7863900f185fa`, CSS `e1a17a1a48fdfd310b023fefa1da32101b134273`; actual 1920 × 1080, 800 × 450 Browser capture | Compact search/Clear/count toolbar, one AAPL row from the complete 503-trade plan, naturally expired preview |
 | `spy-fund-plan.png` | 5 November 2026 | `7df8b5b`, app blob `5e9b27533a4498f94af9b65629556c4c5b8114c3`; real 1920 × 1080 viewport, 706 × 153 detail image | Compact reserve/SPY budget, secondary editing/details and native keyboard focus |
 | `spy-portfolio.jpg` | 5 November 2026 | Based on `f112f77`, app `96c3d807ff0e45e65be6a559041191d6c47c8f45`, command controls `29cf7f519a5a28b1acdcef73bc92e496a66ba4a4`; real 1920 × 1080 viewport, 800 × 450 Browser capture | Clear-state SPY review and the new account-control handoff link; no blocked state is pictured |
 | `portfolio-empty-spy-handoff.png` | 5 November 2026 | Based on `6940c7d`, app `b40919b9e5373bf331aa6e9c1c5ab2e23de4eab2`; actual 1920 × 1080, 706 × 171 region capture | Known-empty Positions returns to SPY review, with Markets and fund-plan editing preserved |
+
+`printer-spy-entry.png` is the unchanged full development-entry screenshot supplied
+by the parent session. Its dimensions are 2112 × 1284 and SHA-256 is
+`341afaa5d47c4771e338a275825ca12ab66983f335097b85a7d5eb75378c7958`.
+The branding owner reviewed the visible image: only aggregate empty paper-account
+balances appear, with no account ID, credentials, private notes or unrelated
+desktop content. PNG chunks are IHDR, iCCP, IDAT and IEND; the color profile is
+retained and no pixels, values, dates or states were repainted. This image shows
+the loaded entry and Printer name, not preview generation, full-journey behavior,
+broker acceptance, execution or performance. Older guide/evidence images remain
+unchanged.
 
 `portfolio-empty-spy-handoff.png` is an unchanged Browser region capture from the
 800 × 450 rendering of an actual 1920 × 1080 page. Region (90, 111)–(796, 282)
@@ -36,7 +48,7 @@ byte-for-byte, has no EXIF/XMP/IPTC/comment segment and Git blob
 The previous smaller-viewport, automatic-on preview remains historical raw evidence,
 not the current guide image.
 
-`spy-portfolio.jpg` is an unchanged full Browser screenshot from the accepted
+`spy-portfolio.jpg` is a retained unchanged full Browser screenshot from the accepted
 clear-state account-exception overview, not a cropped smaller layout. Its actual viewport
 was 1920 × 1080; the tool rendered 800 × 450. Fund and automatic settings
 are closed, automatic trading is off and Submit is disabled. The selected JPEG
@@ -67,7 +79,7 @@ Original ignored evidence under `.local-workspace/dogfood-20261105/`:
 - `spy-fund-plan-focus-corrected-detail-1080p.png` — exact promoted region capture
 - `spy-primary-entry-after-1080p.jpg` — historical primary-entry capture
 - `spy-read-first-resting-1080p.jpg` — historical read-first overview
-- `spy-account-exceptions-clear-1080p.jpg` — exact current promoted clear-state overview
+- `spy-account-exceptions-clear-1080p.jpg` — exact retained clear-state overview
 - `spy-preview-toolbar-before-1080p.jpg` — control-stack baseline
 - `spy-preview-toolbar-full-after-1080p.jpg` — populated unfiltered toolbar
 - `spy-preview-toolbar-aapl-after-1080p.jpg` — exact current promoted filtered preview
