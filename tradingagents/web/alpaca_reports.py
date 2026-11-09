@@ -169,6 +169,12 @@ def timestamp(value):
     return seconds * 1_000_000_000 + int((match[2] or "").ljust(9, "0"))
 
 
+def fill_timestamp_matches(first, second):
+    """Match exact Alpaca fill times or their nearest-microsecond representation."""
+    return (first == second or first == (second + 500) // 1_000 * 1_000
+            or second == (first + 500) // 1_000 * 1_000)
+
+
 def exact(factory, value):
     decimal = Decimal(str(value))
     if not decimal.is_finite():

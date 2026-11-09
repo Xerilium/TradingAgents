@@ -45,6 +45,12 @@ fallback, not a parallel-order path. These mechanics require a loaded backend
 revision; health exposes startup source hashes for the desk and native worker.
 Broker fill-driven acceptance remains unobserved until an authorized real run.
 
+Native account startup waits for data-client asset metadata and initial instrument
+registration before importing observed holdings. Fill reconciliation keeps exact
+execution identity, quantities, prices and fees, while accepting an Alpaca fill
+timestamp's nearest-microsecond representation across activity and stream sources.
+Original source timestamps remain unchanged; other timestamp differences block import.
+
 Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity
 across same-context ordinary updates. Native disclosure expanded state and focus

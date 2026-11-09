@@ -439,7 +439,7 @@ class ExecutionLifecycle:
                     path = (self.path.parent / delivery["receipt"]["path"]).resolve()
                     incoming = delivery.get("input", {})
                     if prior.get("id") in members | {row["id"]} and incoming.get("event") in {"fill", "partial_fill"}:
-                        from .alpaca_reports import execution_id
+                        from .alpaca_reports import execution_id, fill_timestamp_matches
                         matches = [fill for fill in actual if execution_id(fill.trade_id) == execution_id(incoming.get("execution_id"))]
                         matched_members = [member for member in row["package_members"] if len(matches) == 1
                             and member["symbol"] + ".ALPACA" == str(matches[0].instrument_id)
@@ -450,7 +450,7 @@ class ExecutionLifecycle:
                                     not in (None, matched_members[0]["symbol"])
                                 or matches[0].last_qty.as_decimal() != decimal(incoming.get("qty"))
                                 or matches[0].last_px.as_decimal() != decimal(incoming.get("price"))
-                                or matches[0].ts_event != timestamp(incoming.get("timestamp"))):
+                                or not fill_timestamp_matches(matches[0].ts_event, timestamp(incoming.get("timestamp")))):
                             continue
                     if (delivery["status"] != "conflict" and prior.get("id") in members | {row["id"]}
                             and delivery.get("source_sha256") == digest(delivery["input"]) and path.is_relative_to(self.path.parent.resolve())
@@ -775,11 +775,11 @@ class ExecutionLifecycle:
             return False
         if event in {"fill", "partial_fill"}:
             from .native_types import OrderFilled
-            from .alpaca_reports import timestamp, execution_id
+            from .alpaca_reports import timestamp, execution_id, fill_timestamp_matches
             return any(isinstance(fill, OrderFilled) and execution_id(fill.trade_id) == execution_id(data["execution_id"])
                 and str(fill.account_id) == native_order_account(order)
                 and str(fill.venue_order_id) == row["id"] and str(fill.instrument_id) == row["symbol"] + ".ALPACA"
-                and enum_name(fill.order_side).lower() == row["side"] and fill.ts_event == timestamp(source_time)
+                and enum_name(fill.order_side).lower() == row["side"] and fill_timestamp_matches(fill.ts_event, timestamp(source_time))
                 and fill.last_qty.as_decimal() == Decimal(str(data["qty"]))
                 and fill.last_px.as_decimal() == Decimal(str(data["price"]))
                 and (fill.commission is None if data.get("commission") is None else
@@ -1077,7 +1077,7 @@ class ExecutionLifecycle:
             await self.package_update({"event": "replacement_authoritative", "order": successor}, source, child)
 
     async def _handle_update(self, message, reference=None, *, replacement_predecessor=None, replacement_source=None, replacement_execution=None):
-        from .alpaca_reports import exact, execution_id, fill_commission, market_replacement_binding, native_quantities, timestamp
+        from .alpaca_reports import exact, execution_id, fill_commission, fill_timestamp_matches, market_replacement_binding, native_quantities, timestamp
         from .native_types import ClientOrderId, LiquiditySide, Money, Price, Quantity, TradeId, VenueOrderId, native_order_account
 
         data = message.get("data", {})
@@ -1286,7 +1286,7 @@ class ExecutionLifecycle:
                     if matches:
                         if any(any(str(fill[key]) != str(incoming[key]) for key in ("order_id", "symbol", "side"))
                             or any(Decimal(str(fill[key])) != Decimal(str(incoming[key])) for key in ("qty", "price"))
-                            or timestamp(fill["transaction_time"]) != timestamp(incoming["transaction_time"]) for fill in matches):
+                            or not fill_timestamp_matches(timestamp(fill["transaction_time"]), timestamp(incoming["transaction_time"])) for fill in matches):
                             raise ValueError("Incoming execution conflicts with collected broker activity")
                     else:
                         fills.append(incoming)

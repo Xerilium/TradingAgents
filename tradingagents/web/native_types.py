@@ -136,10 +136,11 @@ def retained_fill_report(event, ts_init):
 
 
 def require_fill_match(report, event):
-    from .alpaca_reports import execution_id
-    fields = ("account_id", "instrument_id", "venue_order_id", "client_order_id", "order_side", "ts_event")
+    from .alpaca_reports import execution_id, fill_timestamp_matches
+    fields = ("account_id", "instrument_id", "venue_order_id", "client_order_id", "order_side")
     if (execution_id(report.trade_id) != execution_id(event.trade_id)
             or any(getattr(report, key) != getattr(event, key) for key in fields)
+            or not fill_timestamp_matches(report.ts_event, event.ts_event)
             or report.last_qty.as_decimal() != event.last_qty.as_decimal()
             or report.last_px.as_decimal() != event.last_px.as_decimal()
             or report.commission is None or event.commission is None

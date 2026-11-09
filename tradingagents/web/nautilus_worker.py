@@ -113,6 +113,7 @@ def main():
     observed = {"account": None, "account_at": None, "error": None, "market_open": None,
                 "positions": [], "orders": [], "fills": [], "gaps": [], "lookback_start": None}
     clients = {}
+    data_ready = asyncio.Event()
     strategy_holder = [None]
 
     def retain_observation():
@@ -149,6 +150,7 @@ def main():
             self.option_metadata = {}
             await self.load_options(desired)
             self.register(desired)
+            data_ready.set()
             self.task = self.create_task(self.poll(), "read-only-index-prices")
 
         async def load_options(self, symbols):
@@ -846,6 +848,8 @@ def main():
             self.position_reports, self.order_reports, self.fill_reports = [], [], []
             self.reconciliation_blockers = ["Initial broker observation pending"]
             try:
+                async with asyncio.timeout(120):
+                    await data_ready.wait()
                 await self._query_account(None, force=True)
                 await self._apply_observation()
             except Exception as exc:
