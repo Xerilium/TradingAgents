@@ -506,6 +506,20 @@ UI for controls and layout. Its five-second read-only state poll updates data,
 not the application root or workspace DOM. Each visited workspace keeps its own
 mounted components and native scrolling; drafts, filters, selected records and
 disclosures are local view state, not regenerated from a polling response.
+Dashboard, Portfolio, Orders, Markets and Settings keep their tab panels mounted
+in separate bounded native scroll containers. Switching a short panel into view
+does not shrink another panel's scroll range or reset its position.
+Saved proposals show a command's recorded outcome only when proposal ID, revision,
+terms hash, account and instrument match exactly; never-dispatched records and
+changed revisions remain reviewable. Filled, expired and working commands do not
+become drafts merely because their authored proposal is still saved as a draft.
+Native confirmation gaps remain separate from that recorded outcome.
+Research activity reads retained attempts from each source, gateway and screening
+evidence envelope, preserving the receipt category and exact contents.
+The Journal's initial reporting read is independent of its pending indicator;
+entering the loading state does not cancel the read. An ended SPY session's
+recorded reason is labeled **Previous session ended**, not current account
+blockage, and never renews its approval.
 Research, calculations, configuration saves and order actions remain explicit
 events, never mount or polling effects. A failed state read marks the connection
 unconfirmed instead of enabling actions from the last successful snapshot.

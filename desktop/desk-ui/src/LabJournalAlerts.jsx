@@ -912,12 +912,12 @@ export function JournalView() {
       generation.current = bound;
     }, [bound]);
   useEffect(() => {
-    if (page !== 'journal' || record || loading) return undefined;
+    if (page !== 'journal' || record) return undefined;
     let cancelled = false;
     setLoading(true);
-    api('/api/reporting').then((loaded) => { if (!cancelled) { setRecord(loaded); setConflict(false); } }).catch((error) => { if (!cancelled) setLocalError(messageOf(error)); }).finally(() => { if (!cancelled) setLoading(false); });
+    api('/api/reporting').then((loaded) => { if (!cancelled) { setRecord(loaded); setConflict(false); setLocalError(''); setLoading(false); } }).catch((error) => { if (!cancelled) { setLocalError(messageOf(error)); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [page, record, loading, api]);
+  }, [page, record, api, bound]);
 
   async function reload(discard) {
     setLoading(true);

@@ -827,7 +827,7 @@ export function SettingsView() {
         </Stack>
         {nautilus.error && <Alert severity="error" sx={{ mb: 1 }}>{nautilus.error}</Alert>}
         {state?.readiness?.ready === false && <Alert severity="info" sx={{ mb: 1 }} action={<Button color="inherit" size="small" onClick={() => setTab('Research')}>Research settings</Button>}>{state.readiness.message || 'Research models need configuration.'}</Alert>}
-        <Typography variant="body2">Current desk: {window.location.origin}. Open the installed desktop shortcut; use its tray for service restart, logs and graceful quit.</Typography>
+        <Typography variant="body2">Current desk: {window.location.origin}. Open the installed desktop shortcut for production. For an authorized development restart, confirm automatic trading is off, no work is active and no orders or commands are working, pending or unknown. Stop only the positively identified development host/backend process IDs, then use the existing Desktop Start-TradingDesk-Dev shortcut. Do not use tray controls or stop production processes.</Typography>
         <Typography variant="body2" sx={{ mb: 1 }}>{stale ? 'Transport unconfirmed' : h.execution_enabled ? 'Command transport available' : 'Command transport unavailable in this session'}. Stale observations are not current balances.</Typography>
         <Accordion disableGutters>
           <AccordionSummary>Service and observation details</AccordionSummary>
@@ -912,7 +912,7 @@ export function SettingsView() {
   }, [draft, policyDraft]);
 
   return (
-    <Page title="Settings" subtitle={anyDirty ? 'You have unsaved edits; they stay here when you switch categories.' : undefined}>
+    <Page tabbed title="Settings" subtitle={anyDirty ? 'You have unsaved edits; they stay here when you switch categories.' : undefined}>
       {confirmDialog}
       {!state?.config ? <LinearProgress /> : (
         <>

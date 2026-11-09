@@ -121,7 +121,9 @@ function activityRows(run) {
     groups.get(id)[kind].push(item);
   };
   (run?.events || []).forEach((e) => add('events', e));
-  [...(run?.source_evidence || []), ...(run?.gateway_evidence || []), ...(run?.jev_evidence || [])].forEach((r) => add('receipts', r));
+  for (const collection of ['source_evidence', 'gateway_evidence', 'jev_evidence']) {
+    for (const receipt of run?.[collection]?.attempts || []) add('receipts', {...receipt, collection});
+  }
   return [...groups.values()];
 }
 
@@ -2023,7 +2025,7 @@ export function MarketsView() {
   const quote = state?.quotes?.[selectedSymbol];
 
   return (
-    <Page title="Markets" subtitle="Universe, screener, options, scanner and instrument evidence." actions={<Button onClick={refresh}>Refresh</Button>}>
+    <Page tabbed title="Markets" subtitle="Universe, screener, options, scanner and instrument evidence." actions={<Button onClick={refresh}>Refresh</Button>}>
       {desk.error && <Alert severity="error" onClose={() => desk.setError('')} sx={{ mb: 2 }}>{desk.error}</Alert>}
       {discovery.error && <Alert severity="warning" sx={{ mb: 2 }}>{discovery.error}</Alert>}
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
@@ -2032,7 +2034,7 @@ export function MarketsView() {
         <Tab value="options" label="Options" />
         <Tab value="scans" label="Scanner" />
       </Tabs>
-      <Box hidden={tab !== 'universe'}>
+      <Box role="tabpanel" hidden={tab !== 'universe'}>
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 7 }}>
             <Section title="Universe" actions={<Button disabled={!checked.size || exportAction.busy} onClick={exportCsv}>Export selected holdings CSV</Button>}>
@@ -2079,9 +2081,9 @@ export function MarketsView() {
           )}
         </Grid>
       </Box>
-      <Box hidden={tab !== 'screener'}><Screener desk={desk} discovery={discovery} target={target} /></Box>
-      <Box hidden={tab !== 'options'}><Options desk={desk} discovery={discovery} /></Box>
-      <Box hidden={tab !== 'scans'}><Scans desk={desk} discovery={discovery} universeSymbols={universe} /></Box>
+      <Box role="tabpanel" hidden={tab !== 'screener'}><Screener desk={desk} discovery={discovery} target={target} /></Box>
+      <Box role="tabpanel" hidden={tab !== 'options'}><Options desk={desk} discovery={discovery} /></Box>
+      <Box role="tabpanel" hidden={tab !== 'scans'}><Scans desk={desk} discovery={discovery} universeSymbols={universe} /></Box>
     </Page>
   );
 }

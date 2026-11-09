@@ -131,9 +131,10 @@ function RunProgress({run}) {
   if (!run) return <Notice severity="info">No rebalance run has been recorded.</Notice>;
   const c = run.batch_counts || {};
   const keys = ['admitted', 'native_queued', 'transport_started', 'sent', 'working', 'filled', 'expired', 'rejected', 'unknown', 'not_sent'];
-  return <Section title="Latest run">
+  const sessionEnded = run.status === 'blocked' && run.message === 'The approved regular session ended. Preview again before submitting.';
+  return <Section title={sessionEnded ? 'Previous session ended' : 'Latest run'}>
     <Stack direction="row" spacing={2} useFlexGap   sx={{flexWrap: "wrap", alignItems: "center"}}>
-      <Status value={run.status}/><Typography>Session {text(run.session)} · as of {text(run.as_of)}</Typography>
+      <Status value={sessionEnded ? 'Session ended' : run.status}/><Typography>Session {text(run.session)} · as of {text(run.as_of)}</Typography>
       <Typography>Run progress {text(run.completed)} of {text(run.total)}{run.limited ? ' (limited)' : ''}</Typography>
     </Stack>
     {run.message && <Typography>{run.message}</Typography>}
@@ -333,37 +334,37 @@ export function DashboardView() {
   }, [universe, quotes, heldFirst, held]);
   const attention = [...f.reasons];
   const proposals = arr(f.investor.data?.proposals);
-  const drafts = proposals.filter(p => p.status === 'draft');
+  const drafts = proposals.filter(p => p.status === 'draft' && !linked(state?.commands, p).length);
   if (drafts.length) attention.push(`${drafts.length} saved draft order(s) await review.`);
   if (state?.portfolio_model?.status === 'failed') attention.push('The latest model proposal failed.');
   const runs = arr(state?.runs), latest = symbol => runs.find(r => arr(r.symbols).includes(symbol));
   if (!state) return <Page title="Dashboard"><Typography>Loading…</Typography></Page>;
-  return <Page title="Dashboard" subtitle="Account, holdings, orders and what needs attention.">
+  return <Page tabbed title="Dashboard" subtitle="Account, holdings, orders and what needs attention.">
     <Ledger/>
     {attention.length > 0 ? <Notice>{attention.join(' ')}</Notice> : <Notice severity="success">Nothing needs attention.</Notice>}
     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
       {[['watch', 'Watch'], ['chart', 'Chart'], ['research', 'Research'], ['positions', 'Positions'], ['orders', 'Orders']].map(([v, l]) => <Tab key={v} value={v} label={l}/>)}
     </Tabs>
-    {tab === 'watch' && <Stack spacing={1}>
+    <Box role="tabpanel" hidden={tab !== 'watch'}><Stack spacing={1}>
       <FormControlLabel control={<Checkbox checked={heldFirst} onChange={e => setHeldFirst(e.target.checked)}/>} label="Held first"/>
       <DataTable rows={watch} getRowId={r => r.symbol} onRowClick={open} selectedIds={new Set(selectedSymbol ? [selectedSymbol] : [])}
         empty="No stocks in the saved universe."
         columns={[{id: 'symbol', label: 'Symbol'}, {id: 'price', label: 'Last', numeric: true, render: r => money(r.price)},
           {id: 'held', label: 'Held', render: r => held.has(r.symbol) ? 'Yes' : 'No'}]}/>
-    </Stack>}
-    {tab === 'chart' && <DashboardChart symbol={selectedSymbol} active={page === 'overview' && tab === 'chart'}/>}
-    {tab === 'research' && <Stack spacing={1}>
+    </Stack></Box>
+    <Box role="tabpanel" hidden={tab !== 'chart'}><DashboardChart symbol={selectedSymbol} active={page === 'overview' && tab === 'chart'}/></Box>
+    <Box role="tabpanel" hidden={tab !== 'research'}><Stack spacing={1}>
       {selectedSymbol ? (latest(selectedSymbol) ? <Fact label={`Latest saved research for ${selectedSymbol}`} value={`${text(latest(selectedSymbol).id)} · ${dateTime(latest(selectedSymbol).created_at)}`}/>
         : <Typography>No saved research for {selectedSymbol}.</Typography>) : <Typography>Select a stock in Watch.</Typography>}
       <Button sx={{alignSelf: 'flex-start'}} onClick={() => navigate('research')}>Open Research</Button>
-    </Stack>}
-    {tab === 'positions' && <PositionsTable onSelect={open}/>}
-    {tab === 'orders' && <Stack spacing={1}>
+    </Stack></Box>
+    <Box role="tabpanel" hidden={tab !== 'positions'}><PositionsTable onSelect={open}/></Box>
+    <Box role="tabpanel" hidden={tab !== 'orders'}><Stack spacing={1}>
       <OrdersTable/>
       <DataTable rows={drafts} getRowId={p => p.id} empty="No saved drafts."
         columns={[{id: 't', label: 'Draft', render: p => `${text(p.terms?.side)} ${text(p.terms?.quantity)} ${text(p.terms?.symbol)} · revision ${p.revision}`},
-          {id: 'open', label: '', render: p => <Button size="small" onClick={() => {setSelectedSymbol(p.terms?.symbol); navigate('orders', {tab: 'ticket', symbol: p.terms?.symbol, proposal_id: p.id, proposal_revision: p.revision, terms});}}>Open exact draft</Button>}]}/>
-    </Stack>}
+          {id: 'open', label: '', render: p => <Button size="small" onClick={() => {setSelectedSymbol(p.terms?.symbol); navigate('orders', {tab: 'ticket', symbol: p.terms?.symbol, proposal_id: p.id, proposal_revision: p.revision, terms: p.terms});}}>Open exact draft</Button>}]}/>
+    </Stack></Box>
   </Page>;
 }
 
@@ -610,7 +611,7 @@ export function PortfolioView() {
   const {state, page} = useDesk();
   const [tab, setTab] = useState('positions');
   if (!state) return <Page title="Portfolio"><Typography>Loading…</Typography></Page>;
-  return <Page title="Portfolio" subtitle="Holdings, allocations, model proposal and performance.">
+  return <Page tabbed title="Portfolio" subtitle="Holdings, allocations, model proposal and performance.">
     <Ledger/>
     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
       {[['positions', 'Positions'], ['allocations', 'Allocations'], ['model', 'Model proposal'], ['performance', 'Performance']].map(([v, l]) => <Tab key={v} value={v} label={l}/>)}
@@ -859,8 +860,25 @@ function Ticket({active}) {
 }
 
 function linked(commands, p) {
+  if (!Number.isInteger(p?.revision) || typeof p.terms_sha256 !== 'string' || !p.terms_sha256 ||
+      !p.terms?.account_id || !p.terms?.instrument_id) return [];
   return vals(commands?.data?.commands).filter(c => c.proposal_id === p.id && c.proposal_revision === p.revision && c.terms_sha256 === p.terms_sha256 &&
+    c.account_id === p.terms?.account_id && c.instrument_id === p.terms?.instrument_id &&
     !['admitted_not_dispatched', 'not_sent'].includes(c.state));
+}
+
+function RecordedCommands({commands}) {
+  const labels = {dispatch_intent: 'Submission requested', submitting: 'Submitting', outcome_unknown: 'Outcome unknown - reconcile',
+    accepted: 'Working (accepted)', partially_filled: 'Working (partially filled)', cancel_pending: 'Cancellation pending',
+    replace_pending: 'Replacement pending', filled: 'Filled', canceled: 'Canceled', rejected: 'Rejected', expired: 'Expired'};
+  return <Stack spacing={1}>{commands.map(c => <Box key={c.id}>
+    <Status value={labels[c.state] || 'Unrecognized command state - reconcile'}/>
+    <Typography variant="caption" component="p">Command {c.id} · filled {text(c.filled_quantity)} · remaining {text(c.remaining_quantity)}</Typography>
+    {(number(c.native_pending_commitment) > 0 || vals(c.native_deliveries).some(d => d?.status === 'conflict')) &&
+      <Notice>Native confirmation remains unresolved. Review the existing command evidence; renewing approval does not resolve it.</Notice>}
+    {c.pending_action && <Notice>An action on this existing order is pending. Reconcile its outcome before another action.</Notice>}
+    {c.state === 'outcome_unknown' && <Notice>The broker outcome is unknown. Reconcile this existing order; do not submit it again.</Notice>}
+  </Box>)}</Stack>;
 }
 
 function Proposals({onOpen, f}) {
@@ -871,11 +889,14 @@ function Proposals({onOpen, f}) {
     <Typography variant="h3" sx={{fontSize: 16}}>Saved human proposals · {proposals.length}</Typography>
     <DataTable rows={proposals} getRowId={p => p.id} empty="No saved proposals."
       columns={[{id: 't', label: 'Terms', render: p => `${text(p.terms?.side)} ${text(p.terms?.quantity)} ${text(p.terms?.symbol)}`},
-        {id: 'status', label: 'Status', render: p => <Status value={p.status}/>}, {id: 'rev', label: 'Revision', numeric: true, render: p => p.revision},
+        {id: 'status', label: 'Recorded status for this exact revision', render: p => linked(state.commands, p).length ?
+          <RecordedCommands commands={linked(state.commands, p)}/> : <Status value={p.status}/>},
+        {id: 'rev', label: 'Revision', numeric: true, render: p => p.revision},
         {id: 'at', label: 'Updated', render: p => dateTime(p.updated_at)},
         {id: 'a', label: '', render: p => <Stack direction="row" spacing={1}>
           <Button size="small" onClick={() => onOpen(p)}>Open terms</Button>
-          {p.status === 'draft' && <Button size="small" variant="contained" onClick={() => setOpen(p.id)}>Review & approve</Button>}</Stack>}]}/>
+          {p.status === 'draft' && !linked(state.commands, p).length &&
+            <Button size="small" variant="contained" onClick={() => setOpen(p.id)}>Review & approve</Button>}</Stack>}]}/>
     {open && <ApprovalDialog key={open} proposalId={open} onClose={() => setOpen(null)} f={f}/>}
   </Stack>;
 }
@@ -890,10 +911,12 @@ function ApprovalDialog({proposalId, onClose, f}) {
   const [form, setForm] = useState(() => ({...Object.fromEntries(AUTH_KEYS.map(k => [k, ''])), note: ''}));
   const [busy, setBusy] = useState(false), [result, setResult] = useState(null), [message, setMessage] = useState('');
   const changed = identity !== captured;
+  const commands = proposal ? linked(state.commands, proposal) : [];
   const replacing = proposal?.terms?.replacement?.order_id;
   const constraints = {...Object.fromEntries(AUTH_KEYS.filter(k => form[k] !== '').map(k => [k, form[k]])), ...(replacing && form.fee_cap !== undefined && form.fee_cap !== '' ? {working_order_fee_caps: {[replacing]: form.fee_cap}} : {})};
   const evaluation = result?.current_checks?.[proposalId] || result?.data?.proposals?.find(p => p.id === proposalId)?.risk_evaluation || investor?.current_checks?.[proposalId] || proposal?.risk_evaluation;
   const approve = async () => {
+    if (commands.length) {setMessage('This exact revision already has an order command. Review its recorded outcome instead of renewing approval.'); return;}
     setBusy(true); setMessage('');
     try {
       const checked = await api('/api/investor', {action: 'review', id: proposal.id, proposal_revision: proposal.revision, policy_revision: investor.data.policy.revision,
@@ -913,6 +936,7 @@ function ApprovalDialog({proposalId, onClose, f}) {
     <DialogContent><Stack spacing={2} sx={{pt: 1}}>
       {!proposal && <Notice>This proposal no longer exists.</Notice>}
       {proposal && <Typography>{text(proposal.terms?.side)} {text(proposal.terms?.quantity)} {text(proposal.terms?.symbol)} · revision {proposal.revision}</Typography>}
+      {commands.length > 0 && <><Notice>This exact saved revision already has an order command. No renewed approval is needed for the same order.</Notice><RecordedCommands commands={commands}/></>}
       {changed && <Notice>The proposal, policy or command state changed after this review opened. Close and reopen to review the current exact terms.</Notice>}
       {f.reasons.length > 0 && <Notice>{f.reasons.join(' ')}</Notice>}
       <Grid container spacing={2}>{AUTH_KEYS.map(k => <Grid key={k} size={{xs: 6, md: 4}}><Field label={k.replaceAll('_', ' ')} value={form[k]} onChange={v => setForm(s => ({...s, [k]: v}))}/></Grid>)}</Grid>
@@ -923,7 +947,7 @@ function ApprovalDialog({proposalId, onClose, f}) {
       {message && <Notice severity="info">{message}</Notice>}
     </Stack></DialogContent>
     <DialogActions><Button onClick={onClose}>Close</Button>
-      <Button variant="contained" disabled={!proposal || changed || busy || investor?.approval_records_enabled !== true} onClick={approve}>Run checks and approve</Button></DialogActions>
+      <Button variant="contained" disabled={!proposal || changed || busy || commands.length > 0 || investor?.approval_records_enabled !== true} onClick={approve}>Run checks and approve</Button></DialogActions>
   </Dialog>;
 }
 
@@ -1268,7 +1292,7 @@ export function OrdersView() {
     if (navigation?.page === 'orders' && (navigation.intent?.tab === 'ticket' || String(navigation.intent?.kind).startsWith('option-'))) setTab('ticket');
   }, [navigation]);
   if (!state) return <Page title="Orders"><Typography>Loading…</Typography></Page>;
-  return <Page title="Orders" subtitle="Prepare, approve and submit orders as separate explicit steps.">
+  return <Page tabbed title="Orders" subtitle="Prepare, approve and submit orders as separate explicit steps.">
     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
       {[['ticket', 'Ticket & Blotter'], ['fills', 'Fills & Fees'], ['baskets', 'Human Baskets'], ['spy', 'SPY Rebalance'], ['options', 'Option Instructions']]
         .map(([v, l]) => <Tab key={v} value={v} label={l}/>)}

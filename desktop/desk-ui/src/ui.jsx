@@ -9,8 +9,10 @@ export const money = value => number(value) === null ? 'Unavailable' :
 export const dateTime = value => !value || !Number.isFinite(Date.parse(value)) ? 'Unavailable' :
   new Intl.DateTimeFormat('en-US', {dateStyle: 'medium', timeStyle: 'medium', timeZone: 'America/Los_Angeles'}).format(new Date(value));
 
-export function Page({title, subtitle, actions, children}) {
-  return <Stack spacing={2} sx={{p: 2, minWidth: 0}}>
+export function Page({title, subtitle, actions, children, tabbed = false}) {
+  return <Stack spacing={2} sx={{p: 2, minWidth: 0, ...(tabbed && {height: '100%', minHeight: 0, overflow: 'hidden',
+    '& > :not([role="tabpanel"])': {flexShrink: 0},
+    '& > [role="tabpanel"]': {flex: 1, minHeight: 0, overflow: 'auto'}})}}>
     <Stack direction="row" spacing={2}   useFlexGap  sx={{alignItems: "center", justifyContent: "space-between", flexWrap: "wrap"}}>
       <Box><Typography variant="h1">{title}</Typography>{subtitle && <Typography color="text.secondary">{subtitle}</Typography>}</Box>
       {actions && <Stack direction="row" spacing={1} useFlexGap  sx={{flexWrap: "wrap"}}>{actions}</Stack>}
