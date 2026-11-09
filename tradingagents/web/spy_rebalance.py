@@ -8,6 +8,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .admission import ACTIVE, DEFAULT as COMMANDS, ReconciliationPending, instant
+from .alpaca_reports import execution_id
 from .approval_review import read_artifact
 from .baskets import preview
 from .investor import DEFAULT as INVESTOR, RULES, decimal, fractional_asset, instruments, price_evidence, save, working_commitments
@@ -609,10 +610,15 @@ class SpyRebalance:
                 or command.get("account_id") != runtime["account"]["id"]
                 or command.get("pending_action") or not command.get("broker_order_ids")
                 or quantity is None or quantity <= 0 or filled is None or not 0 <= filled <= quantity
-                or filled > 0 and not command.get("fill_ids") or command["state"] == "filled" and filled != quantity
+                or command["state"] == "filled" and filled != quantity
                 or any(item.get("status") == "conflict" for item in native)):
             raise ValueError("An existing SPY order lacks a known broker outcome or has conflicting native proof. Reconcile orders first.")
-        if (command.get("native_pending_commitment") or not deliveries
+        fills = [item for item in runtime.get("fills", []) if item.get("order_id") in command["broker_order_ids"]]
+        if (command.get("native_pending_commitment") or filled > 0 and not command.get("fill_ids")
+                or sum((Decimal(item["qty"]) for item in fills), Decimal(0)) != filled
+                or any(item.get("native_application") != "proven_in_current_process" for item in fills)
+                or {execution_id(item["id"]) for item in fills} != {execution_id(value) for value in command["fill_ids"]}
+                or not deliveries
                 or {item.get("event_id") for item in native} != set(deliveries)
                 or any(item.get("confirmed_current_process") is not True
                     or item.get("native_epoch") != runtime["native_epoch"] for item in native)):
@@ -721,7 +727,6 @@ class SpyRebalance:
             if runtime.get("reconciliation", {}).get("status") != "reconciled":
                 raise ReconciliationPending("Waiting for current broker/native reconciliation; existing orders stay reserved.")
             runtime = self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
-            expected = self.expected_positions(runtime, commands, run)
             if run["command_id"]:
                 command = commands["commands"][run["command_id"]]
                 if command["state"] in {"dispatch_intent", "submitting"}:
@@ -751,6 +756,7 @@ class SpyRebalance:
                 self.ensure_symbols(store, data["account_id"], runtime, data["managed_symbols"])
                 return
             positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
+            expected = self.expected_positions(runtime, commands, run)
             if positions != expected:
                 raise ValueError("Paper holdings changed after the daily plan was made.")
             own_fills = any(decimal(commands["commands"][key].get("filled_quantity")) > Decimal(baseline) for key, baseline in dispatched.items())

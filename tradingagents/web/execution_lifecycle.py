@@ -474,7 +474,7 @@ class ExecutionLifecycle:
         if not history.get("complete") or not history.get("evidence"):
             return False
         from .native_types import ClientOrderId, OrderFilled, enum_name, native_dict, native_order_account
-        from .alpaca_reports import native_quantities, timestamp, execution_id, order_report, fill_commission
+        from .alpaca_reports import native_quantities, timestamp, execution_id, order_report, fill_commission, fill_timestamp_matches
         by_id, proofs = {row["id"]: row for row in rows}, {}
         commands = self.authority().database.read("commands", DEFAULT)["data"]["commands"]
         for command in commands.values():
@@ -484,7 +484,7 @@ class ExecutionLifecycle:
                 and not is_package(command["terms"]) and command["state"] in {"accepted", "partially_filled", "filled"}
                 and command["terms"]["order_type"] in {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"}
                 and not command.get("pending_action") and not command.get("native_replacement_quantity_binding"))
-            if not (linked or simple) or not command.get("native_pending_commitment"):
+            if not (linked or simple) or not simple and not command.get("native_pending_commitment"):
                 continue
             order = self.native.cache.order(ClientOrderId(command.get("native_client_order_id", command["client_order_id"])))
             row = by_id.get(str(order.venue_order_id)) if order is not None else None
@@ -534,16 +534,25 @@ class ExecutionLifecycle:
                     or len({execution_id(event.trade_id) for event in events}) != len(events)
                     or any(str(event.venue_order_id) not in chain for event in events)):
                 continue
+            execution_ids = [execution_id(event.trade_id) for event in events]
+            state = "filled" if row["status"] == "filled" else "partially_filled" if filled else "accepted"
+            if simple and (filled < Decimal(command["filled_quantity"]) or command["state"] == "filled" and state != "filled"):
+                continue
+            update_report = simple and (command["state"] != state or Decimal(command["filled_quantity"]) != filled
+                or not set(execution_ids).issubset({execution_id(value) for value in command["fill_ids"]}))
+            if not command.get("native_pending_commitment") and not update_report:
+                continue
             covered = []
             for identity, delivery in command.get("native_deliveries", {}).items():
                 data = delivery["input"]
                 old = data.get("order") or {}
                 reference = delivery["receipt"]
                 path = (self.path.parent / reference["path"]).resolve()
+                source_at, observed_at = timestamp(data.get("timestamp") or old["updated_at"]), timestamp(row["updated_at"])
                 if (delivery["status"] == "conflict" or old.get("id") not in chain
                         or delivery["source_sha256"] != digest(data) or not path.is_relative_to(self.path.parent.resolve())
                         or hashlib.sha256(path.read_bytes()).hexdigest() != reference["sha256"]
-                        or timestamp(data.get("timestamp") or old["updated_at"]) > timestamp(row["updated_at"])):
+                        or source_at > observed_at and not fill_timestamp_matches(source_at, observed_at)):
                     continue
                 if simple and (data.get("event") not in {"pending_new", "new", "accepted", "rest_order_observation", "fill", "partial_fill"}
                         or old.get("client_order_id") != row["client_order_id"] or old.get("symbol") != row["symbol"]
@@ -565,13 +574,22 @@ class ExecutionLifecycle:
                         "filled" if old.get("status") == "filled" else "partially_filled", data.get("timestamp") or old["updated_at"]):
                     continue
                 covered.append(identity)
-            if covered:
+            if covered or update_report:
                 proofs[command["id"]] = {"deliveries": covered, "native": actual, "broker_order_id": row["id"],
-                    "execution_ids": [execution_id(event.trade_id) for event in events]}
+                    "execution_ids": execution_ids}
+                if update_report:
+                    report = {"authoritative": True, "account_id": command["account_id"],
+                        "client_order_id": command["client_order_id"], "instrument_id": command["instrument_id"],
+                        "broker_order_id": row["id"], "filled_quantity": str(filled), "state": state,
+                        "source_at": row["updated_at"], "fill_ids": execution_ids}
+                    proofs[command["id"]]["report"] = {**report, "event_id": "current-order:" + digest(report)}
         if not proofs:
             return False
         reference = self.receipt("order-recovery", "Current broker/native order and fill proof; historical transitions not replayed",
                                  {"history": history["evidence"], "through": history["through"], "proofs": proofs})
+        for identity, proof in proofs.items():
+            if proof.get("report"):
+                self.authority().apply_report(identity, {**proof["report"], "receipt": reference})
         def change(records):
             for identity, proof in proofs.items():
                 command = records["commands"]["commands"][identity]
