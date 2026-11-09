@@ -29,6 +29,10 @@ PREVIEW_AGE = 300
 QUOTE_RULES = {"max_spread_bps", "min_quote_size", "session_freshness"}
 
 
+class StockDeferred(ValueError):
+    pass
+
+
 def rule_limit(policy, name, default):
     rule = policy["rules"].get(name, {})
     return Decimal(rule["value"]) if rule.get("state") == "enabled" else Decimal(default)
@@ -88,7 +92,8 @@ class SpyRebalance:
                 "eligible_account_id": paper_account(runtime),
                 "in_progress": bool(run and run["session"] >= datetime.now(NEW_YORK).date().isoformat()
                                     and run["status"] in ACTIVE_RUN),
-                "run": {key: run.get(key) for key in ("session", "as_of", "status", "message", "completed", "total", "limited")} if run else None}
+                "run": {**{key: run.get(key) for key in ("session", "as_of", "status", "message", "completed", "total", "limited")},
+                        "deferred": run.get("deferred", [])} if run else None}
 
     def configure(self, request):
         with self.desk.maintenance:
@@ -137,9 +142,10 @@ class SpyRebalance:
     def remaining_plan(self, store, runtime, data):
         run = data["run"]
         day = datetime.now(NEW_YORK).date().isoformat()
-        if (not run or run.get("status") != "blocked" or run.get("session") != day
-                or not run.get("manual_id") or not run.get("close_at") or not run.get("legs")
-                or run.get("total") != len(run["legs"]) or not 0 <= run.get("completed", -1) < run["total"]):
+        if (not run or run.get("status") not in {"blocked", "submitted"} or run.get("session") != day
+                or not run.get("manual_id") or not run.get("close_at") or not (run.get("legs") or run.get("deferred"))
+                or run.get("total") != len(run["legs"]) or not 0 <= run.get("completed", -1) <= run["total"]
+                or run["completed"] == run["total"] and not run.get("deferred")):
             raise ValueError("A same-session interrupted reviewed rebalance is required. Preview a new plan instead.")
         if (paper_account(runtime) != data["account_id"] or runtime.get("market_open") is not True
                 or datetime.now(NEW_YORK) >= datetime.fromisoformat(run["close_at"])):
@@ -171,11 +177,11 @@ class SpyRebalance:
         positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
         if positions != expected:
             raise ValueError("Current holdings do not match the original run and its proven fills. Reconcile before continuing.")
-        legs = run["legs"][completed:]
+        legs = run["legs"][completed:] + [item["terms"] for item in run.get("deferred", [])]
         fund_budget = budget(plan, runtime, policy)
         fund_budget["spendable_cash_usd"] = str(self.spendable_cash(runtime, policy, plan, commands))
         return {**rebound, "legs": legs, "completed": 0, "fills_completed": 0, "total": len(legs), "limited": 0,
-                "command_id": None, "status": "ready" if legs else "submitted",
+                "command_id": None, "status": "ready" if legs else "submitted", "deferred": [],
                 "dispatched": {key: commands["commands"][key]["filled_quantity"] for key in dispatched},
                 "current": {key: str(value) for key, value in positions.items()}, "initial_cash": runtime["account"]["cash"],
                 "fund_budget": fund_budget,
@@ -209,7 +215,8 @@ class SpyRebalance:
         else:
             run, symbols = self.plan(store, session, snapshot, runtime, data["managed_symbols"])
         policy = self.check_plan_policy(store, run)
-        blockers = self.review_plan_rules(store, runtime, run["legs"], policy)
+        blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], policy)
+        run.update(self.defer_legs(run, deferred))
         token = uuid4().hex if run["legs"] and not blockers else None
         with self.desk.maintenance:
             if self.desk.store is not store:
@@ -235,6 +242,7 @@ class SpyRebalance:
                 "already_completed": run.get("recovered_from", {}).get("completed", 0),
                 "policy_revision": run["policy_revision"], "target_stock_pct": run["target_stock_pct"], "fund_budget": run["fund_budget"],
                 "policy_blockers": blockers,
+                "deferred": run["deferred"],
                 "trades": [{key: terms[key] for key in ("symbol", "side", "quantity")} for terms in run["legs"]],
                 "first_sell": order(first) if first and first["side"] == "SELL" else None,
                 "has_buy": buy is not None, "first_buy": order(first_buy)}
@@ -326,8 +334,8 @@ class SpyRebalance:
     def review_plan_rules(store, runtime, terms, policy):
         rules = {key: rule for key, rule in policy["rules"].items()
                  if rule.get("state") == "enabled" and key != "cash_reserve_pct"}
-        if not terms or not rules:
-            return []
+        if not terms:
+            return [], []
         commands = store.database.read("commands", COMMANDS)["data"]
         history = store.database.read("market_history", HISTORY)["data"]
         evidence = store.database.read("stock_evidence", EVIDENCE)["data"]
@@ -342,16 +350,38 @@ class SpyRebalance:
 
         portfolio_rules = {key: rule for key, rule in rules.items() if key not in QUOTE_RULES}
         quote_rules = {key: rule for key, rule in rules.items() if key in QUOTE_RULES}
-        blockers = failed(legs, portfolio_rules) if portfolio_rules else []
-        if quote_rules:
-            symbols_by_reason = {}
-            for leg in legs:
-                for reason in failed([leg], quote_rules):
-                    symbols_by_reason.setdefault(reason, []).append(leg["terms"]["symbol"])
-            for reason, symbols in symbols_by_reason.items():
-                examples = ", ".join(symbols[:5])
-                blockers.append(f"{reason} Affected stocks: {len(symbols)} ({examples}{', …' if len(symbols) > 5 else ''}).")
-        return blockers
+        blockers, deferred, eligible = [], [], []
+        supported = instruments(runtime, [order["symbol"] for order in terms])
+        for leg in legs:
+            order = leg["terms"]
+            reasons = []
+            if not supported[order["symbol"]]["supported"]:
+                reasons.append(supported[order["symbol"]]["limitation"] or "Supported stock instrument evidence is unavailable.")
+            selected = price_evidence({**order, "order_type": "MARKET"}, runtime)
+            event = decimal(selected["ts_event"])
+            age = Decimal(str(time.time())) - event / 1000000000 if event is not None else None
+            if selected["price"] is None or runtime.get("market_open") is True and (
+                    age is None or not 0 <= age <= Decimal(CONSTRAINTS["quote_max_age_seconds"])):
+                reasons.append("Current dated stock price evidence is required; quote age limit is " + CONSTRAINTS["quote_max_age_seconds"] + " seconds.")
+            quote_failures = failed([leg], quote_rules) if quote_rules else []
+            if runtime.get("market_open") is not True:
+                blockers.extend(quote_failures)
+            else:
+                reasons.extend(quote_failures)
+            if reasons:
+                deferred.append({"terms": order, "reasons": reasons})
+            else:
+                eligible.append(leg)
+        if eligible and portfolio_rules:
+            blockers.extend(failed(eligible, portfolio_rules))
+        return list(dict.fromkeys(blockers)), deferred
+
+    @staticmethod
+    def defer_legs(run, deferred):
+        symbols = {item["terms"]["symbol"] for item in deferred}
+        completed = run["completed"]
+        legs = run["legs"][:completed] + [order for order in run["legs"][completed:] if order["symbol"] not in symbols]
+        return {"legs": legs, "total": len(legs), "deferred": run.get("deferred", []) + deferred}
 
     def tick(self, *, wake=False):
         with self.desk.maintenance:
@@ -485,9 +515,10 @@ class SpyRebalance:
             raise ValueError("The approved SPY weights are no longer current. Preview and submit again.")
         runtime = self.checked_account(data["account_id"], session=run["session"], close_at=close_at)
         policy = self.check_plan_policy(store, run)
-        blockers = self.review_plan_rules(store, runtime, run["legs"], policy)
+        blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], policy)
         if blockers:
             raise ValueError(blockers[0])
+        changes = self.defer_legs(run, deferred)
         with self.desk.maintenance:
             if self.stopped or self.desk.store is not store:
                 return
@@ -496,7 +527,8 @@ class SpyRebalance:
             self.check_fund_binding(store, runtime, run)
             self.check_preview_account(store, runtime, run, data["managed_symbols"], run["preview_cash"])
             store.database.update(RECORD, record["revision"], lambda saved: saved["run"].update(
-                status="ready", close_at=close_at, message="Reviewed paper rebalance ready to send."), DEFAULT)
+                **changes, status="ready" if changes["total"] else "submitted", close_at=close_at,
+                message="Reviewed eligible paper orders ready to send; deferred stocks require another preview."), DEFAULT)
 
     def prepare(self, store, session, data):
         self.checked_account(data["account_id"])
@@ -509,9 +541,12 @@ class SpyRebalance:
         symbols = [entry["symbol"] for entry in snapshot["entries"]]
         self.ensure_symbols(store, data["account_id"], runtime, [*symbols, *data["managed_symbols"]])
         run, symbols = self.plan(store, day, snapshot, runtime, data["managed_symbols"])
-        blockers = self.review_plan_rules(store, runtime, run["legs"], self.check_plan_policy(store, run))
+        blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], self.check_plan_policy(store, run))
         if blockers:
             raise ValueError(blockers[0])
+        run.update(self.defer_legs(run, deferred))
+        if not run["legs"]:
+            run.update(status="submitted", message="No eligible orders; deferred stocks require another preview.")
         return run, symbols
 
     def plan(self, store, day, snapshot, runtime, managed_symbols):
@@ -715,6 +750,7 @@ class SpyRebalance:
             runtime = self.desk.runtime.state()
             policy = self.check_plan_policy(store, run)
             plan = self.check_fund_binding(store, runtime, run)
+            budget(plan, runtime, policy)
             commands = database.read("commands", COMMANDS)["data"]
             dispatched = dict(run.get("dispatched", {}))
             tracked = set(dispatched) | ({run["command_id"]} if run.get("command_id") else set())
@@ -769,8 +805,23 @@ class SpyRebalance:
                 raise ValueError("Paper cash changed after the daily plan was made.")
             terms = dict(run["legs"][run["completed"]])
             symbol, limited = terms["symbol"], run["limited"]
+            def defer(reasons, revision=record["revision"]):
+                changes = self.defer_legs(run, [{"terms": run["legs"][run["completed"]], "reasons": reasons}])
+                done = run["completed"] == changes["total"]
+                database.update(RECORD, revision, lambda saved: saved["run"].update(
+                    **changes, status="submitted" if done else "ready", command_id=None,
+                    message=f"{symbol} deferred, not sent: " + "; ".join(reasons)), DEFAULT)
+                self.wake_pending = not done
+
             if any(item["symbol"] == symbol and item["state"] in ACTIVE for item in commands["commands"].values()):
                 raise ValueError(f"{symbol}: An existing working order prevents a duplicate SPY order.")
+            blockers, deferred = self.review_plan_rules(store, runtime, [terms],
+                {**policy, "rules": {key: rule for key, rule in policy["rules"].items() if key in QUOTE_RULES}})
+            if blockers:
+                raise ValueError(blockers[0])
+            if deferred:
+                defer(deferred[0]["reasons"])
+                return
             if terms["side"] == "BUY":
                 terms, resized = self.buy_terms(terms, runtime, policy, plan, commands)
                 limited += resized
@@ -784,6 +835,9 @@ class SpyRebalance:
             claimed = update(status="dispatching", message=f"Preparing {symbol}.")
             try:
                 command_id = self.admit(terms, runtime, data["account_id"], manual=run.get("manual") is True)
+            except StockDeferred as error:
+                defer([str(error)], claimed["revision"])
+                return
             except ReconciliationPending:
                 database.update(RECORD, claimed["revision"], lambda saved: saved["run"].update(status="ready"), DEFAULT)
                 raise
@@ -830,7 +884,9 @@ class SpyRebalance:
             proposal = records["investor"]["proposals"][0]
             review = admission.assess(records, proposal, runtime, CONSTRAINTS)
             if not review["passed"]:
-                raise ValueError(f"{terms['symbol']}: " + "; ".join(review["blockers"]))
+                failed = {check["name"] for check in review["checks"] if not check["passed"]}
+                error = StockDeferred if runtime.get("market_open") is True and failed and failed <= QUOTE_RULES | {"instrument", "price", "fractional_asset"} else ValueError
+                raise error(f"{terms['symbol']}: " + "; ".join(review["blockers"]))
             return invalidate(records)
         result = admission.transaction(draft, evidence=True)
         proposal = result["investor"]["data"]["proposals"][0]

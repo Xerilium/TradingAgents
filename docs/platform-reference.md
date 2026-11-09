@@ -68,6 +68,12 @@ holdings; they remain tracked and are not submitted again. The remaining trades
 require a fresh preview and separate **Submit paper orders**, with the current
 account, connection, fund plan, Trading Rules and session checks. Previewing does
 not send orders or change the blocked run.
+Stock-local quote, freshness and instrument failures defer that leg with its exact
+terms and reason; they do not prevent review/submission of other eligible stocks.
+Deferred trades are separate from planned/submitted counts and persist for a fresh
+**Preview remaining trades** after the pass. Quote and rule checks run again before
+each new order; account-wide risk, funding, session and reconciliation blockers remain
+blocking for the whole run. Existing proven working orders keep their reservations.
 
 SPY submission advances after proven broker acceptance, not after each fill.
 Accepted unfilled orders retain their existing cash/share reservations; buy sizing

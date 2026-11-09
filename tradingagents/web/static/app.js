@@ -3299,6 +3299,9 @@ function updateSpyTradeFilter(){
  const rows=spyTradeRows(spyPreview.trades);body.innerHTML=rows.markup;count.textContent='Showing '+rows.count+' of '+spyPreview.trades.length+' planned trades.';
  const panel=body.closest('.spy-preview-trades');panel.scrollTop=0;if(panel.dataset.workspaceScrollKey)workspaceScrolls.set(panel.dataset.workspaceScrollKey,[0,panel.scrollLeft]);
 }
+function spyDeferredMarkup(deferred,label){
+ return deferred?.length?'<details><summary>'+esc(label)+' ('+deferred.length+')</summary><p>Not sent or counted as submitted. Preview remaining trades in a separate pass to review these stocks again.</p><ul>'+deferred.map(item=>'<li>'+esc(item.terms.symbol+' · '+item.terms.side+' '+item.terms.quantity+' shares: '+item.reasons.join('; '))+'</li>').join('')+'</ul></details>':'';
+}
 function spyRebalanceMarkup(){
  const heading='<section class="orders-spy-rebalance" aria-label="Daily SPY paper rebalance"><h2>Daily review</h2>';
  const schedule=investorRecord?.spy_rebalance;
@@ -3316,6 +3319,7 @@ function spyRebalanceMarkup(){
  const message=submitResult||!spyPreview||preview?spyHoldingsMessage:'';
  const accountReasons=accountOrderReasons();
  const runBlocked=run?.status==='blocked';
+ const remainingAvailable=runBlocked||run?.status==='submitted'&&run.deferred?.length;
  const canSubmit=!accountReasons.length&&eligible&&!schedule.in_progress&&previewSessionCurrent&&preview?.submitToken&&Date.now()<preview.submitExpires;
  const previewExpired=preview?.submitToken&&!canSubmit&&Date.now()>=preview.submitExpires;
  const unavailable=!account?'An eligible paper account is unavailable.':bound&&bound!==account?'The rebalance is bound to a different paper account. Review automatic trading settings.':!investorRecord.broker_transport_enabled?'Broker transport is unavailable.':!fundContract(investorRecord.fund_plans)?'The account fund plan is unavailable.':investorRecord.fund_plans.current_account_id!==account?'The fund plan does not match the eligible paper account.':'Resolve the budget error before previewing.';
@@ -3326,9 +3330,9 @@ function spyRebalanceMarkup(){
   (accountReasons.length?'<div id="spy-account-exceptions" class="warning" role="alert"><strong>Account conditions block submission</strong><ul>'+accountReasons.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></div>':'')+
   '<p class="spy-source-note"><a id="spy-account-controls" href="#orders">Review account order controls</a></p>'+
   '<p class="spy-source-note">'+(preview?'State Street SPY weights dated '+esc(preview.asOf)+' · Preview price check '+fullTime(preview.quoteAt):'SPY weights and price-check dates are not loaded in this view. Preview uses State Street’s previous-session holdings.')+'</p>'+
-  (run?'<p role="status"'+(runBlocked?' class="warning"':'')+'>'+(runBlocked?'Latest rebalance blocked: ':'Rebalance: ')+esc(run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':''))+'</p>':'')+
+  (run?'<p role="status"'+(runBlocked?' class="warning"':'')+'>'+(runBlocked?'Latest rebalance blocked: ':'Rebalance: ')+esc(run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':'')+(run.deferred?.length?' · '+run.deferred.length+' deferred, not sent':''))+'</p>'+spyDeferredMarkup(run.deferred,'Deferred in latest run'):'')+
   '<div class="basket-actions"><button class="primary" data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
-  (runBlocked?'<button data-spy-rebalance="preview_remaining" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview remaining trades</button>':'')+
+  (remainingAvailable?'<button data-spy-rebalance="preview_remaining" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview remaining trades</button>':'')+
   (run?.status==='queued'?'<button data-spy-rebalance="cancel" '+(spyRebalanceBusy?'disabled':'')+'>Cancel queued rebalance</button>':
    '<button data-spy-rebalance="submit" '+(!canSubmit||spyRebalanceBusy?'disabled':'')+'>Submit paper orders</button>')+'</div>'+
   (previewExpired?'<p role="status" class="warning">This preview has expired. Select Preview SPY rebalance to review a new plan before submitting.</p>':'')+
@@ -3336,6 +3340,7 @@ function spyRebalanceMarkup(){
   '<p role="status">'+esc(spyRebalanceBusy?'Working…':message)+'</p>'+
   (submitMessage?'<p role="status" class="warning">'+esc(submitMessage)+'</p>':'')+
   (preview?.policyBlockers.length?'<details id="spy-rule-blockers" open><summary>Trading Rules block submission</summary><ul>'+preview.policyBlockers.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul></details>':'')+
+  (preview?spyDeferredMarkup(preview.deferred,'Deferred from this preview'):'')+
   (preview?.trades.length?'<h3>Proposed trades ('+esc(preview.trades.length)+')</h3>'+
    '<p>The desk sets buy limits from current quotes and may reduce share counts to fit available cash.</p>'+
    '<div class="spy-trade-toolbar"><label for="spy-trade-query">Find planned stock<input id="spy-trade-query" type="search" data-list-query="spy-preview" value="'+esc(spyTradeQuery)+'" placeholder="Symbol, such as AAPL" aria-describedby="spy-trade-scope spy-trade-count"></label>'+
@@ -3359,11 +3364,11 @@ async function spyRebalanceAction(action){
    account_id:config.eligible_account_id,dedicated:action==='enable',submit_token:spyPreview?.submitToken});
   if(state.store_generation!==generation)return;
   if(['preview','preview_remaining'].includes(action)){
-   if(!Number.isInteger(result.policy_revision)||number(result.target_stock_pct)===null||number(result.target_stock_pct)<0||number(result.target_stock_pct)>100||!fundBudgetValid(result.fund_budget)||!Array.isArray(result.trades)||!Array.isArray(result.policy_blockers)||!(result.submit_token===null||typeof result.submit_token==='string'&&!!result.submit_token)||typeof result.as_of!=='string'||typeof result.quote_at!=='string'||!Number.isInteger(result.positions)||!Number.isInteger(result.total)||action==='preview_remaining'&&(!Number.isInteger(result.already_completed)||result.already_completed<0)||!result.trades.every(t=>t&&typeof t.symbol==='string'&&['BUY','SELL'].includes(t.side)&&number(t.quantity)!==null&&number(t.quantity)>0)||!result.policy_blockers.every(reason=>typeof reason==='string')){spyPreview=null;spyTradeQuery='';spyHoldingsMessage='Unavailable. The SPY preview response is incomplete; submission is disabled.';return;}
+   if(!Number.isInteger(result.policy_revision)||number(result.target_stock_pct)===null||number(result.target_stock_pct)<0||number(result.target_stock_pct)>100||!fundBudgetValid(result.fund_budget)||!Array.isArray(result.trades)||!Array.isArray(result.deferred)||!Array.isArray(result.policy_blockers)||!(result.submit_token===null||typeof result.submit_token==='string'&&!!result.submit_token)||typeof result.as_of!=='string'||typeof result.quote_at!=='string'||!Number.isInteger(result.positions)||!Number.isInteger(result.total)||action==='preview_remaining'&&(!Number.isInteger(result.already_completed)||result.already_completed<0)||!result.trades.every(t=>t&&typeof t.symbol==='string'&&['BUY','SELL'].includes(t.side)&&number(t.quantity)!==null&&number(t.quantity)>0)||!result.deferred.every(item=>item&&item.terms&&typeof item.terms.symbol==='string'&&['BUY','SELL'].includes(item.terms.side)&&number(item.terms.quantity)>0&&Array.isArray(item.reasons)&&item.reasons.length&&item.reasons.every(reason=>typeof reason==='string'))||!result.policy_blockers.every(reason=>typeof reason==='string')){spyPreview=null;spyTradeQuery='';spyHoldingsMessage='Unavailable. The SPY preview response is incomplete; submission is disabled.';return;}
    spyPreview={generation,account:config.eligible_account_id,connectionSession,fundRevision:investorRecord.fund_plans.revision,policyRevision:result.policy_revision,trades:result.trades,
-    policyBlockers:result.policy_blockers,submitToken:result.submit_token,submitExpires:requestStartedAt+300000,asOf:result.as_of,quoteAt:result.quote_at};
+    deferred:result.deferred,policyBlockers:result.policy_blockers,submitToken:result.submit_token,submitExpires:requestStartedAt+300000,asOf:result.as_of,quoteAt:result.quote_at};
    const showOrder=order=>order&&typeof order.symbol==='string'&&['BUY','SELL'].includes(order.side)&&number(order.quantity)!==null&&typeof order.order_type==='string'?order.side+' '+order.quantity+' '+order.symbol+' · '+orderTypeLabel(order.order_type)+(order.limit_price?' at '+money(order.limit_price):''):'Order details unavailable';
-   spyHoldingsMessage=(action==='preview_remaining'?'Remaining-trades preview · '+result.already_completed+' original legs already processed; not submitted again. ':'Dry run · ')+result.positions+' stocks · '+result.total+' planned trades · Trading Rules revision '+result.policy_revision+' · Target stock exposure '+Number(result.target_stock_pct).toFixed(2)+'%. Accepted orders retain their reservations; other stocks do not wait for fills.'+
+   spyHoldingsMessage=(action==='preview_remaining'?'Remaining-trades preview · '+result.already_completed+' original legs already processed; not submitted again. ':'Dry run · ')+result.positions+' stocks · '+result.total+' planned trades · '+result.deferred.length+' deferred, not sent · Trading Rules revision '+result.policy_revision+' · Target stock exposure '+Number(result.target_stock_pct).toFixed(2)+'%. Accepted orders retain their reservations; other stocks do not wait for fills.'+
     (result.first_sell?' First sell: '+showOrder(result.first_sell)+'.':'')+
     (result.first_buy?' First buy estimate: '+showOrder(result.first_buy)+'.':
      result.has_buy?' Current cash cannot fund the first buy before sales.':'');
