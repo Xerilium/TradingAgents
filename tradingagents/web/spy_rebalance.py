@@ -161,18 +161,26 @@ class SpyRebalance:
         if run.get("command_id"):
             command = commands["commands"].get(run["command_id"], {})
             leg = run["legs"][completed]
-            filled = self.checked_submitted(runtime, command)
             quantity = decimal(command.get("terms", {}).get("quantity"))
             if (command.get("account_id") != run["account_id"]
                     or any(command.get(key) != leg[key] for key in ("symbol", "side", "instrument_id"))
                     or quantity > Decimal(leg["quantity"]) or leg["side"] == "SELL" and quantity != Decimal(leg["quantity"])):
                 raise ValueError("The interrupted leg differs from its original reviewed order. Reconcile orders first.")
-            symbol = leg["symbol"]
-            expected[symbol] = expected.get(symbol, Decimal(0)) + filled * (1 if leg["side"] == "BUY" else -1)
-            expected = {key: value for key, value in expected.items() if value != 0}
-            dispatched[run["command_id"]] = "0"
-            completed += 1
-        elif not dispatched and run.get("fills_completed") == 0 and decimal(runtime["account"].get("cash")) != decimal(run.get("initial_cash")):
+            attempt = command.get("transport_attempt", {})
+            never_sent = (command.get("state") == "not_sent" and attempt.get("version") == 1
+                and attempt.get("state") == "not_sent" and attempt.get("resolved_at")
+                and not any(command.get(key) for key in ("broker_order_ids", "fill_ids", "native_deliveries", "native_pending_commitment", "pending_action"))
+                and decimal(command.get("filled_quantity")) == 0 and decimal(command.get("cash_commitment")) == 0
+                and decimal(command.get("remaining_quantity")) == 0)
+            if not never_sent:
+                filled = self.checked_submitted(runtime, command)
+                symbol = leg["symbol"]
+                expected[symbol] = expected.get(symbol, Decimal(0)) + filled * (1 if leg["side"] == "BUY" else -1)
+                expected = {key: value for key, value in expected.items() if value != 0}
+                dispatched[run["command_id"]] = "0"
+                completed += 1
+        if (not dispatched and completed == run["completed"] and run.get("fills_completed") == 0
+                and decimal(runtime["account"].get("cash")) != decimal(run.get("initial_cash"))):
             raise ValueError("Paper cash changed after the original plan. Preview a new plan instead.")
         self.require_no_working_orders(runtime, commands, allowed=dispatched)
         positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}

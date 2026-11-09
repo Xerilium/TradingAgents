@@ -73,6 +73,8 @@ holdings; they remain tracked and are not submitted again. The remaining trades
 require a fresh preview and separate **Submit paper orders**, with the current
 account, connection, fund plan, Trading Rules and session checks. Previewing does
 not send orders or change the blocked run.
+An attached command explicitly resolved as never dispatched by the versioned local
+transport boundary stays in the reviewed remainder; no fill or broker retry is inferred.
 Stock-local quote, freshness and instrument failures defer that leg with its exact
 terms and reason; they do not prevent review/submission of other eligible stocks.
 Deferred trades are separate from planned/submitted counts and persist for a fresh
