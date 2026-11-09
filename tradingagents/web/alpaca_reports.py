@@ -3,8 +3,7 @@
 import re
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID
-from .linked_orders import broker_position_quantity, equity_quantity, native_trail, option_contract
+from .linked_orders import broker_position_quantity, equity_quantity, native_trail, option_contract, execution_id
 
 from .native_types import (
     ClientOrderId, FillReport, InstrumentId, LiquiditySide, Money, OrderSide,
@@ -12,19 +11,6 @@ from .native_types import (
     Price, Quantity, TimeInForce, TradeId, VenueOrderId,
 )
 
-
-
-def execution_id(value):
-    raw = str(value or "")
-    candidate = raw.rsplit("::", 1)[-1]
-    if "::" in raw and not raw.split("::", 1)[0].isdigit():
-        raise ValueError("Invalid historical execution prefix")
-    try:
-        return str(UUID(candidate))
-    except ValueError:
-        if not raw or "::" in raw:
-            raise ValueError("Missing or invalid execution identity") from None
-        return raw
 
 
 def fill_commission(row, order, account_id, currency, *, endpoint=None, account=None, linked=None):

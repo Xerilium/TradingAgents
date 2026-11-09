@@ -16,6 +16,19 @@ LIVE = {"new", "accepted", "accepted_for_bidding", "pending_new", "partially_fil
 OPTION_MAPPING = "alpaca-us-equity-option-date-v1"
 
 
+def execution_id(value):
+    raw = str(value or "")
+    candidate = raw.rsplit("::", 1)[-1]
+    if "::" in raw and not raw.split("::", 1)[0].isdigit():
+        raise ValueError("Invalid historical execution prefix")
+    try:
+        return str(UUID(candidate))
+    except ValueError:
+        if not raw or "::" in raw:
+            raise ValueError("Missing or invalid execution identity") from None
+        return raw
+
+
 def option_contract(value):
     """Validate retained standard deliverables; native dates are representation only."""
     try:
