@@ -53,6 +53,12 @@ Original source timestamps remain unchanged; other timestamp differences block i
 For a simple filled command, complete current broker/native order and exact fill
 proof can supersede covered older receipts and release their retained commitment.
 Conflicting or uncovered receipts remain blocking; historical events are not replayed.
+For an interrupted same-session reviewed run, **Preview remaining trades** retains
+the original unprocessed legs instead of recalculating targets. An attached filled
+command is consumed only with current native confirmation and matching post-fill
+holdings. The remaining trades require a fresh preview and separate **Submit paper
+orders**, with the current account, connection, fund plan, Trading Rules and session
+checks. Previewing does not send orders or change the blocked run.
 
 Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity

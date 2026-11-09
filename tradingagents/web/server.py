@@ -409,7 +409,7 @@ class DeskHandler(BaseHTTPRequestHandler):
             if not (path in {"/api/credentials", "/api/discovery", "/api/quotes/refresh", "/api/commands/reconcile", "/api/native-report"} or path == "/api/reporting" and data.get("action") == "collect" or
                     path == "/api/evaluations" and data.get("action") == "portfolio_scenario" or
                     path == "/api/recovery" and data.get("action") in {"preview", "backup"} or
-                    path == "/api/investor" and data.get("action") in {"spy_rebalance_check", "spy_rebalance_preview", "spy_rebalance_submit"} or
+                    path == "/api/investor" and data.get("action") in {"spy_rebalance_check", "spy_rebalance_preview", "spy_rebalance_preview_remaining", "spy_rebalance_submit"} or
                     path == "/api/commands" and data.get("action") == "option_instruction" and data.get("operation") == "submit"):
                 service.maintenance.acquire()
                 maintenance_guard = service.maintenance

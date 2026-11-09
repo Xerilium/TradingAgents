@@ -1674,8 +1674,9 @@ class DeskService:
             return self.investor()
         if request.get("action") == "spy_rebalance_check":
             return self.spy_rebalance.check_weights()
-        if request.get("action") == "spy_rebalance_preview":
-            return self.spy_rebalance.preview_plan(request.get("account_id"))
+        if request.get("action") in {"spy_rebalance_preview", "spy_rebalance_preview_remaining"}:
+            return self.spy_rebalance.preview_plan(request.get("account_id"),
+                remaining=request["action"] == "spy_rebalance_preview_remaining")
         if request.get("action") == "spy_rebalance_submit":
             self.spy_rebalance.submit_preview(request)
             return self.investor()
