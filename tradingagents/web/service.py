@@ -257,10 +257,7 @@ class DeskService:
         DeskConfig.model_validate(self.store.data["config"])
         self.configure_symbols()
         self.gateway = gateway
-        from tradingagents.integrations.laya import LocalLaya
-        self.local_laya = LocalLaya(
-            cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None,
-            device=self.store.data["config"]["laya_device"])
+        self.local_laya = self._make_laya(self.store.data["config"]["laya_device"])
         self.graph_factory = graph_factory
         self.lock = threading.RLock()
         self.execution_lock = threading.Lock()
@@ -1145,6 +1142,15 @@ class DeskService:
                 raise ValueError("Application records changed during discovery; reload the workspace")
             store.database.transact({"discovery": DEFAULT}, lambda records: records["discovery"]["observations"].update({result["id"]: result}))
         return result
+
+    def _make_laya(self, device):
+        if os.getenv("TRADINGAGENTS_LAYA") != "1":
+            from tradingagents.integrations.laya import DisabledLaya
+            return DisabledLaya(device)
+        from tradingagents.integrations.laya import LocalLaya
+        return LocalLaya(
+            cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None,
+            device=device)
 
     def configure_symbols(self, *, additional_symbols=()):
         from .market_discovery import DEFAULT
@@ -2254,11 +2260,8 @@ class DeskService:
                 ):
                     raise ValueError("Wait for local Laya screening to finish before changing its device.")
             if laya_changed:
-                from tradingagents.integrations.laya import LocalLaya
                 self.local_laya.close(wait=True)
-                self.local_laya = LocalLaya(
-                    cache_root=self.application_root.parent if os.getenv("TRADINGAGENTS_DESKTOP_PROFILE") else None,
-                    device=config["laya_device"])
+                self.local_laya = self._make_laya(config["laya_device"])
             with self.store.lock:
                 if config != previous:
                     self.store.data["config"] = config

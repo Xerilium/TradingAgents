@@ -256,7 +256,12 @@ can defer work; it does not authorize an unbounded wait or automatic broker retr
 
 ### Laya and social screening
 
-The desktop injects an app-owned local Laya Python worker, using the pinned
+Local Laya is disabled unless the application starts with
+`TRADINGAGENTS_LAYA=1`. Disabled mode reports its status without loading a model
+worker, and inference requests fail explicitly rather than returning a screening
+result. Device changes preserve this opt-in.
+
+When enabled, the desktop injects an app-owned local Laya Python worker, using the pinned
 multilingual model and typed per-post relevance/stance questions. Several posts
 can share a batch while retaining separate questions and original inputs.
 The integration records model identity, raw outputs, token coverage, probabilities,
