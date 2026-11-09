@@ -489,7 +489,7 @@ class ExecutionLifecycle:
             root_exit = command["side"] == "SELL" and (command.get("terms", {}).get("exit_plan") or command.get("linked_group_owner_id"))
             linked = command.get("linked_exit") or root_exit
             simple = (not linked and order_class(command["terms"]) == "simple"
-                and not is_package(command["terms"]) and command["state"] in {"accepted", "partially_filled", "filled"}
+                and not is_package(command["terms"]) and command["state"] in {"accepted", "partially_filled", "filled", "expired"}
                 and command["terms"]["order_type"] in {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"}
                 and not command.get("pending_action") and not command.get("native_replacement_quantity_binding"))
             if not (linked or simple) or not simple and not command.get("native_pending_commitment"):
@@ -499,7 +499,7 @@ class ExecutionLifecycle:
             if (not row or row.get("import_error") or row.get("side", "").upper() != command["side"]
                     or row.get("symbol") != command["symbol"]):
                 continue
-            if simple and (row.get("status") not in {"accepted", "new", "partially_filled", "filled"} or row.get("replaces") or row.get("replaced_by")
+            if simple and (row.get("status") not in {"accepted", "new", "partially_filled", "filled", "expired"} or row.get("replaces") or row.get("replaced_by")
                     or row.get("asset_class") != "us_equity" or row.get("order_class") not in (None, "", "simple")
                     or row.get("client_order_id") != command["client_order_id"]
                     or row["id"] not in command["broker_order_ids"]
@@ -543,8 +543,9 @@ class ExecutionLifecycle:
                     or any(str(event.venue_order_id) not in chain for event in events)):
                 continue
             execution_ids = [execution_id(event.trade_id) for event in events]
-            state = "filled" if row["status"] == "filled" else "partially_filled" if filled else "accepted"
-            if simple and (filled < Decimal(command["filled_quantity"]) or command["state"] == "filled" and state != "filled"):
+            state = row["status"] if row["status"] in {"filled", "expired"} else "partially_filled" if filled else "accepted"
+            if simple and (filled < Decimal(command["filled_quantity"])
+                    or command["state"] in {"filled", "expired"} and state != command["state"]):
                 continue
             update_report = simple and (command["state"] != state or Decimal(command["filled_quantity"]) != filled
                 or not set(execution_ids).issubset({execution_id(value) for value in command["fill_ids"]}))
@@ -562,7 +563,7 @@ class ExecutionLifecycle:
                         or hashlib.sha256(path.read_bytes()).hexdigest() != reference["sha256"]
                         or source_at > observed_at and not fill_timestamp_matches(source_at, observed_at)):
                     continue
-                if simple and (data.get("event") not in {"pending_new", "new", "accepted", "rest_order_observation", "fill", "partial_fill"}
+                if simple and (data.get("event") not in {"pending_new", "new", "accepted", "rest_order_observation", "fill", "partial_fill", "expired"}
                         or old.get("client_order_id") != row["client_order_id"] or old.get("symbol") != row["symbol"]
                         or old.get("account_id", command["account_id"]) != command["account_id"]
                         or old.get("side") != row["side"] or old.get("type") != row["type"]

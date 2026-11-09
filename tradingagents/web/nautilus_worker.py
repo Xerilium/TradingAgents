@@ -32,7 +32,7 @@ def main():
     adapter_module = module_from_spec(adapter_spec)
     sys.modules[adapter_spec.name] = adapter_module
     adapter_spec.loader.exec_module(adapter_module)
-    from _tradingagents_native_adapter.execution_lifecycle import ExecutionLifecycle
+    from _tradingagents_native_adapter.execution_lifecycle import CONFIRMED, ExecutionLifecycle
     from _tradingagents_native_adapter.spy_batch import BatchObservationPending, BatchStockDeferred
     from _tradingagents_native_adapter.native_recovery import collect_history
     from _tradingagents_native_adapter.linked_orders import observed_orders, native_order, native_group, native_observation, LIVE, equity_quantity, asset_session_flags, option_contract, is_package
@@ -941,12 +941,18 @@ def main():
                         "source": "/v2/account/configurations", "error": "Configuration observation unavailable (" + type(exc).__name__ + ")"}
                 self.fee_model_account = account
                 commands = self.lifecycle.authority().database.read("commands", {})["data"].get("commands", {})
+                expired_pending = [command for command in commands.values()
+                    if command.get("account_id") == account["id"] and command.get("state") == "expired"
+                    and (command.get("native_pending_commitment")
+                         or any(item.get("status") not in CONFIRMED or item.get("native_epoch") != native_epoch
+                                for item in command.get("native_deliveries", {}).values()))]
                 current_symbols = {row["symbol"] for row in positions + orders if row.get("symbol") and row.get("asset_class") in {"us_equity", "us_option"}}
                 current_symbols.update(str(row.instrument_id).removesuffix(".ALPACA") for row in [*self.cache.positions_open(), *self.cache.orders_open()])
                 current_symbols.update(row["symbol"] for row in commands.values() if row.get("account_id") == account["id"]
                     and (row.get("state") not in {"filled", "canceled", "rejected", "expired", "not_sent"} or row.get("native_pending_commitment")))
                 current_symbols.update(leg["symbol"] for command in commands.values() if is_package(command.get("terms", {}))
                     for leg in command["terms"]["legs"])
+                current_symbols.update(command["symbol"] for command in expired_pending)
                 gaps, fills = [], []
                 if unsupported_orders or unsupported_positions:
                     gaps.append("Unsupported broker exposure retained; commitments and native reconciliation remain unknown")
@@ -1034,6 +1040,7 @@ def main():
                         # Same-process closed parents retain exact fresh activity/native fill checks below.
                         by_order[row["id"]] = row
                 pending = set(parent_ids) | set(by_order)
+                pending.update(identity for command in expired_pending for identity in command.get("broker_order_ids", []))
                 pending.update(identity for command in commands.values() if command.get("terms", {}).get("exit_plan")
                                and command["symbol"] in current_symbols
                                for identity in command.get("broker_order_ids", []))

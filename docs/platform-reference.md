@@ -50,8 +50,11 @@ registration before importing observed holdings. Fill reconciliation keeps exact
 execution identity, quantities, prices and fees, while accepting an Alpaca fill
 timestamp's nearest-microsecond representation across activity and stream sources.
 Original source timestamps remain unchanged; other timestamp differences block import.
-For a simple accepted, partially filled or filled command, complete current broker/native order and exact fill
+For a simple accepted, partially filled, filled or expired command, complete current broker/native order and exact fill
 proof can supersede covered older receipts and release their retained commitment.
+Restart recovery fetches unresolved expired parents even without an open order or
+holding; exact native expiry and fill coverage are required, not inferred from
+absence. Expired commands remain expired and cannot be revived as accepted.
 The same proof updates a lagging simple command's lifecycle, cumulative fill and
 execution IDs before run holdings are checked; stream delivery is not required.
 Recovery matches proven fills within append-only command IDs and requires matching
