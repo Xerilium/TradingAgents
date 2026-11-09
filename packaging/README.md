@@ -100,6 +100,16 @@ makes a debug, no-bundle build with `tauri.dev.conf.json`; its exit code goes to
 vendored workflow-editor bundle (CodeMirror and Mermaid) in
 `tradingagents/web/static/vendor/workflow-tools`.
 
+The browser workspace is built from React and Material UI in `desktop/desk-ui`.
+Run `npm ci` in `desktop` when its locked project dependencies change, then
+`npm run build:desk`. Vite writes local production assets and dependency license
+notices to `tradingagents/web/static/desk-ui`; there is no runtime CDN or Node
+service. Both `prepare.py` and `refresh_project.py` rebuild these assets before
+creating the application wheel. UI dependencies are build-host dependencies,
+not replacements for either installed Python runtime. An app-only release
+continues to preserve the production profile, credentials, private runtimes and
+CUDA.
+
 The Tauri desktop version (`desktop/package.json`, `tauri.conf.json`, `Cargo.toml`)
 is versioned separately from the Python package (`tradingagents.__version__`).
 

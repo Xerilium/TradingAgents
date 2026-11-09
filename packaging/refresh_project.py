@@ -15,6 +15,7 @@ current_locks = {kind: digest(ROOT / "packaging" / "{}-{}.lock".format(kind, pro
 if current_locks != provenance.get("dependency_locks_sha256"):
     print("Note: the reviewed dependency locks differ from this payload. An app-only refresh does not "
           "install them; run packaging/prepare.py and build a setup installer to apply dependency changes.")
+run("rtk", "bypass", "npm", "--prefix", ROOT / "desktop", "run", "build:desk")
 run(uv, "build", "--wheel", "--out-dir", wheel_dir, "--cache-dir", CACHE,
     "--build-constraints", ROOT / "packaging" / "build-constraints.txt")
 wheels = list(wheel_dir.glob("tradingagents-*.whl"))

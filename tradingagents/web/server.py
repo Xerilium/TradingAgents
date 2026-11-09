@@ -129,8 +129,8 @@ class DeskHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/") and not self._session():
             self._send(403, {"error": "Open or reload the local workspace to establish its session."})
             return
-        if getattr(self.server.service, "recovery_only", False) and path not in {
-                "/", "/index.html", "/static/recovery.js", "/static/app.css", "/api/state", "/api/health"}:
+        if (getattr(self.server.service, "recovery_only", False)
+                and path.startswith("/api/") and path not in {"/api/state", "/api/health"}):
             self._send(503, {"error": "Recovery-only startup: engine, research and data operations are unavailable"})
             return
         if path == "/api/state":
@@ -308,8 +308,8 @@ class DeskHandler(BaseHTTPRequestHandler):
             return
         # Exact allowlist, never a caller-selected filesystem path.
         files = {
-            "/": "index.html",
-            "/index.html": "index.html",
+            "/": "desk-ui/index.html",
+            "/index.html": "desk-ui/index.html",
             "/app.js": "app.js",
             "/styles.css": "styles.css",
             "/static/app.js": "app.js",
@@ -337,8 +337,12 @@ class DeskHandler(BaseHTTPRequestHandler):
             "/static/ui-workflows.css": "ui-workflows.css",
             "/static/recovery.js": "recovery.js",
         }
-        if getattr(self.server.service, "recovery_only", False):
-            files.update({"/": "recovery.html", "/index.html": "recovery.html"})
+        asset_directory = Path(__file__).parent / "static" / "desk-ui" / "assets"
+        files.update({
+            "/static/desk-ui/assets/" + asset.name: str(Path("desk-ui") / "assets" / asset.name)
+            for asset in asset_directory.glob("*") if asset.is_file() and asset.suffix in {".js", ".css"}
+        })
+        files["/static/desk-ui/THIRD-PARTY-NOTICES.txt"] = "desk-ui/THIRD-PARTY-NOTICES.txt"
         if path not in files:
             self._send(404, {"error": "Not found."})
             return

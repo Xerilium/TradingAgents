@@ -4,8 +4,16 @@
   "version": "0.6.22",
   "scripts": {
     "tauri": "tauri",
+    "build:desk": "vite build --config desk-ui/vite.config.mjs",
     "build:workflow-tools": "node workflow-ui/build.mjs",
     "build:setup": "tauri build --ci --config src-tauri/tauri.updater.conf.json --config src-tauri/tauri.setup.conf.json"
+  },
+  "dependencies": {
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@mui/material": "9.5.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@codemirror/lang-markdown": "6.5.2",
@@ -15,6 +23,7 @@
     "@tauri-apps/cli": "2.12.0",
     "codemirror": "6.0.2",
     "esbuild": "0.28.2",
-    "mermaid": "12.2.0"
+    "mermaid": "12.2.0",
+    "vite": "8.3.7"
   }
 }

@@ -152,6 +152,7 @@ def main():
 
     wheel_dir = BUILD / "wheels"
     wheel_dir.mkdir(exist_ok=True)
+    run("rtk", "bypass", "npm", "--prefix", ROOT / "desktop", "run", "build:desk")
     run(uv, "build", "--wheel", "--out-dir", wheel_dir, "--cache-dir", CACHE,
         "--build-constraints", ROOT / "packaging" / "build-constraints.txt")
     wheels = list(wheel_dir.glob("tradingagents-*.whl"))

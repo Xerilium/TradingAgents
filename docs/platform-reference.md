@@ -501,13 +501,29 @@ Credentials are stored in the desktop OS vault. Saving them does not reconnect
 an active engine. Workspace preferences and drafts use revision-aware saves;
 reload a concurrent change rather than silently overwriting it.
 
+The browser workspace uses React for persistent component ownership and Material
+UI for controls and layout. Its five-second read-only state poll updates data,
+not the application root or workspace DOM. Each visited workspace keeps its own
+mounted components and native scrolling; drafts, filters, selected records and
+disclosures are local view state, not regenerated from a polling response.
+Research, calculations, configuration saves and order actions remain explicit
+events, never mount or polling effects. A failed state read marks the connection
+unconfirmed instead of enabling actions from the last successful snapshot.
+Vite builds the source in `desktop/desk-ui` into local packaged static assets;
+there is no runtime CDN, additional server or change to backend order authority.
+Both normal and recovery-only startup serve that entry. The former workspace,
+drawer and recovery renderers are retained as reference but are not loaded.
+Lightweight Charts, drawing primitives, CodeMirror and Mermaid own only their
+isolated chart/editor hosts; workspace controls and layout use Material UI.
+
 ## Source map
 
 | Responsibility | Implementation |
 | --- | --- |
 | Desktop ownership and profiles | [main.rs](../desktop/src-tauri/src/main.rs), [backend.rs](../desktop/src-tauri/src/backend.rs) |
 | HTTP/session boundary and coordination | [server.py](../tradingagents/web/server.py), [service.py](../tradingagents/web/service.py) |
-| UI, charts and workflows | [static](../tradingagents/web/static), [market-chart.js](../tradingagents/web/static/market-chart.js), [workflows.js](../tradingagents/web/static/workflows.js) |
+| React UI, controls and layout | [desk-ui](../desktop/desk-ui), [built static assets](../tradingagents/web/static/desk-ui) |
+| Specialty charts and workflow editors | [vendored libraries](../tradingagents/web/static/vendor), [workflow toolkit source](../desktop/workflow-ui) |
 | Research graph and validation | [graph/setup.py](../tradingagents/graph/setup.py), [workflows.py](../tradingagents/workflows.py) |
 | Provider selection and adapters | [factory.py](../tradingagents/llm_clients/factory.py), [chatgpt_client.py](../tradingagents/llm_clients/chatgpt_client.py), [openai_client.py](../tradingagents/llm_clients/openai_client.py) |
 | Laya and social policy | [integrations/laya.py](../tradingagents/integrations/laya.py), [post_screen.py](../tradingagents/agents/post_screen.py) |

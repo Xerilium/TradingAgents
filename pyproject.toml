@@ -70,7 +70,7 @@ include = ["tradingagents*", "cli*"]
 [tool.setuptools.package-data]
 cli = ["static/*"]
 tradingagents = ["assets/*.svg", "assets/runtime-manifests/*.json", "workflow_assets/*", "workflow_assets/prompts/*", "workflow_assets/prompts/*/*"]
-"tradingagents.web" = ["static/*", "static/vendor/*/*/*", "static/vendor/workflow-tools/*", "portfolio_listing_dates.json", "portfolio_weight_data/*.json", "portfolio_weight_data/sources/*.json"]
+"tradingagents.web" = ["static/*", "static/desk-ui/*", "static/desk-ui/assets/*", "static/vendor/*/*/*", "static/vendor/workflow-tools/*", "portfolio_listing_dates.json", "portfolio_weight_data/*.json", "portfolio_weight_data/sources/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

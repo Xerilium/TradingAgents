@@ -137,6 +137,9 @@ flowchart LR
 ```
 
 - **Tauri and the Python desk** provide the interface, local records and coordination.
+- **React and Material UI** own the browser workspace and standard controls/layout.
+  Vite builds its local assets; periodic data updates retain component identity
+  rather than replacing the workspace DOM. Source is in `desktop/desk-ui`.
 - **TradingAgents, LangGraph and LangChain** run research roles through the configured
   model and data providers. **Laya** screens social posts; **Maenifold** holds durable memory.
 - **NautilusTrader** is the trading engine. The app-owned **Alpaca bridge** supplies
