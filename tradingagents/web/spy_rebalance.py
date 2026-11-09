@@ -1,5 +1,6 @@
 """Daily SPY rebalancing through the existing paper order admission path."""
 
+import copy
 import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
@@ -24,7 +25,7 @@ DEFAULT = {"enabled": False, "account_id": None, "managed_symbols": [], "run": N
 PAPER = "https://paper-api.alpaca.markets"
 NEW_YORK = ZoneInfo("America/New_York")
 CONSTRAINTS = {"account_max_age_seconds": "90", "quote_max_age_seconds": "300", "approval_max_age_seconds": "30"}
-ACTIVE_RUN = {"queued", "ready", "dispatching", "waiting_fill", "waiting_acceptance"}
+ACTIVE_RUN = {"queued", "ready", "dispatching", "waiting_fill", "waiting_acceptance", "batch_dispatching"}
 PREVIEW_AGE = 300
 QUOTE_RULES = {"max_spread_bps", "min_quote_size", "session_freshness"}
 
@@ -89,12 +90,29 @@ class SpyRebalance:
         record = self.desk.store.database.read(RECORD, DEFAULT)
         data = record["data"]
         run = data["run"]
+        if run and run.get("batch_id"):
+            state = self.desk.store.database.read("commands", COMMANDS)["data"]
+            batch = state.get("spy_batches", {}).get(run["batch_id"])
+            if batch:
+                counts = self.batch_counts(state, batch)
+                run = {**run, "batch_counts": counts}
+                if batch["state"] == "blocked" or counts["unknown"]:
+                    run.update(status="blocked", message=batch.get("reason") or "Batch transport outcome is unresolved; no replay.")
+                deferred = list(run.get("deferred", []))
+                for key in batch["members"]:
+                    command = state["commands"][key]
+                    residual = Decimal(command["terms"]["quantity"]) - Decimal(command["filled_quantity"])
+                    if (command["state"] in {"not_sent", "rejected", "canceled", "expired"} and residual > 0
+                            and not any(item["terms"]["symbol"] == command["symbol"] for item in deferred)):
+                        deferred.append({"terms": {**command["terms"], "quantity": str(residual)},
+                                         "reasons": [command.get("deferred_reason") or f"Recorded broker outcome: {command['state']}; not filled."]})
+                run["deferred"] = deferred
         return {"revision": record["revision"], "enabled": data["enabled"], "account_id": data["account_id"],
                 "eligible_account_id": paper_account(runtime),
                 "in_progress": bool(run and run["session"] >= datetime.now(NEW_YORK).date().isoformat()
                                     and run["status"] in ACTIVE_RUN),
                 "run": {**{key: run.get(key) for key in ("session", "as_of", "status", "message", "completed", "total", "limited")},
-                        "deferred": run.get("deferred", [])} if run else None}
+                        "deferred": run.get("deferred", []), "batch_counts": run.get("batch_counts")} if run else None}
 
     def configure(self, request):
         with self.desk.maintenance:
@@ -146,7 +164,7 @@ class SpyRebalance:
         if (not run or run.get("status") not in {"blocked", "submitted"} or run.get("session") != day
                 or not run.get("manual_id") or not run.get("close_at") or not (run.get("legs") or run.get("deferred"))
                 or run.get("total") != len(run["legs"]) or not 0 <= run.get("completed", -1) <= run["total"]
-                or run["completed"] == run["total"] and not run.get("deferred")):
+                or run["completed"] == run["total"] and not run.get("deferred") and not run.get("batch_id")):
             raise ValueError("A same-session interrupted reviewed rebalance is required. Preview a new plan instead.")
         if (paper_account(runtime) != data["account_id"] or runtime.get("market_open") is not True
                 or datetime.now(NEW_YORK) >= datetime.fromisoformat(run["close_at"])):
@@ -155,6 +173,8 @@ class SpyRebalance:
         policy = self.check_plan_policy(store, rebound)
         plan = self.check_fund_binding(store, runtime, rebound)
         commands = store.database.read("commands", COMMANDS)["data"]
+        if run.get("batch_id"):
+            return self.remaining_batch(store, runtime, data, commands, rebound, policy, plan)
         dispatched = dict(run.get("dispatched", {}))
         expected = self.expected_positions(runtime, commands, run)
         completed = run["completed"]
@@ -196,6 +216,48 @@ class SpyRebalance:
                 "fund_budget": fund_budget,
                 "recovered_from": {"manual_id": run["manual_id"], "completed": completed, "command_id": run.get("command_id")}}
 
+    def remaining_batch(self, store, runtime, data, commands, rebound, policy, plan):
+        run = data["run"]
+        batch = commands.get("spy_batches", {}).get(run["batch_id"])
+        if not batch:
+            raise ValueError("The original reserved batch is missing; reconcile commands before a new preview")
+        tracked = {**batch["baseline"]["tracked"], **{key: "0" for key in batch["members"]}}
+        legs, working = [], {}
+        for key, baseline in tracked.items():
+            command = commands["commands"][key]
+            if command["state"] == "not_sent":
+                attempt = command.get("transport_attempt") or {}
+                if (attempt.get("version") != 1 or attempt.get("state") != "not_sent" or not attempt.get("resolved_at")
+                        or any(command.get(name) for name in ("broker_order_ids", "fill_ids", "native_deliveries", "native_pending_commitment"))
+                        or decimal(command["filled_quantity"]) != 0):
+                    raise ValueError("A batch leg lacks authoritative no-send proof; it cannot be retried")
+                if key in batch["members"]:
+                    legs.append(copy.deepcopy(batch["members"][key]["terms"]))
+                continue
+            filled = self.checked_submitted(runtime, command, terminal=True)
+            if command["state"] in ACTIVE:
+                working[key] = str(filled)
+            elif key in batch["members"] and filled < Decimal(command["terms"]["quantity"]):
+                legs.append({**command["terms"], "quantity": str(Decimal(command["terms"]["quantity"]) - filled)})
+        expected = self.expected_positions(runtime, commands,
+            {"current": batch["baseline"]["positions"], "dispatched": tracked}, terminal=True)
+        positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
+        if positions != expected:
+            raise ValueError("Current holdings differ from exact batch executions")
+        self.require_no_working_orders(runtime, commands, allowed=working)
+        for item in run.get("deferred", []):
+            if not any(leg["symbol"] == item["terms"]["symbol"] for leg in legs) and not any(
+                    commands["commands"][key]["symbol"] == item["terms"]["symbol"] for key in working):
+                legs.append(copy.deepcopy(item["terms"]))
+        fresh = {key: value for key, value in rebound.items()
+                 if key not in {"batch_id", "batch_offset", "batch_counts", "dispatch_requested"}}
+        fund_budget = budget(plan, runtime, policy)
+        fund_budget["spendable_cash_usd"] = str(self.spendable_cash(runtime, policy, plan, commands))
+        return {**fresh, "legs": legs, "completed": 0, "fills_completed": 0, "total": len(legs), "limited": 0,
+            "command_id": None, "status": "ready" if legs else "submitted", "deferred": [], "dispatched": working,
+            "current": {key: str(value) for key, value in positions.items()}, "initial_cash": runtime["account"]["cash"],
+            "fund_budget": fund_budget, "recovered_from": {"manual_id": run["manual_id"], "batch_id": batch["id"]}}
+
     def preview_plan(self, account_id, *, remaining=False):
         store = self.desk.store
         record = store.database.read(RECORD, DEFAULT)
@@ -224,6 +286,7 @@ class SpyRebalance:
         else:
             run, symbols = self.plan(store, session, snapshot, runtime, data["managed_symbols"])
         policy = self.check_plan_policy(store, run)
+        run = self.freeze_buys(store, runtime, run, policy)
         blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], policy)
         run.update(self.defer_legs(run, deferred))
         token = uuid4().hex if run["legs"] and not blockers else None
@@ -252,7 +315,7 @@ class SpyRebalance:
                 "policy_revision": run["policy_revision"], "target_stock_pct": run["target_stock_pct"], "fund_budget": run["fund_budget"],
                 "policy_blockers": blockers,
                 "deferred": run["deferred"],
-                "trades": [{key: terms[key] for key in ("symbol", "side", "quantity")} for terms in run["legs"]],
+                "trades": [{key: terms.get(key) for key in ("symbol", "side", "quantity", "order_type", "limit_price")} for terms in run["legs"]],
                 "first_sell": order(first) if first and first["side"] == "SELL" else None,
                 "has_buy": buy is not None, "first_buy": order(first_buy)}
 
@@ -565,6 +628,7 @@ class SpyRebalance:
         symbols = [entry["symbol"] for entry in snapshot["entries"]]
         self.ensure_symbols(store, data["account_id"], runtime, [*symbols, *data["managed_symbols"]])
         run, symbols = self.plan(store, day, snapshot, runtime, data["managed_symbols"])
+        run = self.freeze_buys(store, runtime, run, self.check_plan_policy(store, run))
         blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], self.check_plan_policy(store, run))
         if blockers:
             raise ValueError(blockers[0])
@@ -577,6 +641,7 @@ class SpyRebalance:
         records = store.database.read("commands", COMMANDS)["data"]
         prior = store.database.read(RECORD, DEFAULT)["data"]["run"] or {}
         tracked = set(prior.get("dispatched", {})) | ({prior["command_id"]} if prior.get("command_id") else set())
+        tracked.update(records.get("spy_batches", {}).get(prior.get("batch_id"), {}).get("members", {}))
         dispatched = {key: self.checked_submitted(runtime, records["commands"][key]) for key in tracked
                       if records["commands"][key]["state"] in ACTIVE or records["commands"][key].get("native_pending_commitment")}
         self.require_no_working_orders(runtime, records, allowed=dispatched)
@@ -660,12 +725,12 @@ class SpyRebalance:
             raise ReconciliationPending("Waiting for current account and order reconciliation; no new order has been sent.")
 
     @staticmethod
-    def checked_submitted(runtime, command):
+    def checked_submitted(runtime, command, *, terminal=False):
         filled = decimal(command.get("filled_quantity"))
         quantity = decimal(command.get("terms", {}).get("quantity"))
         deliveries = command.get("native_deliveries", {})
         native = [item for item in runtime.get("native_deliveries", []) if item.get("command_id") == command.get("id")]
-        if (command.get("state") not in {"accepted", "partially_filled", "filled"}
+        if (command.get("state") not in ({"accepted", "partially_filled", "filled", "expired", "canceled", "rejected"} if terminal else {"accepted", "partially_filled", "filled"})
                 or command.get("account_id") != runtime["account"]["id"]
                 or command.get("pending_action") or not command.get("broker_order_ids")
                 or quantity is None or quantity <= 0 or filled is None or not 0 <= filled <= quantity
@@ -695,11 +760,13 @@ class SpyRebalance:
         return filled
 
     @classmethod
-    def expected_positions(cls, runtime, commands, run):
+    def expected_positions(cls, runtime, commands, run, *, terminal=False):
         expected = {key: Decimal(value) for key, value in run["current"].items()}
         for key, baseline in run.get("dispatched", {}).items():
             command = commands["commands"][key]
-            delta = cls.checked_submitted(runtime, command) - Decimal(baseline)
+            if terminal and command["state"] == "not_sent" and decimal(command["filled_quantity"]) == 0:
+                continue
+            delta = cls.checked_submitted(runtime, command, terminal=terminal) - Decimal(baseline)
             if delta < 0:
                 raise ValueError("An existing SPY order's proven filled quantity regressed.")
             symbol = command["symbol"]
@@ -715,13 +782,13 @@ class SpyRebalance:
                    - sum((item["cash"] for item in commitments), Decimal(0)))
 
     @staticmethod
-    def buy_terms(terms, runtime, policy, plan, commands):
+    def buy_terms(terms, runtime, policy, plan, commands, *, available=None):
         symbol = terms["symbol"]
         price = price_evidence(terms, runtime)["price"]
         cash = decimal(runtime["account"].get("cash"))
         if price is None or price <= 0 or cash is None or cash < 0:
             raise ValueError(f"{symbol}: The buy requires a current price and enough observed cash.")
-        spendable = SpyRebalance.spendable_cash(runtime, policy, plan, commands)
+        spendable = SpyRebalance.spendable_cash(runtime, policy, plan, commands) if available is None else available
         limit = price.quantize(Decimal("0.01"), rounding=ROUND_CEILING)
         try:
             fractional_asset(runtime, symbol)
@@ -735,7 +802,193 @@ class SpyRebalance:
         return {**terms, "order_type": "LIMIT", "limit_price": str(limit),
                 "quantity": format(quantity.normalize(), "f")}, quantity < planned
 
+    def freeze_buys(self, store, runtime, run, policy):
+        commands = store.database.read("commands", COMMANDS)["data"]
+        plan = self.check_fund_binding(store, runtime, run)
+        available = self.spendable_cash(runtime, policy, plan, commands)
+        legs, deferred, limited = [], list(run.get("deferred", [])), run["limited"]
+        for original in run["legs"]:
+            terms = original
+            if terms["side"] == "BUY":
+                terms, resized = self.buy_terms(terms, runtime, policy, plan, commands, available=available)
+                limited += resized
+                if terms is None:
+                    deferred.append({"terms": original, "reasons": ["Observed cash above all reserves permits less than $1."]})
+                    continue
+                available -= Decimal(terms["quantity"]) * Decimal(terms["limit_price"])
+            legs.append(terms)
+        return {**run, "legs": legs, "total": len(legs), "limited": limited, "deferred": deferred}
+
+    def reserve_batch(self, store, record, runtime):
+        from .admission import account_version, stamp
+        from .spy_batch import sealed
+        admission = self.desk.admission
+        admission.enabled()
+        admission.review_allowed()
+        if admission.admission_enabled is not True:
+            raise PermissionError("This session does not permit SPY batch admission")
+        batch_id = str(uuid4())
+        run = record["data"]["run"]
+
+        def reserve(records):
+            saved = records[RECORD]["run"]
+            if saved != run or saved.get("batch_id"):
+                raise ValueError("The reviewed SPY run changed before batch reservation")
+            state, investor = records["commands"], records["investor"]
+            policy = investor["policy"]
+            if (state["recovery_required"] or policy["revision"] != run["policy_revision"]
+                    or binding(records[FUND_RECORD], run["account_id"]) != run["fund_binding"]):
+                raise ValueError("Current complete account, policy and fund authority are required for batch reservation")
+            commitments, known = working_commitments(runtime, state)
+            if not known:
+                raise ReconciliationPending("Current pending commitments are required before reserving the SPY batch")
+            reservations = {}
+            for item in commitments:
+                if len(item["command_ids"]) != 1 or not item["command_ids"].issubset(run.get("dispatched", {})):
+                    raise ValueError("Unrelated or ambiguous working obligations block batch reservation")
+                reservations[next(iter(item["command_ids"]))] = str(item["cash"])
+            members, deferred = {}, list(saved.get("deferred", []))
+            version = account_version(runtime)
+            state["account_versions"][run["account_id"]] = version
+            for terms in run["legs"][run["completed"]:]:
+                if (terms["side"] != "BUY" or terms["order_type"] != "LIMIT" or terms["time_in_force"] != "DAY"
+                        or terms.get("session", "regular") != "regular" or terms.get("asset_class") == "us_option"
+                        or any(item["terms"]["symbol"] == terms["symbol"] for item in members.values())):
+                    raise ValueError("Independent SPY batch requires distinct exact regular-session equity DAY LIMIT buys")
+                if any(command["symbol"] == terms["symbol"] and (
+                        command["state"] in ACTIVE or command.get("native_pending_commitment")) for command in state["commands"].values()):
+                    deferred.append({"terms": copy.deepcopy(terms), "reasons": ["An exact owned working order already reserves this stock; no duplicate is submitted."]})
+                    continue
+                records["investor"] = save(investor, {"action": "draft", "terms": terms, "reason": terms["rationale"]},
+                    runtime, (), self.desk._proposal_research, commands=state)
+                proposal = records["investor"]["proposals"][0]
+                review = admission.assess(records, proposal, runtime, CONSTRAINTS)
+                if not review["passed"]:
+                    failed = {check["name"] for check in review["checks"] if not check["passed"]}
+                    if failed and failed <= QUOTE_RULES | {"instrument", "price", "fractional_asset"}:
+                        deferred.append({"terms": copy.deepcopy(terms), "reasons": review["blockers"]})
+                        continue
+                    raise ValueError(f"{terms['symbol']}: " + "; ".join(review["blockers"]))
+                identity = str(uuid4())
+                state["approvals"][identity] = {
+                    "id": identity, "proposal_id": proposal["id"], "proposal_revision": proposal["revision"],
+                    "terms_sha256": proposal["terms_sha256"], "terms": copy.deepcopy(proposal["terms"]),
+                    "policy_revision": policy["revision"], "account_id": run["account_id"],
+                    "instrument_id": terms["instrument_id"], "account_version": version,
+                    "account_observed_at": runtime["account_at"], "market_event_ns": price_evidence(
+                        {**terms, "order_type": "MARKET"}, runtime)["ts_event"],
+                    "connection_context": {"endpoint": PAPER, "mode": "paper", "account_id": run["account_id"],
+                                           "connection_session": runtime["connection_session"]},
+                    "constraints": copy.deepcopy(CONSTRAINTS), "actor": ("manual" if run.get("manual") else "standing") + "-paper-spy-batch",
+                    "reason": terms["rationale"], "evaluation": copy.deepcopy(review),
+                    "evaluation_binding_sha256": review["binding_sha256"], "approved_at": stamp(), "expires_at": ""}
+                admission._admit(records, identity, batch_runtime=runtime, batch_evaluation=review)
+                command = next(item for item in state["commands"].values() if item["approval_id"] == identity)
+                command["spy_batch_id"] = batch_id
+                members[command["id"]] = {key: copy.deepcopy(command[key]) for key in (
+                    "approval_id", "proposal_id", "proposal_revision", "terms", "terms_sha256", "client_order_id")}
+                members[command["id"]]["evaluation_binding_sha256"] = review["binding_sha256"]
+                reservations[command["id"]] = command["cash_commitment"]
+            now = datetime.now(UTC)
+            age = (now - instant(runtime["account_at"])).total_seconds()
+            if not 0 <= age <= float(CONSTRAINTS["account_max_age_seconds"]) or now >= instant(run["close_at"]):
+                raise ValueError("The batch review outlasted its current account or approved regular session")
+            granted = now.isoformat()
+            for key, member in members.items():
+                command = state["commands"][key]
+                approval = state["approvals"][member["approval_id"]]
+                approval.update(approved_at=granted, expires_at=(now + timedelta(seconds=float(CONSTRAINTS["approval_max_age_seconds"]))).isoformat(),
+                                spy_batch_id=batch_id, spy_command_id=key)
+                command.update(state="dispatch_intent", dispatch_intent_at=granted)
+                command["timeline"].append({"at": granted, "state": "dispatch_intent",
+                    "reason": "Whole reviewed SPY batch reserved transactionally before independent native dispatch"})
+            plan = records[FUND_RECORD]["plans"].get(account_key(run["account_id"]))
+            reserve_floor = budget(plan, runtime, policy)["required_reserve_usd"]
+            if sum((Decimal(value) for value in reservations.values()), Decimal(0)) + Decimal(reserve_floor) > Decimal(runtime["account"]["cash"]):
+                raise ValueError("The complete SPY batch exceeds observed cash after existing commitments and the reserve")
+            baseline = {
+                "cash": runtime["account"]["cash"],
+                "positions": {key: str(value) for key, value in self.check_positions(runtime, set(record["data"]["managed_symbols"])).items()},
+                "account": {key: runtime["account"].get(key) for key in (
+                    "id", "status", "currency", "multiplier", "shorting_enabled", "trading_blocked", "account_blocked", "trade_suspended_by_user")},
+                "fill_ids": sorted({execution_id(item.get("execution_id") or item["id"]) for item in runtime.get("fills", [])}),
+                "fills": {item.get("execution_id") or item["id"]: {key: item.get(key) for key in
+                    ("order_id", "qty", "price", "transaction_time", "commission")} for item in runtime.get("fills", [])},
+                "order_ids": [item["id"] for item in runtime.get("orders", [])],
+                "tracked": {key: state["commands"][key]["filled_quantity"] for key in run.get("dispatched", {})}}
+            batch = {"id": batch_id, "account_id": run["account_id"], "endpoint": PAPER,
+                     "epoch": runtime["native_epoch"], "session": run["session"], "close_at": run["close_at"],
+                     "policy_revision": policy["revision"], "fund_binding": copy.deepcopy(run["fund_binding"]),
+                     "constraints": copy.deepcopy(CONSTRAINTS), "granted_at": granted, "members": members,
+                     "baseline": baseline, "reservations": reservations, "reserve": reserve_floor, "state": "reserved"}
+            batch["binding"] = sealed(batch)
+            state.setdefault("spy_batches", {})[batch_id] = batch
+            saved.update(batch_id=batch_id, batch_offset=run["completed"], dispatch_requested=False,
+                legs=run["legs"][:run["completed"]] + [item["terms"] for item in members.values()],
+                total=run["completed"] + len(members),
+                status="batch_dispatching", deferred=deferred,
+                message=f"{len(members)} exact independent buys reserved; no broker submission is claimed.")
+
+        with self.desk.runtime.lock:
+            admission.transaction(reserve, evidence=True, extra={RECORD: DEFAULT, FUND_RECORD: FUNDS})
+        self.wake_pending = True
+
+    def advance_batch(self, store, record):
+        with self.desk.maintenance:
+            if self.stopped or self.desk.store is not store:
+                return
+            data = store.database.read(RECORD, DEFAULT)
+            run = data["data"]["run"]
+            if run.get("batch_id") != record["data"]["run"].get("batch_id"):
+                return
+            state = store.database.read("commands", COMMANDS)["data"]
+            batch = state.get("spy_batches", {}).get(run["batch_id"])
+            if not batch:
+                raise ValueError("The durable SPY batch is missing; no replay is permitted")
+            commands = [state["commands"][key] for key in batch["members"]]
+            counts = self.batch_counts(state, batch)
+            deferred = list(run.get("deferred", []))
+            for command in commands:
+                if command.get("deferred_reason") and not any(item["terms"]["symbol"] == command["symbol"] for item in deferred):
+                    deferred.append({"terms": command["terms"], "reasons": [command["deferred_reason"]]})
+            blocked = batch["state"] == "blocked" or counts["unknown"] > 0
+            done = counts["sent"] + counts["not_sent"] == len(commands)
+            request = bool(commands) and not run.get("dispatch_requested") and batch["state"] == "reserved" and not blocked
+            store.database.update(RECORD, data["revision"], lambda saved: saved["run"].update(
+                batch_counts=counts, deferred=deferred, dispatch_requested=run.get("dispatch_requested") or request,
+                completed=run["batch_offset"] + counts["sent"] + counts["not_sent"],
+                status="blocked" if blocked else "submitted" if done else "batch_dispatching",
+                message=batch.get("reason") if blocked else (
+                    "Every eligible batch leg has a broker response or a proven no-send; working orders retain their reservations."
+                    if done else "Independent batch dispatch in progress; native queueing is not broker submission.")), DEFAULT)
+        if request:
+            try:
+                self.desk.runtime.request("dispatch_spy_batch", batch_id=batch["id"])
+            except ValueError as error:
+                with self.desk.maintenance:
+                    if self.desk.store is store:
+                        latest = store.database.read(RECORD, DEFAULT)
+                        store.database.update(RECORD, latest["revision"], lambda saved: saved["run"].update(
+                            message=f"Native batch request needs observation, not replay: {error}"), DEFAULT)
+            self.wake_pending = True
+
+    @staticmethod
+    def batch_counts(state, batch):
+        commands = [state["commands"][key] for key in batch["members"]]
+        return {"admitted": len(commands),
+                "native_queued": sum(bool(item.get("native_enqueued_at")) for item in commands),
+                "transport_started": sum(item["transport_attempt"].get("state") == "started" for item in commands),
+                "sent": sum(bool(item["transport_attempt"].get("response_receipt")) for item in commands),
+                "working": sum(item["state"] in {"accepted", "partially_filled"} for item in commands),
+                "filled": sum(item["state"] == "filled" for item in commands),
+                "expired": sum(item["state"] == "expired" for item in commands),
+                "rejected": sum(item["state"] == "rejected" for item in commands),
+                "unknown": sum(item["state"] == "outcome_unknown" for item in commands),
+                "not_sent": sum(item["state"] == "not_sent" for item in commands)}
+
     def advance(self, store, record):
+        if record["data"]["run"].get("batch_id"):
+            return self.advance_batch(store, record)
         database = store.database
         data, run = record["data"], record["data"]["run"]
         with self.desk.maintenance:
@@ -840,6 +1093,9 @@ class SpyRebalance:
             if not own_fills and run["fills_completed"] == 0 and (decimal(run["initial_cash"]) is None
                     or decimal(runtime["account"].get("cash")) != decimal(run["initial_cash"])):
                 raise ValueError("Paper cash changed after the daily plan was made.")
+            if all(leg["side"] == "BUY" and leg["order_type"] == "LIMIT" for leg in run["legs"][run["completed"]:]):
+                self.reserve_batch(store, current, runtime)
+                return
             terms = dict(run["legs"][run["completed"]])
             symbol, limited = terms["symbol"], run["limited"]
             def defer(reasons, revision=record["revision"]):

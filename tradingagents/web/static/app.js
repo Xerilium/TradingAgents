@@ -3294,7 +3294,7 @@ async function reloadFundPlan(){
 }
 function spyTradeRows(trades){
  const query=spyTradeQuery.trim().toUpperCase(),matches=trades.filter(trade=>trade.symbol.toUpperCase().includes(query));
- return {count:matches.length,markup:matches.map(trade=>'<tr><td>'+esc(trade.symbol)+'</td><td>'+esc(trade.side)+'</td><td>'+esc(trade.quantity)+'</td></tr>').join('')||'<tr><td colspan="3">No matching symbols. Clear the filter to show all planned trades.</td></tr>'};
+ return {count:matches.length,markup:matches.map(trade=>'<tr><td>'+esc(trade.symbol)+'</td><td>'+esc(trade.side)+(trade.order_type==='LIMIT'?' · LIMIT '+esc(money(trade.limit_price)):'')+'</td><td>'+esc(trade.quantity)+'</td></tr>').join('')||'<tr><td colspan="3">No matching symbols. Clear the filter to show all planned trades.</td></tr>'};
 }
 function updateSpyTradeFilter(){
  const body=document.getElementById('spy-trade-rows'),count=document.getElementById('spy-trade-count');if(!spyPreview||!body||!count)return;
@@ -3333,6 +3333,7 @@ function spyRebalanceMarkup(){
   '<p class="spy-source-note"><a id="spy-account-controls" href="#orders">Review account order controls</a></p>'+
   '<p class="spy-source-note">'+(preview?'State Street SPY weights dated '+esc(preview.asOf)+' · Preview price check '+fullTime(preview.quoteAt):'SPY weights and price-check dates are not loaded in this view. Preview uses State Street’s previous-session holdings.')+'</p>'+
   (run?'<p role="status"'+(runBlocked?' class="warning"':'')+'>'+(runBlocked?'Latest rebalance blocked: ':'Rebalance: ')+esc(run.session+' · '+run.message+(run.total?' · '+run.completed+' of '+run.total+' processed':'')+(run.limited?' · '+run.limited+' buys reduced or skipped':'')+(run.deferred?.length?' · '+run.deferred.length+' deferred, not sent':''))+'</p>'+spyDeferredMarkup(run.deferred,'Deferred in latest run'):'')+
+  (run?.batch_counts?'<p role="status">'+esc(Object.entries({Admitted:run.batch_counts.admitted,'Queued in Nautilus':run.batch_counts.native_queued,'Transport started':run.batch_counts.transport_started,'Broker responses':run.batch_counts.sent,Working:run.batch_counts.working,Filled:run.batch_counts.filled,Expired:run.batch_counts.expired,Rejected:run.batch_counts.rejected,'Never sent':run.batch_counts.not_sent,Unknown:run.batch_counts.unknown}).map(([label,count])=>label+': '+count).join(' · '))+'</p>':'')+
   '<div class="basket-actions"><button class="primary" data-spy-rebalance="preview" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview SPY rebalance</button>'+
   (remainingAvailable?'<button data-spy-rebalance="preview_remaining" '+(!eligible||spyRebalanceBusy?'disabled':'')+'>Preview remaining trades</button>':'')+
   (run?.status==='queued'?'<button data-spy-rebalance="cancel" '+(spyRebalanceBusy?'disabled':'')+'>Cancel queued rebalance</button>':

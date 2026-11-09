@@ -33,6 +33,7 @@ def main():
     sys.modules[adapter_spec.name] = adapter_module
     adapter_spec.loader.exec_module(adapter_module)
     from _tradingagents_native_adapter.execution_lifecycle import ExecutionLifecycle
+    from _tradingagents_native_adapter.spy_batch import BatchObservationPending, BatchStockDeferred
     from _tradingagents_native_adapter.native_recovery import collect_history
     from _tradingagents_native_adapter.linked_orders import observed_orders, native_order, native_group, native_observation, LIVE, equity_quantity, asset_session_flags, option_contract, is_package
     from _tradingagents_native_adapter.alpaca_readonly import AlpacaREST, ConnectionConfig
@@ -737,7 +738,8 @@ def main():
             native_balance["reported_margin"] = None if margin is None else {"initial": str(margin.initial.as_decimal()),
                 "maintenance": str(margin.maintenance.as_decimal()), "currency": str(margin.currency)}
         execution = clients.get("execution")
-        commands = execution.lifecycle.authority().database.read("commands", {})["data"].get("commands", {}) if execution and hasattr(execution, "lifecycle") else {}
+        authority_state = execution.lifecycle.authority().database.read("commands", {})["data"] if execution and hasattr(execution, "lifecycle") else {}
+        commands = authority_state.get("commands", {})
         reconstruction = execution.lifecycle.authority().database.read("commands", {})["data"].get("native_reconstructions", {}) if execution and hasattr(execution, "lifecycle") else {}
         reconstruction = {key: value for key, value in reconstruction.items() if value.get("native_epoch") == native_epoch}
         reconciliation = reconcile(observed, native_positions, native_orders, native_cash, commands=commands, native_epoch=native_epoch,
@@ -807,11 +809,13 @@ def main():
                 "observed_mode": connection.mode if connected and not observed["error"] else "unknown",
                 "mode_basis": "Official trading origin plus authenticated account observation", "credentials_pinned": True},
             "native_risk": risk_snapshot(connected and not observed["error"]),
+            "spy_batch_evidence": execution.lifecycle.batch_evidence(authority_state) if execution and hasattr(execution, "lifecycle") else {},
             "version": __version__, "source_sha256": source_sha256, "native_epoch": native_epoch, "worker_pid": os.getpid(), "persistence": dict(persistence_status),
             "broker_observation": observed.get("broker_observation", {}),
             "native_import_gap": observed.get("native_import_gap"),
             "native_contract": {"source_commit": manifest["source_commit"], "wheel_sha256": manifest["official_wheel"]["sha256"],
                 "observation_in_progress": bool(execution and hasattr(execution, "observation_lock") and execution.observation_lock.locked()),
+                "observation_retry_required": bool(execution and getattr(execution, "observation_dirty", False)),
                 "files_match_reviewed_wheel": True, "synthetic_recovery": False,
                 "actual_missing_commission_preserved": True, "commission_model_scope": "verified_direct_paper_us_equity_and_standard_equity_options_only",
                 "limitation": "Actual fill identity and economics are required; documented direct-paper equity commission may be modeled separately from unknown actual costs",
@@ -1019,6 +1023,16 @@ def main():
                                 require_fill_match(retained_fill_report(event, captured), native_fills[identity])
                             native_fills[identity] = event
                 parent_ids = {fill["order_id"] for fill in scoped_fills} | {str(event.venue_order_id) for event in native_fills.values()}
+                for row in observed.get("order_history", []):
+                    if (row["id"] in by_order or row.get("status") != "filled" or row.get("asset_class") != "us_equity"
+                            or row.get("replaces") or row.get("replaced_by") or row.get("order_class") not in {None, "", "simple"}):
+                        continue
+                    actual = [fill for fill in scoped_fills if fill["order_id"] == row["id"]]
+                    native = {key for key, event in native_fills.items() if str(event.venue_order_id) == row["id"]}
+                    if (actual and {execution_id(fill["id"]) for fill in actual} == native
+                            and sum((Decimal(fill["qty"]) for fill in actual), Decimal(0)) == Decimal(row["qty"])):
+                        # Same-process closed parents retain exact fresh activity/native fill checks below.
+                        by_order[row["id"]] = row
                 pending = set(parent_ids) | set(by_order)
                 pending.update(identity for command in commands.values() if command.get("terms", {}).get("exit_plan")
                                and command["symbol"] in current_symbols
@@ -1632,7 +1646,71 @@ def main():
             await Data._disconnect(self)
 
         async def _submit_order(self, command):
-            await self.lifecycle.submit(command)
+            while True:
+                try:
+                    await self.lifecycle.submit(command)
+                    return
+                except BatchObservationPending:
+                    async with self.observation_lock:
+                        pass
+                    if self.observation_dirty:
+                        await self._query_account(None)
+                except ValueError as error:
+                    identity = (command.params or {}).get("durable_command_id")
+                    saved = self.lifecycle.authority().database.read("commands", {})["data"]["commands"].get(identity, {})
+                    if not saved.get("spy_batch_id") or saved.get("transport_attempt") != {"version": 1, "state": "not_started"}:
+                        raise
+                    self.lifecycle.stop_batch_command(identity, error, [command.order])
+                    return
+
+        async def dispatch_spy_batch(self, identity):
+            authority = self.lifecycle.authority()
+            def claim(records):
+                batch = records["commands"].get("spy_batches", {}).get(identity)
+                if not batch or batch["state"] != "reserved" or batch["epoch"] != native_epoch:
+                    raise ValueError("Batch dispatch is single-use and bound to the current native process")
+                batch.update(state="dispatching")
+            authority.transaction(claim)
+            batch = authority.database.read("commands", {})["data"]["spy_batches"][identity]
+            rate = risk_snapshot(True)
+            if rate.get("status") != "available":
+                raise ValueError("Current native submit rate is unavailable")
+            limit = rate["values"]["submit_rate"]
+            interval, count = Decimal(limit["interval_ns"]), Decimal(limit["commands"])
+            if not interval.is_finite() or not count.is_finite() or interval <= 0 or count <= 0:
+                raise ValueError("Current native submit rate is invalid")
+            spacing = interval / Decimal(1_000_000_000) / count
+            for key in batch["members"]:
+                delay = max(float(spacing), self.lifecycle.transport.batch_delay())
+                until_close = max(0, (datetime.fromisoformat(batch["close_at"]) - datetime.now(UTC)).total_seconds())
+                await asyncio.sleep(min(delay, until_close))
+                while True:
+                    try:
+                        strategy_holder[0].dispatch(key)
+                        def queued(records):
+                            records["commands"]["commands"][key]["native_enqueued_at"] = datetime.now(UTC).isoformat()
+                        authority.transaction(queued)
+                        break
+                    except BatchObservationPending:
+                        async with self.observation_lock:
+                            pass
+                        if self.observation_dirty:
+                            await self._query_account(None)
+                    except ValueError as error:
+                        self.lifecycle.stop_batch_command(key, error)
+                        break
+                # Yield to independent send tasks, never wait for their acknowledgment.
+                await asyncio.sleep(0)
+                saved = authority.database.read("commands", {})["data"]["commands"][key]
+                order = self.cache.order(ClientOrderId(saved.get("native_client_order_id", saved["client_order_id"])))
+                if (order is not None and enum_name(order.status) == "DENIED"
+                        and saved["transport_attempt"] == {"version": 1, "state": "not_started"}):
+                    self.lifecycle.stop_batch_command(key, BatchStockDeferred("Native risk denied this leg before broker transport"))
+            def finish(records):
+                saved = records["commands"]["spy_batches"][identity]
+                if saved["state"] == "dispatching":
+                    saved["state"] = "submitted"
+            authority.transaction(finish)
 
         async def _submit_order_list(self, command):
             await self.lifecycle.submit_group(command, strategy_holder[0].order_factory)
@@ -1777,6 +1855,22 @@ def main():
                 elif command.get("command") == "dispatch":
                     observer.dispatch(command["command_id"], command.get("action", "submit"))
                     reply["queued_in_native_engine"] = True
+                elif command.get("command") == "dispatch_spy_batch":
+                    execution = clients["execution"]
+                    if getattr(execution, "batch_task", None) is not None and not execution.batch_task.done():
+                        raise ValueError("A native batch enqueue is already active; it must not be replayed")
+                    identity = command["batch_id"]
+                    execution.batch_task = asyncio.create_task(execution.dispatch_spy_batch(identity))
+                    def completed(task):
+                        if task.cancelled() or task.exception() is None:
+                            return
+                        error = task.exception()
+                        reason = str(error) if isinstance(error, ValueError) else type(error).__name__
+                        execution.lifecycle.authority().transaction(lambda records: records["commands"]["spy_batches"][identity].update(
+                            state="blocked", reason="Native batch enqueue stopped: " + reason))
+                        publish_once()
+                    execution.batch_task.add_done_callback(completed)
+                    reply["batch_enqueue_requested"] = True
                 elif command.get("command") == "option_instruction":
                     await clients["execution"]._query_account(None)
                     await clients["execution"].lifecycle.dispatch_instruction(command["instruction_id"])

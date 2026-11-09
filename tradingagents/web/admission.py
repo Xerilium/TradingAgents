@@ -78,9 +78,9 @@ def invalidate(records):
             reason = "Proposal changed, rejected, deferred or removed"
         elif investor["policy"]["revision"] != approval["policy_revision"]:
             reason = "Policy revision changed"
-        elif approval.get("expires_at") and instant(approval["expires_at"]) <= datetime.now(UTC):
+        elif approval.get("expires_at") and instant(approval["expires_at"]) <= datetime.now(UTC) and not _batch_consumed(state, approval):
             reason = "Approval expired"
-        elif state["account_versions"].get(approval["account_id"]) not in (None, approval["account_version"]):
+        elif state["account_versions"].get(approval["account_id"]) not in (None, approval["account_version"]) and not _batch_consumed(state, approval):
             reason = "Relevant account/market observation changed"
         if reason and identity not in state["revocations"]:
             state["revocations"][identity] = {"at": stamp(), "reason": reason}
@@ -100,6 +100,11 @@ def invalidate(records):
         elif group["state"] not in {"paused", "review_required"}:
             group["state"] = "running" if any(leg["state"] != "admitted_not_dispatched" for leg in legs) else "ready"
     return records
+
+
+def _batch_consumed(state, approval):
+    from .spy_batch import consumed
+    return consumed(state, approval)
 
 
 class CommandAdmission:
@@ -281,12 +286,13 @@ class CommandAdmission:
         if self.execution_enabled is not True:
             raise ValueError("This session does not permit command execution")
 
-    def transaction(self, change, *, expected=None, evidence=False):
+    def transaction(self, change, *, expected=None, evidence=False, extra=None):
         defaults = {"investor": INVESTOR_DEFAULT, "commands": DEFAULT}
         if evidence:
             from .market_history import DEFAULT as HISTORY
             from .stock_evidence import DEFAULT as EVIDENCE
             defaults.update(market_history=HISTORY, stock_evidence=EVIDENCE)
+        defaults.update(extra or {})
         return self.database.transact(defaults, change, expected=expected)
 
     def snapshot(self):
@@ -331,6 +337,8 @@ class CommandAdmission:
             for approval_id, approval in records["commands"]["approvals"].items():
                 proposal = proposals.get(approval["proposal_id"])
                 if approval_id in records["commands"]["revocations"] or proposal is None:
+                    continue
+                if _batch_consumed(records["commands"], approval):
                     continue
                 result = evaluate(proposal, records["investor"]["policy"], runtime, records["stock_evidence"],
                                   records["market_history"], records["commands"], approval["constraints"], self.database.path.parent)
@@ -434,12 +442,12 @@ class CommandAdmission:
             raise PermissionError("Browse-only mode does not permit command admission")
         return self.transaction(lambda records: self._admit(records, approval_id), expected=expected, evidence=True)
 
-    def _admit(self, records, approval_id):
+    def _admit(self, records, approval_id, *, batch_runtime=None, batch_evaluation=None):
         state = records["commands"]
         if state.get("new_orders_blocked", False):
             raise ValueError("Account-wide block-new-orders is active")
         approval = state["approvals"][approval_id]
-        runtime = self.checked_observation(approval["constraints"])
+        runtime = batch_runtime if batch_runtime is not None else self.checked_observation(approval["constraints"])
         state["account_versions"][runtime["account"]["id"]] = account_version(runtime)
         invalidate(records)
         if state["recovery_required"] or approval_id in state["revocations"]:
@@ -447,7 +455,7 @@ class CommandAdmission:
         if any(c["approval_id"] == approval_id for c in state["commands"].values()):
             return records
         proposal = self.proposal(records, approval["proposal_id"])
-        evaluation = self.assess(records, proposal, runtime, approval["constraints"])
+        evaluation = batch_evaluation if batch_evaluation is not None else self.assess(records, proposal, runtime, approval["constraints"])
         if not evaluation["passed"] or evaluation["binding_sha256"] != approval.get("evaluation_binding_sha256"):
             raise ValueError("Evidence, policy or source observations changed after approval; renewed exact review is required")
         terms = proposal["terms"]
@@ -562,8 +570,17 @@ class CommandAdmission:
         def change(records):
             state = records["commands"]
             state.update(recovery_required=True, recovery_reason="Restart requires authoritative identity reconciliation; unknown outcomes retain commitments")
+            for batch in state.get("spy_batches", {}).values():
+                batch.update(state="blocked", reason="Restart invalidates batch dispatch authority; fresh review is required, never replay")
             for command in state["commands"].values():
                 if command["state"] in {"dispatch_intent", "submitting", "cancel_pending", "replace_pending"}:
+                    if (command.get("spy_batch_id") and command["transport_attempt"] == {"version": 1, "state": "not_started"}
+                            and not any(command.get(key) for key in ("broker_order_ids", "fill_ids", "native_deliveries", "native_pending_commitment", "pending_action"))):
+                        command["transport_attempt"].update(state="not_sent", resolved_at=stamp())
+                        command.update(state="not_sent", cash_commitment="0", remaining_quantity="0")
+                        state["revocations"].setdefault(command["approval_id"], {"at": stamp(), "reason": "Restart ended unused batch authority; fresh review is required"})
+                        command["timeline"].append({"at": stamp(), "state": "not_sent", "reason": "Versioned boundary proves batch transport never started; no replay"})
+                        continue
                     command["state"] = "outcome_unknown"
                     command["timeline"].append({"at": stamp(), "state": "outcome_unknown", "reason": "Restart after possible transport I/O; no automatic resubmit"})
             return invalidate(records)
@@ -754,6 +771,13 @@ class CommandAdmission:
             if operation != "cancel":
                 target = command if operation == "submit" else state["commands"][action["replacement_command_id"]]
                 approval = state["approvals"][target["approval_id"]]
+                if operation == "submit" and target.get("spy_batch_id"):
+                    self.checked_spy_batch(records, target)
+                    attempt = target["transport_attempt"]
+                    if attempt != {"version": 1, "state": "not_started"}:
+                        raise ValueError("This reserved SPY command already crossed its transport boundary")
+                    attempt.update(state="started", started_at=stamp(), native_epoch=state.get("native_epoch"), operation=operation)
+                    return
                 runtime = self.checked_observation(approval["constraints"])
                 state["account_versions"][approval["account_id"]] = account_version(runtime)
                 invalidate(records)
@@ -794,7 +818,21 @@ class CommandAdmission:
             attempt.update(state="started", started_at=stamp(), native_epoch=state.get("native_epoch"), operation=operation)
             if operation == "replace":
                 target["transport_attempt"] = copy.deepcopy(attempt)
-        return self.transaction(change, evidence=True)
+        from .fund_plans import DEFAULT as FUNDS, RECORD as FUND_RECORD
+        return self.transaction(change, evidence=True, extra={FUND_RECORD: FUNDS})
+
+    def checked_spy_batch(self, records, command):
+        from .fund_plans import DEFAULT as FUNDS, RECORD as FUND_RECORD, binding
+        from .spy_batch import validate
+        batch = records["commands"].get("spy_batches", {}).get(command.get("spy_batch_id"))
+        if not batch:
+            raise ValueError("Durable SPY batch authority is missing")
+        funds = records.get(FUND_RECORD)
+        if funds is None:
+            funds = self.database.read(FUND_RECORD, FUNDS)["data"]
+        if binding(funds, batch["account_id"]) != batch["fund_binding"]:
+            raise ValueError("The authored fund reserve changed after batch approval")
+        return validate(batch, records, self.observation(), command_id=command["id"])
 
     def resolve_never_dispatched(self, identity, operation="submit", *, expected=None):
         """Only the versioned durable local boundary can prove absence of network I/O."""

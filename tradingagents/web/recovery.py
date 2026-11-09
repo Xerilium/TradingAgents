@@ -518,6 +518,9 @@ def retain_command_authority(service, database, destination, *, allow_missing_ar
                 pending["remaining_quantity"] = str(max(total, Decimal(pending.get("remaining_quantity", "0"))))
             restored["commands"][identity] = value
         restored.setdefault("basket_executions", {}).update(copy.deepcopy(current.get("basket_executions", {})))
+        restored.setdefault("spy_batches", {}).update(copy.deepcopy(current.get("spy_batches", {})))
+        for batch in restored["spy_batches"].values():
+            batch.update(state="blocked", reason="Workspace recovery requires fresh batch review; never replay retained dispatch intents")
         restored["new_orders_blocked"] = current.get("new_orders_blocked", False)
         restored.setdefault("control_history", []).extend(copy.deepcopy(current.get("control_history", [])))
         for relative, expected in references(current):

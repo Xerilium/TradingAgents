@@ -196,9 +196,14 @@ class ExecutionLifecycle:
         command = state["commands"][identity]
         if sending and command.get("origin") in {"external_broker", "linked_broker"}:
             raise ValueError("Observed external orders have no original app submission authority")
-        if sending and (command["state"] != "dispatch_intent" or not command["dispatch_intent_at"]):
+        unsent_batch = command.get("spy_batch_id") and command["state"] == "submitting" and command.get("transport_attempt") == {"version": 1, "state": "not_started"}
+        if sending and (command["state"] != "dispatch_intent" and not unsent_batch or not command["dispatch_intent_at"]):
             raise ValueError("Durable dispatch intent is required before transport I/O")
         if sending:
+            if command.get("spy_batch_id"):
+                authority.checked_spy_batch({"commands": state,
+                    "investor": authority.database.read("investor")["data"]}, command)
+                return command
             approval = state["approvals"][command["approval_id"]]
             runtime = authority.checked_observation(approval["constraints"])
             proposal = authority.database.read("investor")["data"]
@@ -272,6 +277,9 @@ class ExecutionLifecycle:
             command["timeline"].append({"at": datetime.now(UTC).isoformat(), "state": state, "reason": reason, "receipt": receipt})
             if state == "outcome_unknown":
                 records["commands"].update(recovery_required=True, recovery_reason=reason)
+                batch = records["commands"].get("spy_batches", {}).get(command.get("spy_batch_id"))
+                if batch:
+                    batch.update(state="blocked", reason=reason)
         return authority.transaction(change)
 
     def delivery(self, command_id, identity, data, reference, status=None):
@@ -878,26 +886,116 @@ class ExecutionLifecycle:
         await self._submit(native_command, durable, [native_command.order])
 
     async def _submit(self, native_command, durable, orders):
+        from .spy_batch import BatchObservationPending
         identity = durable["id"]
-        if account_version(self.observation()) != durable["account_version"]:
+        batch = durable.get("spy_batch_id")
+        if not batch and account_version(self.observation()) != durable["account_version"]:
             raise ValueError("Source account version changed before native dispatch")
         terms = durable["terms"]
         self.require_package_valuation(durable)
         body = broker_payload(terms, durable["client_order_id"])
-        self.record_pending(identity, "submitting", "Native adapter transport attempt begins after durable intent")
-        if account_version(self.observation()) != durable["account_version"]:
-            raise ValueError("Source account changed before native dispatch")
-        self.authority().transport_boundary(identity, "submit")
+        try:
+            self.record_pending(identity, "submitting", "Native adapter transport attempt begins after durable intent")
+            if not batch and account_version(self.observation()) != durable["account_version"]:
+                raise ValueError("Source account changed before native dispatch")
+            self.authority().transport_boundary(identity, "submit")
+        except BatchObservationPending:
+            raise
+        except ValueError as error:
+            if not batch:
+                raise
+            self.stop_batch_command(identity, error, orders)
+            return
         try:
             for order in orders:
                 self.native.generate_order_submitted(order)
             result = await asyncio.to_thread(self.transport.submit_order, body)
             reference = self.receipt(identity, "Alpaca POST /v2/orders", {"request": body, "raw_response": result["raw"].decode()})
+            if batch:
+                def response(records):
+                    records["commands"]["commands"][identity]["transport_attempt"].update(
+                        response_receipt=reference, response_received_at=datetime.now(UTC).isoformat())
+                self.authority().transaction(response)
             self.record_pending(identity, "submitting", "HTTP response received; authoritative lifecycle confirmation remains required", reference)
             await self.handle_update({"stream": "trade_updates", "data": {"event": "rest_order_observation", "order": result["data"]}}, reference)
         except Exception as exc:
             self.record_pending(identity, "outcome_unknown", "Submit transport or mapping unresolved (" + type(exc).__name__ + "); never resubmit automatically")
             raise
+
+    def stop_batch_command(self, identity, error, orders=()):
+        from .spy_batch import BatchStockDeferred
+        authority = self.authority()
+        command = authority.database.read("commands", DEFAULT)["data"]["commands"][identity]
+        if command["transport_attempt"] != {"version": 1, "state": "not_started"}:
+            raise ValueError("A possibly sent batch command cannot be released") from error
+        authority.resolve_never_dispatched(identity)
+        def explain(records):
+            command = records["commands"]["commands"][identity]
+            command["deferred_reason"] = str(error)
+            if not isinstance(error, BatchStockDeferred):
+                records["commands"]["spy_batches"][command["spy_batch_id"]].update(state="blocked", reason=str(error))
+        authority.transaction(explain)
+        for order in orders:
+            if not order.is_closed:
+                self.native.generate_order_denied(order, str(error))
+
+    def batch_evidence(self, state):
+        from .linked_orders import execution_id
+        from .alpaca_reports import fill_timestamp_matches, timestamp
+        result = {}
+        for batch in state.get("spy_batches", {}).values():
+            if (batch["epoch"] != self.native_epoch or batch["state"] == "blocked"
+                    or not any(state["commands"][key]["transport_attempt"].get("state") == "not_started" for key in batch["members"])):
+                continue
+            owned = set(batch["members"]) | set(batch["baseline"]["tracked"])
+            clients = {state["commands"][key].get("native_client_order_id", state["commands"][key]["client_order_id"]) for key in owned}
+            positions = {}
+            for position in self.native.cache.positions_open():
+                symbol = str(position.instrument_id).removesuffix(".ALPACA")
+                positions[symbol] = positions.get(symbol, Decimal(0)) + position.quantity.as_decimal() * (-1 if position.is_short else 1)
+            events = []
+            from .native_types import ClientOrderId, OrderFilled, enum_name
+            for key in owned:
+                command = state["commands"][key]
+                order = self.native.cache.order(ClientOrderId(command.get("native_client_order_id", command["client_order_id"])))
+                if order is None:
+                    continue
+                for event in order.events:
+                    if not isinstance(event, OrderFilled):
+                        continue
+                    identity = execution_id(event.trade_id)
+                    sources = [item for item in command.get("native_deliveries", {}).values()
+                        if execution_id(item.get("input", {}).get("execution_id", "")) == identity
+                        and item.get("native_epoch") == self.native_epoch
+                        and item.get("status") in CONFIRMED | {"pending", "intent", "unresolved"}
+                        and digest(item.get("input")) == item.get("source_sha256")]
+                    proven = False
+                    for source in sources:
+                        data, row = source["input"], source["input"].get("order", {})
+                        fee = data.get("commission")
+                        expected_fee = Decimal(str(fee)) if fee is not None else Decimal(0)
+                        proven = (str(event.account_id) == "ALPACA-" + batch["account_id"]
+                            and str(event.venue_order_id) == row.get("id") and row.get("client_order_id") == command["client_order_id"]
+                            and str(event.instrument_id) == command["instrument_id"] and row.get("symbol") == command["symbol"]
+                            and row.get("side", "").upper() == command["side"]
+                            and enum_name(event.order_side) == command["side"]
+                            and fill_timestamp_matches(event.ts_event, timestamp(data.get("timestamp") or row["updated_at"]))
+                            and event.last_qty.as_decimal() == Decimal(str(data["qty"]))
+                            and event.last_px.as_decimal() == Decimal(str(data["price"]))
+                            and event.commission is not None and str(event.commission.currency) == "USD"
+                            and event.commission.as_decimal() == expected_fee)
+                        if proven:
+                            break
+                    events.append({"command_id": key, "execution_id": identity, "symbol": command["symbol"],
+                        "side": command["side"], "quantity": str(event.last_qty.as_decimal()),
+                        "price": str(event.last_px.as_decimal()), "commission": str(event.commission.as_decimal()) if event.commission is not None else None,
+                        "ts_event": event.ts_event, "proven": proven})
+            result[batch["id"]] = {"native_epoch": self.native_epoch,
+                "positions": {key: str(value) for key, value in positions.items()},
+                "executions": events,
+                "foreign_native_orders": [str(order.client_order_id) for order in self.native.cache.orders_open()
+                                           if str(order.client_order_id) not in clients]}
+        return result
 
     async def cancel(self, native_command):
         identity = (native_command.params or {}).get("durable_command_id")
@@ -1137,6 +1235,17 @@ class ExecutionLifecycle:
         fee_source = getattr(self.native, "recovery_fee_sources", {}).get(canonical)
         effective_data = data
         row = data.get("order") or {}
+        if row:
+            def external_update(records):
+                state = records["commands"]
+                for batch in state.get("spy_batches", {}).values():
+                    if batch["epoch"] != self.native_epoch or batch["state"] not in {"reserved", "dispatching", "submitted"}:
+                        continue
+                    owned = set(batch["members"]) | set(batch["baseline"]["tracked"])
+                    if not any(row.get("client_order_id") == state["commands"][key]["client_order_id"]
+                               or row.get("id") in state["commands"][key]["broker_order_ids"] for key in owned):
+                        batch.update(state="blocked", reason="An unrelated real-time broker update crossed SPY batch authority")
+            self.authority().transaction(external_update)
         reference = reference or self.receipt("broker-observation", "Alpaca trade update before native interpretation",
             {"message": message, "native_account_id": str(self.native.account_id)})
         commands = self.authority().snapshot()["data"]["commands"]

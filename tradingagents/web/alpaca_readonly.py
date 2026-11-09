@@ -2,15 +2,20 @@
 
 import json
 import re
+import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import UUID
 
 DEFAULT_CREDENTIALS = Path(r"C:\src\printer\apps\tradingagents\.env")
 TRADING_ORIGINS = {"https://paper-api.alpaca.markets": "paper", "https://api.alpaca.markets": "live"}
+_TRADING_RATE = {}
+_TRADING_RATE_LOCK = threading.Lock()
 
 
 def normalize_trading_endpoint(value):
@@ -238,6 +243,30 @@ class AlpacaREST:
         action = "exercise" if kind == "exercise" else "do-not-exercise"
         return self._request("/v2/positions/" + symbol + "/" + action, "POST", receipt=True)
 
+    def batch_delay(self):
+        with _TRADING_RATE_LOCK:
+            quota = _TRADING_RATE.get(self.connection.endpoint)
+            if not quota or quota["reset"] <= time.time():
+                return 0
+            return (quota["reset"] - time.time()) / max(1, quota["remaining"])
+
+    def _observe_trading_rate(self, headers):
+        remaining, reset = headers.get("X-RateLimit-Remaining"), headers.get("X-RateLimit-Reset")
+        if remaining is None and reset is None:
+            return
+        try:
+            remaining, reset = int(remaining), int(reset)
+        except (TypeError, ValueError):
+            raise ValueError("Broker trading quota metadata is incomplete or invalid") from None
+        if remaining < 0 or reset <= 0:
+            raise ValueError("Broker trading quota metadata is outside its supported bounds")
+        with _TRADING_RATE_LOCK:
+            prior = _TRADING_RATE.get(self.connection.endpoint)
+            if not prior or reset > prior["reset"]:
+                _TRADING_RATE[self.connection.endpoint] = {"remaining": remaining, "reset": reset}
+            elif reset == prior["reset"]:
+                prior["remaining"] = min(prior["remaining"], remaining)
+
     def _request(self, path, method, body=None, *, data=False, receipt=False):
         instruction = method == "POST" and re.fullmatch(r"/v2/positions/[A-Z]{1,6}\d{6}[CP]\d{8}/(?:exercise|do-not-exercise)", path)
         if method != "GET":
@@ -251,7 +280,15 @@ class AlpacaREST:
         base = "https://data.alpaca.markets" if data else self.connection.endpoint
         request = Request(base + path, method=method, headers=self.connection.headers(),
                           data=None if body is None else json.dumps(body).encode("utf-8"))
-        with build_opener(NoRedirect()).open(request, timeout=20) as response:
+        try:
+            response = build_opener(NoRedirect()).open(request, timeout=20)
+        except HTTPError as error:
+            if not data:
+                self._observe_trading_rate(error.headers)
+            raise
+        with response:
+            if not data:
+                self._observe_trading_rate(response.headers)
             if receipt:
                 payload = response.read(8 * 1024 * 1024 + 1)
                 if len(payload) > 8 * 1024 * 1024:

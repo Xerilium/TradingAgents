@@ -508,6 +508,15 @@ def validate(values, resolve_artifact=None):
             identity(group["id"])
             if not group["command_ids"] or any(key not in commands["commands"] for key in group["command_ids"]):
                 raise ValueError("Restored basket has missing durable commands")
+        from .spy_batch import sealed
+        for key, batch in commands.get("spy_batches", {}).items():
+            if (batch.get("id") != key or batch.get("binding") != sealed(batch)
+                    or batch.get("state") not in {"reserved", "dispatching", "submitted", "blocked"}
+                    or any(identity not in commands["commands"]
+                           or commands["commands"][identity].get("spy_batch_id") != key
+                           or commands["commands"][identity]["terms"] != member["terms"]
+                           for identity, member in batch["members"].items())):
+                raise ValueError("Restored SPY batch authority has missing or changed exact command members")
         for approval in commands["approvals"].values():
             fields(approval, {"id": str, "proposal_id": str, "proposal_revision": int, "policy_revision": int, "account_id": str, "account_version": str, "expires_at": str}, "approval reference")
             identity(approval["id"])

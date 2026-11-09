@@ -86,17 +86,40 @@ Deferred trades are separate from planned/submitted counts and persist for a fre
 each new order; account-wide risk, funding, session and reconciliation blockers remain
 blocking for the whole run. Existing proven working orders keep their reservations.
 
-SPY submission advances after proven broker acceptance, not after each fill.
-Accepted unfilled orders retain their existing cash/share reservations; buy sizing
-subtracts pending commitments above the fund reserve and never credits pending
-sale proceeds. Transient incomplete reconciliation waits and retries without
-replaying an order. Unknown outcomes, native conflicts, import failures, rejected
-orders and changed account/policy/fund/session bindings still prevent admission.
-The run's **submitted** state means its reviewed legs were processed, not that
-orders filled. Existing commands remain authoritative for individual order status.
-Later previews retain proven working SPY orders and do not create another order
-for their stock. Actual asynchronous fills must match the run's expected holdings
-before another order is admitted.
+Independent SPY buys use one sealed batch authority, not acknowledgment-driven
+per-stock admission. Preview freezes each equity DAY LIMIT quantity and price
+against observed cash after existing commitments and the required fund/policy
+reserve; pending sale proceeds are never credited. One SQLite transaction
+reviews the combined portfolio and reserves every eligible independent buy,
+acquiring each exact dispatch intent together. Consumed batch approvals are not
+revoked by that batch's own acknowledgments, fills or account-version changes.
+The native adapter queues independent orders at the existing native submit rate
+and paces against the broker's reported remaining/reset quota when supplied,
+without waiting for earlier HTTP responses, fills or account-history polls.
+Unchanged, fully filled plain-equity parent observations are reused only inside
+the current native process when fresh activity identities and quantities still
+match all retained native executions; normal exact fill conversion/proof remains
+mandatory. This avoids refetching every closed parent on every account poll.
+
+The reserved envelope is not a last-good-balance fallback. Current native
+executions must retain exact account, instrument, order, execution, timestamp,
+quantity, price and USD fee proof. Current broker cash/holdings must be exact
+owned-execution prefixes of the reservation baseline; USD cash is compared at
+cent precision. The full original obligation stays reserved even after price
+improvements or sales. External changes, genuine unknown outcomes, conflicts,
+native import failures, changed terms/policy/fund authority, stale observations,
+reserve breaches and session expiry stop unsent orders. Current instrument and
+quote/rule checks still defer only the affected stock before transport.
+
+The UI separates admitted, native-queued, transport-started, broker-response,
+working, filled, expired, rejected, never-sent and unknown counts. Native queueing
+is not broker submission, and **submitted** never means all orders filled.
+No native request or ambiguous transport attempt is automatically replayed.
+Restart/workspace recovery blocks retained batch authority, preserves uncertain
+commitments and requires fresh review. Same-session remainder review excludes
+proven working/filled members and requires exact no-send or terminal residual
+proof for a new attempt. A later-session preview uses current weights, prices,
+broker holdings and pending obligations, never the prior batch's quantities.
 
 Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity
