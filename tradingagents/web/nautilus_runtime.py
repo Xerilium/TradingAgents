@@ -18,6 +18,7 @@ class NautilusRuntime:
         self.credential_profile = credential_profile
         self.application_root = Path(application_root).resolve() if application_root else Path(directory).parent.resolve()
         self.lock = threading.RLock()
+        self.observation_changed = threading.Condition(self.lock)
         self.process = None
         self.snapshot = {"status": "stopped", "read_only": True}
         self.received = 0
@@ -94,6 +95,7 @@ class NautilusRuntime:
             with self.lock:
                 if process is self.process and (self.snapshot["status"] != "stopped" or value.get("status") == "error"):
                     self.snapshot, self.received = value, time.monotonic()
+                    self.observation_changed.notify_all()
                 else:
                     continue
             try:
@@ -153,6 +155,20 @@ class NautilusRuntime:
         if self.state()["status"] != "connected":
             raise ValueError("A current connected native node is required to derive actual package valuation")
         return self.request("package_valuation", terms=terms)["package_valuation"]
+
+    def wait_for_reconciliation(self, connection_session, *, timeout=45):
+        from .admission import ReconciliationPending
+
+        def complete():
+            current = self.state()
+            return (current["status"] != "connected" or current.get("connection_session") != connection_session
+                    or current.get("local_record_error") or current.get("native_import_gap")
+                    or current.get("reconciliation", {}).get("status") == "reconciled"
+                    and current.get("native_contract", {}).get("observation_in_progress") is not True)
+
+        with self.observation_changed:
+            if not self.observation_changed.wait_for(complete, timeout=timeout):
+                raise ReconciliationPending("Current broker/native observation is still being completed. No SPY rebalance was queued.")
 
     def state(self):
         with self.lock:

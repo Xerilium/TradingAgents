@@ -25,6 +25,7 @@ from tradingagents.integrations.maenifold import GatewayRateLimited
 
 from .service import DeskService
 from .app_database import StoreConflict
+from .admission import ReconciliationPending
 from .recovery import WriterBusy
 
 
@@ -461,7 +462,15 @@ class DeskHandler(BaseHTTPRequestHandler):
             elif path == "/api/discovery":
                 result = service.discovery(data)
             elif path == "/api/investor":
-                result = service.save_investor(data)
+                try:
+                    result = service.save_investor(data)
+                except ReconciliationPending as exc:
+                    preview = service.spy_rebalance.manual_preview
+                    if (data.get("action") == "spy_rebalance_submit" and preview
+                            and preview["token"] == data.get("submit_token")):
+                        self._send(409, {"error": str(exc), "spy_preview_not_queued": True})
+                        return
+                    raise
             elif path == "/api/evaluations":
                 result = service.evaluation_action(data)
             elif path == "/api/approvals":

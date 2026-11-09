@@ -612,7 +612,7 @@ async function api(path, body, {timeoutMs=path.startsWith('/api/instruments/')||
       }
       let payload;
       try{payload=await response.json();}catch{if(timedOut)throw new Error('timeout');throw new Error(`The local service returned an unreadable response (${response.status}).`);}
-      if(!response.ok){const error=new Error(payload?.error||`Request failed (${response.status}).`);error.status=response.status;throw error;}
+      if(!response.ok){const error=new Error(payload?.error||`Request failed (${response.status}).`);error.status=response.status;error.spyPreviewNotQueued=payload?.spy_preview_not_queued===true;throw error;}
       responseStage='complete';return payload;
     })();
     const result=await Promise.race([request,deadline]);logQuote('finished','success');return result;
@@ -3378,6 +3378,10 @@ async function spyRebalanceAction(action){
   else{investorRecord=result;state.investor=result;if(spyPreview)spyPreview.submitToken=null;}
  }catch(error){if(state.store_generation===generation){
   if(action==='submit'){
+   if(error.status===409&&error.spyPreviewNotQueued===true){
+    spyHoldingsMessage=error.message+' No rebalance was queued. This preview is retained; retry Submit paper orders after account sync completes, while the preview is current.';
+    return;
+   }
    if(spyPreview)spyPreview.submitToken=null;
    spySubmitResult={generation,account:config.eligible_account_id,outcome:error.status>=400&&!error.cause?'error':'unknown',message:error.message};
   }

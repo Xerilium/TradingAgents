@@ -261,7 +261,7 @@ class SpyRebalance:
         token = request.get("submit_token")
         if not token or not preview or token != preview["token"] or time.monotonic() >= preview["expires"]:
             raise ValueError("Preview the SPY rebalance again before submitting.")
-        self.order_account(preview["account"])
+        self.desk.admission.enabled()
         day = datetime.now(NEW_YORK).date().isoformat()
         clock = self.desk.data_jobs.read("/v2/clock", data=False, canceled=lambda: self.stopped)["data"]
         market_open = clock.get("is_open")
@@ -275,36 +275,51 @@ class SpyRebalance:
             if next_open.tzinfo is None or clock.get("is_open") is not False or next_open <= datetime.now(UTC):
                 raise ValueError("The next regular session could not be confirmed. Preview again.")
             session = next_open.astimezone(NEW_YORK).date().isoformat()
-        with self.desk.maintenance:
-            store = self.desk.store
-            if (self.stopped or self.manual_preview is not preview or store is not preview["store"]
-                    or time.monotonic() >= preview["expires"] or request.get("account_id") != preview["account"]):
-                raise ValueError("The account or preview changed. Preview the SPY rebalance again.")
-            runtime = self.order_account(preview["account"])
-            if runtime["connection_session"] != preview["connection"]:
-                raise ValueError("The paper account reconnected. Preview the SPY rebalance again.")
-            if runtime.get("market_open") is not market_open or datetime.now(NEW_YORK).date().isoformat() != day:
-                raise ValueError("The market session changed. Preview the SPY rebalance again.")
-            database = store.database
-            record = database.read(RECORD, DEFAULT)
-            data = record["data"]
-            run = data["run"]
-            if run and run["session"] >= day and run["status"] in ACTIVE_RUN:
-                raise ValueError("A SPY rebalance is already queued or running.")
-            if record["revision"] != preview["revision"]:
-                raise ValueError("The SPY rebalance changed. Preview it again before submitting.")
-            if preview["run"].get("recovered_from"):
-                if session != preview["run"]["session"] or self.remaining_plan(store, runtime, data)["recovered_from"] != preview["run"]["recovered_from"]:
-                    raise ValueError("The interrupted run or approved session changed. Preview the remaining trades again.")
-            self.check_plan_policy(store, preview["run"])
-            self.check_fund_binding(store, runtime, preview["run"])
-            self.check_preview_account(store, runtime, preview["run"], preview["symbols"], preview["cash"])
-            queued = {**preview["run"], "manual": True, "manual_id": token, "session": session, "status": "queued",
-                      "preview_cash": preview["cash"], "message": f"Paper rebalance queued for {session}."}
-            database.update(RECORD, record["revision"], lambda saved: saved.update(
-                account_id=preview["account"], managed_symbols=preview["symbols"], run=queued), DEFAULT)
-            self.manual_preview = None
-            self.next_poll = 0.0
+        deadline = min(time.monotonic() + 45, preview["expires"])
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ReconciliationPending("Current broker/native observation is still being completed. No SPY rebalance was queued.")
+            # The reader and record observer must be free to finish the current generation.
+            self.desk.runtime.wait_for_reconciliation(preview["connection"], timeout=remaining)
+            with self.desk.maintenance, self.desk.runtime.lock:
+                store = self.desk.store
+                if (self.stopped or self.manual_preview is not preview or store is not preview["store"]
+                        or time.monotonic() >= preview["expires"] or request.get("account_id") != preview["account"]):
+                    raise ValueError("The account or preview changed. Preview the SPY rebalance again.")
+                current = self.desk.runtime.state()
+                if current.get("connection_session") != preview["connection"]:
+                    raise ValueError("The paper account reconnected. Preview the SPY rebalance again.")
+                if (not current.get("local_record_error") and not current.get("native_import_gap")
+                        and current.get("status") == "connected"
+                        and (current.get("reconciliation", {}).get("status") != "reconciled"
+                             or current.get("native_contract", {}).get("observation_in_progress") is True)):
+                    continue
+                runtime = self.order_account(preview["account"])
+                if runtime.get("market_open") is not market_open or datetime.now(NEW_YORK).date().isoformat() != day:
+                    raise ValueError("The market session changed. Preview the SPY rebalance again.")
+                database = store.database
+                record = database.read(RECORD, DEFAULT)
+                data = record["data"]
+                run = data["run"]
+                if run and run["session"] >= day and run["status"] in ACTIVE_RUN:
+                    raise ValueError("A SPY rebalance is already queued or running.")
+                if record["revision"] != preview["revision"]:
+                    raise ValueError("The SPY rebalance changed. Preview it again before submitting.")
+                self.desk.admission.reconcile()
+                if preview["run"].get("recovered_from"):
+                    if session != preview["run"]["session"] or self.remaining_plan(store, runtime, data)["recovered_from"] != preview["run"]["recovered_from"]:
+                        raise ValueError("The interrupted run or approved session changed. Preview the remaining trades again.")
+                self.check_plan_policy(store, preview["run"])
+                self.check_fund_binding(store, runtime, preview["run"])
+                self.check_preview_account(store, runtime, preview["run"], preview["symbols"], preview["cash"])
+                queued = {**preview["run"], "manual": True, "manual_id": token, "session": session, "status": "queued",
+                          "preview_cash": preview["cash"], "message": f"Paper rebalance queued for {session}."}
+                database.update(RECORD, record["revision"], lambda saved: saved.update(
+                    account_id=preview["account"], managed_symbols=preview["symbols"], run=queued), DEFAULT)
+                self.manual_preview = None
+                self.next_poll = 0.0
+                return
 
     def cancel_queued(self, request):
         def cancel(data):

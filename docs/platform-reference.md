@@ -73,6 +73,10 @@ holdings; they remain tracked and are not submitted again. The remaining trades
 require a fresh preview and separate **Submit paper orders**, with the current
 account, connection, fund plan, Trading Rules and session checks. Previewing does
 not send orders or change the blocked run.
+Submitting waits for an in-progress current observation outside the maintenance
+lock, then pins that completed snapshot while rechecking and queueing the preview.
+A bounded pre-queue reconciliation wait returns a typed not-queued response and
+retains the still-current preview for an explicit retry; unknown outcomes do not.
 An attached command explicitly resolved as never dispatched by the versioned local
 transport boundary stays in the reviewed remainder; no fill or broker retry is inferred.
 Stock-local quote, freshness and instrument failures defer that leg with its exact
