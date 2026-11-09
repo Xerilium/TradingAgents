@@ -50,15 +50,28 @@ registration before importing observed holdings. Fill reconciliation keeps exact
 execution identity, quantities, prices and fees, while accepting an Alpaca fill
 timestamp's nearest-microsecond representation across activity and stream sources.
 Original source timestamps remain unchanged; other timestamp differences block import.
-For a simple filled command, complete current broker/native order and exact fill
+For a simple accepted, partially filled or filled command, complete current broker/native order and exact fill
 proof can supersede covered older receipts and release their retained commitment.
 Conflicting or uncovered receipts remain blocking; historical events are not replayed.
 For an interrupted same-session reviewed run, **Preview remaining trades** retains
-the original unprocessed legs instead of recalculating targets. An attached filled
-command is consumed only with current native confirmation and matching post-fill
-holdings. The remaining trades require a fresh preview and separate **Submit paper
-orders**, with the current account, connection, fund plan, Trading Rules and session
-checks. Previewing does not send orders or change the blocked run.
+the original unprocessed legs instead of recalculating targets. Attached accepted,
+partially filled or filled commands require current native proof and matching
+holdings; they remain tracked and are not submitted again. The remaining trades
+require a fresh preview and separate **Submit paper orders**, with the current
+account, connection, fund plan, Trading Rules and session checks. Previewing does
+not send orders or change the blocked run.
+
+SPY submission advances after proven broker acceptance, not after each fill.
+Accepted unfilled orders retain their existing cash/share reservations; buy sizing
+subtracts pending commitments above the fund reserve and never credits pending
+sale proceeds. Transient incomplete reconciliation waits and retries without
+replaying an order. Unknown outcomes, native conflicts, import failures, rejected
+orders and changed account/policy/fund/session bindings still prevent admission.
+The run's **submitted** state means its reviewed legs were processed, not that
+orders filled. Existing commands remain authoritative for individual order status.
+Later previews retain proven working SPY orders and do not create another order
+for their stock. Actual asynchronous fills must match the run's expected holdings
+before another order is admitted.
 
 Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity

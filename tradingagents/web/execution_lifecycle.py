@@ -481,7 +481,7 @@ class ExecutionLifecycle:
             root_exit = command["side"] == "SELL" and (command.get("terms", {}).get("exit_plan") or command.get("linked_group_owner_id"))
             linked = command.get("linked_exit") or root_exit
             simple = (not linked and order_class(command["terms"]) == "simple"
-                and not is_package(command["terms"]) and command["state"] == "filled"
+                and not is_package(command["terms"]) and command["state"] in {"accepted", "partially_filled", "filled"}
                 and command["terms"]["order_type"] in {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"}
                 and not command.get("pending_action") and not command.get("native_replacement_quantity_binding"))
             if not (linked or simple) or not command.get("native_pending_commitment"):
@@ -491,7 +491,7 @@ class ExecutionLifecycle:
             if (not row or row.get("import_error") or row.get("side", "").upper() != command["side"]
                     or row.get("symbol") != command["symbol"]):
                 continue
-            if simple and (row.get("status") != "filled" or row.get("replaces") or row.get("replaced_by")
+            if simple and (row.get("status") not in {"accepted", "new", "partially_filled", "filled"} or row.get("replaces") or row.get("replaced_by")
                     or row.get("asset_class") != "us_equity" or row.get("order_class") not in (None, "", "simple")
                     or row.get("client_order_id") != command["client_order_id"]
                     or row["id"] not in command["broker_order_ids"]

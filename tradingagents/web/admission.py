@@ -19,6 +19,10 @@ ACTIVE = {"admitted_not_dispatched", "dispatch_intent", "submitting", "outcome_u
 TERMINAL = {"filled", "canceled", "rejected", "expired"}
 
 
+class ReconciliationPending(ValueError):
+    pass
+
+
 def stamp():
     return datetime.now(UTC).isoformat()
 
@@ -299,9 +303,11 @@ class CommandAdmission:
 
     def checked_observation(self, constraints):
         runtime = self.observation()
+        if runtime.get("local_record_error") or runtime.get("native_import_gap"):
+            raise ValueError(runtime.get("local_record_error") or runtime["native_import_gap"])
         if (runtime.get("status") != "connected" or runtime.get("reconciliation", {}).get("status") != "reconciled"
-                or not runtime.get("account", {}).get("id") or not runtime.get("account_at") or runtime.get("local_record_error")):
-            raise ValueError("Current complete Nautilus/broker reconciliation is required")
+                or not runtime.get("account", {}).get("id") or not runtime.get("account_at")):
+            raise ReconciliationPending("Current complete Nautilus/broker reconciliation is required")
         if runtime["account"].get("trading_blocked") is True:
             raise ValueError("Alpaca reports trading blocked for this account")
         maximum = decimal(constraints.get("account_max_age_seconds"))
