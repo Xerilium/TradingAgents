@@ -50,6 +50,9 @@ registration before importing observed holdings. Fill reconciliation keeps exact
 execution identity, quantities, prices and fees, while accepting an Alpaca fill
 timestamp's nearest-microsecond representation across activity and stream sources.
 Original source timestamps remain unchanged; other timestamp differences block import.
+For a simple filled command, complete current broker/native order and exact fill
+proof can supersede covered older receipts and release their retained commitment.
+Conflicting or uncovered receipts remain blocking; historical events are not replayed.
 
 Navigation changes no plan terms or trading authority. Unchanged Markets search,
 named Markets/SPY disclosures and SPY review buttons retain their node identity

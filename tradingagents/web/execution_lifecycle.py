@@ -470,25 +470,43 @@ class ExecutionLifecycle:
         return confirmed
 
     def confirm_linked_observations(self, rows, history):
-        """Fresh complete native/fill proof can supersede old child state receipts, not replay them."""
+        """Fresh complete native/fill proof supersedes covered receipts without replay."""
         if not history.get("complete") or not history.get("evidence"):
             return False
         from .native_types import ClientOrderId, OrderFilled, enum_name, native_dict, native_order_account
-        from .alpaca_reports import native_quantities, timestamp, execution_id, order_report
+        from .alpaca_reports import native_quantities, timestamp, execution_id, order_report, fill_commission
         by_id, proofs = {row["id"]: row for row in rows}, {}
         commands = self.authority().database.read("commands", DEFAULT)["data"]["commands"]
         for command in commands.values():
             root_exit = command["side"] == "SELL" and (command.get("terms", {}).get("exit_plan") or command.get("linked_group_owner_id"))
-            if not (command.get("linked_exit") or root_exit) or not command.get("native_pending_commitment"):
+            linked = command.get("linked_exit") or root_exit
+            simple = (not linked and order_class(command["terms"]) == "simple"
+                and not is_package(command["terms"]) and command["state"] == "filled"
+                and command["terms"]["order_type"] in {"MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"}
+                and not command.get("pending_action") and not command.get("native_replacement_quantity_binding"))
+            if not (linked or simple) or not command.get("native_pending_commitment"):
                 continue
             order = self.native.cache.order(ClientOrderId(command.get("native_client_order_id", command["client_order_id"])))
             row = by_id.get(str(order.venue_order_id)) if order is not None else None
-            if not row or row.get("import_error") or row.get("side") != "sell" or row.get("symbol") != command["symbol"]:
+            if (not row or row.get("import_error") or row.get("side", "").upper() != command["side"]
+                    or row.get("symbol") != command["symbol"]):
+                continue
+            if simple and (row.get("status") != "filled" or row.get("replaces") or row.get("replaced_by")
+                    or row.get("asset_class") != "us_equity" or row.get("order_class") not in (None, "", "simple")
+                    or row.get("client_order_id") != command["client_order_id"]
+                    or row["id"] not in command["broker_order_ids"]
+                    or row.get("account_id", command["account_id"]) != command["account_id"]
+                    or native_type(row["type"]) != command["terms"]["order_type"]
+                    or row["time_in_force"].upper() != command["terms"]["time_in_force"]
+                    or Decimal(row["qty"]) != Decimal(command["terms"]["quantity"])
+                    or any(decimal(row.get(key)) != decimal(command["terms"].get(key)) for key in ("limit_price", "stop_price"))
+                    or broker_session(row) != command["terms"].get("session", "regular")):
                 continue
             parent = commands[command["linked_entry_command_id"]] if command.get("linked_exit") else commands.get(command.get("linked_group_owner_id"), command)
             roots = set(parent["broker_order_ids"]) | set(parent.get("linked_root_order_ids", []))
-            if ((row["id"] not in roots if root_exit else row.get("group_parent_id") not in roots)
+            if ((row["id"] not in roots if root_exit or simple else row.get("group_parent_id") not in roots)
                     or native_order_account(order, self.native) != "ALPACA-" + command["account_id"]
+                    or str(order.client_order_id) != command.get("native_client_order_id", command["client_order_id"])
                     or str(order.instrument_id) != command["instrument_id"]
                     or timestamp(row["updated_at"]) > timestamp(history["through"])):
                 continue
@@ -507,7 +525,7 @@ class ExecutionLifecycle:
             actual = native_dict(order)
             events = [event for event in order.events if isinstance(event, OrderFilled)]
             if (order.quantity.as_decimal() != total or order.filled_qty.as_decimal() != filled
-                    or actual.get("side") != "SELL" or actual.get("type") != native_type(row["type"])
+                    or actual.get("side") != command["side"] or actual.get("type") != native_type(row["type"])
                     or order.status != order_report(row, self.native.account_id, 0).order_status
                     or decimal(actual.get("price")) != decimal(row.get("limit_price"))
                     or decimal(actual.get("trigger_price")) != decimal(row.get("stop_price"))
@@ -527,7 +545,23 @@ class ExecutionLifecycle:
                         or hashlib.sha256(path.read_bytes()).hexdigest() != reference["sha256"]
                         or timestamp(data.get("timestamp") or old["updated_at"]) > timestamp(row["updated_at"])):
                     continue
-                if data.get("event") in {"fill", "partial_fill"} and not self.native_applied(order, data["event"], data, old,
+                if simple and (data.get("event") not in {"pending_new", "new", "accepted", "rest_order_observation", "fill", "partial_fill"}
+                        or old.get("client_order_id") != row["client_order_id"] or old.get("symbol") != row["symbol"]
+                        or old.get("account_id", command["account_id"]) != command["account_id"]
+                        or old.get("side") != row["side"] or old.get("type") != row["type"]
+                        or old.get("time_in_force") != row["time_in_force"]
+                        or any(decimal(old.get(key)) != decimal(row.get(key)) for key in ("limit_price", "stop_price"))
+                        or Decimal(old["qty"]) != total):
+                    continue
+                effective = data
+                if simple and data.get("event") in {"fill", "partial_fill"}:
+                    commission, _ = fill_commission({**data, "id": data["execution_id"], "symbol": old["symbol"],
+                            "side": old["side"], "transaction_time": data.get("timestamp") or old["updated_at"]},
+                        old, self.native.account_id, self.native.base_currency, endpoint=self.transport.connection.endpoint,
+                        account=getattr(self.native, "fee_model_account", None),
+                        linked=self.native.recovery_fee_sources.get(execution_id(data["execution_id"])))
+                    effective = {**data, "commission": str(commission.as_decimal())}
+                if data.get("event") in {"fill", "partial_fill"} and not self.native_applied(order, data["event"], effective, old,
                         "filled" if old.get("status") == "filled" else "partially_filled", data.get("timestamp") or old["updated_at"]):
                     continue
                 covered.append(identity)
@@ -536,7 +570,7 @@ class ExecutionLifecycle:
                     "execution_ids": [execution_id(event.trade_id) for event in events]}
         if not proofs:
             return False
-        reference = self.receipt("linked-recovery", "Current broker/native linked exit proof; historical transitions not replayed",
+        reference = self.receipt("order-recovery", "Current broker/native order and fill proof; historical transitions not replayed",
                                  {"history": history["evidence"], "through": history["through"], "proofs": proofs})
         def change(records):
             for identity, proof in proofs.items():

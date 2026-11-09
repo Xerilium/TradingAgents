@@ -45,7 +45,7 @@ def fill_commission(row, order, account_id, currency, *, endpoint=None, account=
         for key in ("qty", "price"):
             if linked.get(key) is not None and Decimal(str(linked[key])) != Decimal(str(row[key])):
                 raise ValueError("Linked commission fill economics differ")
-        if linked.get("ts_event") is not None and linked["ts_event"] != timestamp(row["transaction_time"]):
+        if linked.get("ts_event") is not None and not fill_timestamp_matches(linked["ts_event"], timestamp(row["transaction_time"])):
             raise ValueError("Linked commission execution time differs")
     amount = supplied if supplied is not None else linked["amount"] if linked and not linked.get("modeled") else None
     modeled = amount is None
