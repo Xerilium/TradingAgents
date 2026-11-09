@@ -23,7 +23,7 @@ import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useDesk } from './DeskContext.jsx';
-import { DataTable, Evidence, Page, Status, dateTime, money, number } from './ui.jsx';
+import { DataTable, Evidence, Page, Status, dateTime, money, number, nativeReportColumns } from './ui.jsx';
 
 const INDICATORS = ['close_50_sma', 'close_200_sma', 'close_10_ema', 'macd', 'macds', 'macdh', 'rsi', 'boll', 'boll_ub', 'boll_lb', 'atr', 'vwma', 'mfi'];
 const METRICS = ['net_return_pct', 'total_pnl', 'max_drawdown_pct'];
@@ -160,7 +160,7 @@ function settingsHandoff(focus, extra = {}) {
 }
 function rowsOf(value) {
   if (!Array.isArray(value) || !value.length || value.some((row) => !row || typeof row !== 'object' || Array.isArray(row))) return [];
-  return value.map((row, index) => ({ ...row, _id: row.id || row.lifecycle_id || String(index) }));
+  return value.map(row => ({...row, _id: row.id ?? row.lifecycle_id ?? JSON.stringify(row)}));
 }
 function objectRows(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
@@ -205,16 +205,9 @@ function ReportTable({ name, report }) {
   }[name] || [];
   if (!Array.isArray(report?.data) || !Array.isArray(report.columns)) return <Alert severity="warning">{name} native report unavailable.</Alert>;
   if (!report.data.length) return <Typography>No {name.toLowerCase()}.</Typography>;
-  const columns = [{ id: 'index', label: { Orders: 'Order ID', Fills: 'Order ID', Positions: 'Position ID', Account: 'Time' }[name] }, ...fields.filter((key) => report.columns.includes(key)).map((key) => ({ id: key, label: key }))];
-  const rows = report.data.map((row, index) => {
-    const item = { id: String(index), index: text(report.index?.[index]) };
-    for (const key of fields) {
-      const at = report.columns.indexOf(key);
-      item[key] = at < 0 || row[at] == null ? 'Unavailable' : key === 'status' ? labelize(row[at]) : text(row[at]);
-    }
-    return item;
-  });
-  return <DataTable rows={rows} columns={columns} getRowId={(row) => row.id} empty="No rows." />;
+  const columns = nativeReportColumns(report).filter(column => column.id === 'index' || fields.includes(column.label));
+  const rows = report.data.map((cells, i) => ({id: i, index: report.index?.[i], cells}));
+  return <DataTable label={`${name} native report`} rows={rows} columns={columns} getRowId={(row) => row.id} empty="No rows." />;
 }
 function cleanOperand(value) {
   if (value?.kind === 'price') return { kind: value.kind, field: value.field };
@@ -613,7 +606,7 @@ export function StrategyView() {
     });
   }, [result]);
 
-  const setup = engine === 'simulations' ? (
+  const setup = {simulations: (
     <Stack spacing={1.5}>
       <Typography>Isolated model over retained bars. Results never establish broker fills or account performance.</Typography>
       <Accordion expanded={scenarioOpen} onChange={(_event, open) => setScenarioOpen(open)}>
@@ -647,18 +640,18 @@ export function StrategyView() {
       <Button variant="contained" disabled={busy || simItem?.status !== 'preview' || !simItem?.preview} onClick={runSimulation}>Run this exact simulation</Button>
       <Typography>Changing any setup field invalidates the selected preview. Run uses its saved ID and specification hash. Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</Typography>
     </Stack>
-  ) : (
+  ), experiments: (
     <ExperimentSetup sources={sources} busy={busy} strategy={strategy} setStrategy={setStrategy} execution={execution} setExecution={setExecution} experiment={experiment} setExperiment={setExperiment} strategyId={strategyId} strategyRevision={strategyRevision} strategyDirty={strategyDirty} setStrategyDirty={setStrategyDirty} setExperimentDirty={setExperimentDirty} branch={branch} expItem={expItem} onLoad={loadSources} onLoadStrategy={loadStrategy} onClearStrategy={() => { setStrategyId(''); setStrategyRevision(null); setStrategyDirty(true); setExperimentDirty(true); }} onAction={experimentAction} />
-  );
+  )};
 
-  const results = engine === 'simulations' ? (
+  const results = {simulations: (
     <Stack spacing={1.5}>
       {result?.kind === 'portfolio_scenario' ? <PortfolioResult result={result} benchmark={benchmark} onLoad={() => loadBenchmark(true)} /> : result ? (
         <>
           <Typography variant="h3">Modeled simulation result · {labelize(result.status)}</Typography>
           <Typography>Native engine {text(result.engine_version)} · reported orders {text(result.reports?.orders?.data?.length)} · fills {text(result.reports?.fills?.data?.length)} · positions {text(result.reports?.positions?.data?.length)}</Typography>
           {result.error ? <Alert severity="error">{result.error}</Alert> : null}
-          <DataTable rows={headlines} columns={[{ id: 'label', label: 'Metric' }, { id: 'value', label: 'Value' }, { id: 'basis', label: 'Basis' }]} getRowId={(row) => row.id} empty="No retained headline metrics." />
+          <DataTable rows={headlines} columns={[{ id: 'label', label: 'Metric' }, { id: 'value', label: 'Value', numeric: true }, { id: 'basis', label: 'Basis' }]} getRowId={(row) => row.id} empty="No retained headline metrics." />
           {Array.isArray(result.equity_curve) ? <EquityChart points={result.equity_curve} label="Retained modeled equity / USD" /> : <Typography>Dollar equity curve unavailable in this saved-plan result. {text(result.benchmark?.reason || 'No matching benchmark supplied.')}</Typography>}
           {['Orders', 'Fills', 'Positions', 'Account'].map((name) => <Box key={name}><Typography variant="h4">{name}</Typography><ReportTable name={name} report={result.reports?.[name.toLowerCase()]} /></Box>)}
           <Evidence title="Model limitations and assumptions" data={{ limitations: result.limitations, assumptions: result.assumptions, return_series_basis: result.return_series_basis }} />
@@ -668,10 +661,10 @@ export function StrategyView() {
       {simItem?.preview ? <Evidence title="Saved immutable preview" data={simItem.preview} /> : !result ? <Typography>No simulation selected. Save an immutable preview in Setup or open a retained simulation from Runs & Compare.</Typography> : null}
       <Button variant="contained" disabled={busy || simItem?.status !== 'preview' || !simItem?.preview} onClick={runSimulation}>Run this exact simulation</Button>
     </Stack>
-  ) : (
+  ), experiments: (
     <ExperimentResults item={expItem} comparison={comparison} eventEvidence={eventEvidence} busy={busy} dirty={experimentDirty} optimizer={sources?.capabilities?.optimizer?.available === true} onRun={() => experimentAction('run')} onCancel={() => experimentAction('cancel')} onRepeat={() => experimentAction('repeat')} onBranch={() => { if (!expItem?.preview?.strategy || !expItem.history_key) { setLocalError('Exact retained strategy or history selector is unavailable; cannot reconstruct a branch from latest data.'); return; } loadStrategy(expItem.preview.strategy); setStrategyId(''); setStrategyRevision(null); setStrategyDirty(true); setExperiment({ ...structuredClone(expItem.preview.request), history_key: expItem.history_key, benchmark_history_key: expItem.benchmark_history_key || '' }); setBranch({ id: expItem.id, spec_sha256: expItem.spec_sha256 }); setEngine('experiments'); setView('setup'); }} onEvent={openEvent} />
-  );
-  const runs = engine === 'simulations' ? (
+  )};
+  const runs = {simulations: (
     <Stack spacing={1}>
       {!sources ? <Typography>Load saved plans and data in Setup to browse retained simulations.</Typography> : (
         <>
@@ -680,20 +673,20 @@ export function StrategyView() {
         </>
       )}
     </Stack>
-  ) : (
+  ), experiments: (
     <Stack spacing={1}>
       {!sources ? <Typography>Load strategies, retained daily history, and experiment runs to inspect or compare walk-forward evaluations.</Typography> : (
         <>
-          <DataTable rows={experiments} columns={[{ id: 'id', label: 'Experiment' }, { id: 'status', label: 'Status', render: (row) => <Status value={row.status} /> }, { id: 'spec_sha256', label: 'Specification' }]} getRowId={(row) => row.id} selectedIds={compared} onSelectionChange={setCompared} onRowClick={(row) => openItem(row.id)} empty="No saved experiments." />
+          <DataTable rows={experiments} columns={[{ id: 'id', label: 'Experiment' }, { id: 'status', label: 'Status', render: (row) => <Status value={row.status} /> }, { id: 'spec_sha256', label: 'Specification' }]} getRowId={(row) => row.id} selectedIds={compared} onSelectionChange={ids => setCompared([...ids])} onRowClick={(row) => openItem(row.id)} empty="No saved experiments." />
           <Button disabled={busy || compared.length < 2} onClick={() => experimentAction('compare')}>Compare selected retained experiments</Button>
           <DataTable rows={comparisons} columns={[{ id: 'id', label: 'Saved comparison' }]} getRowId={(row) => row.id} onRowClick={(row) => openItem(row.id)} empty="No saved comparisons." />
         </>
       )}
     </Stack>
-  );
+  )};
 
   return (
-    <Page title="Strategy Lab" subtitle="Isolated model over retained bars. Results never establish broker fills or account performance." actions={<Status value={busy || scenarioBusy ? 'Working' : active?.status || 'No evaluation selected'} />}>
+    <Page tabbed title="Strategy Lab" subtitle="Isolated model over retained bars. Results never establish broker fills or account performance." actions={<Status value={busy || scenarioBusy ? 'Working' : active?.status || 'No evaluation selected'} />}>
       <Stack spacing={2}>
         {stateError ? <Alert severity="warning">{stateError}</Alert> : null}
         {localError ? <Alert severity="error" onClose={() => setLocalError('')}>{localError}</Alert> : null}
@@ -707,8 +700,9 @@ export function StrategyView() {
           <Tab value="runs" label="Runs & Compare" />
         </Tabs>
         <Typography role="status">{localError || (busy ? 'Working…' : active?.status ? labelize(active.status) : 'No evaluation selected')}</Typography>
-        {view === 'setup' ? setup : view === 'runs' ? runs : results}
       </Stack>
+      {['simulations', 'experiments'].flatMap(kind => [['setup', setup], ['results', results], ['runs', runs]].map(([name, panels]) =>
+        <Box key={`${kind}-${name}`} role="tabpanel" hidden={engine !== kind || view !== name}>{panels[kind]}</Box>))}
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
         <DialogTitle>Delete all saved simulations</DialogTitle>
         <DialogContent><Typography>Permanently delete all saved simulations and their unshared result files?</Typography></DialogContent>
@@ -737,7 +731,7 @@ function PortfolioResult({ result, benchmark, onLoad }) {
       <Typography role="status">{history?.busy ? 'Loading SPY comparison…' : history?.error || (history?.history ? '' : 'Load SPY prices for the same period.')}</Typography>
       <Button disabled={history?.busy} onClick={onLoad}>Load S&P 500 benchmark</Button>
       {history?.history ? <Typography>{history.history.start} through {history.history.end} · SPY dividend-adjusted closing prices · SPY return {number(history.history.return_pct)}%.</Typography> : null}
-      <DataTable rows={rowsOf(ledger.events?.filter((row) => row.kind === 'entry'))} columns={[{ id: 'symbol', label: 'Symbol' }, { id: 'shares', label: 'Shares' }, { id: 'price', label: 'Price' }, { id: 'date', label: 'Date' }]} getRowId={(row) => row._id} empty="No historical entries retained." />
+      <DataTable rows={rowsOf(ledger.events?.filter((row) => row.kind === 'entry'))} columns={[{ id: 'symbol', label: 'Symbol' }, { id: 'shares', label: 'Shares', numeric: true }, { id: 'price', label: 'Price', numeric: true }, { id: 'date', label: 'Date', type: 'date' }]} getRowId={(row) => row._id} empty="No historical entries retained." />
       <Evidence title="Native fills and retained accounting" data={result} />
     </Stack>
   );
@@ -854,7 +848,7 @@ function ExperimentResults({ item, comparison, eventEvidence, busy, dirty, optim
         <>
           <Typography>Experiment {item.id} · {item.status} · spec {item.spec_sha256} · {dirty ? 'Editor changed; save a new preview before Run.' : 'Exact saved preview selected.'}</Typography>
           {result ? <Typography>Analytical outcome: {result.analytical_outcome === 'no_qualifier' ? 'Finished — no eligible strategy' : result.analytical_outcome === 'selection_gaps' ? 'Finished — selection gaps' : text(result.analytical_outcome)}. Negative OOS performance is a result, not a reason to reselect.</Typography> : null}
-          {result ? <DataTable rows={objectRows(result.counts)} columns={[{ id: 'field', label: 'Count' }, { id: 'value', label: 'Value' }]} getRowId={(row) => row.id} empty="No retained counts." /> : null}
+          {result ? <DataTable rows={objectRows(result.counts)} columns={[{ id: 'field', label: 'Count' }, { id: 'value', label: 'Value', numeric: true }]} getRowId={(row) => row.id} empty="No retained counts." /> : null}
           <DataTable rows={rowsOf(result?.folds)} columns={[{ id: 'id', label: 'Fold' }, { id: 'status', label: 'Status', render: (row) => <Status value={row.status} /> }, { id: 'selected_trial_id', label: 'Selected trial' }, { id: 'reason', label: 'Reason' }]} getRowId={(row) => row._id} empty="No fold outcomes retained." />
           <Evidence title="Saved experiment preview" data={item.preview} />
           <Evidence title="Exact terminal result, native reports and source references" data={result || { status: 'No terminal result retained.' }} />
@@ -863,7 +857,7 @@ function ExperimentResults({ item, comparison, eventEvidence, busy, dirty, optim
           <Button disabled={busy} onClick={onRepeat}>Create a separate repeat / branch preview</Button>
           <Typography>A repeat receives a new ID and requires explicit Run. Exact resume, pruning, carry, overlapping OOS and wider asset/order profiles remain unavailable.</Typography>
           <Button variant="contained" disabled={busy || dirty || item.status !== 'preview' || !optimizer} onClick={onRun}>Run this exact experiment</Button>
-          <DataTable rows={(item.events || []).map((event) => ({ ...event, where: [event.fold_id, event.trial_id, event.phase, event.scenario_id].filter(Boolean).join(' / ') }))} columns={[{ id: 'ordinal', label: 'Ordinal' }, { id: 'type', label: 'Event' }, { id: 'where', label: 'Fold / trial / scenario' }]} getRowId={(row) => row.id} onRowClick={(row) => onEvent(row.id)} empty="No execution events retained for this preview." />
+          <DataTable rows={(item.events || []).map((event) => ({ ...event, where: [event.fold_id, event.trial_id, event.phase, event.scenario_id].filter(Boolean).join(' / ') }))} columns={[{ id: 'ordinal', label: 'Ordinal', numeric: true }, { id: 'type', label: 'Event' }, { id: 'where', label: 'Fold / trial / scenario' }]} getRowId={(row) => row.id} onRowClick={(row) => onEvent(row.id)} empty="No execution events retained for this preview." />
           {eventEvidence ? <Evidence title="Exact retained native event and reports" data={eventEvidence} /> : null}
         </>
       ) : null}
@@ -883,7 +877,6 @@ export function JournalView() {
   const [tab, setTab] = useState('decisions');
   const [decisionTab, setDecisionTab] = useState('rationale');
   const [record, setRecord] = useState(null);
-  const [query, setQuery] = useState('');
   const [selected, setSelected] = useState('');
   const [exports, setExports] = useState([]);
   const [drafts, setDrafts] = useState({});
@@ -1005,7 +998,6 @@ export function JournalView() {
   }
 
   const decisions = record?.decisions || [];
-  const filtered = decisions.filter((item) => !query || [item.symbol, journalKind(item), item.status, item.rationale, JSON.stringify(item.terms || {})].join(' ').toLowerCase().includes(query.toLowerCase()));
   const item = decisions.find((row) => row.id === selected);
   const draft = item ? drafts[item.id] || { assumptions: record.data.entries?.[item.id]?.assumptions || '', review_date: record.data.entries?.[item.id]?.review_date || '', outcome_notes: record.data.entries?.[item.id]?.outcome_notes || '' } : null;
   const dirtyCount = Object.entries(drafts).filter(([id, value]) => ['assumptions', 'review_date', 'outcome_notes'].some((key) => (value[key] || '') !== (record?.data?.entries?.[id]?.[key] || ''))).length;
@@ -1016,11 +1008,12 @@ export function JournalView() {
   const groups = record?.position_outcomes?.groups || [];
 
   return (
-    <Page title="Decision Journal" subtitle={record ? `Saved reporting revision ${record.revision}` : 'Saved local decisions, notes, outcomes and account-history evidence.'} actions={<Button disabled={loading} onClick={() => reload(false)}>Reload saved journal</Button>}>
+    <Page tabbed title="Decision Journal" subtitle={record ? `Saved reporting revision ${record.revision}` : 'Saved local decisions, notes, outcomes and account-history evidence.'} actions={<Button disabled={loading} onClick={() => reload(false)}>Reload saved journal</Button>}>
       <Stack spacing={2}>
             {stateError ? <Alert severity="warning">{stateError}</Alert> : null}
             {localError ? <Alert severity="error">{localError}</Alert> : null}
         {conflict ? <Alert severity="warning">Application records changed. Reload saved journal before saving.</Alert> : null}
+      </Stack>
         {!record ? <Typography role="status">{loading ? 'Loading saved local records…' : 'Saved journal is not loaded.'}</Typography> : (
           <>
             <Tabs value={tab} onChange={(_event, value) => setTab(value)} aria-label="Journal views">
@@ -1028,16 +1021,18 @@ export function JournalView() {
               <Tab value="outcomes" label={`Position Outcomes (${groups.length})`} />
               <Tab value="history" label="Account History" />
             </Tabs>
-            {tab === 'decisions' ? (
+            <Box role="tabpanel" hidden={tab !== 'decisions'}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <Stack spacing={1}>
-                    <TextField label="Find symbol or text" value={query} onChange={(event) => setQuery(event.target.value)} />
                     <Stack direction="row" spacing={1}>
                       <Button disabled={!exports.length || loading || conflict} onClick={() => journalAction({ action: 'export', ids: exports })}>Export selected ({exports.length})</Button>
                       <Button disabled={!dirtyCount || loading} onClick={() => setDrafts({})}>Revert Unsaved Edits ({dirtyCount})</Button>
                     </Stack>
-                    <DataTable rows={filtered} selectedIds={exports} onSelectionChange={setExports} onRowClick={(row) => { setSelected(row.id); if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(row.symbol || '')) setSelectedSymbol(row.symbol); setTab('decisions'); }} columns={[{ id: 'saved_at', label: 'Date & Sym', render: (row) => `${String(row.saved_at || '').slice(0, 10)} · ${row.symbol || '—'}` }, { id: 'kind', label: 'Kind', render: (row) => journalKind(row) }, { id: 'terms', label: 'Call / Terms', render: (row) => text(row.terms ? [row.terms.side, row.terms.quantity ?? row.terms.qty, row.terms.order_type || row.terms.type].filter(Boolean).join(' ') : row.rationale).slice(0, 42) }, { id: 'status', label: 'Status', render: (row) => <Status value={row.status} /> }]} getRowId={(row) => row.id} empty="No matching saved decisions. No research or trades are created to populate the journal." />
+                    <DataTable label="Saved journal decisions" rows={decisions} selectedIds={exports} onSelectionChange={ids => setExports([...ids])} onRowClick={(row) => { setSelected(row.id); if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(row.symbol || '')) setSelectedSymbol(row.symbol); setTab('decisions'); }}
+                      columns={[{id: 'saved_at', label: 'Saved', type: 'dateTime', render: row => dateTime(row.saved_at)}, {id: 'symbol', label: 'Symbol'},
+                        {id: 'kind', label: 'Kind', value: journalKind}, {id: 'terms', label: 'Call / Terms', value: row => row.terms ? [row.terms.side, row.terms.quantity ?? row.terms.qty, row.terms.order_type || row.terms.type].filter(Boolean).join(' ') : row.rationale},
+                        {id: 'rationale', label: 'Rationale'}, {id: 'status', label: 'Status', render: row => <Status value={row.status}/>}]} getRowId={(row) => row.id} empty="No matching saved decisions. No research or trades are created to populate the journal." />
                   </Stack>
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
@@ -1055,7 +1050,7 @@ export function JournalView() {
                         <Tab value="rationale" label="Rationale & Note" />
                         <Tab value="orders" label="Linked Orders & Outcome" />
                       </Tabs>
-                      {decisionTab === 'orders' ? (
+                      <Box role="tabpanel" hidden={decisionTab !== 'orders'} sx={{height: 'min(640px, 65vh)', overflow: 'auto'}}>
                         <Stack spacing={1}>
                           {(item.command_outcomes || []).map((command) => (
                             <Box key={command.command_id}>
@@ -1068,7 +1063,8 @@ export function JournalView() {
                           {(item.position_outcome_ids || []).map((id) => <Button key={id} onClick={() => { setOutcomeId(id); setTab('outcomes'); }}>Shared position outcome {id}</Button>)}
                           {item.execution_plans?.length ? <Evidence title="Non-atomic basket completion and paused legs" data={item.execution_plans} /> : null}
                         </Stack>
-                      ) : (
+                      </Box>
+                      <Box role="tabpanel" hidden={decisionTab !== 'rationale'} sx={{height: 'min(640px, 65vh)', overflow: 'auto'}}>
                         <Stack spacing={1}>
                           <Typography>{journalKind(item)} · source revision {text(item.revision)} · saved {dateTime(item.saved_at)}</Typography>
                           <Typography>{item.rationale || 'No human rationale recorded in this source'}</Typography>
@@ -1082,17 +1078,22 @@ export function JournalView() {
                           <Evidence title="Exact decision, source research and revision history" data={item} />
                           <Evidence title="Follow-up note history" data={record.data.entries?.[item.id]?.history || []} />
                         </Stack>
-                      )}
+                      </Box>
                     </Stack>
                   )}
                 </Grid>
               </Grid>
-            ) : null}
-            {tab === 'outcomes' ? (
+            </Box>
+            <Box role="tabpanel" hidden={tab !== 'outcomes'}>
               <Stack spacing={1.5}>
                 <Typography>One row per captured lifecycle. Dated native accounting is separate from broker statements and current holdings. No totals across lifecycles. No capture runs automatically.</Typography>
                 <Button onClick={() => navigate('settings', settingsHandoff('native-report', { reportKind: 'positions', nativePanelOpen: true }))}>Capture Native Position Table in Settings</Button>
-                <DataTable rows={groups} onRowClick={(row) => setOutcomeId(row.lifecycle_id)} columns={[{ id: 'instrument_id', label: 'Sym' }, { id: 'native_position', label: 'Lifecycle state', render: (row) => row.native_position?.side === 'FLAT' ? 'Closed' : ['LONG', 'SHORT'].includes(row.native_position?.side) ? 'Open' : 'Unavailable' }, { id: 'quantity', label: 'Qty', render: (row) => text(row.native_position?.quantity) }, { id: 'realized_pnl', label: 'Realized P/L', render: (row) => row.realized_pnl ? `${row.realized_pnl.amount} ${row.realized_pnl.currency}` : 'Unavailable' }, { id: 'unrealized_pnl', label: 'Unrealized P/L', render: (row) => row.unrealized_pnl ? `${row.unrealized_pnl.amount} ${row.unrealized_pnl.currency}` : 'Unavailable' }, { id: 'coverage', label: 'Coverage', render: (row) => text(row.coverage?.status) }]} getRowId={(row) => row.lifecycle_id} empty="No attributable position outcomes have been captured." />
+                <DataTable rows={groups} onRowClick={(row) => setOutcomeId(row.lifecycle_id)} columns={[{ id: 'instrument_id', label: 'Sym' },
+                  {id: 'native_position', label: 'Lifecycle state', value: row => row.native_position?.side === 'FLAT' ? 'Closed' : ['LONG', 'SHORT'].includes(row.native_position?.side) ? 'Open' : null},
+                  {id: 'quantity', label: 'Qty', numeric: true, value: row => row.native_position?.quantity},
+                  {id: 'realized_pnl', label: 'Realized P/L', numeric: true, value: row => row.realized_pnl?.amount, render: row => row.realized_pnl ? `${row.realized_pnl.amount} ${row.realized_pnl.currency}` : 'Unavailable'},
+                  {id: 'unrealized_pnl', label: 'Unrealized P/L', numeric: true, value: row => row.unrealized_pnl?.amount, render: row => row.unrealized_pnl ? `${row.unrealized_pnl.amount} ${row.unrealized_pnl.currency}` : 'Unavailable'},
+                  {id: 'coverage', label: 'Coverage', value: row => row.coverage?.status}]} getRowId={(row) => row.lifecycle_id} empty="No attributable position outcomes have been captured." />
                 {groups.filter((group) => group.lifecycle_id === outcomeId).map((group) => (
                   <Stack key={group.lifecycle_id} spacing={1}>
                     <Typography variant="h3">{group.instrument_id} · shared lifecycle {group.lifecycle_id}</Typography>
@@ -1112,8 +1113,8 @@ export function JournalView() {
                 <Evidence title="Unattributed native observations — no decision allocation" data={record.position_outcomes?.unattributed || []} />
                 <Evidence title="Retained capture identities and source artifacts" data={record.position_outcomes?.captures || []} />
               </Stack>
-            ) : null}
-            {tab === 'history' ? (
+            </Box>
+            <Box role="tabpanel" hidden={tab !== 'history'}>
               <Stack spacing={1.5}>
                 <Typography>Explicit retrieval only · up to 366 days and 2,000 activities per collection. This does not place orders or run agents.</Typography>
                 <Stack direction="row" spacing={1}>
@@ -1138,10 +1139,9 @@ export function JournalView() {
                 <TextField label="Optional note about these reporting choices" multiline value={savedSettings.reason} onChange={(event) => setSettings({ ...savedSettings, reason: event.target.value })} />
                 <Button disabled={loading || conflict} onClick={() => journalAction({ action: 'settings', benchmark: savedSettings.benchmark ? { symbol: savedSettings.benchmark, currency: savedSettings.currency, treatment: savedSettings.treatment } : null, horizon_days: savedSettings.horizon === '' ? null : Number(savedSettings.horizon), reason: savedSettings.reason })}>Save reporting choices</Button>
               </Stack>
-            ) : null}
+            </Box>
           </>
         )}
-      </Stack>
     </Page>
   );
 }
@@ -1155,7 +1155,7 @@ function HistoryCollection({ data, asOf, setAsOf, onRefresh, onBenchmark }) {
       <Typography>{text(data.source)} · 1D · cashflow_types=ALL · {text(data.broker_rounding)}</Typography>
       <Typography>{text(data.raw_broker_percent_method)}</Typography>
       <EquityChart points={chartPoints} label="Broker-reported equity over the saved interval" />
-      <DataTable rows={points.map((point, index) => ({ id: String(index), time: new Date(point.timestamp * 1000).toISOString(), equity: point.equity, pnl: point.broker_profit_loss, fraction: point.broker_profit_loss_pct }))} columns={[{ id: 'time', label: 'Provider timestamp' }, { id: 'equity', label: 'Equity / USD', numeric: true }, { id: 'pnl', label: 'Broker P&L / USD', numeric: true }, { id: 'fraction', label: 'Broker P&L fraction', numeric: true }]} getRowId={(row) => row.id} empty="Broker equity series unavailable." />
+      <DataTable rows={points.map(point => ({id: String(point.timestamp), time: new Date(point.timestamp * 1000).toISOString(), equity: point.equity, pnl: point.broker_profit_loss, fraction: point.broker_profit_loss_pct}))} columns={[{ id: 'time', label: 'Provider timestamp', type: 'dateTime' }, { id: 'equity', label: 'Equity / USD', numeric: true }, { id: 'pnl', label: 'Broker P&L / USD', numeric: true }, { id: 'fraction', label: 'Broker P&L fraction', numeric: true }]} getRowId={(row) => row.id} empty="Broker equity series unavailable." />
       <Typography>{data.technical_method_assessment?.accepted ? 'Supported performance method' : 'Unsupported or missing performance method'}</Typography>
       <Typography>{(data.technical_method_assessment?.reasons || ['No current method assessment recorded']).join('; ')}</Typography>
       <Button onClick={onRefresh}>Save method report from existing records</Button>
@@ -1163,9 +1163,9 @@ function HistoryCollection({ data, asOf, setAsOf, onRefresh, onBenchmark }) {
       <Button onClick={onBenchmark}>Queue selected benchmark history for this interval</Button>
       <Typography>Activity pagination {data.pagination_complete ? 'completed for its creation-time query' : 'incomplete'} · covered interval {data.interval_complete ? 'complete' : 'not established'} · calculation coverage {data.calculation_coverage_complete ? 'matched under the declared method' : 'incomplete'}</Typography>
       {[['Linked time-weighted return', data.time_weighted, 'return'], ['Modified Dietz estimate', data.dietz, 'estimate'], ['Drawdown', data.drawdown, 'value'], ['Benchmark excess price-return comparison', data.benchmark_comparison, 'excess_return']].map(([label, metric, key]) => <Typography key={label}><strong>{label}</strong> · {text(metric?.calculable ? metric[key] : 'Unavailable')} · method {text(metric?.method)} · {(metric?.readiness_reasons || [metric?.reason].filter(Boolean)).join('; ')}</Typography>)}
-      <DataTable rows={(data.activities || []).map((activity) => ({ ...activity, issues: (activity.issues || []).join('; ') }))} columns={[{ id: 'id', label: 'ID' }, { id: 'activity_type', label: 'Type' }, { id: 'category', label: 'Classification' }, { id: 'amount', label: 'Recorded amount' }, { id: 'time', label: 'Time / date', render: (row) => text(row.time || row.date) }, { id: 'issues', label: 'Limitation' }]} getRowId={(row) => row.id} empty="No activities retained." />
+      <DataTable rows={(data.activities || []).map((activity) => ({ ...activity, issues: (activity.issues || []).join('; ') }))} columns={[{ id: 'id', label: 'ID' }, { id: 'activity_type', label: 'Type' }, { id: 'category', label: 'Classification' }, { id: 'amount', label: 'Recorded amount', numeric: true }, { id: 'time', label: 'Time / date', type: 'dateTime', value: row => row.time || row.date }, { id: 'issues', label: 'Limitation' }]} getRowId={(row) => row.id} empty="No activities retained." />
       <Typography>Deposits/withdrawals are external capital. Dividends remain investment income. Fees and unknown activity types are explicit; no zero-fee assumption is applied. Allocation observation does not reconstruct holdings for past dates.</Typography>
-      <DataTable rows={data.allocation_observation?.positions || []} columns={[{ id: 'symbol', label: 'Symbol' }, { id: 'qty', label: 'Observed quantity' }, { id: 'market_value', label: 'Source market value / USD' }, { id: 'unrealized_pl', label: 'Source unrealized P&L / USD' }, { id: 'reconciliation_status', label: 'Import' }]} getRowId={(row) => row.symbol || row.id} empty="No allocation positions retained." />
+      <DataTable rows={data.allocation_observation?.positions || []} columns={[{ id: 'symbol', label: 'Symbol' }, { id: 'qty', label: 'Observed quantity', numeric: true }, { id: 'market_value', label: 'Source market value / USD', numeric: true }, { id: 'unrealized_pl', label: 'Source unrealized P&L / USD', numeric: true }, { id: 'reconciliation_status', label: 'Import' }]} getRowId={(row) => row.symbol || row.id} empty="No allocation positions retained." />
       <Stack spacing={0.5}>
         {(data.receipts || []).map((receipt, index) => <Link key={receipt.artifact?.sha256 || index} href={`/api/reporting/collections/${encodeURIComponent(data.id)}/receipts/${index}`} target="_blank" rel="noopener">Open receipt {index + 1} · {receipt.path} · SHA-256 {receipt.artifact?.sha256}</Link>)}
       </Stack>
@@ -1229,7 +1229,6 @@ export function AlertsView() {
   const [notice, setNotice] = useState('');
   const [localError, setLocalError] = useState('');
   const [conflict, setConflict] = useState(false);
-  const [filter, setFilter] = useState({ text: '', unread: 'all', scope: '' });
   const [evidenceId, setEvidenceId] = useState('');
   const [evidence, setEvidence] = useState(null);
   const [evidenceError, setEvidenceError] = useState('');
@@ -1424,7 +1423,7 @@ export function AlertsView() {
     }
   }
 
-  const occurrences = Object.values(observed.occurrences || {}).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).filter((item) => (filter.unread === 'all' || (filter.unread === 'unread' ? item.unread : !item.unread)) && (!filter.scope || item.scope === filter.scope) && (!filter.text || `${item.name} ${item.symbol} ${item.scope} ${item.evaluation?.reason || ''}`.toLowerCase().includes(filter.text.toLowerCase())));
+  const occurrences = Object.values(observed.occurrences || {});
   const rules = Object.values(attention?.data?.rules || {}).filter((rule) => !rule.removed);
   const unread = Object.values(observed.occurrences || {}).filter((item) => item.unread).length;
   const quotes = state?.quotes || {};
@@ -1437,7 +1436,7 @@ export function AlertsView() {
   const permission = supported ? Notification.permission : 'unavailable';
 
   return (
-    <Page title="Alerts" subtitle="Rules use saved snapshots; continuous interval coverage is not implied." actions={<Button onClick={() => navigate('settings', settingsHandoff('session_freshness'))}>Set quote-age limits in Trading Rules</Button>}>
+    <Page tabbed title="Alerts" subtitle="Rules use saved snapshots; continuous interval coverage is not implied." actions={<Button onClick={() => navigate('settings', settingsHandoff('session_freshness'))}>Set quote-age limits in Trading Rules</Button>}>
       <Stack spacing={2}>
         <Typography>Quote-age limits: {quotes && universe.length ? (unconfigured ? `${unconfigured} stocks not configured` : 'Configured for current stocks with quote freshness fields') : 'Quote freshness is not in this snapshot.'} Market is {state?.clock?.is_open === false ? 'closed' : state?.clock?.is_open === true ? 'open' : 'unavailable'}.</Typography>
         {stateError ? <Alert severity="warning">{stateError}</Alert> : null}
@@ -1445,21 +1444,24 @@ export function AlertsView() {
                 {notice ? <Alert severity="info">{notice}</Alert> : null}
         {pendingDraft ? <Alert severity="info" action={<Button color="inherit" onClick={() => { setDraft(pendingDraft); setDirty(true); setTab('Rules'); setPendingDraft(null); }}>Replace edited draft</Button>}>Incoming {pendingDraft.kind} draft for {pendingDraft.symbol || 'the saved symbol'} was not applied.</Alert> : null}
         {conflict ? <Button onClick={reload}>Reload saved attention state (discard rule edits)</Button> : null}
+      </Stack>
         <Tabs value={tab} onChange={(_event, value) => setTab(value)} aria-label="Alerts views">
           <Tab value="Inbox" label={`Inbox (${unread} unread)`} />
           <Tab value="Rules" label={`Alert Rules (${rules.length})`} />
           <Tab value="Delivery" label="Browser Delivery" />
         </Tabs>
-        {tab === 'Inbox' ? (
+        <Box role="tabpanel" hidden={tab !== 'Inbox'}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6 }}>
               <Stack spacing={1}>
                 <Typography>Monitor: {observed.monitor?.last_evaluated_at ? (Date.now() - Date.parse(observed.monitor.last_evaluated_at) > 15000 ? 'Stale / interrupted' : observed.monitor.state || 'Unknown') : 'Not evaluated'} · last evaluated {dateTime(observed.monitor?.last_evaluated_at)}</Typography>
-                <TextField label="Filter occurrences" value={filter.text} onChange={(event) => setFilter({ ...filter, text: event.target.value })} />
-                <Choice label="Read state" value={filter.unread} onChange={(unreadState) => setFilter({ ...filter, unread: unreadState })} options={[{ value: 'all', label: 'All' }, { value: 'unread', label: 'Unread' }, { value: 'acknowledged', label: 'Acknowledged' }]} />
-                <Choice label="Scope" value={filter.scope} onChange={(scope) => setFilter({ ...filter, scope })} options={[{ value: '', label: 'All scopes' }, ...RULE_SCOPES.map((scope) => ({ value: scope, label: scope }))]} />
-                <DataTable rows={occurrences} onRowClick={(row) => openEvidence(row.id)} columns={[{ id: 'name', label: 'Alert' }, { id: 'symbol', label: 'Symbol / scope', render: (row) => row.symbol || row.scope }, { id: 'unread', label: 'State', render: (row) => row.unread ? 'Unread' : 'Acknowledged' }, { id: 'reason', label: 'Reason', render: (row) => text(row.evaluation?.reason) }]} getRowId={(row) => row.id} empty="No saved alert occurrences." />
-                {occurrences.filter((item) => item.unread).map((item) => <Button key={item.id} onClick={() => attentionAction({ action: 'acknowledge', id: item.id, occurrence_revision: item.revision })}>Acknowledge {item.name}</Button>)}
+                <DataTable label="Alert inbox" rows={occurrences} onRowClick={(row) => openEvidence(row.id)}
+                  columns={[{id: 'name', label: 'Alert'}, {id: 'symbol', label: 'Symbol'}, {id: 'scope', label: 'Scope'},
+                    {id: 'unread', label: 'State', value: row => row.unread ? 'Unread' : 'Acknowledged'},
+                    {id: 'reason', label: 'Reason', value: row => row.evaluation?.reason},
+                    {id: 'created_at', label: 'Created', type: 'dateTime', render: row => dateTime(row.created_at)},
+                    {id: 'action', label: '', render: row => row.unread && <Button onClick={() => attentionAction({action: 'acknowledge', id: row.id, occurrence_revision: row.revision})}>Acknowledge</Button>}]}
+                  getRowId={row => row.id} empty="No saved alert occurrences." />
                 <Evidence title="Service restart gaps are unobserved intervals, not acknowledgements" data={(observed.monitor?.gaps || [])} />
               </Stack>
             </Grid>
@@ -1480,9 +1482,9 @@ export function AlertsView() {
               )}
             </Grid>
           </Grid>
-        ) : null}
-        {tab === 'Rules' ? <RuleEditor attention={attention} observed={observed} draft={draft} dirty={dirty} edit={edit} mode={mode} watchlists={watchlists} selectedSymbol={selectedSymbol} rules={rules} onSave={() => { setNotice(''); attentionAction({ action: 'save', id: draft.id, name: draft.name, symbol: (draft.symbol || '').toUpperCase(), active: Boolean(draft.active), atoms: Number.isInteger(draft.atomIndex) ? (draft.atoms || []).map((atom, index) => index === draft.atomIndex ? alertAtom(draft) : atom) : (draft.atoms?.length ? draft.atoms : [alertAtom(draft)]), operator: draft.operator || 'ALL', target: { mode: (draft.atoms || []).some((atom) => atom.kind === 'drawing') || draft.kind === 'drawing' ? 'symbol' : mode, symbol: (draft.symbol || '').toUpperCase(), watchlist_id: draft.watchlist_id || draft.target?.watchlist_id } }); }} onTemplate={(kind) => { if (dirty && !window.confirm('Discard unsaved alert rule edits and use this template?')) return; edit({ ...blankRule(), name: kind === 'price_above' ? 'Price above' : kind === 'price_below' ? 'Price below' : 'Quote stale', kind, scope: 'quote', symbol: selectedSymbol || '', target_mode: 'symbol' }); setNotice('Template loaded. Enter explicit limits, review the target, then Save rule.'); }} onAction={(action, id) => attentionAction({ action, id })} onEditRule={(rule) => { setTab('Rules'); edit({ ...structuredClone(rule), ...rule.parameters, target_mode: rule.target?.mode || 'symbol', watchlist_id: rule.target?.watchlist_id || '', atomIndex: rule.atoms ? 0 : undefined }); }} /> : null}
-        {tab === 'Delivery' ? (
+        </Box>
+        <Box role="tabpanel" hidden={tab !== 'Rules'}><RuleEditor attention={attention} observed={observed} draft={draft} dirty={dirty} edit={edit} mode={mode} watchlists={watchlists} selectedSymbol={selectedSymbol} rules={rules} onSave={() => { setNotice(''); attentionAction({ action: 'save', id: draft.id, name: draft.name, symbol: (draft.symbol || '').toUpperCase(), active: Boolean(draft.active), atoms: Number.isInteger(draft.atomIndex) ? (draft.atoms || []).map((atom, index) => index === draft.atomIndex ? alertAtom(draft) : atom) : (draft.atoms?.length ? draft.atoms : [alertAtom(draft)]), operator: draft.operator || 'ALL', target: { mode: (draft.atoms || []).some((atom) => atom.kind === 'drawing') || draft.kind === 'drawing' ? 'symbol' : mode, symbol: (draft.symbol || '').toUpperCase(), watchlist_id: draft.watchlist_id || draft.target?.watchlist_id } }); }} onTemplate={(kind) => { if (dirty && !window.confirm('Discard unsaved alert rule edits and use this template?')) return; edit({ ...blankRule(), name: kind === 'price_above' ? 'Price above' : kind === 'price_below' ? 'Price below' : 'Quote stale', kind, scope: 'quote', symbol: selectedSymbol || '', target_mode: 'symbol' }); setNotice('Template loaded. Enter explicit limits, review the target, then Save rule.'); }} onAction={(action, id) => attentionAction({ action, id })} onEditRule={(rule) => { setTab('Rules'); edit({ ...structuredClone(rule), ...rule.parameters, target_mode: rule.target?.mode || 'symbol', watchlist_id: rule.target?.watchlist_id || '', atomIndex: rule.atoms ? 0 : undefined }); }} /></Box>
+        <Box role="tabpanel" hidden={tab !== 'Delivery'}>
           <Stack spacing={1}>
             <Typography>Opt in for new alert occurrences on this browser profile. Enabling starts from now and does not replay the unread backlog. The desk and browser page must remain running. Email and closed-browser push are not configured.</Typography>
             <Typography>Browser permission: {permission} · saved preference: {browserProfileSaved?.enabled ? 'enabled' : 'disabled'}</Typography>
@@ -1492,19 +1494,18 @@ export function AlertsView() {
             </Stack>
             {browserError ? <Alert severity="error">{browserError}</Alert> : null}
             <Typography>Requested means a browser display attempt was recorded. It does not confirm delivery or reading. Failures are retried only when you choose Retry; unread acknowledgment is separate.</Typography>
-            {Object.entries(browserProfileSaved?.deliveries || {}).map(([id, attempt]) => (
-              <Stack key={id} direction="row" spacing={1}>
-                <Typography>{observed.occurrences?.[id]?.name || id} · {attempt.state} · {dateTime(attempt.requested_at)} {attempt.error || ''}</Typography>
-                <Button onClick={() => openEvidence(id)}>Open evidence</Button>
-                {attempt.state === 'failed' ? <Button disabled={browserBusy} onClick={() => retryBrowser(id)}>Retry failed notification</Button> : null}
-              </Stack>
-            ))}
+            <DataTable label="Browser notification attempts" rows={Object.entries(browserProfileSaved?.deliveries || {}).map(([id, attempt]) => ({...attempt, id}))}
+              getRowId={row => row.id} columns={[{id: 'name', label: 'Alert', value: row => observed.occurrences?.[row.id]?.name || row.id},
+                {id: 'state', label: 'Delivery state'}, {id: 'requested_at', label: 'Requested', type: 'dateTime', render: row => dateTime(row.requested_at)},
+                {id: 'error', label: 'Error'}, {id: 'actions', label: '', render: row => <Stack direction="row" spacing={1}>
+                  <Button onClick={() => openEvidence(row.id)}>Open evidence</Button>
+                  {row.state === 'failed' && <Button disabled={browserBusy} onClick={() => retryBrowser(row.id)}>Retry failed notification</Button>}
+                </Stack>}]} empty="No browser notification attempts recorded." />
             <Typography>Enable starts from now and does not replay the unread backlog. After permission is granted, new unread occurrences are claimed once per profile delivery record. Retry is only for a failed display. Acknowledgement stays separate.</Typography>
         {selectedSymbol ? <ResearchDisposition symbol={selectedSymbol} /> : null}
           </Stack>
-        ) : null}
+        </Box>
         {attention ? <Typography>Future research priorities: {Object.values(attention.data?.reviews || {}).filter((review) => review.prioritize).map((review) => `${review.symbol} · ${review.run_id} revision ${review.research_revision}`).join('; ') || 'No priorities saved'}. Provider {text(state?.config?.llm_provider)} · fast model {text(state?.config?.quick_think_llm)} · deep model {text(state?.config?.deep_think_llm)}. Start new research through Research. Save a disposition from the review editor; it does not start research or authorize an order.</Typography> : <Typography>Saved rule configuration unavailable.</Typography>}
-      </Stack>
     </Page>
   );
 }
@@ -1588,7 +1589,10 @@ function RuleEditor({ attention, observed, draft, dirty, edit, mode, watchlists,
           </Stack>
         </AccordionDetails>
       </Accordion>
-      <DataTable rows={rules} columns={[{ id: 'name', label: 'Rule' }, { id: 'kind', label: 'Type', render: (row) => row.atoms ? `${row.operator} · ${row.atoms.length} conditions` : row.kind }, { id: 'revision', label: 'Revision' }, { id: 'active', label: 'Configuration', render: (row) => row.active ? 'Active configuration' : 'Paused' }, { id: 'evaluation', label: 'Evaluation', render: (row) => { const observation = observed.rule_states?.[row.id]; const evaluation = observation?.rule_revision === row.revision ? observation.evaluation : null; return evaluation?.state || 'Not evaluated'; } }]} getRowId={(row) => row.id} onRowClick={onEditRule} empty="No saved alert rules." />
+      <DataTable rows={rules} columns={[{ id: 'name', label: 'Rule' }, { id: 'kind', label: 'Type', value: (row) => row.atoms ? `${row.operator} · ${row.atoms.length} conditions` : row.kind },
+        {id: 'revision', label: 'Revision', numeric: true}, {id: 'active', label: 'Configuration', type: 'boolean', render: row => row.active ? 'Active configuration' : 'Paused'},
+        {id: 'evaluation', label: 'Evaluation', value: row => {const observation = observed.rule_states?.[row.id]; return observation?.rule_revision === row.revision ? observation.evaluation?.state || 'Not evaluated' : 'Not evaluated';}}]}
+        getRowId={(row) => row.id} onRowClick={onEditRule} empty="No saved alert rules." />
       {rules.map((rule) => (
         <Stack key={rule.id} direction="row" spacing={1}>
           <Typography>{rule.name} · revision {rule.revision}</Typography>

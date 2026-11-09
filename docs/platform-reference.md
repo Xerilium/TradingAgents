@@ -506,9 +506,24 @@ UI for controls and layout. Its five-second read-only state poll updates data,
 not the application root or workspace DOM. Each visited workspace keeps its own
 mounted components and native scrolling; drafts, filters, selected records and
 disclosures are local view state, not regenerated from a polling response.
-Dashboard, Portfolio, Orders, Markets and Settings keep their tab panels mounted
+Dashboard, Portfolio, Orders, Markets, Strategy Lab, Journal, Alerts and Settings keep their tab panels mounted
 in separate bounded native scroll containers. Switching a short panel into view
 does not shrink another panel's scroll range or reset its position.
+Ordinary tables, including filing evidence, captured native reports, import
+previews and chart-analysis readouts, use MIT-licensed MUI X Data Grid Community.
+Column headers sort; the native column menu provides typed filtering, and the
+toolbar provides quick search and column visibility. The grid owns pagination
+over the complete loaded collection, not a pre-sliced visible page. Research and
+Markets retain their full loaded stock lists; captured reports are not truncated.
+Numeric and date sort/filter values are separate from exact displayed source
+values and never rewrite order or allocation terms. Selection survives filtering;
+selecting, sorting or filtering never runs research, approves or submits orders.
+Saved watchlist/research scopes and authored column preferences remain distinct
+from grid filtering. Yahoo discovery is genuinely server-paged: its native pager
+requests fixed 25-row provider pages, and grid sorting/search/filtering cover only
+the loaded page. Explicit provider-wide criteria and ranking are separate.
+Charts, editors, narrative cards and expandable JSON/key-value evidence retain
+their specialized controls; they are not ordinary data tables.
 Saved proposals show a command's recorded outcome only when proposal ID, revision,
 terms hash, account and instrument match exactly; never-dispatched records and
 changed revisions remain reviewable. Filled, expired and working commands do not

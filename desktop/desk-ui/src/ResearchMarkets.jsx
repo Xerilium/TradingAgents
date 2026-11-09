@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel,
-  Grid, Link, MenuItem, Paper, Stack, Tab, Tabs, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Typography, Autocomplete,
+  Grid, Link, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography, Autocomplete,
 } from '@mui/material';
 import { useDesk } from './DeskContext.jsx';
 import { Page, Evidence, DataTable, money, number, dateTime, Status } from './ui.jsx';
@@ -153,7 +153,7 @@ function ResearchDetail({ detail, run, symbol, tab, setTab, failuresOnly, setFai
       </Tabs>
       <Box sx={{ pt: 2 }}>
         {!detail && <Typography>Select a researched stock to read its saved result.</Typography>}
-        {detail && tab === 'summary' && (
+        {detail && <Box role="tabpanel" hidden={tab !== 'summary'} sx={{height: 'min(680px, 70vh)', overflow: 'auto'}}>
           <Stack spacing={2}>
             <Typography variant="subtitle1">{symbol} · {text(detail.rating)} · {text(detail.trade_date)}</Typography>
             {detail.status === 'completed' && reports.final_trade_decision
@@ -162,31 +162,31 @@ function ResearchDetail({ detail, run, symbol, tab, setTab, failuresOnly, setFai
             <Typography variant="subtitle2">Trader plan</Typography>
             <ReportText value={reports.trader_investment_plan} />
           </Stack>
-        )}
-        {detail && tab === 'reports' && analyst.map((k) => (
+        </Box>}
+        {detail && <Box role="tabpanel" hidden={tab !== 'reports'} sx={{height: 'min(680px, 70vh)', overflow: 'auto'}}>{analyst.map((k) => (
           <Box key={k} sx={{ mb: 2 }}><Typography variant="subtitle2">{k.replace(/_/g, ' ')}</Typography><ReportText value={reports[k]} /></Box>
-        ))}
-        {detail && tab === 'debate' && (
+        ))}</Box>}
+        {detail && <Box role="tabpanel" hidden={tab !== 'debate'} sx={{height: 'min(680px, 70vh)', overflow: 'auto'}}>
           <Stack spacing={2}>
             {[['Bull', debate.bull_history], ['Bear', debate.bear_history], ['Research manager', debate.judge_decision],
               ['Aggressive', risk.aggressive_history], ['Neutral', risk.neutral_history], ['Conservative', risk.conservative_history], ['Risk judge', risk.judge_decision]]
               .map(([label, v]) => <Box key={label}><Typography variant="subtitle2">{label}</Typography><ReportText value={v} /></Box>)}
           </Stack>
-        )}
-        {detail && tab === 'sources' && (
+        </Box>}
+        {detail && <Box role="tabpanel" hidden={tab !== 'sources'} sx={{height: 'min(680px, 70vh)', overflow: 'auto'}}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Links found in report text</Typography>
             {urls.length ? urls.map((u) => <Link key={u} href={u} target="_blank" rel="noreferrer noopener">{u}</Link>) : <Typography>None found.</Typography>}
             <Evidence title="Provenance receipts" data={{ source: run?.source_evidence, gateway: run?.gateway_evidence, jev: run?.jev_evidence }} />
             <SupplementaryEvidence symbol={symbol} desk={desk} />
           </Stack>
-        )}
-        {detail && tab === 'activity' && (
+        </Box>}
+        {detail && <Box role="tabpanel" hidden={tab !== 'activity'} sx={{height: 'min(680px, 70vh)', overflow: 'auto'}}>
           <Stack spacing={1}>
             <FormControlLabel control={<Checkbox checked={failuresOnly} onChange={(e) => setFailuresOnly(e.target.checked)} />} label="Failures only" />
             {visible.length ? visible.map((g) => <Evidence key={g.id} title={`Attempt ${g.id} · ${g.events.length} events · ${g.receipts.length} receipts`} data={g} />) : <Typography>No activity recorded.</Typography>}
           </Stack>
-        )}
+        </Box>}
       </Box>
     </Box>
   );
@@ -195,11 +195,7 @@ function ResearchDetail({ detail, run, symbol, tab, setTab, failuresOnly, setFai
 export function ResearchView() {
   const desk = useDesk();
   const { state, api, act, refresh, page, selectedSymbol, setSelectedSymbol, navigate, pending, stateError, navigation, clearNavigation } = desk;
-  const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const [sort, setSort] = useState('symbol');
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
   const [batch, setBatch] = useState(() => new Set());
   const [tab, setTab] = useState('summary');
   const [failuresOnly, setFailuresOnly] = useState(false);
@@ -231,27 +227,19 @@ export function ResearchView() {
   const blocked = Boolean(active || state?.browse_only);
 
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = symbols.filter((s) => {
+    return symbols.filter((s) => {
       const r = state?.research?.[s];
-      if (q && !s.toLowerCase().includes(q) && !(state?.company_names?.[s] || '').toLowerCase().includes(q)) return false;
       if (filter === 'selected') return batch.has(s);
       if (filter !== 'all') return rowStatus(r) === filter;
       return true;
     });
-    const age = (s) => state?.research?.[s]?.trade_date || '';
-    const cmp = { symbol: (a, b) => a.localeCompare(b), status: (a, b) => rowStatus(state?.research?.[a]).localeCompare(rowStatus(state?.research?.[b])),
-      oldest: (a, b) => age(a).localeCompare(age(b)), newest: (a, b) => age(b).localeCompare(age(a)) }[sort];
-    return list.sort(cmp);
-  }, [symbols, state?.research, state?.company_names, query, filter, sort, batch]);
-  const pageRows = rows.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize);
+  }, [symbols, state?.research, filter, batch]);
   const counts = useMemo(() => {
     const c = { all: symbols.length, selected: batch.size };
     symbols.forEach((s) => { const k = rowStatus(state?.research?.[s]); c[k] = (c[k] || 0) + 1; });
     return c;
   }, [symbols, state?.research, batch]);
 
-  const toggle = (s) => setBatch((prev) => { const n = new Set(prev); if (n.has(s)) n.delete(s); else n.add(s); return n; });
   const inspected = selectedSymbol;
   const saved = state?.research?.[inspected];
   const linked = link && link.symbol === inspected ? link : null;
@@ -319,13 +307,11 @@ export function ResearchView() {
   const deleteBlocked = blocked || ['queued', 'running'].includes(state?.portfolio_model?.status) || pending?.has?.('run') || pending?.has?.('delete');
 
   const columns = [
-    { id: 'batch', label: 'Batch', render: (s) => (
-      <Checkbox size="small" checked={batch.has(s)} disabled={!universe.includes(s)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s)} slotProps={{ input: { 'aria-label': `Include ${s} in research batch` } }} />) },
-    { id: 'symbol', label: 'Symbol', render: (s) => s },
-    { id: 'company', label: 'Company', render: (s) => state?.company_names?.[s] || UNAVAILABLE },
-    { id: 'status', label: 'Research', render: (s) => <Status value={rowStatus(state?.research?.[s])} /> },
-    { id: 'rating', label: 'Rating', render: (s) => text(state?.research?.[s]?.rating) },
-    { id: 'date', label: 'Trade date', render: (s) => text(state?.research?.[s]?.trade_date) },
+    { id: 'symbol', label: 'Symbol', value: s => s },
+    { id: 'company', label: 'Company', value: s => state?.company_names?.[s] },
+    { id: 'status', label: 'Research', value: s => rowStatus(state?.research?.[s]), render: (s) => <Status value={rowStatus(state?.research?.[s])} /> },
+    { id: 'rating', label: 'Rating', value: s => state?.research?.[s]?.rating },
+    { id: 'date', label: 'Trade date', type: 'date', value: s => state?.research?.[s]?.trade_date },
   ];
 
   return (
@@ -357,21 +343,16 @@ export function ResearchView() {
         <Grid size={{ xs: 12, md: 5 }}>
           <Section title="Stocks" actions={<Button color="error" disabled={deleteBlocked || deleteAction.busy || !batch.size} onClick={previewDelete}>Delete research…</Button>}>
             <Stack direction="row" spacing={1} sx={{flexWrap: "wrap",  mb: 1 }}  useFlexGap>
-              <TextField size="small" label="Search" value={query} onChange={(e) => { setQuery(e.target.value); setPageIndex(0); }} />
-              <TextField size="small" select label="Filter" value={filter} onChange={(e) => { setFilter(e.target.value); setPageIndex(0); }} sx={{ minWidth: 150 }}>
+              <TextField size="small" select label="Research scope" value={filter} onChange={(e) => setFilter(e.target.value)} sx={{ minWidth: 150 }}>
                 {['all', 'selected', 'completed', 'incomplete', 'failed', 'cancelled'].map((f) => <MenuItem key={f} value={f}>{f} ({counts[f] || 0})</MenuItem>)}
-              </TextField>
-              <TextField size="small" select label="Sort" value={sort} onChange={(e) => setSort(e.target.value)} sx={{ minWidth: 130 }}>
-                {[['symbol', 'Symbol'], ['status', 'Status'], ['oldest', 'Oldest'], ['newest', 'Newest']].map(([k, l]) => <MenuItem key={k} value={k}>{l}</MenuItem>)}
               </TextField>
             </Stack>
             <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-              <Button size="small" onClick={() => setBatch((p) => new Set([...p, ...rows.filter((s) => universe.includes(s))]))}>Select matching</Button>
               <Button size="small" onClick={() => setBatch(new Set(symbols.filter((s) => !universe.includes(s))))}>Select outside universe</Button>
             </Stack>
-            <DataTable rows={pageRows} columns={columns} getRowId={(s) => s} onRowClick={(s) => setSelectedSymbol(s)} empty="No stocks match." />
-            <TablePagination component="div" count={rows.length} page={pageIndex} onPageChange={(_, p) => setPageIndex(p)}
-              rowsPerPage={pageSize} rowsPerPageOptions={[25, 50, 100]} onRowsPerPageChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }} />
+            <DataTable label="Research stocks" rows={rows} columns={columns} getRowId={(s) => s}
+              selectedIds={batch} onSelectionChange={setBatch} onRowClick={setSelectedSymbol} empty="No stocks match." />
+            <Typography variant="caption">Research uses selected universe members only. Outside-universe selections remain available for explicit deletion.</Typography>
           </Section>
         </Grid>
         <Grid size={{ xs: 12, md: 7 }}>
@@ -427,16 +408,8 @@ const SourceLink = ({ url, label = 'Original source' }) => (/^https?:\/\//i.test
 const STATEMENTS = { balance_sheet: 'Balance sheet', income_statement: 'Income statement', cashflow: 'Cash flow' };
 const ev = (v, fallback = UNAVAILABLE) => (v == null || v === '' ? fallback : String(v));
 
-function RecordTable({ columns, rows }) {
-  return (
-    <TableContainer>
-      <Table size="small">
-        <TableHead><TableRow>{columns.map(c => <TableCell key={c} scope="col">{c}</TableCell>)}</TableRow></TableHead>
-        <TableBody>{rows.map((cells, i) => <TableRow key={i}>{cells.map((c, j) => <TableCell key={j}>{c}</TableCell>)}</TableRow>)}</TableBody>
-      </Table>
-    </TableContainer>
-  );
-}
+const evidenceId = record => record.id ?? JSON.stringify(record);
+const sourceColumn = {id: 'source_url', label: 'Original source', render: r => <><SourceLink url={r.source_url}/><Evidence title="Exact source fields" data={r}/></>};
 
 function EvidenceRecords({ records }) {
   const facts = records.filter((r) => r.kind === 'reported_fact');
@@ -454,10 +427,11 @@ function EvidenceRecords({ records }) {
           return (
             <Box key={st}>
               <Typography variant="subtitle2">{STATEMENTS[st] || ev(st, 'Statement unavailable')}</Typography>
-              {rows.length ? <RecordTable columns={['Line item', 'Reported value', 'Units / currency', 'Reporting period', 'Filed / form', 'Original filing']}
-                rows={rows.map((r) => [ev(r.name || r.tag), ev(r.value), `${r.units || 'Units unavailable'} / ${r.currency || 'Currency not reported'}`,
-                  `${r.period_start || 'Start not reported'} → ${r.period_end || 'End not reported'}`, `${r.published_at || 'Filed date unavailable'} / ${r.form || 'Form unavailable'}`,
-                  <><SourceLink url={r.source_url} label="Open filing" /><Evidence title="Exact source fields" data={r} /></>])} />
+              {rows.length ? <DataTable label={STATEMENTS[st] || st} rows={rows} getRowId={evidenceId}
+                columns={[{id: 'name', label: 'Line item', value: r => r.name || r.tag}, {id: 'value', label: 'Reported value', numeric: true},
+                  {id: 'units', label: 'Units / currency', value: r => `${r.units || 'Units unavailable'} / ${r.currency || 'Currency not reported'}`},
+                  {id: 'period_start', label: 'Period start', type: 'date'}, {id: 'period_end', label: 'Period end', type: 'date'},
+                  {id: 'published_at', label: 'Filed', type: 'dateTime'}, {id: 'form', label: 'Form'}, sourceColumn]} />
                 : <Typography variant="body2">No supported filed facts retained for this statement.</Typography>}
             </Box>);
         })}
@@ -465,18 +439,20 @@ function EvidenceRecords({ records }) {
       {industry.length > 0 && <>
         <Typography variant="subtitle2">SEC SIC industry</Typography>
         <Typography variant="body2">SIC industry is not a sector classification; sector remains unavailable.</Typography>
-        <RecordTable columns={['Classification', 'SIC code', 'Industry', 'Retrieved', 'Source']}
-          rows={industry.map((r) => [ev(r.classification_system, 'Classification unavailable'), ev(r.code), ev(r.value), dateTime(r.retrieved_at),
-            <><SourceLink url={r.source_url} label="Open classification" /><Evidence title="Exact source fields" data={r} /></>])} />
+        <DataTable label="SEC SIC industry" rows={industry} getRowId={evidenceId}
+          columns={[{id: 'classification_system', label: 'Classification'}, {id: 'code', label: 'SIC code'},
+            {id: 'value', label: 'Industry'}, {id: 'retrieved_at', label: 'Retrieved', type: 'dateTime', render: r => dateTime(r.retrieved_at)}, sourceColumn]} />
       </>}
       {actions.length > 0 && <>
         <Typography variant="subtitle2">Corporate actions</Typography>
         <Typography variant="body2">Reported event and process dates have different meanings. Review dividends, splits, mergers and other retained actions before comparing prices; saved research inputs are unchanged.</Typography>
-        <RecordTable columns={['Action', 'Effective / ex date', 'Process date', 'Provider-reported terms', 'Qualification', 'Source']}
-          rows={actions.map((r) => [String(r.kind || 'Unknown action').replaceAll('_', ' '), ev(r.effective_at), ev(r.process_date),
-            <dl key="t" style={{ margin: 0 }}>{Object.entries(r.reported).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v === null ? UNAVAILABLE : typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd></div>)}</dl>,
-            [r.date_basis, r.limitation, r.comparison_requires_review ? 'Comparison requires review' : null].filter(Boolean).join(' · '),
-            <><SourceLink url={r.source_url} label="Open action source" /><Evidence title="Exact source fields" data={r} /></>])} />
+        <DataTable label="Corporate actions" rows={actions} getRowId={evidenceId}
+          columns={[{id: 'kind', label: 'Action', render: r => String(r.kind || 'Unknown action').replaceAll('_', ' ')},
+            {id: 'effective_at', label: 'Effective / ex date', type: 'date'}, {id: 'process_date', label: 'Process date', type: 'date'},
+            {id: 'reported', label: 'Provider-reported terms', render: r => <dl style={{margin: 0}}>{Object.entries(r.reported).map(([k, v]) =>
+              <div key={k}><dt>{k}</dt><dd>{v === null ? UNAVAILABLE : typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd></div>)}</dl>},
+            {id: 'qualification', label: 'Qualification', value: r => [r.date_basis, r.limitation, r.comparison_requires_review ? 'Comparison requires review' : null].filter(Boolean).join(' · ')},
+            sourceColumn]} />
       </>}
       {news.length > 0 && <>
         <Typography variant="subtitle2">News</Typography>
@@ -491,9 +467,11 @@ function EvidenceRecords({ records }) {
       </>}
       {other.length > 0 && <>
         <Typography variant="subtitle2">Other provider observations</Typography>
-        <RecordTable columns={['Observation', 'Value / units', 'Period / event date', 'Qualification', 'Source']}
-          rows={other.map((r) => [ev(r.name || r.kind), `${ev(r.value)} / ${r.units || 'Units not reported'}`, ev(r.effective_at || r.period_end || r.published_at),
-            ev(r.limitation || r.provenance || r.date_basis, 'Provider reported'), <><SourceLink url={r.source_url} /><Evidence title="Exact source fields" data={r} /></>])} />
+        <DataTable label="Other provider observations" rows={other} getRowId={evidenceId}
+          columns={[{id: 'name', label: 'Observation', value: r => r.name || r.kind},
+            {id: 'value', label: 'Value / units', numeric: other.some(r => r.value != null) && other.every(r => r.value == null || number(r.value) !== null), render: r => `${ev(r.value)} / ${r.units || 'Units not reported'}`},
+            {id: 'date', label: 'Period / event date', type: 'dateTime', value: r => r.effective_at || r.period_end || r.published_at},
+            {id: 'qualification', label: 'Qualification', value: r => r.limitation || r.provenance || r.date_basis || 'Provider reported'}, sourceColumn]} />
       </>}
     </Box>
   );
@@ -679,6 +657,24 @@ const integerOf = (value, key) => {
   return Number(value);
 };
 
+function AnalysisReadout({table}) {
+  const fields = [...new Set(table.rows.flatMap(row => Object.keys(row)))];
+  const columns = fields.map(id => {
+    const values = table.rows.map(row => row[id]).filter(value => value != null && value !== '');
+    const numeric = values.length > 0 && values.every(value => typeof value !== 'boolean' && window.DeskMarketChart.displayNumber(value) !== null);
+    const type = numeric ? 'number' : values.length && values.every(value => typeof value === 'boolean') ? 'boolean'
+      : values.length && values.every(value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) && Number.isFinite(Date.parse(value))) ? 'dateTime' : 'string';
+    return {id, label: id.replaceAll('_', ' '), type, value: row => numeric ? window.DeskMarketChart.displayNumber(row[id]) : row[id],
+      render: row => text(row[id])};
+  });
+  return <Stack spacing={1} sx={{my: 2}}>
+    <Typography variant="h4">{table.title}</Typography>
+    <DataTable label={table.title} rows={table.rows} columns={columns}
+      getRowId={row => String(row.month ?? row.year ?? row.period ?? JSON.stringify([row.series, row.source, row.units]))}
+      empty="No eligible retained rows." />
+  </Stack>;
+}
+
 function ChartAnalysis({ h, pin, desk, onOpenSource }) {
   const { api, state, refresh } = desk;
   const pinKey = JSON.stringify(pin);
@@ -695,6 +691,7 @@ function ChartAnalysis({ h, pin, desk, onOpenSource }) {
   const [yearScale, setYearScale] = useState('common');
   const action = useAsyncAction();
   const analysisHost = useRef(null);
+  const [analysisTables, setAnalysisTables] = useState([]);
   useEffect(() => { analysisStore.set(pinKey, { draft, deps, selKey, changed }); }, [pinKey, draft, deps, selKey, changed]);
 
   const history = meta?.history || [];
@@ -814,12 +811,15 @@ function ChartAnalysis({ h, pin, desk, onOpenSource }) {
   useEffect(() => {
     const el = analysisHost.current;
     if (!el || !calc?.result || !window.DeskMarketChart?.mountAnalysis) return undefined;
-    // The adapter renders escaped HTML/SVG into this dedicated element; React owns nothing inside it.
-    window.DeskMarketChart.mountAnalysis(el, calc.result, {
+    const tables = [];
+    // The specialty adapter owns plots; React owns the sortable, filterable exact readouts.
+    const dispose = window.DeskMarketChart.mountAnalysis(el, calc.result, {
       sourceRows: calc.spec?.rows || [], selectedSourceOrdinal: sourceOrdinal, yearScale, definition: calc.spec?.definition,
       onSelect: (ordinal) => { setEventOrdinal(ordinal); setSourceOrdinal(null); },
+      onTable: table => tables.push(table),
     });
-    return () => el.replaceChildren();
+    setAnalysisTables(tables);
+    return () => {dispose?.(); el.replaceChildren();};
   }, [calc, sourceOrdinal, yearScale]);
 
   const s = draft.settings;
@@ -919,6 +919,7 @@ function ChartAnalysis({ h, pin, desk, onOpenSource }) {
             {calc.result.seasonality && <TextField size="small" select label="Yearly value scale" value={yearScale} onChange={(e) => setYearScale(e.target.value)} sx={{ my: 1, minWidth: 220 }}>
               <MenuItem value="common">Common scale across years</MenuItem><MenuItem value="separate">Separate labeled scale per year</MenuItem></TextField>}
             <Box ref={analysisHost} aria-label="Derived analysis display" />
+            {analysisTables.map(table => <AnalysisReadout key={table.id} table={table}/>)}
             {events.length > 0 && <TextField size="small" select label="Derived event" value={selectedEvent?.output_ordinal ?? ''} sx={{ my: 1, minWidth: 320 }} onChange={(e) => { setEventOrdinal(Number(e.target.value)); setSourceOrdinal(null); }}>
               {events.map((e) => <MenuItem key={e.output_ordinal} value={e.output_ordinal}>Event {e.output_ordinal} · source {e.source_ordinal} · {text(e.t)} · {e.style || e.direction || ''}</MenuItem>)}
             </TextField>}
@@ -1380,7 +1381,6 @@ const COLUMN_OPTIONS = [
   ['savedLow', 'Saved low'], ['savedClose', 'Saved close'], ['savedVolume', 'Saved volume'],
 ];
 const DEFAULT_COLUMNS = ['price', 'change', 'age', 'research'];
-const CORE_COLUMNS = ['price', 'change', 'bidask', 'spread', 'position', 'upl', 'working', 'research'];
 const TERMINAL = ['filled', 'canceled', 'cancelled', 'expired', 'rejected', 'replaced'];
 const symbolList = (t) => t.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean);
 
@@ -1554,11 +1554,11 @@ function Screener({ desk, discovery, target }) {
   };
   const columns = [
     { id: 'symbol', label: 'Symbol', render: (r) => r.symbol },
-    { id: 'name', label: 'Name', render: (r) => r.shortName || r.longName || UNAVAILABLE },
-    { id: 'price', label: 'Price', numeric: true, render: (r) => money(r.regularMarketPrice) },
-    { id: 'chg', label: 'Change', numeric: true, render: (r) => pct(r.regularMarketChangePercent) },
-    { id: 'vol', label: 'Volume', numeric: true, render: (r) => count(r.regularMarketVolume) },
-    { id: 'cap', label: 'Market cap', numeric: true, render: (r) => count(r.marketCap) },
+    { id: 'name', label: 'Name', value: r => r.shortName || r.longName },
+    { id: 'price', label: 'Price', numeric: true, value: r => r.regularMarketPrice, render: (r) => money(r.regularMarketPrice) },
+    { id: 'chg', label: 'Change', numeric: true, value: r => r.regularMarketChangePercent, render: (r) => pct(r.regularMarketChangePercent) },
+    { id: 'vol', label: 'Volume', numeric: true, value: r => r.regularMarketVolume, render: (r) => count(r.regularMarketVolume) },
+    { id: 'cap', label: 'Market cap', numeric: true, value: r => r.marketCap, render: (r) => count(r.marketCap) },
   ];
   const nextDisabled = !obs || obs.status !== 'completed' || !(obs.rows || []).length || (obs.total != null && obs.offset + obs.rows.length >= obs.total);
   const row = inspected?.row || inspected?.observation?.row || inspected;
@@ -1572,10 +1572,10 @@ function Screener({ desk, discovery, target }) {
           <MenuItem value="">Any</MenuItem>
           {(meta?.sectors || []).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
         </TextField>
-        <TextField size="small" select label="Sort" value={crit.sort} onChange={(e) => setCrit({ ...crit, sort: e.target.value })}>
+        <TextField size="small" select label="Provider-wide ranking" value={crit.sort} onChange={(e) => setCrit({ ...crit, sort: e.target.value })}>
           {(meta?.sorts || ['ticker']).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
         </TextField>
-        <FormControlLabel control={<Checkbox checked={crit.ascending} onChange={(e) => setCrit({ ...crit, ascending: e.target.checked })} />} label="Ascending" />
+        <FormControlLabel control={<Checkbox checked={crit.ascending} onChange={(e) => setCrit({ ...crit, ascending: e.target.checked })} />} label="Provider ranking ascending" />
       </Stack>
       <Stack direction="row" spacing={1}  useFlexGap sx={{flexWrap: "wrap",  mb: 1 }}>
         <TextField size="small" select label="Saved criteria" value={savedId} sx={{ minWidth: 200 }} onChange={(e) => setSavedId(e.target.value)}>
@@ -1588,11 +1588,14 @@ function Screener({ desk, discovery, target }) {
       </Stack>
       {obs?.status === 'failed' && <Alert severity="error">{obs.error}</Alert>}
       {obs && obs.status !== 'failed' && <>
-        <DataTable rows={obs.rows || []} columns={columns} getRowId={(r) => r.symbol} onRowClick={(r) => setPick(r.symbol)} selectedIds={pick ? [pick] : []} empty="No rows on this page." />
+        <DataTable label="Loaded Yahoo screener page" rows={obs.rows || []} columns={columns} getRowId={(r) => r.symbol}
+          onRowClick={(r) => setPick(r.symbol)} selectedIds={pick ? [pick] : []} empty="No rows on this page."
+          paginationMode="server" paginationModel={{page: Math.floor(obs.offset / 25), pageSize: 25}} pageSizeOptions={[25]}
+          rowCount={obs.total ?? -1} paginationMeta={{hasNextPage: !nextDisabled}} loading={action.busy}
+          onPaginationModelChange={model => {if (!action.busy && model.page !== Math.floor(obs.offset / 25)) screen(model.page * 25);}} />
+        <Typography variant="caption">Grid sorting, filtering and search apply to this loaded provider page only. Provider-wide ranking and criteria apply when you run a screen.</Typography>
         <Typography variant="caption">{obs.limitation} · {text(obs.provider)} · captured {dateTime(obs.captured_at)} · total {count(obs.total)}</Typography>
         <Stack direction="row" spacing={1}  useFlexGap sx={{flexWrap: "wrap",  mt: 1 }}>
-          <Button disabled={action.busy || obs.offset === 0} onClick={() => screen(Math.max(0, obs.offset - (obs.page_size || 25)))}>Previous</Button>
-          <Button disabled={action.busy || nextDisabled} onClick={() => screen(obs.offset + (obs.page_size || 25))}>Next</Button>
           <Button disabled={!pick || action.busy} onClick={() => inspect(pick)}>Inspect {pick || 'selected'}</Button>
           <Button variant="outlined" disabled={!pick || action.busy || state?.browse_only || obs.status !== 'completed' || universe.includes(pick) || !SYMBOL.test(pick)} onClick={add}>Add {pick || 'selected'} to universe</Button>
           <Button variant="outlined" disabled={!pick || action.busy || !SYMBOL.test(pick)} onClick={addToList}>Add to target watchlist</Button>
@@ -1613,8 +1616,6 @@ function Options({ desk, discovery }) {
   const options = meta?.options;
   const [query, setQuery] = useState('{"status":"active","limit":25}');
   const [obsId, setObsId] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [type, setType] = useState('');
   const [feed, setFeed] = useState('');
   const action = useAsyncAction();
   const obs = options?.observations?.[obsId] || Object.values(options?.observations || {}).at(-1);
@@ -1640,15 +1641,17 @@ function Options({ desk, discovery }) {
     await api('/api/discovery', { action: 'option_feed', feed, expected_revision: options.revision });
     await refresh({fresh: true});
   });
-  const contracts = (obs?.contracts || []).map((c) => c.raw).filter((r) => (!expiry || r.expiration_date === expiry) && (!type || r.type === type));
-  const expiries = [...new Set((obs?.contracts || []).map((c) => c.raw.expiration_date))].sort();
+  const contracts = (obs?.contracts || []).map((c) => c.raw);
   const quoteOf = (s) => state?.nautilus?.market_data?.[s]?.quote;
   const columns = [
     { id: 'symbol', label: 'Contract', render: (r) => r.symbol },
     { id: 'type', label: 'Type', render: (r) => r.type },
-    { id: 'exp', label: 'Expiry', render: (r) => r.expiration_date },
-    { id: 'strike', label: 'Strike', numeric: true, render: (r) => text(r.strike_price) },
-    { id: 'quote', label: 'Bid / ask', render: (r) => { const q = quoteOf(r.symbol); return q ? `${money(q.bid_price)} × ${text(q.bid_size)} / ${money(q.ask_price)} × ${text(q.ask_size)}` : UNAVAILABLE; } },
+    { id: 'exp', label: 'Expiry', type: 'date', value: r => r.expiration_date },
+    { id: 'strike', label: 'Strike', numeric: true, value: r => r.strike_price },
+    { id: 'bid', label: 'Bid', numeric: true, value: r => quoteOf(r.symbol)?.bid_price, render: r => money(quoteOf(r.symbol)?.bid_price) },
+    { id: 'bid_size', label: 'Bid size', numeric: true, value: r => quoteOf(r.symbol)?.bid_size },
+    { id: 'ask', label: 'Ask', numeric: true, value: r => quoteOf(r.symbol)?.ask_price, render: r => money(quoteOf(r.symbol)?.ask_price) },
+    { id: 'ask_size', label: 'Ask size', numeric: true, value: r => quoteOf(r.symbol)?.ask_size },
     { id: 'sel', label: '', render: (r) => <Button size="small" disabled={action.busy} onClick={(e) => { e.stopPropagation(); select(r.symbol); }}>{options?.selections?.[r.symbol] ? 'Selected' : 'Select'}</Button> },
   ];
   return (
@@ -1661,12 +1664,6 @@ function Options({ desk, discovery }) {
           {['opra', 'indicative'].map((f) => <MenuItem key={f} value={f}>{f}</MenuItem>)}
         </TextField>
         <Button disabled={action.busy || !feed || !selections.length || !options} onClick={applyFeed}>Apply feed to selected</Button>
-        <TextField size="small" select label="Expiry" value={expiry} sx={{ minWidth: 140 }} onChange={(e) => setExpiry(e.target.value)}>
-          <MenuItem value="">All</MenuItem>{expiries.map((x) => <MenuItem key={x} value={x}>{x}</MenuItem>)}
-        </TextField>
-        <TextField size="small" select label="Type" value={type} sx={{ minWidth: 100 }} onChange={(e) => setType(e.target.value)}>
-          <MenuItem value="">All</MenuItem><MenuItem value="call">Call</MenuItem><MenuItem value="put">Put</MenuItem>
-        </TextField>
       </Stack>
       <DataTable rows={contracts} columns={columns} getRowId={(r) => r.symbol} empty="No contracts discovered." />
       <Typography variant="subtitle2" sx={{ mt: 1 }}>Selected contracts</Typography>
@@ -1945,12 +1942,8 @@ export function MarketsView() {
   const desk = useDesk();
   const { state, stateError, api, refresh, page, selectedSymbol, setSelectedSymbol, navigation, clearNavigation } = desk;
   const [tab, setTab] = useState('universe');
-  const [query, setQuery] = useState('');
   const [listId, setListId] = useState('');
   const [target, setTarget] = useState('shortlist');
-  const [minMove, setMinMove] = useState(0);
-  const [sortKey, setSortKey] = useState('symbol');
-  const [descending, setDescending] = useState(false);
   const [checked, setChecked] = useState(() => new Set());
   const [colDraft, setColDraft] = useState(null);
   const [savedBars, setSavedBars] = useState({});
@@ -1974,22 +1967,7 @@ export function MarketsView() {
   const exposureKnown = !stateError && state?.connection?.account_verified === true && state?.nautilus?.status === 'connected' && state?.nautilus?.reconciliation?.status === 'reconciled';
   const savedPref = state?.workspace?.data?.preferences?.columns;
   const cols = colDraft ?? { order: savedPref?.order || COLUMN_OPTIONS.map(([k]) => k), visible: savedPref?.visible || DEFAULT_COLUMNS };
-  const visible = new Set([...cols.visible, ...CORE_COLUMNS.filter(() => false)]);
-
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const val = (s) => ({ symbol: s, price: state?.quotes?.[s]?.price, change: state?.quotes?.[s]?.change_pct,
-      move: Math.abs(state?.quotes?.[s]?.change_pct ?? NaN), rating: state?.research?.[s]?.rating, researched: state?.research?.[s]?.trade_date })[sortKey];
-    return universe.filter((s) => (!members || members.has(s)) && (!q || s.toLowerCase().includes(q) || (state?.company_names?.[s] || '').toLowerCase().includes(q))
-      && (!minMove || Math.abs(state?.quotes?.[s]?.change_pct ?? 0) >= minMove))
-      .sort((a, b) => {
-        const x = val(a), y = val(b);
-        if (x == null || Number.isNaN(x)) return 1;
-        if (y == null || Number.isNaN(y)) return -1;
-        const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y));
-        return descending ? -c : c;
-      });
-  }, [universe, members, query, minMove, sortKey, descending, state?.quotes, state?.research, state?.company_names]);
+  const rows = useMemo(() => universe.filter(s => !members || members.has(s)), [universe, members]);
 
   const exportCsv = () => exportAction.run(async () => {
     const rep = await api('/api/reporting');
@@ -1998,29 +1976,32 @@ export function MarketsView() {
   });
 
   const quoteOf = (s) => state?.nautilus?.market_data?.[s]?.quote;
-  const lastSaved = (s, f) => { const b = savedBars[s]?.bars?.at(-1); return b ? text(b.raw?.[f] ?? b[f]) : 'Not loaded · open stock'; };
+  const savedValue = (s, f) => { const b = savedBars[s]?.bars?.at(-1); return b?.raw?.[f] ?? b?.[f]; };
+  const lastSaved = (s, f) => savedBars[s]?.bars?.length ? text(savedValue(s, f)) : 'Not loaded · open stock';
   const spread = (s) => { const q = quoteOf(s); const b = Number(q?.bid_price), a = Number(q?.ask_price); return q && b > 0 && a >= b ? ((a - b) / ((a + b) / 2) * 10000).toFixed(1) : UNAVAILABLE; };
   const defs = {
-    price: { label: 'Last', numeric: true, render: (s) => money(state?.quotes?.[s]?.price) },
-    change: { label: 'Change', numeric: true, render: (s) => pct(state?.quotes?.[s]?.change_pct) },
-    age: { label: 'Quote age', render: (s) => dateTime(state?.quotes?.[s]?.timestamp) },
-    research: { label: 'Research', render: (s) => `${text(state?.research?.[s]?.rating)} · ${text(state?.research?.[s]?.trade_date)}` },
-    bidask: { label: 'Bid / ask', render: (s) => { const q = quoteOf(s); return q ? `${money(q.bid_price)} × ${text(q.bid_size)} / ${money(q.ask_price)} × ${text(q.ask_size)}` : UNAVAILABLE; } },
-    spread: { label: 'Spread bps', numeric: true, render: spread },
-    position: { label: 'Position', render: (s) => (exposureKnown ? text(posOf[s]?.qty ?? '0') : 'Unknown') },
-    upl: { label: 'Unrealized P/L', numeric: true, render: (s) => (!exposureKnown ? 'Unknown' : posOf[s] ? pct(Number(posOf[s].unrealized_plpc) * 100) : '—') },
-    working: { label: 'Working', numeric: true, render: (s) => (Array.isArray(state?.orders) ? String(state.orders.filter((o) => o.symbol === s && !TERMINAL.includes(String(o.status).toLowerCase())).length) : 'Unknown') },
-    savedOpen: { label: 'Saved open', render: (s) => lastSaved(s, 'o') },
-    savedHigh: { label: 'Saved high', render: (s) => lastSaved(s, 'h') },
-    savedLow: { label: 'Saved low', render: (s) => lastSaved(s, 'l') },
-    savedClose: { label: 'Saved close', render: (s) => lastSaved(s, 'c') },
-    savedVolume: { label: 'Saved volume', render: (s) => lastSaved(s, 'v') },
+    price: { label: 'Last', numeric: true, value: s => state?.quotes?.[s]?.price, render: (s) => money(state?.quotes?.[s]?.price) },
+    change: { label: 'Change %', numeric: true, value: s => state?.quotes?.[s]?.change_pct, render: (s) => pct(state?.quotes?.[s]?.change_pct) },
+    age: { label: 'Quote time', type: 'dateTime', value: s => state?.quotes?.[s]?.timestamp, render: (s) => dateTime(state?.quotes?.[s]?.timestamp) },
+    research: { label: 'Research', value: s => `${text(state?.research?.[s]?.rating)} · ${text(state?.research?.[s]?.trade_date)}` },
+    bidask: { label: 'Bid / ask', value: (s) => { const q = quoteOf(s); return q ? `${money(q.bid_price)} × ${text(q.bid_size)} / ${money(q.ask_price)} × ${text(q.ask_size)}` : null; } },
+    spread: { label: 'Spread bps', numeric: true, value: spread },
+    position: { label: 'Position', numeric: true, value: s => exposureKnown ? posOf[s]?.qty ?? '0' : null, render: (s) => (exposureKnown ? text(posOf[s]?.qty ?? '0') : 'Unknown') },
+    upl: { label: 'Unrealized P/L %', numeric: true, value: s => exposureKnown && number(posOf[s]?.unrealized_plpc) !== null ? Number(posOf[s].unrealized_plpc) * 100 : null,
+      render: s => !exposureKnown ? 'Unknown' : !posOf[s] ? '—' : number(posOf[s].unrealized_plpc) === null ? UNAVAILABLE : pct(Number(posOf[s].unrealized_plpc) * 100) },
+    working: { label: 'Working', numeric: true, value: s => Array.isArray(state?.orders) ? state.orders.filter(o => o.symbol === s && !TERMINAL.includes(String(o.status).toLowerCase())).length : null },
+    savedOpen: { label: 'Saved open', numeric: true, value: s => savedValue(s, 'o'), render: (s) => lastSaved(s, 'o') },
+    savedHigh: { label: 'Saved high', numeric: true, value: s => savedValue(s, 'h'), render: (s) => lastSaved(s, 'h') },
+    savedLow: { label: 'Saved low', numeric: true, value: s => savedValue(s, 'l'), render: (s) => lastSaved(s, 'l') },
+    savedClose: { label: 'Saved close', numeric: true, value: s => savedValue(s, 'c'), render: (s) => lastSaved(s, 'c') },
+    savedVolume: { label: 'Saved volume', numeric: true, value: s => savedValue(s, 'v'), render: (s) => lastSaved(s, 'v') },
   };
   const columns = [
-    { id: 'symbol', label: 'Symbol', render: (s) => s },
-    { id: 'company', label: 'Company', render: (s) => state?.company_names?.[s] || UNAVAILABLE },
-    ...cols.order.filter((k) => visible.has(k) && defs[k]).map((k) => ({ id: k, ...defs[k] })),
-    { id: 'held', label: 'Held', render: (s) => (held.has(s) ? 'Held' : '') },
+    { id: 'symbol', label: 'Symbol', value: s => s },
+    { id: 'company', label: 'Company', value: s => state?.company_names?.[s] },
+    ...cols.order.filter(k => defs[k]).map((k) => ({ id: k, ...defs[k] })),
+    { id: 'move', label: 'Absolute move %', numeric: true, value: s => number(state?.quotes?.[s]?.change_pct) === null ? null : Math.abs(Number(state.quotes[s].change_pct)) },
+    { id: 'held', label: 'Held', type: 'boolean', value: s => exposureKnown ? held.has(s) : null },
   ];
   const quote = state?.quotes?.[selectedSymbol];
 
@@ -2040,23 +2021,16 @@ export function MarketsView() {
             <Section title="Universe" actions={<Button disabled={!checked.size || exportAction.busy} onClick={exportCsv}>Export selected holdings CSV</Button>}>
               {exportAction.error && <Alert severity="error">{exportAction.error}</Alert>}
               <Stack direction="row" spacing={1}  useFlexGap sx={{flexWrap: "wrap",  mb: 1 }}>
-                <TextField size="small" label="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
                 <TextField size="small" select label="List" value={listId} sx={{ minWidth: 150 }} onChange={(e) => setListId(e.target.value)}>
                   <MenuItem value="">All stocks</MenuItem>
                   {lists.map((l) => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
                 </TextField>
-                <TextField size="small" select label="Min move" value={minMove} onChange={(e) => setMinMove(Number(e.target.value))}>
-                  {[0, 0.5, 1, 2, 3, 5].map((m) => <MenuItem key={m} value={m}>{m}%</MenuItem>)}
-                </TextField>
-                <TextField size="small" select label="Sort" value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
-                  {[['symbol', 'Symbol'], ['price', 'Price'], ['change', 'Change %'], ['move', 'Move size'], ['rating', 'Rating'], ['researched', 'Research date']].map(([k, l]) => <MenuItem key={k} value={k}>{l}</MenuItem>)}
-                </TextField>
-                <FormControlLabel control={<Checkbox checked={descending} onChange={(e) => setDescending(e.target.checked)} />} label="Descending" />
-                <Button onClick={() => setChecked(new Set(rows))}>Select all</Button>
                 <Button onClick={() => setChecked(new Set())}>Clear</Button>
               </Stack>
               <DataTable rows={rows} columns={columns} getRowId={(s) => s} onRowClick={setSelectedSymbol}
-                selectedIds={[...checked]} onSelectionChange={(ids) => setChecked(new Set(ids))} empty="No stocks match." />
+                selectedIds={checked} onSelectionChange={setChecked} empty="No stocks match." label="Market universe"
+                columnVisibilityModel={Object.fromEntries(cols.order.map(k => [k, cols.visible.includes(k)]))}
+                onColumnVisibilityModelChange={model => setColDraft({...cols, visible: cols.order.filter(k => model[k] !== false)})} />
               <Typography variant="caption">Working counts use the order list only; proposal receipts are not included.</Typography>
             </Section>
             <ColumnPicker desk={desk} cols={cols} setCols={(fn) => setColDraft((c) => fn(c ?? cols))} />

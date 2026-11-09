@@ -5,7 +5,7 @@ import {
   LinearProgress, MenuItem, Radio, RadioGroup, Select, Stack, Tab, Tabs, TextField, Typography,
 } from '@mui/material';
 import { useDesk } from './DeskContext.jsx';
-import { Page, Evidence, DataTable, dateTime, Status } from './ui.jsx';
+import { Page, Evidence, DataTable, nativeReportColumns, dateTime, Status } from './ui.jsx';
 
 const TABS = [['Account', 'Account & Engine'], ['Research', 'Research & Models'], ['Trading rules', 'Trading Rules & Native Cache'], ['Integrations', 'Universe & Keys'], ['Diagnostics', 'Diagnostics & Backup']];
 const CONFIG_KEYS = {
@@ -601,8 +601,7 @@ export function SettingsView() {
   const risk = nautilus.native_risk || {};
   const riskValues = !stale && nautilus.status === 'connected' && risk.status === 'available' ? risk.values : null;
   const reportCurrent = nativeReport && !stale && nautilus.status === 'connected' && nativeReport.native_epoch === nautilus.native_epoch && nativeReport.store_generation === state?.store_generation;
-  const reportRows = useMemo(() => (nativeReport ? nativeReport.data.slice(0, 200).map((cells, i) => ({ id: i, index: nativeReport.index[i], cells })) : []), [nativeReport]);
-  const cell = (v) => (v === null || v === undefined ? 'Unavailable' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+  const reportRows = useMemo(() => (nativeReport ? nativeReport.data.map((cells, i) => ({ id: i, index: nativeReport.index[i], cells })) : []), [nativeReport]);
 
   const rulesPanel = (
     <>
@@ -679,9 +678,8 @@ export function SettingsView() {
               <Typography variant="subtitle2">Captured {nativeReport.report_kind} · {nativeReport.row_count} rows</Typography>
               <Typography variant="body2" color="text.secondary">{reportCurrent ? 'Capture belongs to the current worker; it does not update automatically.' : 'Historical capture: worker, connection or application generation changed.'} Captured {dateTime(nativeReport.captured_at)} · epoch {nativeReport.native_epoch}</Typography>
               <Typography variant="body2" sx={{ my: 1 }}>Native table figures may include modeled position reconstruction: reduction P&amp;L, zero model commissions and processing chronology are not actual broker execution economics.</Typography>
-              {nativeReport.row_count > reportRows.length && <Alert severity="info" sx={{ mb: 1 }}>Showing the first {reportRows.length} rows; the download contains the complete table.</Alert>}
               <DataTable rows={reportRows} getRowId={(r) => r.id} empty="The requested native cache table is empty. This does not establish complete broker history."
-                columns={[{ id: 'index', label: (nativeReport.index_names || []).map((n) => n || 'Index').join(' / '), render: (r) => cell(r.index) }, ...nativeReport.columns.map((name, i) => ({ id: name, label: name, render: (r) => cell(r.cells[i]) }))]} />
+                label="Captured native cache report" columns={nativeReportColumns(nativeReport)} />
               <Button sx={{ mt: 1 }} onClick={() => saveFile(JSON.stringify(nativeReport, null, 2), `native-${nativeReport.report_kind}.json`, 'application/json')}>Download complete captured table JSON</Button>
               <Evidence title="Capture, reconciliation and fee provenance" data={{ ...nativeReport, data: undefined, index: undefined }} />
             </Box>
@@ -693,7 +691,6 @@ export function SettingsView() {
 
   // Universe & Keys
   const [importPreview, setImportPreview] = useState(null);
-  const [importPage, setImportPage] = useState(0);
   const [importError, setImportError] = useState('');
   const fileRef = useRef(null);
   const universeText = Array.isArray(val('universe')) ? val('universe').join(', ') : keyed(val('universe'));
@@ -705,7 +702,6 @@ export function SettingsView() {
     try {
       if (file.size > 1048576) throw new Error('Use a file smaller than 1 MB.');
       setImportPreview(parseSymbols(await file.text(), { file: true, preview: true }));
-      setImportPage(0);
     } catch (err) { setImportError(errText(err)); }
   };
   const applyImport = (replace) => {
@@ -723,7 +719,6 @@ export function SettingsView() {
     setMfBusy(a);
     try { await act('maenifold-' + a, '/api/maenifold/' + a, {}); } catch { /* reported by act */ } finally { setMfBusy(''); }
   };
-  const pageRows = importPreview ? importPreview.rows.slice(importPage * 100, importPage * 100 + 100) : [];
   const integrationsPanel = (
     <Box component="form" onSubmit={(e) => { e.preventDefault(); save('Integrations'); }}>
       {conflictAlert}
@@ -750,11 +745,9 @@ export function SettingsView() {
           <Box sx={{ mt: 2, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
             <Typography variant="subtitle2">Universe import preview</Typography>
             <Typography variant="body2">{importPreview.symbols.length} accepted · {importPreview.rejected} rejected · {importPreview.duplicates} duplicate rows. The current universe is unchanged.</Typography>
-            <DataTable rows={pageRows} getRowId={(r) => `${r.row}-${r.value}`} columns={[{ id: 'row', label: 'Row', render: (r) => r.row }, { id: 'value', label: 'Original', render: (r) => r.value }, { id: 'symbol', label: 'Symbol', render: (r) => r.symbol }, { id: 'status', label: 'Disposition / reason', render: (r) => `${r.status} · ${r.reason}` }]} />
-            <Typography variant="body2" sx={{ my: 1 }}>Rows {importPreview.rows.length ? importPage * 100 + 1 : 0}–{Math.min(importPreview.rows.length, importPage * 100 + 100)} of {importPreview.rows.length}. Only accepted rows are applied to the editable draft; save settings separately to commit.</Typography>
+            <DataTable label="Universe import preview" rows={importPreview.rows} getRowId={(r) => `${r.row}-${r.value}`} columns={[{ id: 'row', label: 'Row', numeric: true }, { id: 'value', label: 'Original' }, { id: 'symbol', label: 'Symbol' }, { id: 'status', label: 'Disposition / reason', value: r => `${r.status} · ${r.reason}` }]} />
+            <Typography variant="body2" sx={{ my: 1 }}>Only accepted rows are applied to the editable draft; save settings separately to commit.</Typography>
             <Stack direction="row" spacing={1}  sx={{flexWrap: "wrap"}}>
-              <Button disabled={!importPage} onClick={() => setImportPage((p) => p - 1)}>Previous rows</Button>
-              <Button disabled={(importPage + 1) * 100 >= importPreview.rows.length} onClick={() => setImportPage((p) => p + 1)}>Next rows</Button>
               <Button disabled={!importPreview.symbols.length} onClick={() => applyImport(false)}>Merge accepted rows with draft universe</Button>
               <Button disabled={!importPreview.symbols.length} onClick={() => applyImport(true)}>Replace draft universe with accepted rows</Button>
               <Button onClick={() => setImportPreview(null)}>Discard import preview</Button>

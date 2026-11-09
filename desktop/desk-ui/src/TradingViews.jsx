@@ -139,9 +139,9 @@ function RunProgress({run}) {
     </Stack>
     {run.message && <Typography>{run.message}</Typography>}
     <Grid container spacing={2}>{keys.map(k => <Grid key={k} size={{xs: 4, md: 1.2}}><Fact label={k.replaceAll('_', ' ')} value={text(c[k])}/></Grid>)}</Grid>
-    {arr(run.deferred).length > 0 && <DataTable rows={run.deferred.map((d, i) => ({...d, id: i}))} empty="None"
-      columns={[{id: 'terms', label: 'Deferred trade', render: r => `${text(r.terms?.side)} ${text(r.terms?.quantity)} ${text(r.terms?.symbol)}`},
-        {id: 'reasons', label: 'Reasons', render: r => arr(r.reasons).join('; ') || 'Unavailable'}]}/>}
+    {arr(run.deferred).length > 0 && <DataTable rows={run.deferred} getRowId={d => JSON.stringify(d.terms)} empty="None"
+      columns={[{id: 'terms', label: 'Deferred trade', value: r => `${text(r.terms?.side)} ${text(r.terms?.quantity)} ${text(r.terms?.symbol)}`},
+        {id: 'reasons', label: 'Reasons', value: r => arr(r.reasons).join('; ') || null}]}/>}
     <Typography variant="body2" color="text.secondary">Run progress describes this run only; it is separate from current holdings and each command's broker outcome.</Typography>
   </Section>;
 }
@@ -153,7 +153,6 @@ export function SpyReview() {
   const [captured, setCaptured] = useState(null); // {preview, identity, at}
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
-  const [filter, setFilter] = useState('');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { if (!captured) return undefined; const t = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(t); }, [captured]);
   const fund = state?.investor?.fund_plans, account = schedule?.eligible_account_id;
@@ -192,7 +191,7 @@ export function SpyReview() {
   const simple = action => request(action).then(r => setMessage(r?.message || '')).catch(e => setMessage(e.message));
   if (!schedule) return <Notice severity="info">SPY rebalance state is not loaded.</Notice>;
   const canSubmit = Boolean(preview?.submit_token) && f.reasons.length === 0 && !schedule.in_progress && !busy;
-  const trades = arr(preview?.trades).filter(t => t.symbol?.includes(filter.trim().toUpperCase()));
+  const trades = arr(preview?.trades);
   const offerRemaining = run && (run.status === 'blocked' || run.status === 'submitted' && arr(run.deferred).length > 0);
   return <Stack spacing={2}>
     <Section title="Automatic trading" actions={<Status value={schedule.enabled ? 'enabled' : 'paused'}/>}>
@@ -222,7 +221,6 @@ export function SpyReview() {
         </Grid>
         {preview.policy_blockers.length > 0 && <Notice>Policy blockers: {preview.policy_blockers.join('; ')}</Notice>}
         {preview.deferred.length > 0 && <Notice severity="info">{preview.deferred.length} trade(s) are deferred to a later preview.</Notice>}
-        <Field label="Find symbol" value={filter} onChange={setFilter}/>
         <DataTable rows={trades} getRowId={t => `${t.symbol}-${t.side}`} empty="No trades match."
           columns={[{id: 'symbol', label: 'Symbol'}, {id: 'side', label: 'Side'}, {id: 'quantity', label: 'Quantity', numeric: true},
             {id: 'order_type', label: 'Type'}, {id: 'limit_price', label: 'Limit', numeric: true, render: t => t.limit_price === null || t.limit_price === undefined ? '—' : money(t.limit_price)}]}/>
@@ -256,10 +254,10 @@ function PositionsTable({onSelect}) {
     {!known && <Notice>Holdings are unverified or incomplete; rows are retained observations.</Notice>}
     <DataTable rows={rows} getRowId={p => p.symbol} onRowClick={onSelect} empty={known ? 'No open positions reported.' : 'Holdings unavailable or incomplete.'}
       columns={[{id: 'symbol', label: 'Symbol'}, {id: 'qty', label: 'Qty', numeric: true, render: p => text(p.qty)},
-        {id: 'avail', label: 'Broker available', numeric: true, render: p => text(p.qty_available)},
-        {id: 'price', label: 'Last', numeric: true, render: p => money(p.current_price)},
-        {id: 'day', label: 'Today P/L', numeric: true, render: p => `${money(p.unrealized_intraday_pl)} / ${pc(p.unrealized_intraday_plpc)}`},
-        {id: 'upl', label: 'Total UPL %', numeric: true, render: p => pc(p.unrealized_plpc)}]}/>
+        {id: 'avail', label: 'Broker available', numeric: true, value: p => p.qty_available},
+        {id: 'price', label: 'Last', numeric: true, value: p => p.current_price, render: p => money(p.current_price)},
+        {id: 'day', label: 'Today P/L', numeric: true, value: p => p.unrealized_intraday_pl, render: p => `${money(p.unrealized_intraday_pl)} / ${pc(p.unrealized_intraday_plpc)}`},
+        {id: 'upl', label: 'Total UPL %', numeric: true, value: p => number(p.unrealized_plpc) === null ? null : Number(p.unrealized_plpc) * 100, render: p => pc(p.unrealized_plpc)}]}/>
   </Stack>;
 }
 
@@ -268,8 +266,8 @@ function OrdersTable() {
   const rows = arr(state?.orders);
   return <DataTable rows={rows} getRowId={o => o.id} empty="No orders reported."
     columns={[{id: 'symbol', label: 'Symbol'}, {id: 'side', label: 'Side'}, {id: 'qty', label: 'Qty', numeric: true, render: o => text(o.qty)},
-      {id: 'type', label: 'Type', render: o => text(o.type ?? o.order_type)}, {id: 'status', label: 'Status', render: o => <Status value={o.status}/>},
-      {id: 'filled', label: 'Filled', numeric: true, render: o => text(o.filled_qty)}]}/>;
+      {id: 'type', label: 'Type', value: o => o.type ?? o.order_type}, {id: 'status', label: 'Status', render: o => <Status value={o.status}/>},
+      {id: 'filled', label: 'Filled', numeric: true, value: o => o.filled_qty}]}/>;
 }
 
 const PERIOD_DAYS = {week: 7, month: 31, quarter: 92, half: 183};
@@ -316,7 +314,7 @@ function DashboardChart({symbol, active}) {
     {!window.LightweightCharts && <Notice>Chart library unavailable; recorded bars are listed below.</Notice>}
     <Box ref={host} sx={{minHeight: bars.length ? 320 : 0}}/>
     {bars.length > 0 && <DataTable rows={[...bars].reverse()} getRowId={b => String(b.t)} empty=""
-      columns={[{id: 't', label: 'Date', render: b => String(b.t)}, {id: 'o', label: 'Open', numeric: true, render: b => text(b.o)}, {id: 'h', label: 'High', numeric: true, render: b => text(b.h)},
+      columns={[{id: 't', label: 'Date', type: 'dateTime', value: b => typeof b.t === 'number' ? new Date(b.t > 1e11 ? b.t : b.t * 1000).toISOString() : b.t, render: b => String(b.t)}, {id: 'o', label: 'Open', numeric: true, render: b => text(b.o)}, {id: 'h', label: 'High', numeric: true, render: b => text(b.h)},
         {id: 'l', label: 'Low', numeric: true, render: b => text(b.l)}, {id: 'c', label: 'Close', numeric: true, render: b => text(b.c)}, {id: 'v', label: 'Volume', numeric: true, render: b => text(b.v)}]}/>}
   </Stack>;
 }
@@ -327,11 +325,7 @@ export function DashboardView() {
   const f = useFacts();
   const open = useCallback(row => { setSelectedSymbol(row.symbol); }, [setSelectedSymbol]);
   const universe = arr(state?.config?.universe), quotes = state?.quotes || {}, held = new Set(arr(state?.positions).map(p => p.symbol));
-  const [heldFirst, setHeldFirst] = useState(false);
-  const watch = useMemo(() => {
-    const rows = universe.map(s => ({symbol: s, ...(quotes[s] || {})}));
-    return heldFirst ? [...rows].sort((a, b) => Number(held.has(b.symbol)) - Number(held.has(a.symbol))) : rows;
-  }, [universe, quotes, heldFirst, held]);
+  const watch = useMemo(() => universe.map(symbol => ({symbol, ...(quotes[symbol] || {})})), [universe, quotes]);
   const attention = [...f.reasons];
   const proposals = arr(f.investor.data?.proposals);
   const drafts = proposals.filter(p => p.status === 'draft' && !linked(state?.commands, p).length);
@@ -346,11 +340,10 @@ export function DashboardView() {
       {[['watch', 'Watch'], ['chart', 'Chart'], ['research', 'Research'], ['positions', 'Positions'], ['orders', 'Orders']].map(([v, l]) => <Tab key={v} value={v} label={l}/>)}
     </Tabs>
     <Box role="tabpanel" hidden={tab !== 'watch'}><Stack spacing={1}>
-      <FormControlLabel control={<Checkbox checked={heldFirst} onChange={e => setHeldFirst(e.target.checked)}/>} label="Held first"/>
       <DataTable rows={watch} getRowId={r => r.symbol} onRowClick={open} selectedIds={new Set(selectedSymbol ? [selectedSymbol] : [])}
         empty="No stocks in the saved universe."
         columns={[{id: 'symbol', label: 'Symbol'}, {id: 'price', label: 'Last', numeric: true, render: r => money(r.price)},
-          {id: 'held', label: 'Held', render: r => held.has(r.symbol) ? 'Yes' : 'No'}]}/>
+          {id: 'held', label: 'Held', type: 'boolean', value: r => f.coverage('positions') ? held.has(r.symbol) : null, render: r => f.coverage('positions') ? held.has(r.symbol) ? 'Yes' : 'No' : 'Unknown'}]}/>
     </Stack></Box>
     <Box role="tabpanel" hidden={tab !== 'chart'}><DashboardChart symbol={selectedSymbol} active={page === 'overview' && tab === 'chart'}/></Box>
     <Box role="tabpanel" hidden={tab !== 'research'}><Stack spacing={1}>
@@ -362,7 +355,7 @@ export function DashboardView() {
     <Box role="tabpanel" hidden={tab !== 'orders'}><Stack spacing={1}>
       <OrdersTable/>
       <DataTable rows={drafts} getRowId={p => p.id} empty="No saved drafts."
-        columns={[{id: 't', label: 'Draft', render: p => `${text(p.terms?.side)} ${text(p.terms?.quantity)} ${text(p.terms?.symbol)} · revision ${p.revision}`},
+        columns={[{id: 't', label: 'Draft', value: p => `${text(p.terms?.side)} ${text(p.terms?.quantity)} ${text(p.terms?.symbol)} · revision ${p.revision}`},
           {id: 'open', label: '', render: p => <Button size="small" onClick={() => {setSelectedSymbol(p.terms?.symbol); navigate('orders', {tab: 'ticket', symbol: p.terms?.symbol, proposal_id: p.id, proposal_revision: p.revision, terms: p.terms});}}>Open exact draft</Button>}]}/>
     </Stack></Box>
   </Page>;
@@ -385,7 +378,7 @@ function Allocations() {
   const {state, api, navigate, page} = useDesk();
   const universe = arr(state?.config?.universe);
   const asOf = state?.portfolio_model?.as_of;
-  const [draft, setDraft] = useState({capital: '100000', start: '', end: '', fee: '', query: '', weights: {}, spy: null});
+  const [draft, setDraft] = useState({capital: '100000', start: '', end: '', fee: '', weights: {}, spy: null});
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [result, setResult] = useState(null);
   const symbols = draft.spy ? Object.keys(draft.spy.weights) : universe;
   const end = draft.end || (asOf ? String(asOf).slice(0, 10) : ''), start = draft.start || (end ? `${Number(end.slice(0, 4)) - 1}-12-31` : '');
@@ -396,7 +389,7 @@ function Allocations() {
   const load = async action => {
     try {
       const r = await api('/api/evaluations', {action});
-      patch({spy: r, weights: {...r.weights}, start: '2025-12-31', end: '2026-11-04', query: ''}); setError('');
+      patch({spy: r, weights: {...r.weights}, start: '2025-12-31', end: '2026-11-04'}); setError('');
     } catch (e) { setError(e.message); }
   };
   const equal = () => {
@@ -433,7 +426,6 @@ function Allocations() {
       setResult(r); setStatus(`Simulation ${r.id} · ${r.status}`);
     } catch (e) { setError(e.message); setStatus(''); } finally { setBusy(false); }
   };
-  const shown = symbols.filter(s => s.includes(draft.query.trim().toUpperCase()));
   return <Section title="Portfolio allocations">
     <Typography variant="body2">Weights up to 8 decimals; unallocated capital stays in cash. The simulation runs on saved daily prices; it places no orders.</Typography>
     {draft.spy && <Notice severity="info">{text(draft.spy.source)} · holdings as of {text(draft.spy.as_of)}</Notice>}
@@ -458,9 +450,8 @@ function Allocations() {
     {status && <Typography role="status">{status}</Typography>}
     {result && <Stack direction="row" spacing={1}><Evidence title="Simulation result" data={result}/>
       <Button onClick={() => navigate('strategy', {tab: 'simulations', view: 'results', simulation_id: result.id})}>Open in Strategy Lab</Button></Stack>}
-    <Field label="Find symbol" value={draft.query} onChange={v => patch({query: v})}/>
-    <DataTable rows={shown} getRowId={s => s} empty="No stocks in the saved universe."
-      columns={[{id: 's', label: 'Stock', render: s => s}, {id: 'w', label: 'Allocation %', numeric: true,
+    <DataTable rows={symbols} getRowId={s => s} empty="No stocks in the saved universe."
+      columns={[{id: 's', label: 'Stock', value: s => s}, {id: 'w', label: 'Allocation %', numeric: true, value: s => draft.weights[s],
         render: s => <TextField size="small" type="number" value={draft.weights[s] ?? ''} disabled={Boolean(draft.spy)} slotProps={{htmlInput: {min: 0, max: 100, step: 0.00000001, 'aria-label': `${s} allocation percent`}}}
           onChange={e => setDraft(d => ({...d, weights: {...d.weights, [s]: e.target.value}}))}/>}]}/>
   </Section>;
@@ -489,14 +480,17 @@ function ProposedModel() {
           .map(([l, v]) => <Grid key={l} size={{xs: 6, md: 3}}><Fact label={l} value={v}/></Grid>)}
       </Grid>
       <DataTable rows={arr(r.allocations)} getRowId={a => a.symbol} empty="No allocations."
-        columns={[{id: 'symbol', label: 'Symbol'}, {id: 'weight', label: 'Weight', numeric: true, render: a => number(a.weight) === null ? 'Unavailable' : pct(Number(a.weight) * 100)},
+        columns={[{id: 'symbol', label: 'Symbol'}, {id: 'weight', label: 'Weight %', numeric: true, value: a => number(a.weight) === null ? null : Number(a.weight) * 100, render: a => number(a.weight) === null ? 'Unavailable' : pct(Number(a.weight) * 100)},
           {id: 'shares', label: 'Shares', numeric: true, render: a => text(a.shares)},
-          {id: 'ref', label: 'Reference', numeric: true, render: a => `${money(a.reference?.price)}${a.reference?.stale ? ' (stale)' : ''}`},
-          {id: 'last', label: 'Last vs reference', numeric: true, render: a => {
+          {id: 'ref', label: 'Reference', numeric: true, value: a => a.reference?.price, render: a => `${money(a.reference?.price)}${a.reference?.stale ? ' (stale)' : ''}`},
+          {id: 'last', label: 'Last vs reference', numeric: true, value: a => {
+            const last = number(state?.quotes?.[a.symbol]?.price), ref = number(a.reference?.price);
+            return last === null || ref === null || ref === 0 ? null : (last / ref - 1) * 100;
+          }, render: a => {
             const last = number(state?.quotes?.[a.symbol]?.price), ref = number(a.reference?.price);
             return last === null || ref === null || ref === 0 ? 'Unavailable' : pct((last / ref - 1) * 100);
           }},
-          {id: 'why', label: 'Rationale', render: a => text(a.rationale)}]}/>
+          {id: 'why', label: 'Rationale', value: a => a.rationale}]}/>
       {r.cash_rationale && <Typography>{r.cash_rationale}</Typography>}
       <Evidence title="Bindings, trace and exclusions" data={{inputs: m.inputs, exclusions: m.exclusions, system_prompt: r.system_prompt}}/>
     </>}
@@ -595,8 +589,8 @@ function Performance({active}) {
       <Typography variant="h3" sx={{fontSize: 16}}>External capital flows</Typography>
       <Typography variant="body2">Deposits and withdrawals are external capital; dividends and fees remain separate.</Typography>
       <DataTable rows={flows} getRowId={r => r.id ?? r.source_id ?? JSON.stringify(r)} empty="No external-flow records in this collection; completeness remains subject to its recorded method and coverage."
-        columns={[{id: 'i', label: 'Source identity', render: r => text(r.id ?? r.source_id)}, {id: 't', label: 'Time / date', render: r => text(r.at ?? r.time ?? r.date)},
-          {id: 'a', label: 'Amount / currency', render: r => `${text(r.amount)} ${r.currency ?? saved.currency ?? 'Currency unavailable'}`}]}/>
+        columns={[{id: 'i', label: 'Source identity', value: r => r.id ?? r.source_id}, {id: 't', label: 'Time / date', type: 'dateTime', value: r => r.at ?? r.time ?? r.date},
+          {id: 'a', label: 'Amount / currency', numeric: true, value: r => r.amount, render: r => `${text(r.amount)} ${r.currency ?? saved.currency ?? 'Currency unavailable'}`}]}/>
       <Evidence title="Source, calculation methods and coverage" data={saved}/>
       <Stack direction="row" spacing={1}  useFlexGap  sx={{alignItems: "center", flexWrap: "wrap"}}>
         <Field label="Activity export symbols (blank = full account)" value={symbols} onChange={setSymbols} sx={{maxWidth: 320}}/>
@@ -888,11 +882,11 @@ function Proposals({onOpen, f}) {
   return <Stack spacing={1}>
     <Typography variant="h3" sx={{fontSize: 16}}>Saved human proposals · {proposals.length}</Typography>
     <DataTable rows={proposals} getRowId={p => p.id} empty="No saved proposals."
-      columns={[{id: 't', label: 'Terms', render: p => `${text(p.terms?.side)} ${text(p.terms?.quantity)} ${text(p.terms?.symbol)}`},
-        {id: 'status', label: 'Recorded status for this exact revision', render: p => linked(state.commands, p).length ?
+      columns={[{id: 't', label: 'Terms', value: p => `${text(p.terms?.side)} ${text(p.terms?.quantity)} ${text(p.terms?.symbol)}`},
+        {id: 'status', label: 'Recorded status for this exact revision', value: p => linked(state.commands, p).length ? linked(state.commands, p).map(c => c.state).join(' · ') : p.status, render: p => linked(state.commands, p).length ?
           <RecordedCommands commands={linked(state.commands, p)}/> : <Status value={p.status}/>},
-        {id: 'rev', label: 'Revision', numeric: true, render: p => p.revision},
-        {id: 'at', label: 'Updated', render: p => dateTime(p.updated_at)},
+        {id: 'rev', label: 'Revision', numeric: true, value: p => p.revision},
+        {id: 'at', label: 'Updated', type: 'dateTime', value: p => p.updated_at, render: p => dateTime(p.updated_at)},
         {id: 'a', label: '', render: p => <Stack direction="row" spacing={1}>
           <Button size="small" onClick={() => onOpen(p)}>Open terms</Button>
           {p.status === 'draft' && !linked(state.commands, p).length &&
@@ -1074,17 +1068,18 @@ function Lifecycle() {
       <Button disabled={busy} onClick={reconcile}>Refresh account and order status</Button>
     </Stack>
     <DataTable rows={approvals} getRowId={a => a.id} empty="No approvals."
-      columns={[{id: 'id', label: 'Approval', render: a => `${text(a.terms?.side)} ${text(a.terms?.quantity)} ${text(a.terms?.symbol)}`},
-        {id: 's', label: 'State', render: a => <Status value={f.data.revocations?.[a.id] ? 'revoked' : states[a.id] ?? a.status}/>},
+      columns={[{id: 'id', label: 'Approval', value: a => `${text(a.terms?.side)} ${text(a.terms?.quantity)} ${text(a.terms?.symbol)}`},
+        {id: 's', label: 'State', value: a => f.data.revocations?.[a.id] ? 'revoked' : states[a.id] ?? a.status, render: a => <Status value={f.data.revocations?.[a.id] ? 'revoked' : states[a.id] ?? a.status}/>},
         {id: 'act', label: '', render: a => <Stack direction="row" spacing={1}><Button size="small" variant="contained" disabled={!submittable(a) || busy}
           onClick={() => ask(`Submit ${a.terms?.symbol}`, {action: 'submit', approval_id: a.id}, {approval: a}, s => [s.commands?.data?.approvals?.[a.id], s.commands?.approval_states?.[a.id], s.commands?.data?.revocations?.[a.id]])}>Submit exact approval</Button>
           <Button size="small" color="warning" disabled={busy || f.investor.approval_records_enabled !== true || Boolean(f.data.revocations?.[a.id]) || states[a.id] === 'admitted' && cmds.some(c => c.approval_id === a.id && c.state !== 'admitted_not_dispatched')}
             onClick={() => ask(`Revoke approval for ${a.terms?.symbol}`, {action: 'revoke', approval_id: a.id}, {approval: a}, s => [s.commands?.data?.approvals?.[a.id], s.commands?.approval_states?.[a.id], s.commands?.data?.revocations?.[a.id]], '/api/approvals')}>Revoke approval</Button></Stack>}]}/>
     <DataTable rows={cmds} getRowId={c => c.id} empty="No commands."
-      columns={[{id: 'c', label: 'Command', render: c => `${text(c.terms?.side)} ${text(c.terms?.quantity)} ${text(c.terms?.symbol)}`},
-        {id: 's', label: 'State', render: c => <Status value={c.state}/>},
-        {id: 'fill', label: 'Filled / remaining', render: c => `${text(c.filled_quantity)} / ${text(c.remaining_quantity)}`},
-        {id: 'ev', label: 'Evidence', render: c => <Stack>{c.pending_action && <span>Pending {c.pending_action}</span>}
+      columns={[{id: 'c', label: 'Command', value: c => `${text(c.terms?.side)} ${text(c.terms?.quantity)} ${text(c.terms?.symbol)}`},
+        {id: 's', label: 'State', value: c => c.state, render: c => <Status value={c.state}/>},
+        {id: 'filled_quantity', label: 'Filled', numeric: true},
+        {id: 'remaining_quantity', label: 'Remaining', numeric: true},
+        {id: 'ev', label: 'Evidence', sortable: false, filterable: false, render: c => <Stack>{c.pending_action && <span>Pending {c.pending_action}</span>}
           {vals(c.native_deliveries).some(d => d?.status === 'conflict') && <span>Native delivery conflict</span>}
           {c.origin === 'external_broker' && <span>External broker order</span>}{receiptLinks(c)}</Stack>},
         {id: 'a', label: '', render: c => <Stack direction="row" spacing={1}>
@@ -1100,8 +1095,8 @@ function Lifecycle() {
       <AccordionDetails><BrokerOrderActions order={o} f={f} ask={ask} busy={busy} canSend={canSend}/></AccordionDetails></Accordion>)}
     <Typography variant="h3" sx={{fontSize: 16}}>Retained basket groups</Typography>
     <DataTable rows={groups} getRowId={g => g.id} empty="No retained basket groups."
-      columns={[{id: 'id', label: 'Group', render: g => g.id}, {id: 's', label: 'State', render: g => <Status value={g.state}/>},
-        {id: 'legs', label: 'Legs', render: g => arr(g.command_ids).map(id => `${text(byId[id]?.terms?.symbol)} ${text(byId[id]?.state)}`).join(' · ')},
+      columns={[{id: 'id', label: 'Group'}, {id: 's', label: 'State', value: g => g.state, render: g => <Status value={g.state}/>},
+        {id: 'legs', label: 'Legs', value: g => arr(g.command_ids).map(id => `${text(byId[id]?.terms?.symbol)} ${text(byId[id]?.state)}`).join(' · ')},
         {id: 'a', label: '', render: g => <Stack direction="row" spacing={1}>
           <Button size="small" variant="contained" disabled={!canSend || busy || !['ready', 'running'].includes(g.state)}
             onClick={() => ask('Dispatch next basket leg', {action: 'basket_dispatch_next', id: g.id},
@@ -1117,11 +1112,11 @@ function Lifecycle() {
 function Fills() {
   const {state} = useDesk();
   return <Section title="Fills and fees">
-    <DataTable rows={arr(state?.fills)} getRowId={(r, i) => r.id ?? `${r.symbol}-${r.transaction_time ?? r.timestamp}-${r.qty ?? r.quantity}`} empty="No fill records in the current observation."
-      columns={[{id: 't', label: 'Time', render: r => dateTime(r.transaction_time || r.timestamp)}, {id: 's', label: 'Symbol', render: r => text(r.symbol)},
-        {id: 'side', label: 'Side', render: r => text(r.side)}, {id: 'q', label: 'Quantity', numeric: true, render: r => text(r.qty ?? r.quantity)},
-        {id: 'p', label: 'Fill price', numeric: true, render: r => money(r.price ?? r.fill_price)},
-        {id: 'c', label: 'Commission', numeric: true, render: r => r.commission === null || r.commission === undefined ? 'Unknown' : text(r.commission)}]}/>
+    <DataTable rows={arr(state?.fills)} getRowId={r => r.id ?? JSON.stringify(r)} empty="No fill records in the current observation."
+      columns={[{id: 't', label: 'Time', type: 'dateTime', value: r => r.transaction_time || r.timestamp, render: r => dateTime(r.transaction_time || r.timestamp)}, {id: 's', label: 'Symbol', value: r => r.symbol},
+        {id: 'side', label: 'Side'}, {id: 'q', label: 'Quantity', numeric: true, value: r => r.qty ?? r.quantity},
+        {id: 'p', label: 'Fill price', numeric: true, value: r => r.price ?? r.fill_price, render: r => money(r.price ?? r.fill_price)},
+        {id: 'c', label: 'Commission', numeric: true, value: r => r.commission, render: r => r.commission === null || r.commission === undefined ? 'Unknown' : text(r.commission)}]}/>
     <Typography variant="body2" color="text.secondary">Modeled native fees are not actual broker fees.</Typography>
   </Section>;
 }
@@ -1173,9 +1168,9 @@ function Baskets() {
     </Stack>
     {preview && <Evidence title="Basket impact preview" data={preview}/>}
     <DataTable rows={baskets} getRowId={b => b.id} empty="No saved baskets."
-      columns={[{id: 'id', label: 'Basket', render: b => b.id}, {id: 's', label: 'Status', render: b => <Status value={b.status}/>},
-        {id: 'r', label: 'Revision', numeric: true, render: b => b.revision},
-        {id: 'v', label: 'Impact review', render: b => b.impact_review_valid ? 'Valid' : 'Needs review'},
+      columns={[{id: 'id', label: 'Basket'}, {id: 's', label: 'Status', value: b => b.status, render: b => <Status value={b.status}/>},
+        {id: 'r', label: 'Revision', numeric: true, value: b => b.revision},
+        {id: 'v', label: 'Impact review', value: b => b.impact_review_valid ? 'Valid' : 'Needs review'},
         {id: 'a', label: '', render: b => <Button size="small" onClick={() => setReview(b.id)}>Review legs for admission</Button>}]}/>
     {f.reasons.length > 0 && <Notice>Leg admission is blocked: {f.reasons.join(' ')}</Notice>}
     {reviewed && <Stack spacing={1} sx={{p: 1, border: 1, borderColor: 'divider', borderRadius: 1}}>
@@ -1260,9 +1255,9 @@ function OptionInstructions() {
     {preview && !valid && <Notice>The preview no longer matches the form or connection. Preview again.</Notice>}
     {valid && <Evidence title="Option preview" data={preview}/>}
     <DataTable rows={list} getRowId={r => r.id} empty="No option instructions."
-      columns={[{id: 'sym', label: 'Instruction', render: r => `${text(r.kind)} ${text(r.symbol)}`}, {id: 's', label: 'State', render: r => <Status value={r.state}/>},
-        {id: 'facts', label: 'Exact authority and history', render: r => <Evidence title={`${r.kind} ${r.symbol} · ${r.id}`} data={r}/>},
-        {id: 'a', label: 'Separate actions', render: r => <Stack spacing={1}>
+      columns={[{id: 'sym', label: 'Instruction', value: r => `${text(r.kind)} ${text(r.symbol)}`}, {id: 's', label: 'State', value: r => r.state, render: r => <Status value={r.state}/>},
+        {id: 'facts', label: 'Exact authority and history', sortable: false, filterable: false, render: r => <Evidence title={`${r.kind} ${r.symbol} · ${r.id}`} data={r}/>},
+        {id: 'a', label: 'Separate actions', sortable: false, filterable: false, render: r => <Stack spacing={1}>
           <Button size="small" disabled={busy} onClick={() => {
             setForm({symbol: r.symbol, kind: r.kind, account_age: String(r.constraints?.account_max_age_seconds ?? ''),
               approval_age: String(r.constraints?.approval_max_age_seconds ?? ''), note: ''});
