@@ -252,3 +252,4 @@ tradingdesk.launch.json
 
 # Local browser driver dependencies; screenshots and profiles use .local-workspace
 /.claude/skills/run-tradingagents/node_modules/
+/.agents/skills/run-tradingagents/node_modules/
