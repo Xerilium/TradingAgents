@@ -82,9 +82,8 @@ profile environments; if the reviewed locks changed since the payload was
 prepared, it says so. It uses the previously prepared app's
 platform-specific Nautilus integrity manifest.
 
-Then, from `desktop`, run `npm run build:release`. Supply the existing
-publisher key through `TAURI_SIGNING_PRIVATE_KEY`; never copy the key into
-the repository. Keep the update artifact and its `.sig` together.
+The signing-dependent `build:release` command has been removed. An unsigned
+installer is not a signed updater artifact; do not publish it as one.
 
 `packaging/release_metadata.py` writes the update manifest to the required
 `--output` path (name it `latest.json` for the feed) and a sibling

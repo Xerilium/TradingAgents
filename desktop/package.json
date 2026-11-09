@@ -5,7 +5,6 @@
   "scripts": {
     "tauri": "tauri",
     "build:workflow-tools": "node workflow-ui/build.mjs",
-    "build:release": "tauri build --ci --config src-tauri/tauri.updater.conf.json",
     "build:setup": "tauri build --ci --config src-tauri/tauri.updater.conf.json --config src-tauri/tauri.setup.conf.json"
   },
   "devDependencies": {

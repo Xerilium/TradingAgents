@@ -223,8 +223,8 @@ actual installation, saved data and permitted smoke test.
 
 ### Release packaging
 
-Normal releases are app-only: refresh with `packaging/refresh_project.py` and
-build `desktop` with `npm run build:release`. Do not rerun dependency preparation
+Normal releases are app-only: refresh with `packaging/refresh_project.py`.
+The signing-dependent `build:release` command was removed. Do not rerun dependency preparation
 or include `payload/desk` and `payload/native` for ordinary code/prompt updates.
 Full setup is an explicit separate build for first installation/dependency changes;
 see `packaging/README.md`. Preserve installed private runtimes and CUDA.
