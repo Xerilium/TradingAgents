@@ -616,13 +616,17 @@ class SpyRebalance:
         fills = [item for item in runtime.get("fills", []) if item.get("order_id") in command["broker_order_ids"]]
         if (command.get("native_pending_commitment") or filled > 0 and not command.get("fill_ids")
                 or sum((Decimal(item["qty"]) for item in fills), Decimal(0)) != filled
-                or any(item.get("native_application") != "proven_in_current_process" for item in fills)
-                or {execution_id(item["id"]) for item in fills} != {execution_id(value) for value in command["fill_ids"]}
-                or not deliveries
+                or any(item.get("native_application") != "proven_in_current_process" for item in fills)):
+            raise ReconciliationPending(f"Waiting for the proven fill quantity of the existing {command['symbol']} order.")
+        if not {execution_id(item.get("execution_id") or item["id"]) for item in fills}.issubset(
+                {execution_id(value) for value in command["fill_ids"]}):
+            raise ReconciliationPending(f"Waiting for exact execution identities for the existing {command['symbol']} order.")
+        if (not deliveries
                 or {item.get("event_id") for item in native} != set(deliveries)
                 or any(item.get("confirmed_current_process") is not True
-                    or item.get("native_epoch") != runtime["native_epoch"] for item in native)):
-            raise ReconciliationPending("Waiting for current native confirmation of an existing SPY order.")
+                    or item.get("native_epoch") != runtime["native_epoch"]
+                    or item.get("source_receipt") != deliveries[item["event_id"]].get("receipt") for item in native)):
+            raise ReconciliationPending(f"Waiting for current native receipt confirmation for the existing {command['symbol']} order.")
         if command["state"] == "filled":
             events = [entry for entry in command.get("timeline", []) if entry.get("state") == "filled" and entry.get("at")]
             if not events or not isinstance(runtime.get("account_observation_started_at"), str):

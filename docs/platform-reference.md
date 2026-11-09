@@ -54,6 +54,8 @@ For a simple accepted, partially filled or filled command, complete current brok
 proof can supersede covered older receipts and release their retained commitment.
 The same proof updates a lagging simple command's lifecycle, cumulative fill and
 execution IDs before run holdings are checked; stream delivery is not required.
+Recovery matches proven fills within append-only command IDs and requires matching
+delivery receipts confirmed in the current native epoch, including superseded receipts.
 Conflicting or uncovered receipts remain blocking; historical events are not replayed.
 For an interrupted same-session reviewed run, **Preview remaining trades** retains
 the original unprocessed legs instead of recalculating targets. Attached accepted,
