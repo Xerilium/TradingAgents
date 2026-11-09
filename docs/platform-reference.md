@@ -60,6 +60,11 @@ Account refresh publishes fill rows with their converted fee provenance and comp
 parent observations, so in-flight collection does not strip proof from unchanged fills.
 Pending native report collection still marks the account reconciliation incomplete;
 it does not authorize admission using a previous balance.
+Broker collection and native application hold one observation lock, so a queued stream
+update cannot invalidate a generation between those phases. A crossed update remains
+an incomplete, retryable observation, not a permanent import failure. SPY requests a
+refresh when current reconciliation, the existing account-age limit or filled-command
+proof requires one, rather than forcing another collection for every ready leg.
 Conflicting or uncovered receipts remain blocking; historical events are not replayed.
 For an interrupted same-session reviewed run, **Preview remaining trades** retains
 the original unprocessed legs instead of recalculating targets. Attached accepted,

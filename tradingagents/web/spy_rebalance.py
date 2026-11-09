@@ -74,7 +74,8 @@ class SpyRebalance:
             return
         command = self.desk.store.database.read("commands", COMMANDS)["data"]["commands"].get(run.get("command_id"), {})
         progress = (run.get("manual_id"), run["session"], run["status"], run["completed"],
-                    command.get("id"), command.get("state"), runtime.get("account_observation_started_at"))
+                    command.get("id"), command.get("state"), runtime.get("account_observation_started_at"),
+                    runtime.get("reconciliation", {}).get("status"), runtime.get("native_contract", {}).get("observation_in_progress"))
         if progress != self.observed_progress:
             self.observed_progress = progress
             self.tick(wake=True)
@@ -717,13 +718,26 @@ class SpyRebalance:
         with self.desk.maintenance:
             if self.stopped or self.desk.store is not store:
                 return
-            if paper_account(self.desk.runtime.state()) != data["account_id"]:
+            runtime = self.desk.runtime.state()
+            if paper_account(runtime) != data["account_id"]:
+                return
+            if runtime.get("native_contract", {}).get("observation_in_progress") is True:
                 return
             saved_commands = database.read("commands", COMMANDS)["data"]["commands"]
             tracked = set(run.get("dispatched", {})) | ({run["command_id"]} if run.get("command_id") else set())
             filled = {key for key in tracked if saved_commands.get(key, {}).get("state") == "filled"}
-            refresh = not run["command_id"] and run["status"] == "ready"
-            post_fill = bool(filled - self.post_fill_refreshed)
+            account_age = Decimal(str((datetime.now(UTC) - instant(runtime["account_at"])).total_seconds()))
+            refresh = (runtime.get("reconciliation", {}).get("status") != "reconciled"
+                       or not 0 <= account_age <= Decimal(CONSTRAINTS["account_max_age_seconds"]))
+            post_fill = False
+            for key in filled - self.post_fill_refreshed:
+                try:
+                    self.checked_submitted(runtime, saved_commands[key])
+                except ReconciliationPending:
+                    post_fill = True
+                    break
+                else:
+                    self.post_fill_refreshed.add(key)
         if refresh or post_fill:
             # Native replies need the observer's maintenance lock; never wait for them while holding it.
             try:

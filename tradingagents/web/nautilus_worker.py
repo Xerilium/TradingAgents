@@ -10,6 +10,7 @@ import threading
 import time
 import traceback
 from collections import Counter
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from decimal import Decimal
 from importlib.util import module_from_spec, spec_from_file_location
@@ -810,6 +811,7 @@ def main():
             "broker_observation": observed.get("broker_observation", {}),
             "native_import_gap": observed.get("native_import_gap"),
             "native_contract": {"source_commit": manifest["source_commit"], "wheel_sha256": manifest["official_wheel"]["sha256"],
+                "observation_in_progress": bool(execution and hasattr(execution, "observation_lock") and execution.observation_lock.locked()),
                 "files_match_reviewed_wheel": True, "synthetic_recovery": False,
                 "actual_missing_commission_preserved": True, "commission_model_scope": "verified_direct_paper_us_equity_and_standard_equity_options_only",
                 "limitation": "Actual fill identity and economics are required; documented direct-paper equity commission may be modeled separately from unknown actual costs",
@@ -854,7 +856,6 @@ def main():
                 async with asyncio.timeout(120):
                     await data_ready.wait()
                 await self._query_account(None, force=True)
-                await self._apply_observation()
             except Exception as exc:
                 observed["error"] = f"Native account client initialization failed ({type(exc).__name__})"
                 diagnose(exc)
@@ -864,9 +865,9 @@ def main():
 
         async def _query_account(self, command, *, force=False):
             async with self.observation_lock, asyncio.timeout(120):
-                if not force and time.monotonic() - self.last_observation < 2:
+                if (not force and not self.observation_dirty and not self.reconciliation_blockers
+                        and time.monotonic() - self.last_observation < 2):
                     return
-                self.last_observation = time.monotonic()
                 self.reconciliation_blockers = ["Fresh complete broker observation pending"]
                 captured = self.clock.timestamp_ns()
                 cutoff, timestamp_initial = 0, datetime.now(UTC).isoformat()
@@ -1214,6 +1215,9 @@ def main():
                 # Observation receipt, not a competing position ledger. Credentials are never included.
                 self.observation_dirty = False
                 retain_observation()
+                await self._apply_observation(locked=True)
+                if not self.reconciliation_blockers:
+                    self.last_observation = time.monotonic()
 
         def record_unsupported_event(self, row, reference):
             observed.setdefault("unsupported_event_receipts", []).append(reference)
@@ -1396,13 +1400,15 @@ def main():
                 price, usd, Money(0, usd), LiquiditySide.NO_LIQUIDITY_SIDE, report.ts_last)
             await settled(lambda: any(isinstance(event, OrderFilled) and event.trade_id == trade_id for event in order.events))
 
-        async def _apply_observation(self):
+        async def _apply_observation(self, *, locked=False):
             """Apply actual identities and globally ordered fills through official native interfaces."""
-            async with self.observation_lock:
+            async with (nullcontext() if locked else self.observation_lock):
                 try:
                     self.require_complete_reports()
                     if self.observation_dirty:
-                        raise ValueError("A real-time update crossed this source generation; fresh broker observation is required")
+                        self.reconciliation_blockers = ["A real-time update crossed this source generation; fresh broker observation is required"]
+                        retain_observation()
+                        return
                     factory = strategy_holder[0].order_factory
                     parents = {row["id"]: row for row in observed.get("order_history", [])}
                     reports = {str(report.venue_order_id): report for report in self.order_reports}
@@ -1548,7 +1554,6 @@ def main():
 
         async def _generate_mass_status(self, lookback_mins):
             await self._query_account(None)
-            await self._apply_observation()
             return await self.observed_mass_status()
 
         async def poll(self):
@@ -1556,7 +1561,6 @@ def main():
                 await asyncio.sleep(30)
                 try:
                     await self._query_account(None)
-                    await self._apply_observation()
                 except Exception as exc:
                     observed["error"] = f"Account observation unavailable ({type(exc).__name__})"
 
@@ -1768,7 +1772,6 @@ def main():
                     try:
                         await clients["data"].refresh()
                         await clients["execution"]._query_account(None, force=command.get("post_fill") is True)
-                        await clients["execution"]._apply_observation()
                     except (HTTPError, URLError, TimeoutError) as exc:
                         observed["error"] = reply["error"] = "Account refresh unavailable (" + type(exc).__name__ + ")"
                 elif command.get("command") == "dispatch":
@@ -1776,7 +1779,6 @@ def main():
                     reply["queued_in_native_engine"] = True
                 elif command.get("command") == "option_instruction":
                     await clients["execution"]._query_account(None)
-                    await clients["execution"]._apply_observation()
                     await clients["execution"].lifecycle.dispatch_instruction(command["instruction_id"])
                     reply["instruction_request_processed"] = True
                 elif command.get("command") == "reconcile_identity":
