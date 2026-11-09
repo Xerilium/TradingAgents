@@ -780,6 +780,10 @@ def main():
                 reconciliation["gaps"].append("Fill " + str(fill.get("id")) + ": exact current native order/fill application is unproven; source retained")
                 reconciliation["status"] = "incomplete"
         reconciliation["fills"] = fill_observations
+        observation_in_progress = bool(execution and hasattr(execution, "observation_lock") and execution.observation_lock.locked())
+        if (observation_in_progress and not observed.get("error") and not observed.get("native_import_gap")
+                and reconciliation["gaps"] in ([], ["Fresh complete broker observation pending"])):
+            reconciliation["status"] = "refreshing"
         data = clients.get("data")
         prices = {}
         for symbol in (dict.fromkeys(desired + [p["symbol"] for p in observed["positions"] + observed["orders"] if p.get("symbol") and p.get("asset_class") in {"us_equity", "us_option"}]) if include_market_data else ()):
@@ -814,7 +818,7 @@ def main():
             "broker_observation": observed.get("broker_observation", {}),
             "native_import_gap": observed.get("native_import_gap"),
             "native_contract": {"source_commit": manifest["source_commit"], "wheel_sha256": manifest["official_wheel"]["sha256"],
-                "observation_in_progress": bool(execution and hasattr(execution, "observation_lock") and execution.observation_lock.locked()),
+                "observation_in_progress": observation_in_progress,
                 "observation_retry_required": bool(execution and getattr(execution, "observation_dirty", False)),
                 "files_match_reviewed_wheel": True, "synthetic_recovery": False,
                 "actual_missing_commission_preserved": True, "commission_model_scope": "verified_direct_paper_us_equity_and_standard_equity_options_only",

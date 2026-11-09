@@ -314,12 +314,13 @@ class DeskService:
     def _observe_runtime(self, observation):
         from .admission import DEFAULT
         with self.maintenance:
+            runtime = self.runtime.state()
             if self.store.database.read("commands", DEFAULT)["data"]["recovery_required"]:
-                self.admission.reconcile()
+                self.admission.reconcile(runtime=runtime)
             else:
-                self.admission.observe_current(self.runtime.state())
+                self.admission.observe_current(runtime)
             if getattr(self, "spy_rebalance", None):
-                self.spy_rebalance.observe(self.runtime.state())
+                self.spy_rebalance.observe(runtime)
 
     def attention_context(self):
         runtime = self.runtime.state()
@@ -666,20 +667,21 @@ class DeskService:
             return {**self.admission.reconcile(), "identity_errors": errors}
 
     def state(self, *, compact=False, run_id=None):
+        runtime = self.runtime.state()
         journal = self.store.database.read("journal")
         with self.store.lock:
             journal["data"]["runs"] = copy.deepcopy(self.store.data["runs"])
         with self.lock:
-            market = self._runtime_market()
+            market = self._runtime_market(runtime=runtime)
             data = {**copy.deepcopy(market), **self.store.snapshot(compact=compact, run_id=run_id, journal=journal["data"])}
         data.pop("paper_account_id", None)
         data["workspace"] = self.workspace()
         data["saved_research"] = self._saved_research_index(current=journal["data"]["runs"])
         data["portfolio_model"] = self.proposed_portfolio()
-        data["investor"] = self.investor()
-        data["health"] = self.health(journal_revision=journal["revision"])
+        data["commands"] = self.admission.snapshot(runtime=runtime)
+        data["investor"] = self.investor(runtime=runtime)
+        data["health"] = self.health(journal_revision=journal["revision"], runtime=runtime)
         data["reporting"] = self.reporting(compact=True)
-        data["commands"] = self.admission.snapshot()
         data["attention"] = self.attention()
         data["market_history"] = self.data_jobs.state()
         from .stock_evidence import DEFAULT as EVIDENCE_DEFAULT, configuration
@@ -688,7 +690,7 @@ class DeskService:
         data["proposals"] = []
         data["trading_paused"] = data["commands"]["data"].get("new_orders_blocked", False)
         data["readiness"] = self.readiness(data["config"], probe=False)
-        data["nautilus"] = self.runtime.state()
+        data["nautilus"] = runtime
         data["maenifold"] = self.maenifold.state()
         data["broker_mutations_enabled"] = self.admission.execution_enabled
         data["browse_only"] = self.browse_only
@@ -1260,14 +1262,14 @@ class DeskService:
                         or raw is None or decimal(raw) is None or decimal(raw) != decimal(point.get("price"))):
                     raise ValueError("Observed drawing anchor differs from its exact retained scope/bar/OHLC source")
 
-    def investor(self):
+    def investor(self, *, runtime=None):
         from .investor import DEFAULT, RULES, RULE_PARAMETERS, instruments, broker_action_order, order_version, working_commitments, decimal, contingent_group
         from .approval_review import evaluate
         from .admission import DEFAULT as COMMANDS
         from .market_history import DEFAULT as HISTORY
         from .stock_evidence import DEFAULT as EVIDENCE
         record = self.store.database.read("investor", DEFAULT)
-        runtime = self.runtime.state()
+        runtime = self.runtime.state() if runtime is None else runtime
         commands = self.store.database.read("commands", COMMANDS)["data"]
         history = self.store.database.read("market_history", HISTORY)["data"]
         evidence = self.store.database.read("stock_evidence", EVIDENCE)["data"]
@@ -1340,9 +1342,9 @@ class DeskService:
         return {"revision": fund_record["revision"], "current_account_id": account_id, "current": current,
                 "plans": list(fund_record["data"]["plans"].values()), "budget": fund_budget, "budget_error": budget_error}
 
-    def health(self, *, journal_revision=None):
+    def health(self, *, journal_revision=None, runtime=None):
         import sqlite3
-        runtime = self.runtime.state()
+        runtime = self.runtime.state() if runtime is None else runtime
         try:
             revision = self.store.database.read_revision("journal") if journal_revision is None else journal_revision
             store = {"status": "available", "schema": self.store.database.VERSION,
@@ -2326,8 +2328,8 @@ class DeskService:
                 "checked_at": runtime.get("prices_checked_at")}
         return quotes
 
-    def _runtime_market(self):
-        runtime = self.runtime.state()
+    def _runtime_market(self, *, runtime=None):
+        runtime = self.runtime.state() if runtime is None else runtime
         connection_identity = self.connection_context(runtime)
         available = runtime["status"] == "connected"
         symbols = dict.fromkeys(self.store.data["config"]["universe"] + [p["symbol"] for p in runtime.get("positions", [])])

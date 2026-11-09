@@ -61,8 +61,13 @@ Recovery matches proven fills within append-only command IDs and requires matchi
 delivery receipts confirmed in the current native epoch, including superseded receipts.
 Account refresh publishes fill rows with their converted fee provenance and complete
 parent observations, so in-flight collection does not strip proof from unchanged fills.
-Pending native report collection still marks the account reconciliation incomplete;
-it does not authorize admission using a previous balance.
+Pending native report collection reports **refreshing** when it has no substantive
+comparison/proof failure. This defers admission and durable approval updates; it
+does not authorize admission using a previous balance. Real gaps, stale sources,
+unknown outcomes and conflicts remain blocking. Each state response uses one
+captured observation for account, native, health and command status. A completed
+observation rechecks durable command recovery rather than retaining a refresh-only
+failure until a later background pass.
 Broker collection and native application hold one observation lock, so a queued stream
 update cannot invalidate a generation between those phases. A crossed update remains
 an incomplete, retryable observation, not a permanent import failure. SPY requests a

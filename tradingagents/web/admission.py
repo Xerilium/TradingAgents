@@ -34,6 +34,13 @@ def instant(value):
     return result
 
 
+def observation_refreshing(runtime):
+    return (runtime.get("status") == "connected"
+            and runtime.get("native_contract", {}).get("observation_in_progress") is True
+            and runtime.get("reconciliation", {}).get("status") == "refreshing"
+            and not any(runtime.get(key) for key in ("error", "local_record_error", "native_import_gap")))
+
+
 def account_version(runtime, symbols=()):
     from .investor import native_balance_binding
     def stable(value, path=()):
@@ -295,9 +302,17 @@ class CommandAdmission:
         defaults.update(extra or {})
         return self.database.transact(defaults, change, expected=expected)
 
-    def snapshot(self):
-        if self.database.read("commands", DEFAULT)["data"]["approvals"]:
-            self.observe_current(self.observation())
+    def snapshot(self, *, runtime=None):
+        runtime = self.observation() if runtime is None else runtime
+        existing = self.database.read("commands", DEFAULT)["data"]
+        if (existing["recovery_required"]
+                and existing.get("recovery_reason") == "Account source is stale, unavailable or incompletely reconciled"
+                and runtime.get("status") == "connected"
+                and runtime.get("reconciliation", {}).get("status") == "reconciled"
+                and runtime.get("native_contract", {}).get("observation_in_progress") is not True):
+            self.reconcile(runtime=runtime)
+        elif existing["approvals"]:
+            self.observe_current(runtime)
         record = self.database.read("commands", DEFAULT)
         record["data"].setdefault("new_orders_blocked", False)
         return {**record, "execution_enabled": self.execution_enabled, "review_enabled": self.review_enabled,
@@ -312,6 +327,7 @@ class CommandAdmission:
         if runtime.get("local_record_error") or runtime.get("native_import_gap"):
             raise ValueError(runtime.get("local_record_error") or runtime["native_import_gap"])
         if (runtime.get("status") != "connected" or runtime.get("reconciliation", {}).get("status") != "reconciled"
+                or runtime.get("native_contract", {}).get("observation_in_progress") is True
                 or not runtime.get("account", {}).get("id") or not runtime.get("account_at")):
             raise ReconciliationPending("Current complete Nautilus/broker reconciliation is required")
         if runtime["account"].get("trading_blocked") is True:
@@ -323,6 +339,8 @@ class CommandAdmission:
         return runtime
 
     def observe_current(self, runtime):
+        if observation_refreshing(runtime):
+            return
         existing = self.database.read("commands", DEFAULT)["data"]
         if not existing["approvals"]:
             return
@@ -976,12 +994,17 @@ class CommandAdmission:
             command["timeline"].append({"at": stamp(), "state": status, "source_at": report.get("source_at"), "report": copy.deepcopy(report)})
         return self.transaction(change)
 
-    def reconcile(self):
-        runtime = self.observation()
+    def reconcile(self, *, runtime=None):
+        runtime = self.observation() if runtime is None else runtime
+        if observation_refreshing(runtime):
+            return {**self.database.read("commands", DEFAULT), "ready": False, "reconciliation_deferred": True,
+                    "reason": "Account observation is refreshing; admission waits for completed evidence.",
+                    "execution_enabled": self.execution_enabled, "admission_enabled": self.admission_enabled}
         gaps = []
         account_id = (runtime.get("account") or {}).get("id")
         if (runtime.get("status") != "connected" or not account_id or not runtime.get("account_at")
-                or runtime.get("reconciliation", {}).get("status") != "reconciled" or runtime.get("local_record_error")):
+                or runtime.get("reconciliation", {}).get("status") != "reconciled"
+                or runtime.get("local_record_error") or runtime.get("native_import_gap")):
             gaps.append("Fresh complete account/native observation is unavailable")
         confirmed = {item["command_id"] for item in runtime.get("native_deliveries", [])
                      if item.get("confirmed_current_process") is True and runtime.get("native_epoch")
