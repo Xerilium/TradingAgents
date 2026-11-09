@@ -56,6 +56,10 @@ The same proof updates a lagging simple command's lifecycle, cumulative fill and
 execution IDs before run holdings are checked; stream delivery is not required.
 Recovery matches proven fills within append-only command IDs and requires matching
 delivery receipts confirmed in the current native epoch, including superseded receipts.
+Account refresh publishes fill rows with their converted fee provenance and complete
+parent observations, so in-flight collection does not strip proof from unchanged fills.
+Pending native report collection still marks the account reconciliation incomplete;
+it does not authorize admission using a previous balance.
 Conflicting or uncovered receipts remain blocking; historical events are not replayed.
 For an interrupted same-session reviewed run, **Preview remaining trades** retains
 the original unprocessed legs instead of recalculating targets. Attached accepted,

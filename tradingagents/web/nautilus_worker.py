@@ -741,6 +741,9 @@ def main():
         reconstruction = {key: value for key, value in reconstruction.items() if value.get("native_epoch") == native_epoch}
         reconciliation = reconcile(observed, native_positions, native_orders, native_cash, commands=commands, native_epoch=native_epoch,
             native_balance=native_balance)
+        if blockers := getattr(execution, "reconciliation_blockers", []):
+            reconciliation["gaps"] = list(dict.fromkeys(reconciliation["gaps"] + blockers))
+            reconciliation["status"] = "incomplete"
         if any(value.get("state") != "confirmed" for value in reconstruction.values()):
             reconciliation["gaps"].append("Native representation is unresolved; use explicit stop/start to rebuild retained actuals and fresh broker state")
             reconciliation["status"] = "incomplete"
@@ -965,7 +968,7 @@ def main():
                     "long_market_value", "multiplier", "shorting_enabled", "initial_margin", "maintenance_margin", "options_approved_level",
                     "options_trading_level", "options_buying_power", "non_marginable_buying_power", "account_blocked", "trade_suspended_by_user")},
                     account_at=datetime.now(UTC).isoformat(), positions=positions, orders=[row for row in orders if row["status"] in LIVE] + unsupported_orders,
-                    fills=fills, market_open=clock["is_open"], gaps=gaps, lookback_start=cutoff, error=None,
+                    market_open=clock["is_open"], gaps=gaps, lookback_start=cutoff, error=None,
                     broker_observation={"account_available": True, "positions_complete": True,
                         "orders_complete": open_response_count < 500, "source": "Alpaca paper Trading API",
                         "observed_at": datetime.now(UTC).isoformat()})
@@ -1182,8 +1185,9 @@ def main():
                 for missing in known - present:
                     self.position_reports.append(PositionStatusReport(account_id, missing, PositionSide.FLAT,
                         Quantity.from_str("0"), captured, captured))
-                observed["order_history"] = list(by_order.values())
-                observed["orders"] = [row for row in by_order.values() if row["status"] in LIVE] + unsupported_orders
+                # Publish fills with converted fee provenance and their complete parents, never during awaited collection.
+                observed.update(fills=fills, order_history=list(by_order.values()),
+                    orders=[row for row in by_order.values() if row["status"] in LIVE] + unsupported_orders)
                 self.recovery_fee_sources = {}
                 for report in self.fill_reports:
                     if report.commission is None or report.commission.currency != usd:
