@@ -144,11 +144,18 @@ actual installation, saved data and permitted smoke test.
   `.\Start-TradingDesk-Dev.cmd`, port 8099 and the
   `~/.cache/trader/development` profile. Never share production stores or
   credentials with development. Do not start the old Python launcher directly.
-- Development reloads: no tray. Leave a healthy, correctly loaded service alone.
+- Tray icons are off limits: never inspect, click or automate them, including
+  Restart and Quit. For an authorized development restart, terminate only the
+  exact identified development process IDs, then restart the existing development
+  launcher. Do not use the tray as a substitute.
+- Development reloads: leave a healthy, correctly loaded service alone.
   Before restarting, confirm automatic authority off, no active work/manual run
   and no working, pending or unknown orders/commands. First stop only proven old
   checkout DEV host/backend PIDs (exact executable, dev data/port arguments and
   ancestry), then launch the provided Desktop `Start-TradingDesk-Dev.lnk`.
+  Verify the old host/backend instances have exited before relaunching, with no
+  duplicate instances. After launch, require one replacement and ready/reconciled
+  development service with the intended source revision, not just a new PID.
   Never use name-wide/production kills, inspect credentials or change authority.
 - Agents must resolve that exact link and retain its unchanged target/arguments
   in a background `Execute` (`fireAndForget: true`), not detach the launch:
