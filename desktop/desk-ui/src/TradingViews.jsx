@@ -3,6 +3,7 @@ import {Accordion, AccordionDetails, AccordionSummary, Alert, Autocomplete, Box,
   Grid, Link, MenuItem, Stack, Tab, Tabs, TextField, Typography} from '@mui/material';
 import {useDesk} from './DeskContext.jsx';
 import {Page, Evidence, DataTable, money, number, dateTime, Status} from './ui.jsx';
+import {InstrumentChart} from './ResearchMarkets.jsx';
 
 const TERMINAL = ['filled', 'canceled', 'cancelled', 'rejected', 'expired', 'replaced'];
 const PREVIEW_MS = 300000;
@@ -614,10 +615,10 @@ export function PortfolioView() {
     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
       {[['positions', 'Positions'], ['allocations', 'Allocations'], ['model', 'Model proposal'], ['performance', 'Performance']].map(([v, l]) => <Tab key={v} value={v} label={l}/>)}
     </Tabs>
-    {tab === 'positions' && <Holdings/>}
-    {tab === 'allocations' && <Allocations/>}
-    {tab === 'model' && <ProposedModel/>}
-    {tab === 'performance' && <Performance active={page === 'portfolio'}/>}
+    <Box role="tabpanel" hidden={tab !== 'positions'}><Holdings/></Box>
+    <Box role="tabpanel" hidden={tab !== 'allocations'}><Allocations/></Box>
+    <Box role="tabpanel" hidden={tab !== 'model'}><ProposedModel/></Box>
+    <Box role="tabpanel" hidden={tab !== 'performance'}><Performance active={page === 'portfolio' && tab === 'performance'}/></Box>
   </Page>;
 }
 
@@ -627,12 +628,13 @@ const emptyTicket = {id: undefined, symbol: '', side: '', quantity: '', order_ty
 const clean = t => Object.fromEntries(Object.entries(t).filter(([, v]) => v !== '' && v !== undefined));
 const EVIDENCE_SCOPES = ['history', 'news', 'corporate_actions', 'earnings', 'fundamentals', 'classification'];
 
-function Ticket() {
-  const {state, api, act, refresh, selectedSymbol, navigation, clearNavigation} = useDesk();
+function Ticket({active}) {
+  const {state, api, act, refresh, page, selectedSymbol, navigation, clearNavigation} = useDesk();
   const investor = state?.investor, f = useFacts();
   const optionEnvelope = symbol => state?.nautilus?.market_data?.[symbol]?.option_contract || investor?.instruments?.[symbol]?.option_contract;
   const [ticket, setTicket] = useState(() => ({...emptyTicket, symbol: selectedSymbol || ''}));
   const [incoming, setIncoming] = useState(null);
+  const [chartOpen, setChartOpen] = useState(false);
   const ticketDirty = useRef(false);
   const loadIntent = intent => {
     const {kind, symbol, terms, research, symbols} = intent;
@@ -677,13 +679,12 @@ function Ticket() {
       stop_price: o.stop_price ?? '', quantity: o.qty ?? '', limit_price: o.limit_price ?? '', time_in_force: String(o.time_in_force || 'day').toUpperCase(), session: o.extended_hours ? 'extended' : 'regular', tp: '', sl: '', sll: '', trail_price: '', trail_percent: ''}
       : {...t, replacement: undefined});
   };
+  const exitTicket = next => next.exitMode ? {...next,
+    order_type: next.tp ? 'LIMIT' : next.sll ? 'STOP_LIMIT' : next.sl ? 'STOP_MARKET' : '',
+    limit_price: next.tp || next.sll || '', stop_price: next.tp ? '' : next.sl || ''} : next;
   const setExit = k => v => {
     ticketDirty.current = true; setPreview(null);
-    setTicket(t => {
-      const n = {...t, [k]: v};
-      if (t.exitMode) { n.order_type = n.tp ? 'LIMIT' : n.sll ? 'STOP_LIMIT' : n.sl ? 'STOP_MARKET' : ''; n.limit_price = n.tp || n.sll || ''; n.stop_price = n.tp ? '' : n.sl || ''; }
-      return n;
-    });
+    setTicket(t => exitTicket({...t, [k]: v}));
   };
   const seed = trailing => {
     ticketDirty.current = true; setPreview(null);
@@ -740,6 +741,33 @@ function Ticket() {
     if (type === 'TRAILING_STOP_MARKET') { delete out.stop_price; } else { delete out.trail_price; delete out.trail_percent; }
     if (tp && sl) out.exit_plan = clean({take_profit: tp, stop_price: sl, stop_limit_price: sll});
     return out;
+  };
+  const copyFields = [];
+  if (!isMleg) {
+    if (!ticket.exitMode && ['LIMIT', 'STOP_LIMIT'].includes(type)) copyFields.push(['limit_price', 'Entry / existing order limit']);
+    if (['STOP_MARKET', 'STOP_LIMIT'].includes(type)) copyFields.push(['stop_price', 'Existing stop trigger']);
+    if (terms().exit_plan && ticket.session === 'regular' && !ticket.replacement)
+      copyFields.push(['exit_plan.take_profit', 'Linked profit target'], ['exit_plan.stop_price', 'Linked protective trigger'], ['exit_plan.stop_limit_price', 'Linked protective stop limit']);
+  }
+  const applyChartCopy = (copy, {symbol}) => {
+    const fields = copy.fields || {[copy.field]: copy.value};
+    if (symbol !== ticket.symbol || !copy.price_ref || !copyFields.some(([key]) => key === copy.field) ||
+        Object.keys(fields).some(field => !copyFields.some(([key]) => key === field))) {
+      setMessage('The historical price destination no longer matches this ticket. Review it again.');
+      return;
+    }
+    ticketDirty.current = true;
+    setTicket(current => {
+      const next = {...current};
+      const exits = {'exit_plan.take_profit': 'tp', 'exit_plan.stop_price': 'sl', 'exit_plan.stop_limit_price': 'sll'};
+      for (const [field, value] of Object.entries(fields))
+        next[exits[field] || (next.exitMode && field === 'stop_price' ? 'sl' : field)] = value;
+      next.price_references = [...arr(current.price_references).filter(ref =>
+        !Object.keys(ref.fields || {[ref.destination]: null}).some(field => field in fields)), copy.price_ref];
+      return exitTicket(next);
+    });
+    setPreview(null);
+    setMessage('Historical price copied into the manual ticket. Preview and save its exact revision separately.');
   };
   const run = action => async () => {
     setMessage('');
@@ -820,6 +848,12 @@ function Ticket() {
       <Button onClick={() => setIncoming(null)}>Keep current ticket</Button></Notice>}
     {message && <Notice severity="info">{message}</Notice>}
     {preview && <Evidence title="Impact preview" data={preview}/>}
+    <Accordion expanded={chartOpen} onChange={(_, open) => setChartOpen(open)}>
+      <AccordionSummary>Chart and historical price reference</AccordionSummary>
+      <AccordionDetails><InstrumentChart symbol={ticket.symbol} active={active && page === 'orders' && chartOpen}
+        copyTarget={{symbol: ticket.symbol, fields: copyFields, terms: terms(), expectedRevision: investor?.revision,
+          instrumentId: instrument?.instrument_id, onApply: applyChartCopy}}/></AccordionDetails>
+    </Accordion>
     <Proposals onOpen={p => {setTicket({...emptyTicket, ...p.terms, id: p.id, tp: p.terms?.exit_plan?.take_profit ?? '', sl: p.terms?.exit_plan?.stop_price ?? '', sll: p.terms?.exit_plan?.stop_limit_price ?? ''}); setReason(''); setScopes(arr(p.terms?.decision_evidence_scopes)); setPreview(null);}} f={f}/>
   </Section>;
 }
@@ -1239,10 +1273,10 @@ export function OrdersView() {
       {[['ticket', 'Ticket & Blotter'], ['fills', 'Fills & Fees'], ['baskets', 'Human Baskets'], ['spy', 'SPY Rebalance'], ['options', 'Option Instructions']]
         .map(([v, l]) => <Tab key={v} value={v} label={l}/>)}
     </Tabs>
-    {tab === 'ticket' && <Stack spacing={2}><Ticket/><Lifecycle/><Section title="Broker orders"><OrdersTable/></Section></Stack>}
-    {tab === 'fills' && <Fills/>}
-    {tab === 'baskets' && <Baskets/>}
-    {tab === 'spy' && <SpyReview/>}
-    {tab === 'options' && <OptionInstructions/>}
+    <Box role="tabpanel" hidden={tab !== 'ticket'}><Stack spacing={2}><Ticket active={tab === 'ticket'}/><Lifecycle/><Section title="Broker orders"><OrdersTable/></Section></Stack></Box>
+    <Box role="tabpanel" hidden={tab !== 'fills'}><Fills/></Box>
+    <Box role="tabpanel" hidden={tab !== 'baskets'}><Baskets/></Box>
+    <Box role="tabpanel" hidden={tab !== 'spy'}><SpyReview/></Box>
+    <Box role="tabpanel" hidden={tab !== 'options'}><OptionInstructions/></Box>
   </Page>;
 }
