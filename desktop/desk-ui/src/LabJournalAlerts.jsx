@@ -641,7 +641,7 @@ export function StrategyView() {
       <Typography>Changing any setup field invalidates the selected preview. Run uses its saved ID and specification hash. Saved BUY whole-share USD equity MARKET, LIMIT or STOP_LIMIT plans with DAY/GTC. Empty starting holdings; SELL starting holdings are unavailable.</Typography>
     </Stack>
   ), experiments: (
-    <ExperimentSetup sources={sources} busy={busy} strategy={strategy} setStrategy={setStrategy} execution={execution} setExecution={setExecution} experiment={experiment} setExperiment={setExperiment} strategyId={strategyId} strategyRevision={strategyRevision} strategyDirty={strategyDirty} setStrategyDirty={setStrategyDirty} setExperimentDirty={setExperimentDirty} branch={branch} expItem={expItem} onLoad={loadSources} onLoadStrategy={loadStrategy} onClearStrategy={() => { setStrategyId(''); setStrategyRevision(null); setStrategyDirty(true); setExperimentDirty(true); }} onAction={experimentAction} />
+    <ExperimentSetup sources={sources} busy={busy} strategy={strategy} setStrategy={setStrategy} execution={execution} setExecution={setExecution} experiment={experiment} setExperiment={setExperiment} strategyId={strategyId} strategyRevision={strategyRevision} strategyDirty={strategyDirty} setStrategyDirty={setStrategyDirty} experimentDirty={experimentDirty} setExperimentDirty={setExperimentDirty} branch={branch} expItem={expItem} onLoad={loadSources} onLoadStrategy={loadStrategy} onClearStrategy={() => { setStrategyId(''); setStrategyRevision(null); setStrategyDirty(true); setExperimentDirty(true); }} onAction={experimentAction} />
   )};
 
   const results = {simulations: (
@@ -737,7 +737,7 @@ function PortfolioResult({ result, benchmark, onLoad }) {
   );
 }
 
-function ExperimentSetup({ sources, busy, strategy, setStrategy, execution, setExecution, experiment, setExperiment, strategyId, strategyRevision, strategyDirty, setStrategyDirty, setExperimentDirty, branch, expItem, onLoad, onLoadStrategy, onClearStrategy, onAction }) {
+function ExperimentSetup({ sources, busy, strategy, setStrategy, execution, setExecution, experiment, setExperiment, strategyId, strategyRevision, strategyDirty, setStrategyDirty, experimentDirty, setExperimentDirty, branch, expItem, onLoad, onLoadStrategy, onClearStrategy, onAction }) {
   const disabled = busy;
   const markStrategy = (next) => { setStrategy(next); setStrategyDirty(true); setExperimentDirty(true); };
   const histories = (symbol) => (sources?.histories || []).filter((item) => !symbol || item.symbol === symbol);
