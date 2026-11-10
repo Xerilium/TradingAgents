@@ -19,8 +19,9 @@ import tradingagents.agents.analysts.sentiment_analyst as sentiment
 from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
 from tradingagents.agents.trader.trader import create_trader
-from tradingagents.workflows import bundled_files
+from tradingagents.workflows import WorkflowBundle, bundled_files
 
+WORKFLOW = WorkflowBundle.from_files(bundled_files())
 NO_EXTERNAL_TOOLS = bundled_files()["prompts/no_external_tools.txt"]
 
 
@@ -51,7 +52,7 @@ def test_trader_prompt_states_constraint():
 
     captured = {}
     llm = _capturing_llm(captured, TraderProposal(action=TraderAction.BUY, reasoning="x"))
-    create_trader(llm)({
+    create_trader(llm, workflow=WORKFLOW)({
         "company_of_interest": "NVDA",
         "investment_plan": "**Recommendation**: Buy",
         "market_report": "Current price $189.5; ATR 4.2.",
@@ -70,7 +71,7 @@ def test_research_manager_prompt_states_constraint():
             recommendation=PortfolioRating.BUY, rationale="x", strategic_actions="y"
         ),
     )
-    create_research_manager(llm)({
+    create_research_manager(llm, workflow=WORKFLOW)({
         "company_of_interest": "NVDA",
         "investment_debate_state": {
             "history": "h", "bull_history": "b", "bear_history": "r",
@@ -99,7 +100,7 @@ def test_portfolio_manager_prompt_states_constraint():
         "current_conservative_response": "", "current_neutral_response": "",
         "latest_speaker": "Neutral", "count": 1,
     }
-    create_portfolio_manager(llm)({
+    create_portfolio_manager(llm, workflow=WORKFLOW)({
         "company_of_interest": "NVDA",
         "risk_debate_state": risk,
         "investment_plan": "plan",
@@ -122,7 +123,7 @@ def test_sentiment_prompt_states_constraint(monkeypatch):
         overall_band=SentimentBand.BULLISH, overall_score=7.5,
         confidence="high", narrative="n",
     ))
-    sentiment.create_sentiment_analyst(llm)({
+    sentiment.create_sentiment_analyst(llm, workflow=WORKFLOW)({
         "company_of_interest": "NVDA", "trade_date": "2026-01-15",
         "asset_type": "stock", "messages": [],
     })
@@ -136,10 +137,8 @@ def test_sentiment_prompt_states_constraint(monkeypatch):
 def test_tool_using_analysts_keep_their_date_guidance():
     # The analysts that really do call tools keep the wording that anchors their
     # tool date ranges (#836) — this fix is scoped to no-tool agents.
-    import tradingagents.agents.analysts.market_analyst as market
-    import tradingagents.agents.analysts.news_analyst as news
-    for module in (market, news):
-        assert "tool-call date ranges" in inspect.getsource(module)
+    # The wording now lives in the shared analyst wrapper prompt asset.
+    assert "tool-call date ranges" in bundled_files()["prompts/analyst_wrapper.txt"]
 
 
 @pytest.mark.unit
@@ -161,7 +160,7 @@ def test_the_sentiment_prompt_names_the_subreddits_searched(monkeypatch):
     llm = _capturing_llm(captured, SentimentReport(
         overall_band=SentimentBand.NEUTRAL, overall_score=5.0, confidence="low", narrative="n",
     ))
-    sentiment.create_sentiment_analyst(llm)({
+    sentiment.create_sentiment_analyst(llm, workflow=WORKFLOW)({
         "company_of_interest": "BTC-USD", "trade_date": "2026-01-15",
         "asset_type": "crypto", "messages": [],
     })

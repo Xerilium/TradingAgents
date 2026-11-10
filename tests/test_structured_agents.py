@@ -29,6 +29,9 @@ from tradingagents.agents.schemas import (
     render_trader_proposal,
 )
 from tradingagents.agents.trader.trader import create_trader
+from tradingagents.workflows import WorkflowBundle, bundled_files
+
+WORKFLOW = WorkflowBundle.from_files(bundled_files())
 
 # ---------------------------------------------------------------------------
 # Render functions
@@ -167,6 +170,18 @@ class TestRenderResearchPlan:
 # ---------------------------------------------------------------------------
 
 
+def _messages(prompt):
+    """Flatten a captured prompt to (role, content) pairs: the agents now send
+    LangChain message objects rather than role dicts."""
+    pairs = []
+    for m in prompt:
+        if isinstance(m, dict):
+            pairs.append((m["role"], m["content"]))
+        else:
+            pairs.append(({"human": "user", "system": "system", "ai": "assistant"}.get(m.type, m.type), m.content))
+    return pairs
+
+
 def _make_trader_state():
     return {
         "company_of_interest": "NVDA",
@@ -223,7 +238,7 @@ class TestTraderAgent:
             position_sizing="6% of portfolio",
         )
         llm = _structured_trader_llm(captured, proposal)
-        trader = create_trader(llm)
+        trader = create_trader(llm, workflow=WORKFLOW)
         result = trader(_make_trader_state())
         plan = result["trader_investment_plan"]
         assert "**Action**: Buy" in plan
@@ -235,20 +250,20 @@ class TestTraderAgent:
     def test_prompt_includes_investment_plan(self):
         captured = {}
         llm = _structured_trader_llm(captured)
-        trader = create_trader(llm)
+        trader = create_trader(llm, workflow=WORKFLOW)
         trader(_make_trader_state())
         # The investment plan is in the user message of the captured prompt.
         prompt = captured["prompt"]
-        assert any("Proposed Investment Plan" in m["content"] for m in prompt)
+        assert any("Proposed Investment Plan" in c for _, c in _messages(prompt))
 
     def test_prompt_includes_market_report_for_price_levels(self):
         # #1167: the Trader must see the technical market report so entry/stop
         # levels are grounded in real price structure, not just the digested plan.
         captured = {}
-        trader = create_trader(_structured_trader_llm(captured))
+        trader = create_trader(_structured_trader_llm(captured), workflow=WORKFLOW)
         trader(_make_trader_state())
-        user = " ".join(m["content"] for m in captured["prompt"] if m["role"] == "user")
-        system = " ".join(m["content"] for m in captured["prompt"] if m["role"] == "system")
+        user = " ".join(c for r, c in _messages(captured["prompt"]) if r == "user")
+        system = " ".join(c for r, c in _messages(captured["prompt"]) if r == "system")
         assert "Technical Market Report:" in user
         assert "14-day ATR 4.2" in user            # the actual report content reached the Trader
         assert "support $178, resistance $196" in user
@@ -260,8 +275,8 @@ class TestTraderAgent:
         captured = {}
         state = _make_trader_state()
         state["market_report"] = ""
-        create_trader(_structured_trader_llm(captured))(state)
-        text = " ".join(m["content"] for m in captured["prompt"])
+        create_trader(_structured_trader_llm(captured), workflow=WORKFLOW)(state)
+        text = " ".join(c for _, c in _messages(captured["prompt"]))
         assert "Technical Market Report:" not in text
         assert "Ground concrete price levels" not in text
         assert "Proposed Investment Plan" in text  # still present
@@ -274,7 +289,7 @@ class TestTraderAgent:
         llm = MagicMock()
         llm.with_structured_output.side_effect = NotImplementedError("provider unsupported")
         llm.invoke.return_value = MagicMock(content=plain_response)
-        trader = create_trader(llm)
+        trader = create_trader(llm, workflow=WORKFLOW)
         result = trader(_make_trader_state())
         assert result["trader_investment_plan"] == plain_response
 
@@ -323,7 +338,7 @@ class TestResearchManagerAgent:
             strategic_actions="Build position gradually over two weeks.",
         )
         llm = _structured_rm_llm(captured, plan)
-        rm = create_research_manager(llm)
+        rm = create_research_manager(llm, workflow=WORKFLOW)
         result = rm(_make_rm_state())
         ip = result["investment_plan"]
         assert "**Recommendation**: Overweight" in ip
@@ -334,9 +349,9 @@ class TestResearchManagerAgent:
         """The RM prompt must list all five tiers so the schema enum matches user expectations."""
         captured = {}
         llm = _structured_rm_llm(captured)
-        rm = create_research_manager(llm)
+        rm = create_research_manager(llm, workflow=WORKFLOW)
         rm(_make_rm_state())
-        prompt = captured["prompt"]
+        prompt = " ".join(c for _, c in _messages(captured["prompt"]))
         for tier in ("Buy", "Overweight", "Hold", "Underweight", "Sell"):
             assert f"**{tier}**" in prompt, f"missing {tier} in prompt"
 
@@ -345,7 +360,7 @@ class TestResearchManagerAgent:
         llm = MagicMock()
         llm.with_structured_output.side_effect = NotImplementedError("provider unsupported")
         llm.invoke.return_value = MagicMock(content=plain_response)
-        rm = create_research_manager(llm)
+        rm = create_research_manager(llm, workflow=WORKFLOW)
         result = rm(_make_rm_state())
         assert result["investment_plan"] == plain_response
 
@@ -453,7 +468,7 @@ class TestSentimentAnalystAgent:
             overall_band=SentimentBand.MILDLY_BEARISH, overall_score=4.0,
             confidence="medium", narrative="Mixed signals across sources.",
         )
-        analyst = create_sentiment_analyst(_structured_sentiment_llm(captured, report))
+        analyst = create_sentiment_analyst(_structured_sentiment_llm(captured, report), workflow=WORKFLOW)
         sr = analyst(_make_sentiment_state())["sentiment_report"]
         assert "**Overall Sentiment:** **Mildly Bearish**" in sr
         assert "(Score: 4.0/10)" in sr
@@ -461,14 +476,14 @@ class TestSentimentAnalystAgent:
 
     def test_sentiment_report_also_in_messages(self):
         captured = {}
-        analyst = create_sentiment_analyst(_structured_sentiment_llm(captured))
+        analyst = create_sentiment_analyst(_structured_sentiment_llm(captured), workflow=WORKFLOW)
         result = analyst(_make_sentiment_state())
         assert len(result["messages"]) == 1
         assert result["sentiment_report"] == result["messages"][0].content
 
     def test_prompt_contains_ticker(self):
         captured = {}
-        create_sentiment_analyst(_structured_sentiment_llm(captured))(_make_sentiment_state())
+        create_sentiment_analyst(_structured_sentiment_llm(captured), workflow=WORKFLOW)(_make_sentiment_state())
         assert any("NVDA" in str(m) for m in captured["prompt"])
 
     def test_falls_back_to_freetext_when_structured_unavailable(self):
@@ -476,7 +491,7 @@ class TestSentimentAnalystAgent:
         llm = MagicMock()
         llm.with_structured_output.side_effect = NotImplementedError("provider unsupported")
         llm.invoke.return_value = MagicMock(content=plain)
-        assert create_sentiment_analyst(llm)(_make_sentiment_state())["sentiment_report"] == plain
+        assert create_sentiment_analyst(llm, workflow=WORKFLOW)(_make_sentiment_state())["sentiment_report"] == plain
 
     def test_falls_back_to_freetext_when_structured_call_fails(self):
         plain = "Fallback free-text sentiment."
@@ -485,15 +500,15 @@ class TestSentimentAnalystAgent:
         llm = MagicMock()
         llm.with_structured_output.return_value = structured
         llm.invoke.return_value = MagicMock(content=plain)
-        assert create_sentiment_analyst(llm)(_make_sentiment_state())["sentiment_report"] == plain
+        assert create_sentiment_analyst(llm, workflow=WORKFLOW)(_make_sentiment_state())["sentiment_report"] == plain
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("source", [
-    pytest.param(lambda: ResearchPlan.model_fields["recommendation"].description, id="ResearchPlan.recommendation"),
-    pytest.param(lambda: PortfolioDecision.model_fields["rating"].description, id="PortfolioDecision.rating"),
-    pytest.param(lambda: inspect.getsource(create_research_manager), id="research_manager prompt"),
-    pytest.param(lambda: inspect.getsource(create_portfolio_manager), id="portfolio_manager prompt"),
+    pytest.param(lambda: bundled_files()["prompts/schema_ResearchPlan_recommendation.txt"], id="ResearchPlan.recommendation"),
+    pytest.param(lambda: bundled_files()["prompts/schema_PortfolioDecision_rating.txt"], id="PortfolioDecision.rating"),
+    pytest.param(lambda: bundled_files()["prompts/research_manager.txt"], id="research_manager prompt"),
+    pytest.param(lambda: bundled_files()["prompts/portfolio_manager.txt"], id="portfolio_manager prompt"),
 ])
 def test_conflict_alone_is_not_a_hold_trigger(source):
     # The debate always contains conflicting arguments, so a Hold condition that
