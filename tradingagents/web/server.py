@@ -576,7 +576,7 @@ def main():
     parser = argparse.ArgumentParser(description="Printer paper trading workspace")
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--data-dir", type=Path, default=Path.cwd() / ".paper-desk")
-    parser.add_argument("--nautilus-python", type=Path, default=Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe")
+    parser.add_argument("--nautilus-python", type=Path, default=None)
     parser.add_argument("--credential-profile", choices=("production", "development"),
                         default="development", help="Native credential-store profile")
     parser.add_argument("--browse-only", action="store_true", help="Browse saved runs and prepare local human proposals; disable research, native order drafts, approval and admission")
@@ -594,7 +594,9 @@ def main():
     import sqlite3
     original_root = args.data_dir.resolve()
 
-    from .nautilus_runtime import NautilusRuntime
+    from .nautilus_runtime import NautilusRuntime, default_nautilus_python
+    if args.nautilus_python is None:
+        args.nautilus_python = default_nautilus_python()
     # Reserve the endpoint before any journal migration or startup recovery writes.
     try:
         server = DeskServer(("127.0.0.1", args.port), None)
