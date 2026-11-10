@@ -5,11 +5,19 @@ import json
 import os
 import queue
 import subprocess
+import sys
 import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
+
+
+def default_nautilus_python():
+    """The native-node interpreter: the repo's .venv-nautilus-v1, else the running Python."""
+    root = Path(__file__).resolve().parents[2] / ".venv-nautilus-v1"
+    venv = root / "Scripts" / "python.exe" if os.name == "nt" else root / "bin" / "python"
+    return venv if venv.is_file() or os.name == "nt" else Path(sys.executable)
 
 
 class NautilusRuntime:

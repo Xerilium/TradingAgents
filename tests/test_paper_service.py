@@ -1785,3 +1785,30 @@ def test_persistent_replace_error_is_bounded_and_preserves_previous_journal(tmp_
         store.save()
     assert len(attempts) == 3
     assert store.path.read_bytes() == before
+
+
+def test_anthropic_readiness_needs_only_the_environment_key(tmp_path, monkeypatch):
+    service = DeskService(tmp_path / "desk", gateway=BrokerFake())
+    service.executor.shutdown(wait=True)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    missing = service.readiness({"llm_provider": "anthropic"})
+    assert missing["ready"] is False
+    assert "ANTHROPIC_API_KEY" in missing["message"]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    assert service.readiness({"llm_provider": "anthropic"})["ready"] is True
+    service.close()
+
+
+def test_desk_config_accepts_the_claude_provider():
+    from tradingagents.web.config import DeskConfig
+    config = DeskConfig(llm_provider="anthropic", deep_think_llm="claude-opus-5-5", quick_think_llm="claude-sonnet-5")
+    assert config.llm_provider == "anthropic"
+
+
+def test_default_nautilus_python_is_not_windows_only(monkeypatch):
+    import sys
+    from tradingagents.web import nautilus_runtime
+    monkeypatch.setattr(nautilus_runtime.os, "name", "posix")
+    path = nautilus_runtime.default_nautilus_python()
+    assert path.suffix != ".exe" and "Scripts" not in path.parts
+    assert path.is_file() or path.name == sys.executable.rsplit("/", 1)[-1]

@@ -40,7 +40,7 @@ from tradingagents.llm_clients.cancellation import ResearchCancellationControlle
 
 from .config import DeskConfig
 from .workflows import WorkflowStore
-from .nautilus_runtime import NautilusRuntime
+from .nautilus_runtime import NautilusRuntime, default_nautilus_python
 from .store import DeskStore, call_evidence_failed, source_attempt_failed
 from .evidence_requirements import RESEARCH_REPORTS as REPORT_KEYS, research_gaps
 
@@ -251,7 +251,7 @@ class DeskService:
         self.history_error = None
         self.history_directory = active_history
         self.runtime = runtime or NautilusRuntime(
-            Path(directory) / "nautilus", Path(__file__).resolve().parents[2] / ".venv-nautilus-v1" / "Scripts" / "python.exe",
+            Path(directory) / "nautilus", default_nautilus_python(),
             os.getenv("TRADINGAGENTS_DESKTOP_PROFILE", "development"))
         self.maenifold = MaenifoldInstance()
         DeskConfig.model_validate(self.store.data["config"])

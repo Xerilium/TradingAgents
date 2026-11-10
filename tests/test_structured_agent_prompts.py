@@ -18,8 +18,10 @@ import pytest
 import tradingagents.agents.analysts.sentiment_analyst as sentiment
 from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
-from tradingagents.agents.structured import NO_EXTERNAL_TOOLS
 from tradingagents.agents.trader.trader import create_trader
+from tradingagents.workflows import bundled_files
+
+NO_EXTERNAL_TOOLS = bundled_files()["prompts/no_external_tools.txt"]
 
 
 def _capturing_llm(captured: dict, result):
