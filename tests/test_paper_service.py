@@ -195,13 +195,19 @@ class ScriptedGraph:
         self.recorded.append((symbol, date, final))
 
 
+def save_config(service, changes, **kwargs):
+    """Save settings the way a client does: against the current revision."""
+    kwargs.setdefault("expected_revision", service.store.data["config_revision"])
+    return service.save_config(changes, **kwargs)
+
+
 @pytest.fixture
 def desk(tmp_path):
     broker = BrokerFake()
     service = DeskService(tmp_path / "desk", gateway=broker, graph_factory=ScriptedGraph)
     service.executor.shutdown(wait=True)
     service.executor = ManualExecutor()
-    service.save_config({"universe": ["AAPL"], "name": "Test"})
+    save_config(service, {"universe": ["AAPL"], "name": "Test"})
     yield service, broker
     service.close()
 
@@ -1427,7 +1433,7 @@ def test_recent_orders_reconcile_unknown_without_resubmitting(desk):
 def test_settings_change_expires_existing_proposals(desk):
     service, broker = desk
     proposal = create_proposal(service)
-    service.save_config({"max_order_notional": 1000})
+    save_config(service, {"max_order_notional": 1000})
     assert service.state()["proposals"][0]["status"] == "expired"
     with pytest.raises(ValueError):
         service.submit(proposal["id"])
@@ -1438,7 +1444,7 @@ def test_invalid_settings_leave_journal_unchanged(desk):
     service, _ = desk
     previous = service.store.path.read_bytes()
     with pytest.raises(ValueError):
-        service.save_config({"allocation_pct": 95, "reserve_pct": 20})
+        save_config(service, {"allocation_pct": 95, "reserve_pct": 20})
     assert service.store.path.read_bytes() == previous
 
 
@@ -1448,7 +1454,7 @@ def test_one_active_run_blocks_second_run_and_settings_changes(desk):
     with pytest.raises(ValueError, match="already running"):
         service.start_run(["AAPL"])
     with pytest.raises(ValueError, match="current analysis"):
-        service.save_config({"name": "Changed"})
+        save_config(service, {"name": "Changed"})
 
 
 def test_cancel_queued_run_does_not_start_graph_or_laya(desk):
@@ -1603,7 +1609,7 @@ def test_displayed_provider_overrides_hidden_tier_environment(desk, monkeypatch)
     for tier in ("QUICK", "DEEP"):
         monkeypatch.setenv(f"TRADINGAGENTS_{tier}_THINK_PROVIDER", "anthropic")
         monkeypatch.setenv(f"TRADINGAGENTS_{tier}_THINK_BACKEND_URL", "http://hidden.invalid")
-    service.save_config({"llm_provider": "openai", "backend_url": None})
+    save_config(service, {"llm_provider": "openai", "backend_url": None})
     observed = []
 
     class CapturingGraph(ScriptedGraph):
@@ -1698,7 +1704,7 @@ def test_state_reads_never_probe_codex_or_gateway_even_after_cache_expiry(desk, 
     service.graph_factory = None
     probes = []
     monkeypatch.setattr(chatgpt_client, "check_chatgpt_account", lambda **kw: probes.append(kw))
-    service.save_config({"llm_provider": "chatgpt"})
+    save_config(service, {"llm_provider": "chatgpt"})
     assert service.state()["readiness"]["ready"] is None
     service.account_status = (0, {"ready": True, "message": "Cached status"})
     for _ in range(50):
@@ -1712,7 +1718,7 @@ def test_chatgpt_account_timeout_is_actionable_and_blocks_research(desk, monkeyp
 
     service, _ = desk
     service.graph_factory = None
-    service.save_config({"llm_provider": "chatgpt"})
+    save_config(service, {"llm_provider": "chatgpt"})
 
     def unavailable(**kwargs):
         raise TimeoutError("Codex account check timed out.")
