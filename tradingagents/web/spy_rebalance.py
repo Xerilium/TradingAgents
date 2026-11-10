@@ -894,6 +894,12 @@ class SpyRebalance:
             version = account_version(runtime)
             state["account_versions"][run["account_id"]] = version
             for terms in run["legs"][run["completed"]:]:
+                if self.stopped or self.desk.store is not store or store.database.read_revision(RECORD) != record["revision"]:
+                    raise ReconciliationPending("The rebalance changed while preparing its unsent reservations.")
+                now = datetime.now(UTC)
+                if (now >= instant(run["close_at"])
+                        or (now - instant(runtime["account_at"])).total_seconds() > float(CONSTRAINTS["account_max_age_seconds"])):
+                    raise ReconciliationPending("Batch preparation requires a fresh account observation; no partial batch was admitted.")
                 if terms["symbol"] in tracked_symbols:
                     continue
                 if ((terms["side"], terms["order_type"]) not in {("BUY", "LIMIT"), ("SELL", "MARKET"), ("SELL", "LIMIT")}
@@ -978,8 +984,29 @@ class SpyRebalance:
                 status="batch_dispatching", deferred=deferred,
                 message=f"{len(members)} exact independent orders reserved; {len(isolated)} uncertain stock(s) remain quarantined, not replayed.")
 
-        with self.desk.runtime.lock:
-            admission.transaction(reserve, evidence=True, extra={RECORD: DEFAULT, FUND_RECORD: FUNDS})
+        defaults = {"investor": INVESTOR, "commands": COMMANDS, "market_history": HISTORY,
+                    "stock_evidence": EVIDENCE, RECORD: DEFAULT, FUND_RECORD: FUNDS}
+        snapshots = {name: store.database.read(name, default) for name, default in defaults.items()}
+        prepared = {name: snapshot["data"] for name, snapshot in snapshots.items()}
+        expected = {name: snapshot["revision"] for name, snapshot in snapshots.items()}
+        if expected[RECORD] != record["revision"]:
+            raise ReconciliationPending("The rebalance changed before batch preparation.")
+        # Whole-plan review is CPU/file work, not a reason to block observation or hold the writer lease.
+        reserve(prepared)
+        with self.desk.maintenance, self.desk.runtime.lock:
+            if self.stopped or self.desk.store is not store:
+                return
+            admission.enabled()
+            admission.review_allowed()
+            if admission.admission_enabled is not True:
+                raise PermissionError("This session no longer permits SPY batch admission")
+            latest = self.checked_account(run["account_id"], session=run["session"], close_at=run["close_at"])
+            if (latest.get("native_epoch") != runtime.get("native_epoch")
+                    or account_version(latest) != account_version(runtime)):
+                raise ReconciliationPending("Account authority changed while preparing the unsent batch; reviewing current evidence again.")
+            def publish(records):
+                records.update(prepared)
+            admission.transaction(publish, expected=expected, evidence=True, extra={RECORD: DEFAULT, FUND_RECORD: FUNDS})
         self.wake_pending = True
 
     def advance_batch(self, store, record):
@@ -1142,7 +1169,7 @@ class SpyRebalance:
                 return
             if post_fill:
                 self.post_fill_refreshed.update(filled)
-            self.reserve_remaining(store, current)
+        self.reserve_remaining(store, current)
 
     def admit(self, terms, runtime, account_id, *, manual=False):
         from .admission import invalidate

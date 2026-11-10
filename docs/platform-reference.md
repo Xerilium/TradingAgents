@@ -352,6 +352,11 @@ forced renders or changed model context retain the normal replacement behavior.
 SPY reserves the complete eligible reviewed remainder before independent native
 dispatch, including reviewed trims and cash-backed LIMIT buys. Dispatch is
 rate-limited but does not wait for another stock's acknowledgment or fill.
+Whole-plan review prepares private record snapshots without holding the desk
+maintenance lock, runtime observation lock or SQLite writer lease. Publication
+rechecks current account/session authority and every captured record revision,
+then commits the complete escrow atomically. A stopped or changed run cannot
+publish its prepared commands; no partial preparation grants dispatch authority.
 An exact unchanged uncertain stock can retain its full cash/share reservation
 without blocking unrelated members when current cash and holdings are still
 explained by proven executions. Its identity is quarantined, never replayed;
