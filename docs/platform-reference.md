@@ -349,6 +349,24 @@ forced renders or changed model context retain the normal replacement behavior.
 
 ## Orders, approval and execution
 
+SPY reserves the complete eligible reviewed remainder before independent native
+dispatch, including reviewed trims and cash-backed LIMIT buys. Dispatch is
+rate-limited but does not wait for another stock's acknowledgment or fill.
+An exact unchanged uncertain stock can retain its full cash/share reservation
+without blocking unrelated members when current cash and holdings are still
+explained by proven executions. Its identity is quarantined, never replayed;
+unproven sale proceeds do not finance buys. Account, receipt-conflict, session,
+reserve and native-risk barriers remain global.
+
+**Stop unsent trades** stops an active run and pauses its automatic loop. The
+versioned never-started transport boundary releases only proven unsent commands;
+sent, working and uncertain commands retain their evidence and reservations.
+This is not broker cancellation. Use the existing exact order controls to cancel
+identified working broker orders; an unknown outcome without an authoritative
+order identity must be reconciled, not guessed absent. A fresh preview and
+separate submission are required after stopping. Backend restart still invalidates
+the old connection-bound run; a browser reload does not activate backend changes.
+
 Orders groups controls into Ticket & Blotter, Fills & Fees, Human Baskets,
 SPY Rebalance and Option Instructions. The top-bar **Orders: Active · Manage**
 (or paused equivalent) selects Ticket & Blotter and focuses account order controls;

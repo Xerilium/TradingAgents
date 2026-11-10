@@ -596,7 +596,9 @@ def remaining_quantity(terms):
 def working_commitments(runtime, commands=None, constraints=None):
     """One reservation per exact local/broker identity, or max of replacement alternatives."""
     from .admission import ACTIVE
+    from .spy_batch import isolated_commands
     constraints = constraints or {}
+    isolated = isolated_commands(runtime, commands) if runtime.get("_spy_isolated_commands") and commands is not None else set()
     account_id = (runtime.get("account") or {}).get("id")
     known = commands is not None and runtime.get("reconciliation", {}).get("orders_reconciled") is True
     local = [c for c in (commands or {}).get("commands", {}).values()
@@ -691,12 +693,17 @@ def working_commitments(runtime, commands=None, constraints=None):
                 observed_pending = True
             except ValueError:
                 pass
-        if (command.get("state") in {"outcome_unknown", "dispatch_intent", "submitting", "cancel_pending", "replace_pending"}
-                and not replacement_not_started and not observed_pending) or command.get("native_pending_commitment"):
+        if command["id"] not in isolated and (
+                command.get("state") in {"outcome_unknown", "dispatch_intent", "submitting", "cancel_pending", "replace_pending"}
+                and not replacement_not_started and not observed_pending or command.get("native_pending_commitment")):
             known = False
         pending = command.get("native_pending_commitment", {})
         quantities = [decimal(command.get("remaining_quantity")), decimal(pending.get("remaining_quantity", "0"))]
         cashes = [decimal(command.get("cash_commitment")), decimal(pending.get("cash_commitment", "0"))]
+        if command["id"] in isolated:
+            snapshot = runtime["_spy_isolated_commands"][command["id"]]
+            quantities.append(decimal(snapshot["reserved_quantity"]))
+            cashes.append(decimal(snapshot["reserved_cash"]))
         for order in matches:
             total, filled = decimal(order.get("qty")), decimal(order.get("filled_qty"))
             if total is None or filled is None or not 0 <= filled <= total:

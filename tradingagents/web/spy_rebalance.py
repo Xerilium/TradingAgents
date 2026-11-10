@@ -96,7 +96,7 @@ class SpyRebalance:
             if batch:
                 counts = self.batch_counts(state, batch)
                 run = {**run, "batch_counts": counts}
-                if batch["state"] == "blocked" or counts["unknown"]:
+                if batch["state"] == "blocked":
                     run.update(status="blocked", message=batch.get("reason") or "Batch transport outcome is unresolved; no replay.")
                 deferred = list(run.get("deferred", []))
                 for key in batch["members"]:
@@ -111,7 +111,7 @@ class SpyRebalance:
                 "eligible_account_id": paper_account(runtime),
                 "in_progress": bool(run and run["session"] >= datetime.now(NEW_YORK).date().isoformat()
                                     and run["status"] in ACTIVE_RUN),
-                "run": {**{key: run.get(key) for key in ("session", "as_of", "status", "message", "completed", "total", "limited")},
+                "run": {**{key: run.get(key) for key in ("session", "as_of", "status", "message", "completed", "total", "limited", "stopped_at")},
                         "deferred": run.get("deferred", []), "batch_counts": run.get("batch_counts")} if run else None}
 
     def configure(self, request):
@@ -285,6 +285,7 @@ class SpyRebalance:
             symbols = data["managed_symbols"]
         else:
             run, symbols = self.plan(store, session, snapshot, runtime, data["managed_symbols"])
+        runtime = {**runtime, "_spy_isolated_commands": run.get("quarantined", {})}
         policy = self.check_plan_policy(store, run)
         run = self.freeze_buys(store, runtime, run, policy)
         blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], policy)
@@ -311,6 +312,7 @@ class SpyRebalance:
         return {"as_of": snapshot["as_of"], "positions": len(symbols), "total": run["total"],
                 "quote_at": runtime.get("prices_checked_at"),
                 "submit_token": token,
+                "quarantined_stocks": [item["symbol"] for item in run.get("quarantined", {}).values()],
                 "already_completed": run.get("recovered_from", {}).get("completed", 0),
                 "policy_revision": run["policy_revision"], "target_stock_pct": run["target_stock_pct"], "fund_budget": run["fund_budget"],
                 "policy_blockers": blockers,
@@ -385,14 +387,37 @@ class SpyRebalance:
                 return
 
     def cancel_queued(self, request):
-        def cancel(data):
-            run = data["run"]
-            if not run or run.get("manual") is not True or run["status"] != "queued":
-                raise ValueError("The paper rebalance is no longer queued.")
-            run.update(status="blocked", message="Queued paper rebalance canceled.")
-        self.desk.store.database.update(RECORD, request.get("rebalance_revision"), cancel, DEFAULT)
+        from .admission import stamp
+        with self.desk.maintenance:
+            def cancel(records):
+                data = records[RECORD]
+                run = data["run"]
+                if not run or run["status"] not in ACTIVE_RUN | {"blocked"} or run.get("stopped_at"):
+                    raise ValueError("The paper rebalance is no longer queued or active.")
+                state = records["commands"]
+                batch = state.get("spy_batches", {}).get(run.get("batch_id"))
+                if batch:
+                    batch.update(state="blocked", reason="User stopped unsent rebalance orders.")
+                    for key in batch["members"]:
+                        command = state["commands"][key]
+                        if (command.get("transport_attempt") != {"version": 1, "state": "not_started"}
+                                or any(command.get(field) for field in (
+                                    "broker_order_ids", "fill_ids", "native_deliveries", "native_pending_commitment", "pending_action"))):
+                            continue
+                        now = stamp()
+                        command["transport_attempt"].update(state="not_sent", resolved_at=now)
+                        command.update(state="not_sent", cash_commitment="0", remaining_quantity="0")
+                        state["revocations"].setdefault(command["approval_id"], {"at": now, "reason": "User stopped the unsent rebalance order."})
+                        command["timeline"].append({"at": now, "state": "not_sent",
+                            "reason": "User stopped the batch before the versioned transport boundary started."})
+                data["enabled"] = False
+                run.update(status="blocked", stopped_at=stamp(),
+                           message="Unsent rebalance trades stopped. Sent or uncertain orders were not canceled; review their exact broker outcomes in Orders.")
+            self.desk.admission.transaction(cancel, expected={RECORD: request.get("rebalance_revision")}, extra={RECORD: DEFAULT})
+            self.manual_preview = None
 
     def check_preview_account(self, store, runtime, run, symbols, cash):
+        runtime = {**runtime, "_spy_isolated_commands": run.get("quarantined", {})}
         commands = store.database.read("commands", COMMANDS)["data"]
         self.require_no_working_orders(runtime, commands, allowed=run.get("dispatched", {}))
         positions = self.check_positions(runtime, set(symbols))
@@ -601,6 +626,7 @@ class SpyRebalance:
         if snapshot["as_of"] != prior or snapshot["source_sha256"] != run["source_sha256"]:
             raise ValueError("The approved SPY weights are no longer current. Preview and submit again.")
         runtime = self.checked_account(data["account_id"], session=run["session"], close_at=close_at)
+        runtime = {**runtime, "_spy_isolated_commands": run.get("quarantined", {})}
         policy = self.check_plan_policy(store, run)
         blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], policy)
         if blockers:
@@ -628,6 +654,7 @@ class SpyRebalance:
         symbols = [entry["symbol"] for entry in snapshot["entries"]]
         self.ensure_symbols(store, data["account_id"], runtime, [*symbols, *data["managed_symbols"]])
         run, symbols = self.plan(store, day, snapshot, runtime, data["managed_symbols"])
+        runtime = {**runtime, "_spy_isolated_commands": run.get("quarantined", {})}
         run = self.freeze_buys(store, runtime, run, self.check_plan_policy(store, run))
         blockers, deferred = self.review_plan_rules(store, runtime, run["legs"], self.check_plan_policy(store, run))
         if blockers:
@@ -640,10 +667,18 @@ class SpyRebalance:
     def plan(self, store, day, snapshot, runtime, managed_symbols):
         records = store.database.read("commands", COMMANDS)["data"]
         prior = store.database.read(RECORD, DEFAULT)["data"]["run"] or {}
+        prior_batch = records.get("spy_batches", {}).get(prior.get("batch_id"), {})
+        uncertain = set(prior.get("quarantined", {})) | set(prior_batch.get("members", {})) | ({prior["command_id"]} if prior.get("command_id") else set())
+        if any(records["commands"][key]["state"] in {"dispatch_intent", "submitting", "outcome_unknown"} for key in uncertain):
+            if not prior.get("stopped_at"):
+                raise ValueError("Stop unsent trades before reviewing a replacement rebalance; the uncertain stock will not be replayed.")
+            runtime = self.reviewed_runtime(runtime, prior, records, set(managed_symbols))
+        isolated = runtime.get("_spy_isolated_commands", {})
         tracked = set(prior.get("dispatched", {})) | ({prior["command_id"]} if prior.get("command_id") else set())
+        tracked.update(prior.get("quarantined", {}))
         tracked.update(records.get("spy_batches", {}).get(prior.get("batch_id"), {}).get("members", {}))
         dispatched = {key: self.checked_submitted(runtime, records["commands"][key]) for key in tracked
-                      if records["commands"][key]["state"] in ACTIVE or records["commands"][key].get("native_pending_commitment")}
+                      if key not in isolated and (records["commands"][key]["state"] in ACTIVE or records["commands"][key].get("native_pending_commitment"))}
         self.require_no_working_orders(runtime, records, allowed=dispatched)
         weights = {entry["symbol"]: Decimal(entry["weight"]) for entry in snapshot["entries"] if Decimal(entry["weight"]) > 0}
         positions = self.check_positions(runtime, set(weights) | set(managed_symbols))
@@ -679,13 +714,14 @@ class SpyRebalance:
             raise ValueError("Waiting for prices to size: " + ", ".join(missing))
         legs = [leg["terms"] for leg in basket["legs"] if leg["terms"]["side"] == "SELL"
                 or (decimal(leg["impact"]["estimated_principal"]) or Decimal(0)) >= 1]
-        pending_symbols = {records["commands"][key]["symbol"] for key in dispatched}
+        pending_symbols = {records["commands"][key]["symbol"] for key in set(dispatched) | set(isolated)}
         legs = [terms for terms in legs if terms["symbol"] not in pending_symbols]
         legs.sort(key=lambda terms: terms["side"] != "SELL")
         return {"session": day, "as_of": as_of, "status": "ready" if legs else "submitted" if dispatched else "completed",
                 "message": "Waiting for the first order." if legs else "No new orders needed; existing orders remain tracked." if dispatched else "No orders needed.",
                 "legs": legs, "completed": 0, "fills_completed": 0, "total": len(legs), "limited": 0, "command_id": None,
                 "dispatched": {key: str(value) for key, value in dispatched.items()},
+                "quarantined": copy.deepcopy(isolated),
                 "source_sha256": snapshot["source_sha256"],
                 "policy_revision": policy["revision"], "target_stock_pct": str(sum(target_weights.values(), Decimal(0))),
                 "account_id": account_id, "endpoint": PAPER, "connection_session": runtime["connection_session"],
@@ -716,12 +752,14 @@ class SpyRebalance:
 
     @staticmethod
     def require_no_working_orders(runtime, commands, *, allowed=()):
+        from .spy_batch import isolated_commands, stock_local_recovery
+        allowed = set(allowed) | isolated_commands(runtime, commands)
         commitments, known = working_commitments(runtime, commands)
         if (not known or any(not item["command_ids"] or not item["command_ids"].issubset(allowed) for item in commitments)
                 or commands.get("new_orders_blocked")
                 or any(item["state"] in ACTIVE and key not in allowed for key, item in commands["commands"].items())):
             raise ValueError("Unrelated or unresolved orders or an account block must clear before SPY can rebalance.")
-        if commands.get("recovery_required"):
+        if commands.get("recovery_required") and not stock_local_recovery(runtime, commands):
             raise ReconciliationPending("Waiting for current account and order reconciliation; no new order has been sent.")
 
     @staticmethod
@@ -829,14 +867,18 @@ class SpyRebalance:
             raise PermissionError("This session does not permit SPY batch admission")
         batch_id = str(uuid4())
         run = record["data"]["run"]
+        isolated = runtime.get("_spy_isolated_commands", {})
+        tracked = set(run.get("dispatched", {})) | set(isolated) | ({run["command_id"]} if run.get("command_id") else set())
 
         def reserve(records):
+            from .spy_batch import stock_local_recovery
             saved = records[RECORD]["run"]
             if saved != run or saved.get("batch_id"):
                 raise ValueError("The reviewed SPY run changed before batch reservation")
             state, investor = records["commands"], records["investor"]
             policy = investor["policy"]
-            if (state["recovery_required"] or policy["revision"] != run["policy_revision"]
+            if (state["recovery_required"] and not stock_local_recovery(runtime, state)
+                    or policy["revision"] != run["policy_revision"]
                     or binding(records[FUND_RECORD], run["account_id"]) != run["fund_binding"]):
                 raise ValueError("Current complete account, policy and fund authority are required for batch reservation")
             commitments, known = working_commitments(runtime, state)
@@ -844,17 +886,21 @@ class SpyRebalance:
                 raise ReconciliationPending("Current pending commitments are required before reserving the SPY batch")
             reservations = {}
             for item in commitments:
-                if len(item["command_ids"]) != 1 or not item["command_ids"].issubset(run.get("dispatched", {})):
+                if len(item["command_ids"]) != 1 or not item["command_ids"].issubset(tracked):
                     raise ValueError("Unrelated or ambiguous working obligations block batch reservation")
                 reservations[next(iter(item["command_ids"]))] = str(item["cash"])
             members, deferred = {}, list(saved.get("deferred", []))
+            tracked_symbols = {state["commands"][key]["symbol"] for key in tracked}
             version = account_version(runtime)
             state["account_versions"][run["account_id"]] = version
             for terms in run["legs"][run["completed"]:]:
-                if (terms["side"] != "BUY" or terms["order_type"] != "LIMIT" or terms["time_in_force"] != "DAY"
+                if terms["symbol"] in tracked_symbols:
+                    continue
+                if ((terms["side"], terms["order_type"]) not in {("BUY", "LIMIT"), ("SELL", "MARKET"), ("SELL", "LIMIT")}
+                        or terms["time_in_force"] != "DAY"
                         or terms.get("session", "regular") != "regular" or terms.get("asset_class") == "us_option"
                         or any(item["terms"]["symbol"] == terms["symbol"] for item in members.values())):
-                    raise ValueError("Independent SPY batch requires distinct exact regular-session equity DAY LIMIT buys")
+                    raise ValueError("Independent SPY batch requires distinct exact regular-session equity DAY orders and bounded LIMIT buys")
                 if any(command["symbol"] == terms["symbol"] and (
                         command["state"] in ACTIVE or command.get("native_pending_commitment")) for command in state["commands"].values()):
                     deferred.append({"terms": copy.deepcopy(terms), "reasons": ["An exact owned working order already reserves this stock; no duplicate is submitted."]})
@@ -915,7 +961,8 @@ class SpyRebalance:
                 "fills": {item.get("execution_id") or item["id"]: {key: item.get(key) for key in
                     ("order_id", "qty", "price", "transaction_time", "commission")} for item in runtime.get("fills", [])},
                 "order_ids": [item["id"] for item in runtime.get("orders", [])],
-                "tracked": {key: state["commands"][key]["filled_quantity"] for key in run.get("dispatched", {})}}
+                "tracked": {key: state["commands"][key]["filled_quantity"] for key in tracked},
+                "quarantined": copy.deepcopy(isolated)}
             batch = {"id": batch_id, "account_id": run["account_id"], "endpoint": PAPER,
                      "epoch": runtime["native_epoch"], "session": run["session"], "close_at": run["close_at"],
                      "policy_revision": policy["revision"], "fund_binding": copy.deepcopy(run["fund_binding"]),
@@ -923,11 +970,13 @@ class SpyRebalance:
                      "baseline": baseline, "reservations": reservations, "reserve": reserve_floor, "state": "reserved"}
             batch["binding"] = sealed(batch)
             state.setdefault("spy_batches", {})[batch_id] = batch
-            saved.update(batch_id=batch_id, batch_offset=run["completed"], dispatch_requested=False,
-                legs=run["legs"][:run["completed"]] + [item["terms"] for item in members.values()],
-                total=run["completed"] + len(members),
+            offset = run["completed"] + int(bool(run.get("command_id")) and run["command_id"] not in isolated)
+            saved.update(batch_id=batch_id, batch_offset=offset, dispatch_requested=False,
+                command_id=None,
+                quarantined=copy.deepcopy(isolated),
+                total=offset + len(members) + len(isolated),
                 status="batch_dispatching", deferred=deferred,
-                message=f"{len(members)} exact independent buys reserved; no broker submission is claimed.")
+                message=f"{len(members)} exact independent orders reserved; {len(isolated)} uncertain stock(s) remain quarantined, not replayed.")
 
         with self.desk.runtime.lock:
             admission.transaction(reserve, evidence=True, extra={RECORD: DEFAULT, FUND_RECORD: FUNDS})
@@ -951,15 +1000,16 @@ class SpyRebalance:
             for command in commands:
                 if command.get("deferred_reason") and not any(item["terms"]["symbol"] == command["symbol"] for item in deferred):
                     deferred.append({"terms": command["terms"], "reasons": [command["deferred_reason"]]})
-            blocked = batch["state"] == "blocked" or counts["unknown"] > 0
-            done = counts["sent"] + counts["not_sent"] == len(commands)
+            blocked = batch["state"] == "blocked"
+            done = all(item["transport_attempt"].get("response_receipt") or item["state"] in {"not_sent", "outcome_unknown"}
+                       for item in commands)
             request = bool(commands) and not run.get("dispatch_requested") and batch["state"] == "reserved" and not blocked
             store.database.update(RECORD, data["revision"], lambda saved: saved["run"].update(
                 batch_counts=counts, deferred=deferred, dispatch_requested=run.get("dispatch_requested") or request,
                 completed=run["batch_offset"] + counts["sent"] + counts["not_sent"],
                 status="blocked" if blocked else "submitted" if done else "batch_dispatching",
                 message=batch.get("reason") if blocked else (
-                    "Every eligible batch leg has a broker response or a proven no-send; working orders retain their reservations."
+                    "Independent dispatch finished; uncertain and working stocks retain their reservations and are not replayed."
                     if done else "Independent batch dispatch in progress; native queueing is not broker submission.")), DEFAULT)
         if request:
             try:
@@ -984,7 +1034,67 @@ class SpyRebalance:
                 "expired": sum(item["state"] == "expired" for item in commands),
                 "rejected": sum(item["state"] == "rejected" for item in commands),
                 "unknown": sum(item["state"] == "outcome_unknown" for item in commands),
+                "quarantined": sum(state["commands"][key]["state"] in {"dispatch_intent", "submitting", "outcome_unknown"}
+                                   or bool(state["commands"][key].get("native_pending_commitment"))
+                                   for key in batch["baseline"].get("quarantined", {})),
                 "not_sent": sum(item["state"] == "not_sent" for item in commands)}
+
+    def reviewed_runtime(self, runtime, run, state, managed):
+        """Prove resources without assuming an uncertain stock was never sent."""
+        from .spy_batch import cash_values
+        batch = state.get("spy_batches", {}).get(run.get("batch_id"), {})
+        tracked = set(run.get("dispatched", {})) | set(run.get("quarantined", {})) | set(batch.get("members", {})) | ({run["command_id"]} if run.get("command_id") else set())
+        isolated, proven, executions = {}, {}, []
+        for key in tracked:
+            command = state["commands"][key]
+            if key == run.get("command_id"):
+                reviewed = run["legs"][run["completed"]]
+                if any(command["terms"].get(field) != value for field, value in reviewed.items()):
+                    raise ValueError("The attached SPY command differs from its original reviewed terms.")
+            if command["state"] in {"dispatch_intent", "submitting", "outcome_unknown"}:
+                leg = (run["legs"][run["completed"]] if key == run.get("command_id") else
+                       run.get("quarantined", {}).get(key, batch.get("members", {}).get(key, {})).get("terms"))
+                if (not leg or any(command.get(field) != leg[field] for field in ("symbol", "side", "instrument_id"))
+                        or any(command["terms"].get(field) != value for field, value in leg.items())
+                        or decimal(command["filled_quantity"]) != 0):
+                    raise ReconciliationPending("The uncertain stock needs exact unchanged reviewed terms and execution evidence; it will not be replayed.")
+                pending = command.get("native_pending_commitment", {})
+                cash = max(Decimal(command["cash_commitment"]), Decimal(pending.get("cash_commitment", "0")))
+                isolated[key] = {field: copy.deepcopy(command[field]) for field in (
+                    "id", "account_id", "instrument_id", "symbol", "side", "terms", "terms_sha256", "client_order_id", "connection_context")}
+                isolated[key].update(reserved_cash=str(cash), reserved_quantity=command["terms"]["quantity"])
+                continue
+            if (command["state"] == "not_sent" and command.get("transport_attempt", {}).get("state") == "not_sent"
+                    and command["transport_attempt"].get("version") == 1 and command["transport_attempt"].get("resolved_at")
+                    and not any(command.get(field) for field in ("broker_order_ids", "fill_ids", "native_deliveries", "native_pending_commitment", "pending_action"))
+                    and all(decimal(command.get(field)) == 0 for field in ("cash_commitment", "remaining_quantity", "filled_quantity"))):
+                continue
+            filled = self.checked_submitted(runtime, command, terminal=True)
+            baseline = Decimal(run.get("dispatched", {}).get(key, "0"))
+            if baseline != 0:
+                raise ReconciliationPending("The pre-existing execution baseline needs separate cash proof before independent dispatch.")
+            proven[key] = "0"
+            fills = [row for row in runtime.get("fills", []) if row.get("order_id") in command["broker_order_ids"]]
+            if sum((Decimal(row["qty"]) for row in fills), Decimal(0)) != filled:
+                raise ReconciliationPending("Current exact execution quantities are unavailable.")
+            for row in fills:
+                executions.append({"ts_event": len(executions), "execution_id": row.get("execution_id") or row["id"],
+                    "side": command["side"], "quantity": row["qty"], "price": row["price"],
+                    "commission": row.get("commission") if row.get("commission") is not None else row.get("native_fee", {}).get("amount")})
+        expected = self.expected_positions(runtime, state, {**run, "dispatched": proven})
+        observed = {key: value for key, value in self.check_positions(runtime, managed).items() if value != 0}
+        if observed != expected or Decimal(runtime["account"]["cash"]) not in cash_values(run["initial_cash"], executions):
+            raise ReconciliationPending("Current holdings or cash are not explained by proven executions; uncertain sale proceeds cannot finance another stock.")
+        return {**runtime, "_spy_isolated_commands": isolated}
+
+    def reserve_remaining(self, store, record):
+        """Reserve the same reviewed remainder without replaying attached commands."""
+        data, run = record["data"], record["data"]["run"]
+        runtime = self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
+        self.check_plan_policy(store, run)
+        self.check_fund_binding(store, runtime, run)
+        state = store.database.read("commands", COMMANDS)["data"]
+        self.reserve_batch(store, record, self.reviewed_runtime(runtime, run, state, set(data["managed_symbols"])))
 
     def advance(self, store, record):
         if record["data"]["run"].get("batch_id"):
@@ -1023,11 +1133,6 @@ class SpyRebalance:
                     self.wake_pending = False
                     self.next_poll = time.monotonic() + 5
                 return
-        def update(**changes):
-            def change(saved):
-                saved["run"].update(changes)
-            return database.update(RECORD, record["revision"], change, DEFAULT)
-
         with self.desk.maintenance:
             current = database.read(RECORD, DEFAULT)
             if self.stopped or self.desk.store is not store or current["revision"] != record["revision"]:
@@ -1037,136 +1142,7 @@ class SpyRebalance:
                 return
             if post_fill:
                 self.post_fill_refreshed.update(filled)
-            runtime = self.desk.runtime.state()
-            policy = self.check_plan_policy(store, run)
-            plan = self.check_fund_binding(store, runtime, run)
-            budget(plan, runtime, policy)
-            commands = database.read("commands", COMMANDS)["data"]
-            dispatched = dict(run.get("dispatched", {}))
-            tracked = set(dispatched) | ({run["command_id"]} if run.get("command_id") else set())
-            if runtime.get("local_record_error") or runtime.get("native_import_gap"):
-                raise ValueError(runtime.get("local_record_error") or runtime["native_import_gap"])
-            if (runtime.get("account", {}).get("trading_blocked") is True
-                    or commands.get("new_orders_blocked")
-                    or any(item.get("status") == "conflict" for item in runtime.get("native_deliveries", []))):
-                raise ValueError("The paper account or native command evidence is blocked. Review before continuing.")
-            for key in tracked:
-                state = commands["commands"].get(key, {}).get("state")
-                if state not in {"dispatch_intent", "submitting", "accepted", "partially_filled", "filled"}:
-                    raise ValueError("An existing SPY order has an unresolved or unsuccessful broker result. Review before continuing.")
-            if runtime.get("reconciliation", {}).get("status") != "reconciled":
-                raise ReconciliationPending("Waiting for current broker/native reconciliation; existing orders stay reserved.")
-            runtime = self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
-            if run["command_id"]:
-                command = commands["commands"][run["command_id"]]
-                if command["state"] in {"dispatch_intent", "submitting"}:
-                    raise ReconciliationPending("Waiting for the existing order's broker acknowledgment; it will not be resubmitted.")
-                self.checked_submitted(runtime, command)
-                leg = run["legs"][run["completed"]]
-                if (any(command.get(key) != leg[key] for key in ("symbol", "side", "instrument_id"))
-                        or Decimal(command["terms"]["quantity"]) > Decimal(leg["quantity"])
-                        or leg["side"] == "SELL" and Decimal(command["terms"]["quantity"]) != Decimal(leg["quantity"])):
-                    raise ValueError("The attached SPY command differs from its reviewed leg.")
-                completed = run["completed"] + 1
-                done = completed == run["total"]
-                dispatched[run["command_id"]] = "0"
-                expected = self.expected_positions(runtime, commands, {**run, "dispatched": dispatched})
-                positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
-                if positions != expected:
-                    raise ValueError("Current holdings do not match the reviewed SPY run and its proven executions.")
-                self.require_no_working_orders(runtime, commands, allowed=dispatched)
-                update(status="submitted" if done else "ready", completed=completed, command_id=None, dispatched=dispatched,
-                       message="All reviewed orders processed; accepted unfilled orders remain reserved." if done else f"{command['symbol']} accepted; preparing the next stock without waiting for its fill.")
-                self.wake_pending = not done
-                return
-            if run["status"] == "dispatching":
-                raise ValueError("An interrupted SPY order needs review before another order can be sent.")
-            self.require_no_working_orders(runtime, commands, allowed=dispatched)
-            if not set(data["managed_symbols"]).issubset(runtime["desired_symbols"]):
-                self.ensure_symbols(store, data["account_id"], runtime, data["managed_symbols"])
-                return
-            positions = {key: value for key, value in self.check_positions(runtime, set(data["managed_symbols"])).items() if value != 0}
-            expected = self.expected_positions(runtime, commands, run)
-            if positions != expected:
-                raise ValueError("Paper holdings changed after the daily plan was made.")
-            own_fills = any(decimal(commands["commands"][key].get("filled_quantity")) > Decimal(baseline) for key, baseline in dispatched.items())
-            if not own_fills and run["fills_completed"] == 0 and (decimal(run["initial_cash"]) is None
-                    or decimal(runtime["account"].get("cash")) != decimal(run["initial_cash"])):
-                raise ValueError("Paper cash changed after the daily plan was made.")
-            if all(leg["side"] == "BUY" and leg["order_type"] == "LIMIT" for leg in run["legs"][run["completed"]:]):
-                self.reserve_batch(store, current, runtime)
-                return
-            terms = dict(run["legs"][run["completed"]])
-            symbol, limited = terms["symbol"], run["limited"]
-            def defer(reasons, revision=record["revision"]):
-                changes = self.defer_legs(run, [{"terms": run["legs"][run["completed"]], "reasons": reasons}])
-                done = run["completed"] == changes["total"]
-                database.update(RECORD, revision, lambda saved: saved["run"].update(
-                    **changes, status="submitted" if done else "ready", command_id=None,
-                    message=f"{symbol} deferred, not sent: " + "; ".join(reasons)), DEFAULT)
-                self.wake_pending = not done
-
-            if any(item["symbol"] == symbol and item["state"] in ACTIVE for item in commands["commands"].values()):
-                raise ValueError(f"{symbol}: An existing working order prevents a duplicate SPY order.")
-            blockers, deferred = self.review_plan_rules(store, runtime, [terms],
-                {**policy, "rules": {key: rule for key, rule in policy["rules"].items() if key in QUOTE_RULES}})
-            if blockers:
-                raise ValueError(blockers[0])
-            if deferred:
-                defer(deferred[0]["reasons"])
-                return
-            if terms["side"] == "BUY":
-                terms, resized = self.buy_terms(terms, runtime, policy, plan, commands)
-                limited += resized
-                if terms is None:
-                    completed = run["completed"] + 1
-                    update(completed=completed, limited=limited,
-                           status="submitted" if completed == run["total"] else "ready",
-                           message=f"{symbol}: Buy skipped because observed cash allows less than $1.")
-                    self.wake_pending = completed < run["total"]
-                    return
-            claimed = update(status="dispatching", message=f"Preparing {symbol}.")
-            try:
-                command_id = self.admit(terms, runtime, data["account_id"], manual=run.get("manual") is True)
-            except StockDeferred as error:
-                defer([str(error)], claimed["revision"])
-                return
-            except ReconciliationPending:
-                database.update(RECORD, claimed["revision"], lambda saved: saved["run"].update(status="ready"), DEFAULT)
-                raise
-            attached = database.update(RECORD, claimed["revision"], lambda saved: saved["run"].update(
-                status="waiting_acceptance", command_id=command_id, limited=limited, message=f"Waiting for {symbol} broker acknowledgment, not its fill."), DEFAULT)
-            try:
-                latest = self.checked_account(data["account_id"], session=run["session"], close_at=run.get("close_at"))
-                self.check_plan_policy(store, run)
-                current_plan = self.check_fund_binding(store, latest, run)
-                latest_commands = database.read("commands", COMMANDS)["data"]
-                admitted = latest_commands["commands"].get(command_id) or {}
-                if (admitted.get("state") != "dispatch_intent"
-                        or admitted.get("transport_attempt") != {"version": 1, "state": "not_started"}):
-                    raise ValueError("The admitted SPY order changed before dispatch. Review the rebalance.")
-                other_commands = {**latest_commands, "commands": {key: value for key, value in latest_commands["commands"].items() if key != command_id}}
-                self.require_no_working_orders(latest, other_commands, allowed=dispatched)
-                if terms["side"] == "BUY":
-                    commitment = decimal(admitted.get("cash_commitment"))
-                    available = self.spendable_cash(latest, policy, current_plan, other_commands)
-                    if commitment is None or commitment < 0 or commitment > available:
-                        raise ValueError("The admitted buy commitment exceeds cash available above the reserve.")
-                if (decimal(latest["account"].get("cash")) != decimal(runtime["account"].get("cash"))
-                        or latest.get("orders") != runtime.get("orders")
-                        or self.check_positions(latest, set(data["managed_symbols"])) != self.check_positions(runtime, set(data["managed_symbols"]))):
-                    observed = {key: value for key, value in self.check_positions(latest, set(data["managed_symbols"])).items() if value != 0}
-                    if observed != self.expected_positions(latest, other_commands, run):
-                        raise ValueError("Paper holdings changed outside the reviewed SPY executions.")
-                    raise ReconciliationPending("The account observation changed before dispatch; rechecking the unsent leg.")
-            except (ValueError, PermissionError) as error:
-                self.desk.admission.resolve_never_dispatched(command_id)
-                if isinstance(error, ReconciliationPending):
-                    database.update(RECORD, attached["revision"], lambda saved: saved["run"].update(
-                        status="ready", command_id=None, limited=run["limited"]), DEFAULT)
-                raise
-            self.desk.runtime.request("dispatch", command_id=command_id, action="submit")
-            self.wake_pending = True
+            self.reserve_remaining(store, current)
 
     def admit(self, terms, runtime, account_id, *, manual=False):
         from .admission import invalidate

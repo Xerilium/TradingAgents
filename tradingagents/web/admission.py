@@ -461,14 +461,16 @@ class CommandAdmission:
         return self.transaction(lambda records: self._admit(records, approval_id), expected=expected, evidence=True)
 
     def _admit(self, records, approval_id, *, batch_runtime=None, batch_evaluation=None):
+        from .spy_batch import isolated_commands, stock_local_recovery
         state = records["commands"]
         if state.get("new_orders_blocked", False):
             raise ValueError("Account-wide block-new-orders is active")
         approval = state["approvals"][approval_id]
         runtime = batch_runtime if batch_runtime is not None else self.checked_observation(approval["constraints"])
+        isolated = isolated_commands(runtime, state) if batch_runtime is not None else set()
         state["account_versions"][runtime["account"]["id"]] = account_version(runtime)
         invalidate(records)
-        if state["recovery_required"] or approval_id in state["revocations"]:
+        if state["recovery_required"] and not stock_local_recovery(runtime, state) or approval_id in state["revocations"]:
             raise ValueError("Recovery or invalidated approval blocks admission")
         if any(c["approval_id"] == approval_id for c in state["commands"].values()):
             return records
@@ -484,7 +486,7 @@ class CommandAdmission:
                and c["account_id"] == terms["account_id"] and not (
                    c["state"] == "submitting" and not c.get("pending_action")
                    and (terms.get("replacement") or {}).get("order_id") in c.get("broker_order_ids", []))
-               for c in state["commands"].values()):
+               for key, c in state["commands"].items() if key not in isolated):
             raise ValueError("Unresolved command outcome blocks conflicting account admission")
         cap, fees = execution_costs(terms, runtime, approval["constraints"])
         quantity = remaining_quantity(terms)

@@ -277,9 +277,6 @@ class ExecutionLifecycle:
             command["timeline"].append({"at": datetime.now(UTC).isoformat(), "state": state, "reason": reason, "receipt": receipt})
             if state == "outcome_unknown":
                 records["commands"].update(recovery_required=True, recovery_reason=reason)
-                batch = records["commands"].get("spy_batches", {}).get(command.get("spy_batch_id"))
-                if batch:
-                    batch.update(state="blocked", reason=reason)
         return authority.transaction(change)
 
     def delivery(self, command_id, identity, data, reference, status=None):

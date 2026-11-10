@@ -131,7 +131,7 @@ function FundPlan() {
 function RunProgress({run}) {
   if (!run) return <Notice severity="info">No rebalance run has been recorded.</Notice>;
   const c = run.batch_counts || {};
-  const keys = ['admitted', 'native_queued', 'transport_started', 'sent', 'working', 'filled', 'expired', 'rejected', 'unknown', 'not_sent'];
+  const keys = ['admitted', 'native_queued', 'transport_started', 'sent', 'working', 'filled', 'expired', 'rejected', 'unknown', 'quarantined', 'not_sent'];
   const sessionEnded = run.status === 'blocked' && run.message === 'The approved regular session ended. Preview again before submitting.';
   return <Section title={sessionEnded ? 'Previous session ended' : 'Latest run'}>
     <Stack direction="row" spacing={2} useFlexGap   sx={{flexWrap: "wrap", alignItems: "center"}}>
@@ -191,7 +191,8 @@ export function SpyReview() {
   };
   const simple = action => request(action).then(r => setMessage(r?.message || '')).catch(e => setMessage(e.message));
   if (!schedule) return <Notice severity="info">SPY rebalance state is not loaded.</Notice>;
-  const canSubmit = Boolean(preview?.submit_token) && f.reasons.length === 0 && !schedule.in_progress && !busy;
+  const submitReasons = f.reasons.filter(reason => !(preview?.quarantined_stocks?.length && reason.startsWith('Recovery required:')));
+  const canSubmit = Boolean(preview?.submit_token) && submitReasons.length === 0 && !schedule.in_progress && !busy;
   const trades = arr(preview?.trades);
   const offerRemaining = run && (run.status === 'blocked' || run.status === 'submitted' && arr(run.deferred).length > 0);
   return <Stack spacing={2}>
@@ -206,11 +207,16 @@ export function SpyReview() {
     <RunProgress run={run}/>
     <Section title="Rebalance review">
       {!eligible && <Notice>Preview is unavailable until an eligible account, broker transport and a valid fund plan are present.</Notice>}
-      {f.reasons.length > 0 && <Notice>Submission is blocked: {f.reasons.join(' ')}</Notice>}
+      {submitReasons.length > 0 && <Notice>Submission is blocked: {submitReasons.join(' ')}</Notice>}
+      {preview?.quarantined_stocks?.length > 0 && <Notice severity="info">
+        {preview.quarantined_stocks.join(', ')}: uncertain orders remain reserved and excluded from this preview. They have not been canceled or replayed.
+      </Notice>}
       <Stack direction="row" spacing={1} useFlexGap  sx={{flexWrap: "wrap"}}>
         <Button variant="contained" disabled={!eligible || Boolean(busy)} onClick={() => previewRun('spy_rebalance_preview')}>1. Preview next rebalance</Button>
         {offerRemaining && <Button disabled={!eligible || Boolean(busy)} onClick={() => previewRun('spy_rebalance_preview_remaining')}>Preview remaining</Button>}
-        {run?.status === 'queued' && <Button color="warning" disabled={Boolean(busy)} onClick={() => simple('spy_rebalance_cancel')}>Cancel queued run</Button>}
+        {run && !run.stopped_at && (schedule.in_progress || run.status === 'blocked') && <Button color="warning" disabled={Boolean(busy)} onClick={() => simple('spy_rebalance_cancel')}>
+          {run?.status === 'queued' ? 'Cancel queued run' : 'Stop unsent trades'}
+        </Button>}
       </Stack>
       {stale && <Notice>This preview is no longer current (account, session, fund plan, policy or age changed). Preview again.</Notice>}
       {message && <Notice severity="info">{message}</Notice>}

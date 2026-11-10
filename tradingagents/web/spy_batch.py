@@ -48,6 +48,68 @@ def cash_values(initial, executions):
     return {cash.quantize(Decimal(".01"), rounding=ROUND_HALF_UP)}
 
 
+def isolated_commands(runtime, state):
+    """Only an internal, exact SPY reservation snapshot can localize an unknown."""
+    snapshots = runtime.get("_spy_isolated_commands", {})
+    account = (runtime.get("account") or {}).get("id")
+    for identity, snapshot in snapshots.items():
+        command = state["commands"].get(identity, {})
+        terms = command.get("terms", {})
+        never_sent = (command.get("state") == "not_sent"
+            and command.get("transport_attempt", {}).get("version") == 1
+            and command["transport_attempt"].get("state") == "not_sent"
+            and command["transport_attempt"].get("resolved_at")
+            and not any(command.get(key) for key in ("broker_order_ids", "fill_ids", "native_deliveries", "native_pending_commitment", "pending_action"))
+            and all(decimal(command.get(key)) == 0 for key in ("cash_commitment", "remaining_quantity", "filled_quantity")))
+        if (any(command.get(key) != snapshot.get(key) for key in (
+                "id", "account_id", "instrument_id", "symbol", "side", "terms", "terms_sha256", "client_order_id"))
+                or any(command.get(key) != terms.get(key) for key in ("account_id", "instrument_id", "symbol", "side"))
+                or command.get("terms_sha256") != hashlib.sha256(json.dumps(terms, sort_keys=True, allow_nan=False).encode()).hexdigest()
+                or command.get("account_id") != account or terms.get("asset_class") == "us_option"
+                or terms.get("side") not in {"BUY", "SELL"}
+                or terms.get("order_class") not in (None, "simple")
+                or terms.get("replacement") or terms.get("exit_plan") or command.get("pending_action")
+                or command.get("connection_context") != snapshot.get("connection_context")
+                or command.get("state") not in {"dispatch_intent", "submitting", "outcome_unknown", "accepted", "partially_filled", "filled", "canceled", "expired", "rejected"} and not never_sent
+                or any(item.get("status") == "conflict" for item in command.get("native_deliveries", {}).values())
+                or any(item.get("status") == "conflict" for item in runtime.get("native_deliveries", [])
+                       if item.get("command_id") == identity)):
+            raise ValueError("An isolated SPY command changed identity, authority or receipt proof")
+        quantity = decimal(terms["quantity"])
+        pending = command.get("native_pending_commitment", {})
+        cash = max(decimal(command["cash_commitment"]), decimal(pending.get("cash_commitment", "0")))
+        remaining = max(decimal(command["remaining_quantity"]), decimal(pending.get("remaining_quantity", "0")))
+        if (quantity <= 0 or decimal(snapshot["reserved_quantity"]) != quantity
+                or not 0 <= decimal(command["filled_quantity"]) <= quantity
+                or not 0 <= remaining <= quantity or not 0 <= cash <= decimal(snapshot["reserved_cash"])
+                or command["side"] == "BUY" and (
+                    terms.get("order_type") != "LIMIT" or decimal(command["price_cap"]) != decimal(terms["limit_price"])
+                    or decimal(snapshot["reserved_cash"]) < quantity * decimal(command["price_cap"]))):
+            raise ValueError("The isolated SPY command no longer has a bounded full reservation")
+    return set(snapshots)
+
+
+def stock_local_recovery(runtime, state):
+    isolated = isolated_commands(runtime, state)
+    if not isolated or state.get("authority_history_incomplete") or runtime.get("local_record_error") or runtime.get("native_import_gap"):
+        return False
+    if (runtime.get("status") != "connected" or runtime.get("reconciliation", {}).get("status") != "reconciled"
+            or not runtime.get("native_epoch") or state.get("native_epoch") != runtime["native_epoch"]
+            or runtime.get("native_contract", {}).get("observation_in_progress") is True):
+        return False
+    confirmed = {item["command_id"] for item in runtime.get("native_deliveries", [])
+                 if item.get("confirmed_current_process") is True and runtime.get("native_epoch")
+                 and item.get("native_epoch") == runtime["native_epoch"]}
+    for identity, command in state["commands"].items():
+        if identity in isolated or command["state"] in {"filled", "canceled", "rejected", "expired", "not_sent"} and not command.get("native_pending_commitment"):
+            continue
+        if (command.get("account_id") != runtime["account"]["id"] or command.get("native_pending_commitment")
+                or command["state"] in {"dispatch_intent", "submitting", "outcome_unknown", "cancel_pending", "replace_pending"}
+                or command["state"] != "admitted_not_dispatched" and identity not in confirmed):
+            return False
+    return True
+
+
 def validate(batch, records, runtime, *, command_id=None):
     state, investor = records["commands"], records["investor"]
     if batch["binding"] != sealed(batch) or batch["state"] not in {"reserved", "dispatching", "submitted"}:
@@ -78,13 +140,15 @@ def validate(batch, records, runtime, *, command_id=None):
         raise ValueError("Current native risk authority is unavailable or not active")
     owned = set(batch["members"]) | set(batch["baseline"]["tracked"])
     commands = state["commands"]
+    isolated_commands({**runtime, "_spy_isolated_commands": batch["baseline"].get("quarantined", {})}, state)
     if command_id is not None and commands[command_id]["state"] not in {"dispatch_intent", "submitting"}:
         raise ValueError("This batch member no longer has unused dispatch authority")
     for identity, command in commands.items():
         if command.get("account_id") != batch["account_id"]:
             continue
         action = command.get("pending_action") or {}
-        if (command["state"] in {"outcome_unknown", "cancel_pending", "replace_pending"}
+        if (command["state"] in {"cancel_pending", "replace_pending"}
+                or command["state"] == "outcome_unknown" and identity not in owned
                 or action and action.get("state") not in {"completed", "not_sent"}
                 or any(item.get("status") == "conflict" for item in command.get("native_deliveries", {}).values())):
             raise ValueError("A genuine unknown outcome, action or conflicting receipt blocks SPY dispatch")
