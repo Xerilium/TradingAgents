@@ -24,8 +24,9 @@ function Pick({label, value, onChange, options, ...rest}) {
 function Fact({label, value}) {
   return <Box><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value}</Typography></Box>;
 }
-function Section({title, children, actions}) {
-  return <Stack spacing={1.5} sx={{p: 2, border: 1, borderColor: 'divider', borderRadius: 1, minWidth: 0}}>
+function Section({title, children, actions, fill = false}) {
+  return <Stack spacing={1.5} sx={{p: 2, border: 1, borderColor: 'divider', borderRadius: 1, minWidth: 0,
+    ...(fill && {height: '100%', minHeight: 0, '& > *': {flexShrink: 0}})}}>
     <Stack direction="row"   useFlexGap  spacing={1} sx={{justifyContent: "space-between", alignItems: "center", flexWrap: "wrap"}}>
       <Typography variant="h2" sx={{fontSize: 18}}>{title}</Typography>{actions}</Stack>
     {children}
@@ -245,14 +246,14 @@ export function SpyView() {
 
 /* ---------------------------------------------------------------- Dashboard */
 
-function PositionsTable({onSelect}) {
+function PositionsTable({onSelect, fill = false}) {
   const {state} = useDesk();
   const f = useFacts(), known = f.coverage('positions');
   const rows = arr(state?.positions);
   const pc = v => number(v) === null ? 'Unavailable' : pct(Number(v) * 100);
-  return <Stack spacing={1}>
+  return <Stack spacing={1} sx={fill ? {height: '100%', minHeight: 0, flex: 1, '& > .MuiAlert-root': {flexShrink: 0}} : undefined}>
     {!known && <Notice>Holdings are unverified or incomplete; rows are retained observations.</Notice>}
-    <DataTable rows={rows} getRowId={p => p.symbol} onRowClick={onSelect} empty={known ? 'No open positions reported.' : 'Holdings unavailable or incomplete.'}
+    <DataTable fill={fill} rows={rows} getRowId={p => p.symbol} onRowClick={onSelect} empty={known ? 'No open positions reported.' : 'Holdings unavailable or incomplete.'}
       columns={[{id: 'symbol', label: 'Symbol'}, {id: 'qty', label: 'Qty', numeric: true, render: p => text(p.qty)},
         {id: 'avail', label: 'Broker available', numeric: true, value: p => p.qty_available},
         {id: 'price', label: 'Last', numeric: true, value: p => p.current_price, render: p => money(p.current_price)},
@@ -339,8 +340,8 @@ export function DashboardView() {
     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
       {[['watch', 'Watch'], ['chart', 'Chart'], ['research', 'Research'], ['positions', 'Positions'], ['orders', 'Orders']].map(([v, l]) => <Tab key={v} value={v} label={l}/>)}
     </Tabs>
-    <Box role="tabpanel" hidden={tab !== 'watch'}><Stack spacing={1}>
-      <DataTable rows={watch} getRowId={r => r.symbol} onRowClick={open} selectedIds={new Set(selectedSymbol ? [selectedSymbol] : [])}
+    <Box role="tabpanel" hidden={tab !== 'watch'}><Stack spacing={1} sx={{height: '100%', minHeight: 0}}>
+      <DataTable fill rows={watch} getRowId={r => r.symbol} onRowClick={open} selectedIds={new Set(selectedSymbol ? [selectedSymbol] : [])}
         empty="No stocks in the saved universe."
         columns={[{id: 'symbol', label: 'Symbol'}, {id: 'price', label: 'Last', numeric: true, render: r => money(r.price)},
           {id: 'held', label: 'Held', type: 'boolean', value: r => f.coverage('positions') ? held.has(r.symbol) : null, render: r => f.coverage('positions') ? held.has(r.symbol) ? 'Yes' : 'No' : 'Unknown'}]}/>
@@ -351,7 +352,7 @@ export function DashboardView() {
         : <Typography>No saved research for {selectedSymbol}.</Typography>) : <Typography>Select a stock in Watch.</Typography>}
       <Button sx={{alignSelf: 'flex-start'}} onClick={() => navigate('research')}>Open Research</Button>
     </Stack></Box>
-    <Box role="tabpanel" hidden={tab !== 'positions'}><PositionsTable onSelect={open}/></Box>
+    <Box role="tabpanel" hidden={tab !== 'positions'}><PositionsTable fill onSelect={open}/></Box>
     <Box role="tabpanel" hidden={tab !== 'orders'}><Stack spacing={1}>
       <OrdersTable/>
       <DataTable rows={drafts} getRowId={p => p.id} empty="No saved drafts."
@@ -509,9 +510,9 @@ function Holdings() {
       setMessage('Export ready.');
     } catch (e) { setMessage(e.message); }
   };
-  return <Stack spacing={1}>
-    <PositionsTable onSelect={undefined}/>
-    <Stack direction="row" spacing={1}  sx={{alignItems: "center"}}><Button onClick={exportCsv} disabled={page !== 'portfolio'}>Export holdings CSV</Button><Typography>{message}</Typography></Stack>
+  return <Stack spacing={1} sx={{height: '100%', minHeight: 0}}>
+    <PositionsTable fill onSelect={undefined}/>
+    <Stack direction="row" spacing={1} sx={{alignItems: "center", flexShrink: 0}}><Button onClick={exportCsv} disabled={page !== 'portfolio'}>Export holdings CSV</Button><Typography>{message}</Typography></Stack>
   </Stack>;
 }
 
@@ -1111,8 +1112,8 @@ function Lifecycle() {
 
 function Fills() {
   const {state} = useDesk();
-  return <Section title="Fills and fees">
-    <DataTable rows={arr(state?.fills)} getRowId={r => r.id ?? JSON.stringify(r)} empty="No fill records in the current observation."
+  return <Section fill title="Fills and fees">
+    <DataTable fill rows={arr(state?.fills)} getRowId={r => r.id ?? JSON.stringify(r)} empty="No fill records in the current observation."
       columns={[{id: 't', label: 'Time', type: 'dateTime', value: r => r.transaction_time || r.timestamp, render: r => dateTime(r.transaction_time || r.timestamp)}, {id: 's', label: 'Symbol', value: r => r.symbol},
         {id: 'side', label: 'Side'}, {id: 'q', label: 'Quantity', numeric: true, value: r => r.qty ?? r.quantity},
         {id: 'p', label: 'Fill price', numeric: true, value: r => r.price ?? r.fill_price, render: r => money(r.price ?? r.fill_price)},

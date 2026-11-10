@@ -9,8 +9,9 @@ export const money = value => number(value) === null ? 'Unavailable' :
 export const dateTime = value => !value || !Number.isFinite(Date.parse(value)) ? 'Unavailable' :
   new Intl.DateTimeFormat('en-US', {dateStyle: 'medium', timeStyle: 'medium', timeZone: 'America/Los_Angeles'}).format(new Date(value));
 
-export function Page({title, subtitle, actions, children, tabbed = false}) {
-  return <Stack spacing={2} sx={{p: 2, minWidth: 0, ...(tabbed && {height: '100%', minHeight: 0, overflow: 'hidden',
+export function Page({title, subtitle, actions, children, tabbed = false, fill = false}) {
+  return <Stack spacing={2} sx={{p: 2, minWidth: 0, ...((tabbed || fill) && {height: '100%', minHeight: 0, overflow: 'hidden'}),
+    ...(fill && {'& > :not([data-fill-content])': {flexShrink: 0}}), ...(tabbed && {
     '& > :not([role="tabpanel"])': {flexShrink: 0},
     '& > [role="tabpanel"]': {flex: 1, minHeight: 0, overflow: 'auto'}})}}>
     <Stack direction="row" spacing={2}   useFlexGap  sx={{alignItems: "center", justifyContent: "space-between", flexWrap: "wrap"}}>
@@ -57,7 +58,7 @@ export function nativeReportColumns(report) {
 const automaticRowHeight = () => 'auto';
 
 export function DataTable({rows = [], columns, getRowId = row => row.id ?? row.symbol ?? row.name,
-  onRowClick, selectedIds, onSelectionChange, empty = 'No records available.', label = 'Data records', ...gridProps}) {
+  onRowClick, selectedIds, onSelectionChange, empty = 'No records available.', label = 'Data records', fill = false, ...gridProps}) {
   const latest = useRef(null);
   latest.current = Object.fromEntries(columns.map(column => [column.id, column]));
   const gridRows = useMemo(() => rows.map(source => {
@@ -99,7 +100,8 @@ export function DataTable({rows = [], columns, getRowId = row => row.id ?? row.s
   };
   // Grid search and editing must not submit an enclosing settings form.
   return <Box onKeyDown={event => {if (event.key === 'Enter' && event.target.closest?.('input')) event.preventDefault();}}
-    sx={{height: rows.length ? 'min(520px, 65vh)' : 240, minHeight: 220, minWidth: 0, width: '100%'}}>
+    sx={{...(fill ? {flex: 1, minHeight: 0} : {height: rows.length ? 'min(520px, 65vh)' : 240, minHeight: 220}),
+      minWidth: 0, width: '100%'}}>
     <DataGrid rows={gridRows} columns={gridColumns} label={label} showToolbar
       density="compact" getRowHeight={automaticRowHeight} disableRowSelectionOnClick
       checkboxSelection={Boolean(onSelectionChange)} disableRowSelectionExcludeModel keepNonExistentRowsSelected

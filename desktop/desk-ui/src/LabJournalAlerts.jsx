@@ -1022,20 +1022,20 @@ export function JournalView() {
               <Tab value="history" label="Account History" />
             </Tabs>
             <Box role="tabpanel" hidden={tab !== 'decisions'}>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <Stack spacing={1}>
-                    <Stack direction="row" spacing={1}>
+              <Grid container spacing={2} sx={{height: '100%', alignContent: 'flex-start'}}>
+                <Grid size={{ xs: 12, md: item && draft ? 6 : 12 }} sx={{height: '100%', minWidth: 0}}>
+                  <Stack spacing={1} sx={{height: '100%', minHeight: 0}}>
+                    <Stack direction="row" spacing={1} sx={{flexShrink: 0}}>
                       <Button disabled={!exports.length || loading || conflict} onClick={() => journalAction({ action: 'export', ids: exports })}>Export selected ({exports.length})</Button>
                       <Button disabled={!dirtyCount || loading} onClick={() => setDrafts({})}>Revert Unsaved Edits ({dirtyCount})</Button>
                     </Stack>
-                    <DataTable label="Saved journal decisions" rows={decisions} selectedIds={exports} onSelectionChange={ids => setExports([...ids])} onRowClick={(row) => { setSelected(row.id); if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(row.symbol || '')) setSelectedSymbol(row.symbol); setTab('decisions'); }}
+                    <DataTable fill label="Saved journal decisions" rows={decisions} selectedIds={exports} onSelectionChange={ids => setExports([...ids])} onRowClick={(row) => { setSelected(row.id); if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(row.symbol || '')) setSelectedSymbol(row.symbol); setTab('decisions'); }}
                       columns={[{id: 'saved_at', label: 'Saved', type: 'dateTime', render: row => dateTime(row.saved_at)}, {id: 'symbol', label: 'Symbol'},
                         {id: 'kind', label: 'Kind', value: journalKind}, {id: 'terms', label: 'Call / Terms', value: row => row.terms ? [row.terms.side, row.terms.quantity ?? row.terms.qty, row.terms.order_type || row.terms.type].filter(Boolean).join(' ') : row.rationale},
                         {id: 'rationale', label: 'Rationale'}, {id: 'status', label: 'Status', render: row => <Status value={row.status}/>}]} getRowId={(row) => row.id} empty="No matching saved decisions. No research or trades are created to populate the journal." />
                   </Stack>
                 </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid hidden={!item || !draft} size={{ xs: 12, md: 6 }} sx={{height: '100%', overflow: 'auto', minWidth: 0}}>
                   {!item || !draft ? <Typography>Select a saved decision to inspect its rationale, orders, outcomes and notes.</Typography> : (
                     <Stack spacing={1.5}>
                       <Typography variant="h2">{item.symbol || journalKind(item)} · {journalKind(item)}</Typography>
@@ -1451,11 +1451,11 @@ export function AlertsView() {
           <Tab value="Delivery" label="Browser Delivery" />
         </Tabs>
         <Box role="tabpanel" hidden={tab !== 'Inbox'}>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Stack spacing={1}>
+          <Grid container spacing={2} sx={{height: '100%', alignContent: 'flex-start'}}>
+            <Grid size={{ xs: 12, md: evidenceId ? 6 : 12 }} sx={{height: '100%', minWidth: 0}}>
+              <Stack spacing={1} sx={{height: '100%', minHeight: 0, '& > *': {flexShrink: 0}}}>
                 <Typography>Monitor: {observed.monitor?.last_evaluated_at ? (Date.now() - Date.parse(observed.monitor.last_evaluated_at) > 15000 ? 'Stale / interrupted' : observed.monitor.state || 'Unknown') : 'Not evaluated'} · last evaluated {dateTime(observed.monitor?.last_evaluated_at)}</Typography>
-                <DataTable label="Alert inbox" rows={occurrences} onRowClick={(row) => openEvidence(row.id)}
+                <DataTable fill label="Alert inbox" rows={occurrences} onRowClick={(row) => openEvidence(row.id)}
                   columns={[{id: 'name', label: 'Alert'}, {id: 'symbol', label: 'Symbol'}, {id: 'scope', label: 'Scope'},
                     {id: 'unread', label: 'State', value: row => row.unread ? 'Unread' : 'Acknowledged'},
                     {id: 'reason', label: 'Reason', value: row => row.evaluation?.reason},
@@ -1465,7 +1465,7 @@ export function AlertsView() {
                 <Evidence title="Service restart gaps are unobserved intervals, not acknowledgements" data={(observed.monitor?.gaps || [])} />
               </Stack>
             </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid hidden={!evidenceId} size={{ xs: 12, md: 6 }} sx={{height: '100%', overflow: 'auto', minWidth: 0}}>
               {!evidenceId ? <Typography>Select an alert to review its evidence. Opening retains the captured event. It does not acknowledge, refresh sources, run research, or trade.</Typography> : (
                 <Stack spacing={1}>
                   <Typography variant="h2">{evidence?.occurrence?.name || 'Saved alert evidence'}</Typography>

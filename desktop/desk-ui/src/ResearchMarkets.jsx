@@ -38,9 +38,11 @@ function ReportText({ value }) {
   );
 }
 
-function Section({ title, children, actions }) {
+function Section({ title, children, actions, fill = false }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+    <Paper variant="outlined" sx={{ p: 2, mb: fill ? 0 : 2, ...(fill && {
+      display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
+      '& > *': {flexShrink: 0}}) }}>
       <Stack direction="row"   sx={{justifyContent: "space-between", alignItems: "center",  mb: 1 }}>
         <Typography variant="h6" component="h2">{title}</Typography>
         <Box>{actions}</Box>
@@ -315,7 +317,7 @@ export function ResearchView() {
   ];
 
   return (
-    <Page
+    <Page fill
       title="Research"
       subtitle="Pick a batch, review it, then start. Inspecting a stock never changes the batch."
       actions={(
@@ -339,9 +341,9 @@ export function ResearchView() {
         </Alert>
       )}
       {launched?.deleted && <Alert sx={{ mb: 2 }} onClose={() => setLaunched(null)}>Deleted {launched.deleted.deleted_results} result(s), {launched.deleted.deleted_artifacts} artifact(s).</Alert>}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Section title="Stocks" actions={<Button color="error" disabled={deleteBlocked || deleteAction.busy || !batch.size} onClick={previewDelete}>Delete research…</Button>}>
+      <Grid data-fill-content container spacing={2} sx={{flex: 1, minHeight: 0, overflow: 'auto', alignContent: 'flex-start'}}>
+        <Grid size={{ xs: 12, md: inspected ? 6 : 12 }} sx={{height: '100%', minWidth: 0}}>
+          <Section fill title="Stocks" actions={<Button color="error" disabled={deleteBlocked || deleteAction.busy || !batch.size} onClick={previewDelete}>Delete research…</Button>}>
             <Stack direction="row" spacing={1} sx={{flexWrap: "wrap",  mb: 1 }}  useFlexGap>
               <TextField size="small" select label="Research scope" value={filter} onChange={(e) => setFilter(e.target.value)} sx={{ minWidth: 150 }}>
                 {['all', 'selected', 'completed', 'incomplete', 'failed', 'cancelled'].map((f) => <MenuItem key={f} value={f}>{f} ({counts[f] || 0})</MenuItem>)}
@@ -350,12 +352,12 @@ export function ResearchView() {
             <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
               <Button size="small" onClick={() => setBatch(new Set(symbols.filter((s) => !universe.includes(s))))}>Select outside universe</Button>
             </Stack>
-            <DataTable label="Research stocks" rows={rows} columns={columns} getRowId={(s) => s}
+            <DataTable fill label="Research stocks" rows={rows} columns={columns} getRowId={(s) => s}
               selectedIds={batch} onSelectionChange={setBatch} onRowClick={setSelectedSymbol} empty="No stocks match." />
             <Typography variant="caption">Research uses selected universe members only. Outside-universe selections remain available for explicit deletion.</Typography>
           </Section>
         </Grid>
-        <Grid size={{ xs: 12, md: 7 }}>
+        <Grid hidden={!inspected} size={{ xs: 12, md: 6 }} sx={{height: '100%', overflow: 'auto', minWidth: 0}}>
           <Section title={inspected ? `${inspected} · ${state?.company_names?.[inspected] || ''}` : 'Inspected stock'}
             actions={inspected && <Button onClick={() => navigate('markets')}>Open instrument</Button>}>
             {detailAction.error && <Alert severity="error">{detailAction.error}</Alert>}
@@ -2016,9 +2018,9 @@ export function MarketsView() {
         <Tab value="scans" label="Scanner" />
       </Tabs>
       <Box role="tabpanel" hidden={tab !== 'universe'}>
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 7 }}>
-            <Section title="Universe" actions={<Button disabled={!checked.size || exportAction.busy} onClick={exportCsv}>Export selected holdings CSV</Button>}>
+        <Grid container spacing={2} sx={{height: '100%', alignContent: 'flex-start'}}>
+          <Grid size={{ xs: 12, md: selectedSymbol ? 7 : 12 }} sx={{height: '100%', minWidth: 0}}>
+            <Section fill title="Universe" actions={<Button disabled={!checked.size || exportAction.busy} onClick={exportCsv}>Export selected holdings CSV</Button>}>
               {exportAction.error && <Alert severity="error">{exportAction.error}</Alert>}
               <Stack direction="row" spacing={1}  useFlexGap sx={{flexWrap: "wrap",  mb: 1 }}>
                 <TextField size="small" select label="List" value={listId} sx={{ minWidth: 150 }} onChange={(e) => setListId(e.target.value)}>
@@ -2027,16 +2029,14 @@ export function MarketsView() {
                 </TextField>
                 <Button onClick={() => setChecked(new Set())}>Clear</Button>
               </Stack>
-              <DataTable rows={rows} columns={columns} getRowId={(s) => s} onRowClick={setSelectedSymbol}
+              <DataTable fill rows={rows} columns={columns} getRowId={(s) => s} onRowClick={setSelectedSymbol}
                 selectedIds={checked} onSelectionChange={setChecked} empty="No stocks match." label="Market universe"
                 columnVisibilityModel={Object.fromEntries(cols.order.map(k => [k, cols.visible.includes(k)]))}
                 onColumnVisibilityModelChange={model => setColDraft({...cols, visible: cols.order.filter(k => model[k] !== false)})} />
               <Typography variant="caption">Working counts use the order list only; proposal receipts are not included.</Typography>
             </Section>
-            <ColumnPicker desk={desk} cols={cols} setCols={(fn) => setColDraft((c) => fn(c ?? cols))} />
-            <Watchlists desk={desk} target={target} setTarget={setTarget} checked={checked} />
           </Grid>
-          <Grid size={{ xs: 12, md: 5 }}>
+          <Grid hidden={!selectedSymbol} size={{ xs: 12, md: 5 }} sx={{height: '100%', overflow: 'auto', minWidth: 0}}>
             {selectedSymbol ? (
               <>
                 <Section title={`${selectedSymbol} · ${state?.company_names?.[selectedSymbol] || ''}`}>
@@ -2046,6 +2046,10 @@ export function MarketsView() {
                 <Notes symbol={selectedSymbol} desk={desk} />
               </>
             ) : <Typography>Select a stock to inspect.</Typography>}
+          </Grid>
+          <Grid size={{xs: 12, md: 7}}>
+            <ColumnPicker desk={desk} cols={cols} setCols={(fn) => setColDraft((c) => fn(c ?? cols))} />
+            <Watchlists desk={desk} target={target} setTarget={setTarget} checked={checked} />
           </Grid>
           {selectedSymbol && (
             <Grid size={12}>

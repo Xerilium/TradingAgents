@@ -515,6 +515,10 @@ Column headers sort; the native column menu provides typed filtering, and the
 toolbar provides quick search and column visibility. The grid owns pagination
 over the complete loaded collection, not a pre-sliced visible page. Research and
 Markets retain their full loaded stock lists; captured reports are not truncated.
+Primary stock, holding, fill, journal and alert lists fill their available panel
+height with native grid scrolling. Composed forms and nested evidence grids stay
+bounded. Research and other list/detail panes use the full list width until a
+record is selected; narrow layouts stack the inspector below the list.
 Numeric and date sort/filter values are separate from exact displayed source
 values and never rewrite order or allocation terms. Selection survives filtering;
 selecting, sorting or filtering never runs research, approves or submits orders.
